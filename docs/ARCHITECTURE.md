@@ -348,6 +348,28 @@ available version. CLI commands have five-second timeouts; missing binaries,
 failed SSH commands, malformed output, and version mismatches leave missing
 metadata unknown without failing the list. There is no remote-to-local fallback.
 
+## MCP
+
+`server/src/mcp` exposes a read-only [Model Context Protocol](https://modelcontextprotocol.io) server over Streamable HTTP at `/mcp` and over stdio through `thyra mcp`; setup is in [Deployment](./DEPLOYMENT.md#mcp-server).
+It uses the official `@modelcontextprotocol/server` SDK in stateless mode, so every HTTP request is served by a fresh server instance, 2025-era and 2026-07-28 clients both work, and no session state is kept.
+The stdio subcommand serves the same tool definitions locally and forwards each `tools/call` to a running Thyra's `/mcp`, so authentication, scope, redaction, rate limiting, and audit always happen in the server.
+
+Tools: `list_workspaces`, `get_pane_output`, `list_agent_sessions`, `get_agent_session`, `search_sessions`, `get_git_status`, `get_git_diff`, `read_file`, `list_files`, and `get_activity`.
+They reach Herdr and the workspace only through `gateway.ts`, which maps each tool need to one fixed read operation with an explicit parameter set (for example, file reads never carry `scope: "filesystem"`).
+`assertMcpReadOperation` gates every call: the operation must be in the MCP read list and classified `read`, deferring to the RPC policy table's class for methods it lists.
+No tool can send input, resize, focus, claim panes, run commands, or write files.
+Pane output uses Herdr `pane.read` in ANSI format (then strips ANSI) because a plain-text read of an alternate-screen app may replay wheel input to harvest history.
+
+Authentication uses dedicated bearer tokens (`thyra mcp token create`), never the login cookie; `mcp-tokens.json` in the data directory stores only SHA-256 digests and is reread when it changes, so revocation needs no restart.
+A token's scope is `all` or a list of workspace ids; an unqualified id names a workspace on the default connection, and `connection/w1` names one elsewhere.
+Out-of-scope workspaces and panes are reported as not found and are never read.
+`/mcp` passes the same Host allowlist as other routes and the Origin check in `read` mode: agents may omit `Origin`, but a present browser Origin must be allowed (and must match the request host), because the endpoint trusts only the bearer header, never ambient cookies.
+Each token has a token-bucket rate limit, and repeated failed authentication is limited per client address.
+
+Every tool result passes through `redact.ts` (provider keys, bearer and basic credentials, JWTs, private key blocks, URL passwords, and secret-named `KEY=value` or JSON fields) and is capped at 100,000 characters; tools also page and cap their own output.
+`read_file`, `list_files`, and `get_git_diff` apply a deny-list (`.env*`, `*.pem`, `*.key`, `id_*`, credential and keystore files, `.ssh`, `.aws`, `.git`, and others) to the requested path and, on local connections, to the symlink-resolved path; paths that resolve outside the checkout are refused, and remote connections refuse symlinked path components.
+`mcp-audit.jsonl` records each call's time, token, transport, tool, summarized redacted arguments, outcome, duration, and size, keeping one rotated generation.
+
 ## Voice input
 
 The AudioContext is created and resumed synchronously in the tap handler, before any `await`, because iOS Safari only starts audio during a user gesture; an interrupted context (calls, app switches) resumes when the page is visible again.

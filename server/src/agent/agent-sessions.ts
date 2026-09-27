@@ -97,6 +97,27 @@ export function createAgentSessionHandlers(args: {
       }
       return { entry_id: entry.id, text: entry.text };
     },
+    /** Full projected history entries (tool payloads included), for MCP. */
+    readEntries: async (params: Record<string, unknown>) => {
+      const resolved = await resolveAgentSession(
+        params,
+        args.herdrCall,
+        args.files,
+        resolverContext,
+      );
+      if (!resolved.file) {
+        cache.invalidate(resolved);
+        return { ...resolved, entries: [] };
+      }
+      const projection = await cache.get(resolved);
+      return {
+        ...resolved,
+        file: projection.file,
+        updated_at: new Date(projection.file.mtimeMs).toISOString(),
+        stats: projection.stats,
+        entries: projection.entries,
+      };
+    },
     readSummary: (params: Record<string, unknown>) =>
       readAgentSessionSummary(
         params,

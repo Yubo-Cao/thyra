@@ -118,6 +118,8 @@ import { voiceCleanupFromEnv } from "./voice/cleanup";
 import { createIdentityServiceFromEnv } from "./identity/from-env";
 import type { ClientContext } from "./identity/identity-service";
 import { optionalString } from "./utils/rpc-params";
+import { runMcpCommand } from "./mcp/cli";
+import { createThyraMcpService } from "./mcp/service";
 
 const APP_VERSION = packageJson.version;
 const serviceCommandResult = runServiceCommand(process.argv.slice(2));
@@ -132,6 +134,13 @@ const herdrCommandResult = await runHerdrCommand(
 );
 if (herdrCommandResult !== null) {
   process.exit(herdrCommandResult);
+}
+const mcpCommandResult = await runMcpCommand(
+  process.argv.slice(2),
+  APP_VERSION,
+);
+if (mcpCommandResult !== null) {
+  process.exit(mcpCommandResult);
 }
 const config = loadServerConfig(APP_VERSION);
 configureServerLogger(config.logLevel);
@@ -476,6 +485,16 @@ const connectionManager = new ConnectionManager<LegacyConnectionRuntime>(
   logger.child("connections"),
 );
 
+const mcp = createThyraMcpService({
+  version: APP_VERSION,
+  readyRuntimes: () =>
+    connectionManager
+      .list()
+      .flatMap((status) => connectionManager.readyRuntime(status.id) ?? []),
+  defaultConnectionId: () => connectionManager.defaultId(),
+  logger: logger.child("mcp"),
+});
+
 const { handleHerdrStatus, handleHerdrSetup } = createHerdrSetupHandlers({
   ping: () => {
     const runtime = connectionManager.defaultReadyRuntime();
@@ -526,6 +545,7 @@ function runtimeFactoryForProfile(
         markRpcError,
         presentSnapshot: clientIdentity.annotateSnapshot,
         onTaskEvent: (event) => {
+          mcp.recordTaskEvent(identity.id, event);
           const connections = connectionProfiles.list();
           webPush.notify(
             {
@@ -544,6 +564,7 @@ function runtimeFactoryForProfile(
         },
         onEvent: (event, eventIdentity) => {
           if (!context.isCurrent()) return;
+          mcp.recordHerdrEvent(eventIdentity.id, event);
           logger.debug("Herdr event", {
             connection: eventIdentity.id,
             detail: summarizeHerdrEvent(event),
@@ -1560,6 +1581,12 @@ function main() {
               }
             }
             return response;
+          }
+
+          // MCP authenticates with its own bearer tokens, never the cookie.
+          if (url.pathname === "/mcp") {
+            server.timeout(req, 60);
+            return mcp.handle(req, access.clientAddress ?? peer);
           }
 
           // Everything else requires login, except direct local use of a

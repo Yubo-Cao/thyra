@@ -207,6 +207,48 @@ URL, version, and start/restart/uninstall controls. Default is a session-modal
 popup; `--placement split`, `tab`, `zoomed`, or `overlay` creates a regular pane
 visible to other Herdr clients.
 
+## MCP server
+
+Thyra can give MCP-capable agents (Claude Code, Codex, and others) a **read-only** view of your workspaces: workspaces, tabs, and panes with agent status and viewers; recent pane output; agent session history and search; Git status and diffs; files inside workspace checkouts; and current activity.
+No MCP tool can type into a terminal, run commands, or change files.
+The [architecture notes](./ARCHITECTURE.md#mcp) describe the guarantees.
+
+Create a token for each agent; the token is printed once and stored only as a digest in `~/.config/thyra/mcp-tokens.json`:
+
+```bash
+thyra mcp token create --name claude --scope all       # every workspace
+thyra mcp token create --name bot --scope w1,w3        # only these workspaces
+thyra mcp token list
+thyra mcp token revoke claude                          # takes effect immediately
+```
+
+Workspace ids come from `herdr workspace list` or the MCP `list_workspaces` tool; `<connection-id>/w1` scopes a workspace on a non-default connection.
+Run these commands as the user that runs the Thyra service.
+
+**Local agents (stdio).** `thyra mcp` speaks MCP on stdin/stdout and forwards to the running Thyra at `http://127.0.0.1:$PORT/mcp` (`THYRA_MCP_URL` or `--url` overrides it):
+
+```bash
+claude mcp add thyra -e THYRA_MCP_TOKEN=<token> -- thyra mcp
+codex mcp add thyra --env THYRA_MCP_TOKEN=<token> -- thyra mcp
+```
+
+**Remote agents (Streamable HTTP).** Point the agent at `/mcp` on the Thyra URL with an `Authorization: Bearer <token>` header; the login cookie is never accepted there:
+
+```bash
+claude mcp add --transport http thyra https://thyra.example.ts.net/mcp --header "Authorization: Bearer <token>"
+codex mcp add thyra --url https://thyra.example.ts.net/mcp --bearer-token-env-var THYRA_MCP_TOKEN
+```
+
+Keep the same [remote access](#remote-access-and-security) rules as for the browser: publish `/mcp` only on loopback, a tailnet, or TLS.
+Every result is secret-redacted, and secret files (`.env*`, `*.pem`, `*.key`, `id_*`, credential files, `.ssh`, `.aws`, `.git`, and others) are denied.
+Optional `~/.config/thyra/mcp.json` adds deny patterns and sets the per-token rate limit (default 120 requests per minute); `THYRA_MCP_DENY_FILES` adds comma-separated patterns; restart Thyra after changing either:
+
+```json
+{ "deny_files": ["*.sqlite", "private"], "rate_limit_per_minute": 60 }
+```
+
+Each call is logged to `~/.config/thyra/mcp-audit.jsonl` (token, tool, redacted arguments, outcome, duration), with one rotated `.1` file.
+
 ## Basic runtime configuration
 
 Flags override environment variables, then defaults; `thyra --help` lists all
