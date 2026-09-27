@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { thyraStorage } from "./browserStorage";
+import { thyraStorage, thyraStorageEventKey } from "./browserStorage";
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
   const values = new Map(Object.entries(initial));
@@ -33,74 +33,33 @@ test("fresh browser writes use Thyra keys", () => {
   expect(raw.getItem("theme")).toBeNull();
 });
 
-test("legacy preferences, drafts and connection selections copy once; new empty values win", () => {
-  for (const key of [
-    "theme",
-    "reviewAnnotations:resource",
-    "herdr.connection/one/filePreview",
-  ]) {
-    const raw = memoryStorage({ [key]: "saved" });
-    expect(thyraStorage(raw).getItem(key)).toBe("saved");
-    expect(raw.getItem(`thyra:${key}`)).toBe("saved");
-    raw.setItem(key, "stale");
-    expect(thyraStorage(raw).getItem(key)).toBe("saved");
-    raw.setItem(`thyra:${key}`, "");
-    expect(thyraStorage(raw).getItem(key)).toBe("");
-    expect(raw.getItem(key)).toBe("stale");
-  }
-});
-
-test("clearing migrated values does not resurrect originals on reload", () => {
-  const raw = memoryStorage({ theme: "dark" });
-  const storage = thyraStorage(raw);
-  expect(storage.getItem("theme")).toBe("dark");
-  storage.removeItem("theme");
-  expect(thyraStorage(raw).getItem("theme")).toBeNull();
-  expect(raw.getItem("theme")).toBe("dark");
-  storage.setItem("theme", "light");
-  expect(storage.getItem("theme")).toBe("light");
-});
-
-test("failed migration reads saved values and can retry", () => {
-  const raw = memoryStorage({ theme: "dark" });
-  const setItem = raw.setItem;
-  raw.setItem = () => {
-    throw new Error("quota exceeded");
-  };
-  expect(thyraStorage(raw).getItem("theme")).toBe("dark");
-  raw.setItem = setItem;
-  expect(thyraStorage(raw).getItem("theme")).toBe("dark");
-  expect(raw.getItem("thyra:theme")).toBe("dark");
-});
-
-test("enumeration keeps legacy connection migration working without duplicate keys", () => {
+test("reads, removes and enumerates only Thyra keys", () => {
   const raw = memoryStorage({
-    "diffViewerSelected:one": "saved",
-    "thyra:diffViewerSelected:one": "new",
+    theme: "light",
+    "thyra:diffViewerSelected:one": "saved",
+    "other:key": "kept",
   });
   const storage = thyraStorage(raw);
+  expect(storage.getItem("theme")).toBeNull();
+  expect(storage.getItem("diffViewerSelected:one")).toBe("saved");
   expect(storage.length).toBe(1);
   expect(storage.key(0)).toBe("diffViewerSelected:one");
+  expect(storage.key(1)).toBeNull();
+
+  storage.setItem("theme", "dark");
+  storage.removeItem("diffViewerSelected:one");
+  expect(raw.getItem("thyra:diffViewerSelected:one")).toBeNull();
+  expect(storage.getItem("theme")).toBe("dark");
+
   storage.clear();
-  expect(storage.getItem("diffViewerSelected:one")).toBeNull();
-  expect(raw.getItem("diffViewerSelected:one")).toBe("saved");
+  expect(storage.length).toBe(0);
+  expect(raw.getItem("thyra:theme")).toBeNull();
+  expect(raw.getItem("theme")).toBe("light");
+  expect(raw.getItem("other:key")).toBe("kept");
 });
 
-test("Roamgate keys copy once and Roamgate deletions stay deleted", () => {
-  const raw = memoryStorage({
-    "roamgate:theme": "light",
-    theme: "dark",
-    draft: "old draft",
-    "roamgate:deleted:draft": "1",
-  });
-  const storage = thyraStorage(raw);
-  expect(storage.getItem("theme")).toBe("light");
-  expect(raw.getItem("thyra:theme")).toBe("light");
-  expect(storage.getItem("draft")).toBeNull();
-  expect(
-    Array.from({ length: storage.length }, (_, i) => storage.key(i)),
-  ).toEqual(["theme", "draft"]);
-  storage.setItem("theme", "dark");
-  expect(storage.getItem("theme")).toBe("dark");
-  expect(raw.getItem("roamgate:theme")).toBe("light");
+test("storage events resolve to unprefixed Thyra keys only", () => {
+  expect(thyraStorageEventKey({ key: "thyra:theme" })).toBe("theme");
+  expect(thyraStorageEventKey({ key: "theme" })).toBeUndefined();
+  expect(thyraStorageEventKey({ key: null })).toBeNull();
 });

@@ -1,4 +1,5 @@
 import type { ConnectionClient, HerdrEventMsg } from "./api";
+import { thyraLocalStorage } from "./browserStorage";
 import type { State } from "./store";
 
 export type CollaborationParticipant = {
@@ -38,7 +39,7 @@ export type CollaborationProfile = {
   color: string;
 };
 
-const PROFILE_KEY = "herdrCollaborationProfile";
+const PROFILE_KEY = "collaborationProfile";
 const COLORS = [
   "#0969da",
   "#1a7f37",
@@ -70,7 +71,7 @@ function randomId() {
 
 function defaultName() {
   const platform = navigator.platform?.trim();
-  return platform ? `${platform} user` : "Studio user";
+  return platform ? `${platform} user` : "Thyra user";
 }
 
 export function collaborationProfileForSession(
@@ -110,7 +111,7 @@ export function collaborationProfile(): CollaborationProfile {
   clientSessionId ??= `web-${randomId()}`;
   let stored: unknown = null;
   try {
-    stored = JSON.parse(localStorage.getItem(PROFILE_KEY) ?? "null");
+    stored = JSON.parse(thyraLocalStorage.getItem(PROFILE_KEY) ?? "null");
   } catch {
     // A restricted storage context still gets an in-memory identity.
   }
@@ -130,10 +131,10 @@ export function collaborationProfile(): CollaborationProfile {
 export function saveCollaborationProfile(profile: CollaborationProfile) {
   cachedProfile = {
     ...profile,
-    displayName: profile.displayName.trim().slice(0, 80) || "Studio user",
+    displayName: profile.displayName.trim().slice(0, 80) || "Thyra user",
   };
   try {
-    localStorage.setItem(
+    thyraLocalStorage.setItem(
       PROFILE_KEY,
       JSON.stringify({
         displayName: cachedProfile.displayName,

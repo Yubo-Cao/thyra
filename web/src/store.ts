@@ -1,4 +1,8 @@
-import { thyraLocalStorage, thyraSessionStorage } from "./browserStorage";
+import {
+  thyraLocalStorage,
+  thyraSessionStorage,
+  thyraStorageEventKey,
+} from "./browserStorage";
 import { t } from "./i18n";
 import { syncTaskPush, type TaskNotificationPreferences } from "./taskPush";
 import {
@@ -2161,11 +2165,11 @@ export const store = {
     initialized = true;
     void store.restoreTaskNotifications();
     window.addEventListener("storage", (event) => {
-      const key = event.key?.replace(/^thyra:/, "");
+      const key = thyraStorageEventKey(event);
       if (
         key === TASK_NOTIFICATIONS_KEY ||
         key === TASK_NOTIFICATION_PREFERENCES_KEY ||
-        event.key === null
+        key === null
       ) {
         set({
           taskNotificationsEnabled: storedTaskNotificationsEnabled(),

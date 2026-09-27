@@ -5,7 +5,7 @@ import {
   type ElementRef,
 } from "react";
 
-// Radix composition used by shadcn/ui, styled with Studio's shared tokens.
+// Radix composition used by shadcn/ui, styled with Thyra's shared tokens.
 export const Avatar = forwardRef<
   ElementRef<typeof AvatarPrimitive.Root>,
   ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>

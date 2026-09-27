@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { importWithReload } from "./lazyWithReload";
 
 const COMPONENT_KEY = "diff-content-view";
-const RELOAD_ATTEMPTED_KEY = `thyra:herdr:lazy-chunk-reload:${COMPONENT_KEY}`;
+const RELOAD_ATTEMPTED_KEY = `thyra:lazyChunkReload:${COMPONENT_KEY}`;
 
 let storage: Map<string, string>;
 let reloadCount = 0;
@@ -31,13 +31,13 @@ afterEach(() => {
 
 test("returns the module and clears the reload marker on success", async () => {
   storage.set(RELOAD_ATTEMPTED_KEY, "1");
-  storage.set("herdr:lazy-chunk-reload:terminal-view", "1");
+  storage.set("thyra:lazyChunkReload:terminal-view", "1");
   const module = await importWithReload(COMPONENT_KEY, () =>
     Promise.resolve({ ok: true }),
   );
   expect(module).toEqual({ ok: true });
   expect(storage.has(RELOAD_ATTEMPTED_KEY)).toBe(false);
-  expect(storage.get("herdr:lazy-chunk-reload:terminal-view")).toBe("1");
+  expect(storage.get("thyra:lazyChunkReload:terminal-view")).toBe("1");
   expect(reloadCount).toBe(0);
 });
 

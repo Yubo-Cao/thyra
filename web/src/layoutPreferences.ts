@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
+import { thyraLocalStorage, thyraStorageEventKey } from "./browserStorage";
 
 export const LAYOUT_PREFERENCES_STORAGE_KEY = "layoutPreferences.v1";
-export const LAYOUT_CHANGE_EVENT = "herdr-layout-change";
+export const LAYOUT_CHANGE_EVENT = "thyra:layout-change";
 export const MOBILE_BREAKPOINT_DEFAULT = 768;
 export const MOBILE_BREAKPOINT_MIN = 320;
 export const MOBILE_BREAKPOINT_MAX = 2560;
@@ -108,7 +109,7 @@ function publishLayout(preferences = snapshot.preferences) {
 function readPreferences() {
   try {
     return parseLayoutPreferences(
-      localStorage.getItem(LAYOUT_PREFERENCES_STORAGE_KEY),
+      thyraLocalStorage.getItem(LAYOUT_PREFERENCES_STORAGE_KEY),
     );
   } catch {
     return { ...defaults };
@@ -122,7 +123,8 @@ export function initializeLayoutPreferences() {
   window.addEventListener("resize", () => publishLayout());
   window.addEventListener("popstate", () => publishLayout());
   window.addEventListener("storage", (event) => {
-    if (event.key === LAYOUT_PREFERENCES_STORAGE_KEY || event.key === null)
+    const key = thyraStorageEventKey(event);
+    if (key === LAYOUT_PREFERENCES_STORAGE_KEY || key === null)
       publishLayout(readPreferences());
   });
 }
@@ -141,7 +143,7 @@ export function updateLayoutPreferences(patch: Partial<LayoutPreferences>) {
     window.history.replaceState(window.history.state, "", url);
   }
   try {
-    localStorage.setItem(
+    thyraLocalStorage.setItem(
       LAYOUT_PREFERENCES_STORAGE_KEY,
       JSON.stringify(preferences),
     );

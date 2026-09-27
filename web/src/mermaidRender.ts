@@ -49,7 +49,7 @@ export function normalizeMermaidSource(code: string): string {
     /^(`{3,}|~{3,})mermaid[^\S\n]*\r?\n([\s\S]*?)\r?\n\1$/i,
   );
   if (fenced) source = fenced[2]!.trim();
-  // Layout/theme are controlled by Studio; a YAML document header is not a
+  // Layout/theme are controlled by Thyra; a YAML document header is not a
   // diagram statement. Preserve the original file for source views and Copy.
   source = source
     .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "")

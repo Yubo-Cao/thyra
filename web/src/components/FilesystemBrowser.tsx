@@ -120,7 +120,7 @@ export function FilesystemBrowser({
         if (cancelled || !client.isCurrent()) return;
         if (result.scope !== "filesystem") {
           throw new Error(
-            t("Filesystem browsing requires an updated Studio bridge."),
+            t("Filesystem browsing requires an updated Thyra bridge."),
           );
         }
         setList(result);

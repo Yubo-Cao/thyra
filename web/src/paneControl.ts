@@ -35,7 +35,7 @@ export function paneControlState(
   };
 }
 
-// A viewing preference for this Studio pane, not an authentication boundary.
+// A viewing preference for this Thyra pane, not an authentication boundary.
 // Keep every input path (IME, shortcuts, paste and composer) on one gate.
 export function paneControlClient(
   client: ConnectionClient,

@@ -14,7 +14,7 @@ import {
   type NewReviewAnnotation,
   type ReviewAnnotation,
 } from "./annotations";
-import { thyraLocalStorage } from "./browserStorage";
+import { thyraLocalStorage, thyraStorageEventKey } from "./browserStorage";
 import { LAYOUT_CHANGE_EVENT, useLayoutPreferences } from "./layoutPreferences";
 import {
   shortcutMatches,
@@ -346,7 +346,7 @@ function loadAccentColor(): AccentColor {
 }
 
 function loadTerminalFontFamily(): string {
-  return localStorage.getItem(TERMINAL_FONT_STORAGE_KEY) ?? "";
+  return thyraLocalStorage.getItem(TERMINAL_FONT_STORAGE_KEY) ?? "";
 }
 
 function loadUiScale(): number {
@@ -1406,7 +1406,7 @@ export default function App() {
         .length
     : 0;
   useEffect(() => {
-    localStorage.setItem(TERMINAL_FONT_STORAGE_KEY, terminalFontFamily);
+    thyraLocalStorage.setItem(TERMINAL_FONT_STORAGE_KEY, terminalFontFamily);
   }, [terminalFontFamily]);
   useEffect(() => {
     // Drop mobile-only controls when their context disappears so they cannot
@@ -3297,19 +3297,20 @@ export default function App() {
   }, [customTerminalThemes]);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY) {
+      const key = thyraStorageEventKey(event);
+      if (key === MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY) {
         setMobileTerminalShortcuts(
           parseMobileTerminalShortcutRows(event.newValue),
         );
-      } else if (event.key === TERMINAL_FONT_STORAGE_KEY) {
+      } else if (key === TERMINAL_FONT_STORAGE_KEY) {
         setTerminalFontFamily(event.newValue ?? "");
-      } else if (event.key === MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY) {
+      } else if (key === MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY) {
         setMobileTerminalSideShortcuts(
           parseMobileTerminalSideShortcuts(event.newValue),
         );
-      } else if (event.key === TERMINAL_THEME_SELECTION_STORAGE_KEY) {
+      } else if (key === TERMINAL_THEME_SELECTION_STORAGE_KEY) {
         setTerminalThemeSelection(parseTerminalThemeSelection(event.newValue));
-      } else if (event.key === CUSTOM_TERMINAL_THEMES_STORAGE_KEY) {
+      } else if (key === CUSTOM_TERMINAL_THEMES_STORAGE_KEY) {
         setCustomTerminalThemes(parseCustomTerminalThemes(event.newValue));
       }
     };

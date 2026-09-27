@@ -21,12 +21,12 @@ describe("collaboration client sessions", () => {
     const first = collaborationProfileForSession(
       "web-session-a",
       stored,
-      "Studio user",
+      "Thyra user",
     );
     const second = collaborationProfileForSession(
       "web-session-b",
       stored,
-      "Studio user",
+      "Thyra user",
     );
 
     expect(first).toEqual({
@@ -46,7 +46,7 @@ describe("collaboration client sessions", () => {
       collaborationProfileForSession(
         "web-session",
         { displayName: "  Alice  ", color: "#1A7F37" },
-        "Studio user",
+        "Thyra user",
       ),
     ).toEqual({
       participantId: "web-session",
@@ -57,9 +57,9 @@ describe("collaboration client sessions", () => {
     const fallback = collaborationProfileForSession(
       "web-session",
       { displayName: "Alice", color: "blue" },
-      "Studio user",
+      "Thyra user",
     );
-    expect(fallback.displayName).toBe("Studio user");
+    expect(fallback.displayName).toBe("Thyra user");
     expect(fallback.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 });

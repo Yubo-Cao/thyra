@@ -94,8 +94,8 @@ export default {
   'Delete file "{path}"? This cannot be undone.':
     "删除文件“{path}”？此操作无法撤销。",
   Delete: "删除",
-  "Filesystem browsing requires an updated Studio bridge.":
-    "浏览文件系统需要更新 Studio 桥接程序。",
+  "Filesystem browsing requires an updated Thyra bridge.":
+    "浏览文件系统需要更新 Thyra 桥接程序。",
   "Pane directory {path}": "窗格目录 {path}",
   Home: "主目录",
   "Home directory on the connected host": "所连接主机上的主目录",

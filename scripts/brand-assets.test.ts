@@ -26,15 +26,3 @@ test("brand icons and sharing images have the declared dimensions", async () => 
     ]);
   }
 });
-
-test("legacy public image URLs serve Thyra artwork too", async () => {
-  for (const [legacy, current] of [
-    ["web/public/herdr-icon.png", "web/public/thyra-icon-512.png"],
-    ["site/assets/herdr-icon.png", "site/assets/thyra-icon-96.png"],
-    ["site/assets/herdr-icon-48.png", "site/assets/thyra-icon-48.png"],
-    ["site/assets/herdr-icon-72.png", "site/assets/thyra-icon-72.png"],
-    ["site/og.png", "site/thyra-og.png"],
-  ]) {
-    expect((await asset(legacy)).equals(await asset(current))).toBe(true);
-  }
-});

@@ -357,7 +357,7 @@ function isBridgeHello(value: unknown): value is BridgeHello {
 }
 
 /**
- * Client for the local herdr-gui bridge (WebSocket).
+ * Client for the local Thyra bridge (WebSocket).
  *
  * Downstream RPC: { id, method, params, connection_id }
  * Global RPC:     { id, method, params }

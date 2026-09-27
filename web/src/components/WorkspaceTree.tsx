@@ -1,4 +1,4 @@
-import { thyraLocalStorage } from "../browserStorage";
+import { thyraLocalStorage, thyraStorageEventKey } from "../browserStorage";
 import { shallowEqual, store, useStoreSelector } from "../store";
 import type { GitStatusSummary, Pane, Workspace } from "../types";
 import { shortId } from "../utils";
@@ -392,17 +392,18 @@ export function WorkspaceTree({
   }, [s.lastRefresh, s.status, s.workspaces]);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === pinsStorageKey) {
+      const key = thyraStorageEventKey(event);
+      if (key === pinsStorageKey) {
         setPinnedWorkspaceKeys(parseWorkspacePins(event.newValue));
-      } else if (event.key === collapsedGroupsStorageKey) {
+      } else if (key === collapsedGroupsStorageKey) {
         setCollapsedWorktreeGroupKeys(
           parseCollapsedWorktreeGroups(event.newValue),
         );
-      } else if (event.key === WORKSPACE_AGENT_LAYOUT_STORAGE_KEY) {
+      } else if (key === WORKSPACE_AGENT_LAYOUT_STORAGE_KEY) {
         setAgentLayout(parseWorkspaceAgentLayout(event.newValue));
-      } else if (event.key === AGENT_LIST_PREFERENCES_STORAGE_KEY) {
+      } else if (key === AGENT_LIST_PREFERENCES_STORAGE_KEY) {
         setAgentListPreferences(parseAgentListPreferences(event.newValue));
-      } else if (event.key === agentOrderStorageKey) {
+      } else if (key === agentOrderStorageKey) {
         setAgentPaneOrder(parseAgentOrder(event.newValue));
       }
     };

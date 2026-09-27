@@ -233,7 +233,7 @@ export interface GitDiffFile {
 // Raw list responses
 export interface WorkspaceList {
   type: "workspace_list";
-  /** Studio bridge metadata, absent on older bridges (shared navigation). */
+  /** Thyra bridge metadata, absent on older bridges (shared navigation). */
   navigation_mode?: "browser-local" | "shared";
   workspaces: Workspace[];
 }

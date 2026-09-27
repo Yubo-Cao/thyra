@@ -35,15 +35,14 @@ test("index first paint uses defaults when no appearance preferences exist", () 
   });
 });
 
-test("index first paint reads legacy appearance preferences without changing them", () => {
-  const values = { theme: "light", uiScale: "125" };
-  expect(firstPaint(values)).toEqual({
-    dataset: { theme: "light" },
-    style: { colorScheme: "light", zoom: "1.25" },
+test("index first paint ignores unprefixed appearance preferences", () => {
+  expect(firstPaint({ theme: "light", uiScale: "125" })).toEqual({
+    dataset: { theme: "dark" },
+    style: { colorScheme: "dark", zoom: "" },
   });
 });
 
-test("index first paint uses Thyra appearance preferences on fresh installs", () => {
+test("index first paint uses Thyra appearance preferences", () => {
   expect(
     firstPaint({ "thyra:theme": "light", "thyra:uiScale": "120" }),
   ).toEqual({
@@ -52,45 +51,9 @@ test("index first paint uses Thyra appearance preferences on fresh installs", ()
   });
 });
 
-test("index first paint prefers new appearance values over differing legacy values", () => {
+test("index first paint resolves the system theme and default scale", () => {
   expect(
-    firstPaint({
-      theme: "light",
-      "thyra:theme": "dark",
-      uiScale: "125",
-      "thyra:uiScale": "90",
-    }),
-  ).toEqual({
-    dataset: { theme: "dark" },
-    style: { colorScheme: "dark", zoom: "0.9" },
-  });
-});
-
-test("index first paint does not fall back from explicitly empty new values", () => {
-  expect(
-    firstPaint({
-      theme: "light",
-      "thyra:theme": "",
-      uiScale: "125",
-      "thyra:uiScale": "",
-    }),
-  ).toEqual({
-    dataset: { theme: "dark" },
-    style: { colorScheme: "dark", zoom: "0.8" },
-  });
-});
-
-test("index first paint resolves the new system theme and default scale", () => {
-  expect(
-    firstPaint(
-      {
-        theme: "dark",
-        "thyra:theme": "system",
-        uiScale: "125",
-        "thyra:uiScale": "100",
-      },
-      true,
-    ),
+    firstPaint({ "thyra:theme": "system", "thyra:uiScale": "100" }, true),
   ).toEqual({
     dataset: { theme: "light" },
     style: { colorScheme: "light", zoom: "" },

@@ -1,27 +1,11 @@
 const PREFIX = "thyra:";
-const DELETED_PREFIX = "thyra:deleted:";
-// Keys written before the split from Roamgate, then unprefixed herdr-gui keys.
-const LEGACY_PREFIXES = ["roamgate:", ""];
 
-/** Keep legacy originals; deletion markers prevent removed values reappearing. */
+/** Scope a Storage to `thyra:` keys so other apps on the origin stay separate. */
 export function thyraStorage(storage: Storage): Storage {
-  const keys = () => [
-    ...new Set(
-      Array.from({ length: storage.length }, (_, index) => storage.key(index))
-        .filter(
-          (key): key is string =>
-            key !== null &&
-            !key.startsWith(DELETED_PREFIX) &&
-            !key.startsWith("roamgate:deleted:"),
-        )
-        .map((key) => {
-          const prefix = [PREFIX, ...LEGACY_PREFIXES].find((candidate) =>
-            key.startsWith(candidate),
-          );
-          return key.slice(prefix?.length ?? 0);
-        }),
-    ),
-  ];
+  const keys = () =>
+    Array.from({ length: storage.length }, (_, index) => storage.key(index))
+      .filter((key): key is string => key?.startsWith(PREFIX) ?? false)
+      .map((key) => key.slice(PREFIX.length));
   return {
     get length() {
       return keys().length;
@@ -30,41 +14,31 @@ export function thyraStorage(storage: Storage): Storage {
       return keys()[index] ?? null;
     },
     getItem(key) {
-      const current = storage.getItem(PREFIX + key);
-      if (current !== null) return current;
-      if (storage.getItem(DELETED_PREFIX + encodeURIComponent(key)) !== null)
-        return null;
-      const legacy = legacyItem(storage, key);
-      if (legacy !== null) {
-        try {
-          storage.setItem(PREFIX + key, legacy);
-        } catch {
-          /* Read still works when storage is full. */
-        }
-      }
-      return legacy;
+      return storage.getItem(PREFIX + key);
     },
     setItem(key, value) {
       storage.setItem(PREFIX + key, value);
     },
     removeItem(key) {
-      storage.setItem(DELETED_PREFIX + encodeURIComponent(key), "1");
       storage.removeItem(PREFIX + key);
     },
     clear() {
-      for (const key of keys()) this.removeItem(key);
+      for (const key of keys()) storage.removeItem(PREFIX + key);
     },
   };
 }
 
-function legacyItem(storage: Storage, key: string): string | null {
-  if (storage.getItem(`roamgate:deleted:${encodeURIComponent(key)}`) !== null)
-    return null;
-  for (const prefix of LEGACY_PREFIXES) {
-    const value = storage.getItem(prefix + key);
-    if (value !== null) return value;
-  }
-  return null;
+/**
+ * Unprefixed key of a cross-tab storage event: null when storage was cleared,
+ * undefined when the key belongs to something other than Thyra.
+ */
+export function thyraStorageEventKey(
+  event: Pick<StorageEvent, "key">,
+): string | null | undefined {
+  if (event.key === null) return null;
+  return event.key.startsWith(PREFIX)
+    ? event.key.slice(PREFIX.length)
+    : undefined;
 }
 
 function browserStorage(kind: "localStorage" | "sessionStorage"): Storage {

@@ -9,7 +9,7 @@ export async function importWithReload<T>(
   componentKey: string,
   factory: () => Promise<T>,
 ): Promise<T> {
-  const reloadKey = `herdr:lazy-chunk-reload:${componentKey}`;
+  const reloadKey = `lazyChunkReload:${componentKey}`;
   try {
     const module = await factory();
     thyraSessionStorage.removeItem(reloadKey);
