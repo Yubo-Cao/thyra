@@ -646,7 +646,15 @@ export class Bridge {
     ws.onclose = (event) => {
       if (this.ws !== ws) return;
       if (event?.code === 4001) {
+        const guest = this._hello?.principal?.kind === "guest";
         this.disconnect({ code: "logged_out", message: msg("logged out") });
+        // A guest's view ended (left, revoked or expired): the login page
+        // drops its stale cookie. Logging out here could instead end an
+        // account session the same browser also holds.
+        if (guest) {
+          location.replace("/login");
+          return;
+        }
         // Clear the shared cookie in every tab before navigating. A close frame
         // can arrive before the initiating tab receives its logout response.
         void logoutBrowserSession().catch(() => location.replace("/login"));

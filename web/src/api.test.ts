@@ -147,6 +147,44 @@ describe("browser logout", () => {
     response.resolve(new Response(null, { status: 204 }));
     expect(await navigated.promise).toBe("/login");
   });
+
+  test("an ended guest view goes to the login page without logging out an account", async () => {
+    class GuestSocket extends HangingWebSocket {
+      static instance: GuestSocket;
+      constructor() {
+        super();
+        GuestSocket.instance = this;
+      }
+    }
+    installBrowserGlobals(GuestSocket as unknown as typeof WebSocket);
+    const navigated = Promise.withResolvers<string>();
+    Object.assign(location, { replace: navigated.resolve });
+    let logouts = 0;
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: () => {
+        logouts += 1;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      },
+    });
+    const bridge = createTestBridge(1000);
+    bridge.connect();
+    const socket = GuestSocket.instance;
+    socket.readyState = WebSocket.OPEN;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        hello: true,
+        bridge_protocol_version: 2,
+        default_connection_id: "legacy-default",
+        principal: { kind: "guest", role: "guest", user: null },
+        capabilities: { connection_id: true, connection_scoped_http: true },
+      }),
+    } as MessageEvent);
+    socket.readyState = WebSocket.CLOSED;
+    socket.onclose?.({ code: 4001 });
+    expect(await navigated.promise).toBe("/login");
+    expect(logouts).toBe(0);
+  });
 });
 
 describe("bridge connection lifecycle", () => {

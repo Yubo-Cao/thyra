@@ -38,7 +38,8 @@ Grant **editor** only to people you would give a shell account on the host.
   Redeeming it creates a guest session (a random 256-bit cookie, `thyra_guest` or `__Host-thyra_guest` on the public listener, stored as a digest) that is the viewer of that one workspace, or of one pane of it, until the link expires (24 hours by default, 30 days at most) or is revoked; both disconnect the guest within a second.
   Links may be limited to a number of uses; failed redemptions count toward the same per-address limit as passkey attempts; creating, redeeming and revoking are audited, never with a secret.
   **Anyone holding the link can watch** the shared terminals, their scrollback and agent status, and for a whole-workspace link its files and Git changes, until it ends; share it privately and keep it short-lived.
-  A guest cookie takes precedence in its browser, so an admin who opens a link in the same browser watches as that guest until the link ends.
+  An account (direct local use, a session cookie or tailnet login) always wins over a guest cookie in the same browser: a signed-in visitor keeps its own account and grants, and the landing page offers **Open with my account** or **Open as guest**; only that explicit choice (an extra `thyra_as_guest` cookie) makes the guest session win until the guest leaves.
+  **Leave shared view** in the guest badge ends the guest session on the server, clears its cookies and returns to the login page.
 
 There is no shared password or token login.
 The session cookie `thyra_session` holds a random 256-bit id; the database stores only its SHA-256 digest.

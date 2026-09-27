@@ -152,12 +152,29 @@ export function createShareRoutes(args: {
     const body = await readJson(req);
     const id = typeof body.id === "string" ? body.id : "";
     const secret = typeof body.secret === "string" ? body.secret : "";
+    // A signed-in browser keeps its account (and its grants): it becomes a
+    // guest only when its user explicitly chooses "Open as guest".
+    const asGuest = body.as_guest === true;
+    if (!asGuest && (await args.authenticator.signedInAccount(req, access)))
+      return json(
+        { error: "signed in; open the link as a guest", reason: "signed_in" },
+        409,
+      );
     // A browser already watching through this link keeps its session and
     // does not spend another use.
     const token = args.authenticator.guestToken(req);
     const current = token ? shares.resolveGuest(token) : null;
+    const asGuestCookie = (expiresAt: number) =>
+      asGuest
+        ? {
+            "set-cookie": args.authenticator.asGuestCookie(
+              access,
+              (expiresAt - args.store.now()) / 1000,
+            ),
+          }
+        : undefined;
     if (current?.link.id === id && shares.verifySecret(id, secret))
-      return json({ ok: true });
+      return json({ ok: true }, 200, asGuestCookie(current.session.expiresAt));
     const result = shares.redeem({
       id,
       secret,
@@ -182,13 +199,17 @@ export function createShareRoutes(args: {
       link: result.link.id,
       guest: result.session.publicId,
     });
-    return json({ ok: true }, 200, {
+    const response = json({ ok: true }, 200, {
       "set-cookie": args.authenticator.guestCookie(
         result.token,
         access,
         (result.session.expiresAt - args.store.now()) / 1000,
       ),
     });
+    const preference = asGuestCookie(result.session.expiresAt);
+    if (preference)
+      response.headers.append("set-cookie", preference["set-cookie"]);
+    return response;
   }
 
   async function create(
@@ -274,6 +295,8 @@ export function createShareRoutes(args: {
                 ? null
                 : renderSharePage(
                     pageLocale(req.headers.get("accept-language")),
+                    // Offer a signed-in visitor its own account first.
+                    await args.authenticator.signedInAccount(req, access),
                   ),
               {
                 headers: {

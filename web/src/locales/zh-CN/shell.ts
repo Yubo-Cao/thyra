@@ -252,6 +252,7 @@ export default {
   "Add SSH": "添加 SSH",
   Default: "默认",
   "Read-only": "只读",
+  "Leave shared view": "离开共享视图",
   "Destination: {destination}": "目标：{destination}",
   "Remote control: {path}": "远程控制：{path}",
   "auto (~/.config/herdr/herdr.sock)": "自动（~/.config/herdr/herdr.sock）",

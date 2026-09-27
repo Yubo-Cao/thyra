@@ -58,6 +58,13 @@ const STRINGS = {
     share_revoked: "This share link was revoked.",
     share_used: "This share link has been used the maximum number of times.",
     shareNoscript: "Enable JavaScript to open the shared view.",
+    shareSignedIn:
+      "You are signed in as {name}. Open Thyra with your account and its access, or watch through this link as an anonymous guest.",
+    shareHostOwner: "the host owner",
+    shareAccountButton: "Open with my account",
+    shareGuestButton: "Open as guest",
+    share_signed_in:
+      "You are signed in. Choose Open as guest to watch through this link.",
     endedTitle: "Shared view ended",
     endedHeading: "Shared view ended",
     endedIntro:
@@ -107,6 +114,12 @@ const STRINGS = {
     share_revoked: "此共享链接已被撤销。",
     share_used: "此共享链接的使用次数已达上限。",
     shareNoscript: "请启用 JavaScript 以打开共享视图。",
+    shareSignedIn:
+      "你已以 {name} 的身份登录。可以用你的账户及其权限打开 Thyra，或通过此链接以匿名访客身份观看。",
+    shareHostOwner: "主机所有者",
+    shareAccountButton: "用我的账户打开",
+    shareGuestButton: "以访客身份打开",
+    share_signed_in: "你已登录。如需通过此链接观看，请选择“以访客身份打开”。",
     endedTitle: "共享视图已结束",
     endedHeading: "共享视图已结束",
     endedIntro:
@@ -159,6 +172,10 @@ const STYLE = `
     background:var(--button);color:var(--button-text);font-size:14px;font-weight:650}
   .submit:hover:not(:disabled){background:var(--button-hover)}
   .submit:disabled{opacity:.65;cursor:wait}
+  .secondary{width:100%;min-height:44px;padding:10px;margin-top:12px;border:1px solid var(--muted);
+    border-radius:0;background:transparent;color:inherit;font-size:14px;font-weight:600}
+  .secondary:disabled{opacity:.65;cursor:wait}
+  .account{margin-top:16px;color:inherit}
   .status{font-size:13px;line-height:1.5;min-height:24px;margin-top:12px}
   .status.error{color:var(--error)}
   .note{margin-top:24px;font-size:12px}
@@ -199,17 +216,28 @@ if(data.page==='share'){
   if(secret)history.replaceState(null,'',location.pathname);
   const id=location.pathname.split('/')[2]||'';
   if(!secret){show(S.shareMissing,true);return;}
-  btn.disabled=false;
-  btn.onclick=async()=>{
-    if(btn.disabled)return;
-    btn.disabled=true;btn.textContent=S.sharing;show('',false);
+  const redeem=(button,label,asGuest)=>async()=>{
+    if(button.disabled)return;
+    button.disabled=true;button.textContent=S.sharing;show('',false);
     try{
-      const r=await post('/api/share/redeem',{id,secret});
+      const r=await post('/api/share/redeem',asGuest?{id,secret,as_guest:true}:{id,secret});
       if(r.ok){location.replace('/');return;}
       show(r.status===429?S.tooManyAttempts:S['share_'+(r.data&&r.data.reason)]||S.share_invalid,true);
     }catch{show(S.unreachable,true);}
-    btn.disabled=false;btn.textContent=S.shareButton;
+    button.disabled=false;button.textContent=label;
   };
+  btn.disabled=false;
+  if(data.account){
+    // Signed in: keep the account and its access unless the visitor asks
+    // to watch as an anonymous guest.
+    document.getElementById('account').textContent=S.shareSignedIn.replace('{name}',data.account.name||S.shareHostOwner);
+    btn.onclick=()=>location.replace('/');
+    const guest=document.getElementById('guest');
+    guest.disabled=false;
+    guest.onclick=redeem(guest,S.shareGuestButton,true);
+    return;
+  }
+  btn.onclick=redeem(btn,S.shareButton,false);
   return;
 }
 const errorFor=(r)=>r.status===429?S.tooManyAttempts:r.status===403?S.disabled:r.status===401?S.unknownPasskey:(r.data&&r.data.error)||S.failed;
@@ -271,7 +299,11 @@ function page(
   locale: PageLocale,
   title: string,
   body: string,
-  data: { page: "login" | "enroll" | "share"; s: Strings } | null,
+  data: {
+    page: "login" | "enroll" | "share";
+    s: Strings;
+    account?: { name: string | null };
+  } | null,
 ) {
   return `<!doctype html>
 <html lang="${locale}">
@@ -300,8 +332,15 @@ ${
 </html>`;
 }
 
-/** The landing page of a share link, `/s/<id>#<secret>`. */
-export function renderSharePage(locale: PageLocale): string {
+/**
+ * The landing page of a share link, `/s/<id>#<secret>`. A visitor already
+ * signed in (`account`; `name` null for direct local use) keeps its account
+ * unless it chooses to open the link as a guest.
+ */
+export function renderSharePage(
+  locale: PageLocale,
+  account: { name: string | null } | null = null,
+): string {
   const s = STRINGS[locale];
   return page(
     locale,
@@ -309,12 +348,12 @@ export function renderSharePage(locale: PageLocale): string {
     `  <section class="card" aria-labelledby="heading">
     <h1 id="heading">${s.shareHeading}</h1>
     <p>${s.shareIntro}</p>
-    <button class="submit" id="btn" type="button" disabled>${s.shareButton}</button>
-    <div class="status" id="status" role="alert" aria-live="polite"></div>
+${account ? '    <p class="account" id="account"></p>\n' : ""}    <button class="submit" id="btn" type="button" disabled>${account ? s.shareAccountButton : s.shareButton}</button>
+${account ? `    <button class="secondary" id="guest" type="button" disabled>${s.shareGuestButton}</button>\n` : ""}    <div class="status" id="status" role="alert" aria-live="polite"></div>
     <noscript><p class="status error">${s.shareNoscript}</p></noscript>
     <p class="note">${s.shareNote}</p>
   </section>`,
-    { page: "share", s },
+    { page: "share", s, ...(account ? { account } : {}) },
   );
 }
 

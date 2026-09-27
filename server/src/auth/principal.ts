@@ -115,6 +115,11 @@ export function principalView(principal: Principal) {
 export const SESSION_COOKIE = "thyra_session";
 /** A share link's guest session; `__Host-` prefixed on the public listener. */
 export const GUEST_COOKIE = "thyra_guest";
+/**
+ * Set with the guest cookie when a signed-in browser chose "Open as guest":
+ * the guest session then wins over the account until the guest leaves.
+ */
+export const AS_GUEST_COOKIE = "thyra_as_guest";
 
 export {
   parseTailnetAuthMode,
@@ -171,6 +176,9 @@ export function createAuthenticator(args: {
   const guestCookieName = args.hostOnlyCookie
     ? `__Host-${GUEST_COOKIE}`
     : GUEST_COOKIE;
+  const asGuestCookieName = args.hostOnlyCookie
+    ? `__Host-${AS_GUEST_COOKIE}`
+    : AS_GUEST_COOKIE;
 
   function secure(access: Pick<RequestAccess, "secure">) {
     return Boolean(args.hostOnlyCookie || args.secureCookies || access.secure);
@@ -202,6 +210,18 @@ export function createAuthenticator(args: {
     maxAgeSeconds: number,
   ): string {
     return `${guestCookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}${secure(access) ? "; Secure" : ""}`;
+  }
+
+  /** Mark (or, with a zero age, unmark) a chosen guest view in this browser. */
+  function asGuestCookie(
+    access: Pick<RequestAccess, "secure">,
+    maxAgeSeconds: number,
+  ): string {
+    return `${asGuestCookieName}=${maxAgeSeconds > 0 ? "1" : ""}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}${secure(access) ? "; Secure" : ""}`;
+  }
+
+  function prefersGuest(req: Request): boolean {
+    return parseCookie(req.headers.get("cookie"), asGuestCookieName) === "1";
   }
 
   /** The principal of a live guest cookie. */
@@ -307,25 +327,54 @@ export function createAuthenticator(args: {
   }
 
   /**
-   * Authenticate a request: a share link's guest cookie (a browser that
-   * redeemed a link views as that guest until it leaves or the link ends),
-   * direct local use, the session cookie, then Tailscale `whois` for proxied
-   * tailnet requests.
+   * Authenticate a request: direct local use, the session cookie, then
+   * Tailscale `whois` for proxied tailnet requests, and only then a share
+   * link's guest cookie. An account always wins over a guest cookie in the
+   * same browser, unless its user chose "Open as guest" for that link.
    */
   async function authenticate(
     req: Request,
     access: RequestAccess,
   ): Promise<AuthResult> {
     const guest = fromGuest(req);
-    if (guest) return guest;
+    if (guest && prefersGuest(req)) return guest;
     if (bypassesLogin(access)) return { principal: LOCAL_PRINCIPAL };
     const cookie = fromCookie(req, access);
     if (cookie) return cookie;
-    return (await fromTailnet(req, access)) ?? { principal: null };
+    return (await fromTailnet(req, access)) ?? guest ?? { principal: null };
+  }
+
+  /**
+   * Who this browser is signed in as, if anyone, without starting a session
+   * or creating an account (share-link pages): `name` is null for direct
+   * local use.
+   */
+  async function signedInAccount(
+    req: Request,
+    access: RequestAccess,
+  ): Promise<{ name: string | null } | null> {
+    if (bypassesLogin(access)) return { name: null };
+    const token = sessionToken(req);
+    const resolved = token ? args.store.resolveSession(token) : null;
+    if (resolved) return { name: resolved.user.displayName };
+    const identity = await tailnetUser({
+      mode: args.tailnetMode,
+      access,
+      lookupUser: args.tailnetUser,
+    });
+    if (!identity) return null;
+    const user = args.store.findIdentity("tailscale", identity.login);
+    if (user?.disabled) return null;
+    return {
+      name: user?.displayName ?? identity.displayName ?? identity.login,
+    };
   }
 
   return {
     authenticate,
+    signedInAccount,
+    prefersGuest,
+    asGuestCookie,
     bypassesLogin,
     sessionCookie,
     clearCookie,

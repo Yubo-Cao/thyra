@@ -341,7 +341,8 @@ thyra share revoke <link-id>
 A guest who opens the link sees only that workspace (or pane), may watch the terminals, browse their history (a local copy that moves no one else's view) and read agent status (and, for a whole-workspace link, its files and Git changes), and never types, resizes, takes control or changes anything.
 Guests appear to others as "Guest" plus the link's label and can follow them.
 The URL is shown once (only a digest is stored); `--expires` takes `30m` to `30d` (default `24h`), and revoking a link or its expiry disconnects its guests within a second.
-Links point at `THYRA_PUBLIC_ORIGIN` when the [public listener](#public-access-through-cloudflare-tunnel) is set (`--base-url` overrides it), since guests usually have no tailnet access; they also work on the primary listener, where a browser that opens one watches as the guest until the link ends.
+Links point at `THYRA_PUBLIC_ORIGIN` when the [public listener](#public-access-through-cloudflare-tunnel) is set (`--base-url` overrides it), since guests usually have no tailnet access; they also work on the primary listener.
+A browser already signed in (tailnet, passkey or local use) keeps its account and grants: the landing page offers **Open with my account** or **Open as guest**, and only the latter turns it into the guest until it chooses **Leave shared view** in the guest badge.
 Anyone who holds the link can watch until then, so share it privately, keep expiry short, and use `--max-uses 1` for one person.
 
 With Tailscale, **tailnet login** needs no passkey: when a proxied request's forwarded client address is a tailnet address and Tailscale `whois` names a user, Thyra logs in that user's account, creating it on first sight and linking the Tailscale login.

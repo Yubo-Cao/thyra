@@ -343,24 +343,33 @@ export function createAuthRoutes(args: {
             req.headers.get("sec-fetch-site") === "cross-site"
           )
             return error("forbidden", 403);
-          // A guest leaves its shared view; an account session in the same
-          // browser is untouched. A guest cookie whose link already ended
-          // stays so the login page can say so.
+          // A guest leaves its shared view (its session ends on the server);
+          // an account session in the same browser is untouched. An account
+          // wins over a guest cookie unless its user chose "Open as guest",
+          // so only then, or without an account, does logout end the guest.
+          // A guest cookie whose link already ended stays so the login page
+          // can say so.
           const guestToken = args.authenticator.guestToken(req);
-          if (guestToken) {
+          if (
+            guestToken &&
+            (args.authenticator.prefersGuest(req) ||
+              !(await args.authenticator.signedInAccount(req, access)))
+          ) {
             const guest = args.shares?.resolveGuest(guestToken);
             if (!guest)
               return new Response(null, { status: 204, headers: NO_STORE });
             args.shares!.endGuest(guest.session.idHash);
             args.onGuestsEnded?.([guest.session.idHash]);
             args.onChange();
-            return new Response(null, {
-              status: 204,
-              headers: {
-                ...NO_STORE,
-                "set-cookie": args.authenticator.guestCookie("", access, 0),
-              },
+            const headers = new Headers({
+              ...NO_STORE,
+              "set-cookie": args.authenticator.guestCookie("", access, 0),
             });
+            headers.append(
+              "set-cookie",
+              args.authenticator.asGuestCookie(access, 0),
+            );
+            return new Response(null, { status: 204, headers });
           }
           const token = args.authenticator.sessionToken(req);
           const resolved = token ? args.store.resolveSession(token) : null;

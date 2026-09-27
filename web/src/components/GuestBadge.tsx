@@ -1,8 +1,10 @@
-import { Eye } from "lucide-react";
+import { Eye, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { BridgePrincipal } from "../api";
+import { type BridgePrincipal, logoutBrowserSession } from "../api";
 import { t } from "../i18n";
 import { relativeExpiry } from "../shareLinks";
+import { store } from "../store";
+import { IconButton } from "./ui/IconButton";
 import { Token } from "./ui/Token";
 
 type Share = NonNullable<BridgePrincipal["share"]>;
@@ -32,23 +34,36 @@ function useNow() {
 /**
  * What a share-link guest is looking at: a read-only view, who shared it and
  * when it ends (details fold away on phones; the roster popover repeats
- * them). The bridge closes the view when the link expires or is revoked.
+ * them), and a way out. The bridge closes the view when the link expires or
+ * is revoked; leaving ends this browser's guest session on the server and
+ * returns to the login page (or to the account signed in here).
  */
 export function GuestBadge({ share }: { share: Share }) {
   const { sharedBy, expires } = guestShareParts(share, useNow());
   return (
-    <Token
-      className="guest-badge"
-      role="status"
-      icon={<Eye size={12} aria-hidden="true" />}
-      title={[t("Read-only"), sharedBy, expires].filter(Boolean).join(" · ")}
-    >
-      <span>{t("Read-only")}</span>
-      {sharedBy ? (
-        <span className="guest-badge-detail guest-badge-by">{sharedBy}</span>
-      ) : null}
-      <span className="guest-badge-detail">{expires}</span>
-    </Token>
+    <>
+      <Token
+        className="guest-badge"
+        role="status"
+        icon={<Eye size={12} aria-hidden="true" />}
+        title={[t("Read-only"), sharedBy, expires].filter(Boolean).join(" · ")}
+      >
+        <span>{t("Read-only")}</span>
+        {sharedBy ? (
+          <span className="guest-badge-detail guest-badge-by">{sharedBy}</span>
+        ) : null}
+        <span className="guest-badge-detail">{expires}</span>
+      </Token>
+      <IconButton
+        label={t("Leave shared view")}
+        icon={<LogOut size={14} aria-hidden="true" />}
+        onClick={() =>
+          logoutBrowserSession().catch((error: Error) =>
+            store.notify({ kind: "error", message: error.message }),
+          )
+        }
+      />
+    </>
   );
 }
 

@@ -247,3 +247,98 @@ test("share links make read-only guests that end with their link", async () => {
     await server.stop();
   }
 }, 60_000);
+
+// An account in the same browser wins over a guest cookie: opening a link
+// while signed in keeps the account unless its user chooses "Open as guest",
+// and leaving ends only the guest session.
+test("a signed-in account wins over a guest cookie until it opens a link as a guest", async () => {
+  const server = await startTestServer({
+    whois: { "100.64.7.7": "owner@example.com" },
+  });
+  try {
+    const { request, proxy } = server;
+    const tailnet = proxy("100.64.7.7");
+    const created = await server.cli("share", "create", "w1");
+    expect(created.code).toBe(0);
+    const link = linkParts(created.stdout);
+    const admin = await request("/", {
+      headers: { ...tailnet, accept: "text/html" },
+    });
+    const adminCookie = admin.headers
+      .getSetCookie()
+      .find((value) => value.startsWith("thyra_session="))!
+      .split(";", 1)[0]!;
+    const headers = (...cookies: string[]) => ({
+      ...tailnet,
+      origin: ORIGIN,
+      "content-type": "application/json",
+      cookie: cookies.join("; "),
+    });
+    const principal = async (...cookies: string[]) => {
+      const response = await request("/api/health", {
+        headers: headers(...cookies),
+      });
+      return response.status === 200
+        ? ((await response.json()) as { principal: { kind: string } }).principal
+            .kind
+        : response.status;
+    };
+
+    // The landing page offers the account first.
+    const page = await (
+      await request(`/s/${link.id}`, {
+        headers: { ...headers(adminCookie), accept: "text/html" },
+      })
+    ).text();
+    expect(page).toContain("Open with my account");
+    expect(page).toContain("Open as guest");
+    expect(page).toContain('"account":{"name":"owner"}');
+
+    // Redeeming needs the explicit choice; nothing is created otherwise.
+    const refused = await request("/api/share/redeem", {
+      method: "POST",
+      headers: headers(adminCookie),
+      body: JSON.stringify(link),
+    });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ reason: "signed_in" });
+    expect(refused.headers.getSetCookie()).toEqual([]);
+
+    const asGuest = await request("/api/share/redeem", {
+      method: "POST",
+      headers: headers(adminCookie),
+      body: JSON.stringify({ ...link, as_guest: true }),
+    });
+    expect(asGuest.status).toBe(200);
+    const cookie = guestCookie(asGuest);
+    const preference = asGuest.headers
+      .getSetCookie()
+      .find((value) => value.startsWith("thyra_as_guest=1"))
+      ?.split(";", 1)[0];
+    expect(preference).toBe("thyra_as_guest=1");
+
+    // A guest cookie alone never overrides the account; the choice does.
+    expect(await principal(adminCookie, cookie)).toBe("user");
+    expect(await principal(adminCookie, cookie, preference!)).toBe("guest");
+
+    // Leaving ends the guest session on the server and clears both cookies;
+    // the account stays signed in.
+    const left = await request("/api/logout", {
+      method: "POST",
+      headers: {
+        ...headers(adminCookie, cookie, preference!),
+        "x-thyra-logout": "1",
+      },
+    });
+    expect(left.status).toBe(204);
+    const cleared = left.headers.getSetCookie().join("\n");
+    expect(cleared).toContain("thyra_guest=;");
+    expect(cleared).toContain("thyra_as_guest=;");
+    expect(cleared).not.toContain("thyra_session=");
+    expect(await principal(cookie)).not.toBe("guest");
+    expect(await principal(adminCookie, cookie, preference!)).toBe("user");
+    expect(server.logs()).not.toContain(link.secret);
+  } finally {
+    await server.stop();
+  }
+}, 60_000);
