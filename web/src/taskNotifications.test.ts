@@ -2,12 +2,15 @@ import { describe, expect, jest, mock, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import {
+  bindTaskNotificationActivation,
+  isTaskNotificationTarget,
   listenForTaskNotificationActivation,
   prepareTaskNotifications,
   showTaskNotification,
   TASK_NOTIFICATION_ACTIVATE_EVENT,
 } from "./taskNotifications";
-import { __storeTesting, emptyServerSessionState, store } from "./store";
+import { __storeTesting, store } from "./store";
+import { emptyServerSessionState } from "./store/core";
 import { bridge, type ConnectionClient } from "./api";
 
 const origin = "https://thyra.example";
@@ -475,5 +478,90 @@ describe("notification service worker clicks", () => {
     expect(openWindow).toHaveBeenCalledWith(
       origin + "/#thyra-task=" + encodeURIComponent(JSON.stringify(target)),
     );
+  });
+});
+
+describe("task notification activation", () => {
+  test("closes the system notification, focuses the window, and dispatches its pane target", () => {
+    const calls: string[] = [];
+    const targets: Array<{
+      connectionId: string;
+      runtimeGeneration: number;
+      workspaceId: string;
+      paneId: string;
+    }> = [];
+    const notification = {
+      onclick: null as ((event: Event) => void) | null,
+      close: () => calls.push("close"),
+    };
+
+    bindTaskNotificationActivation(
+      notification,
+      {
+        connectionId: "alpha",
+        runtimeGeneration: 1,
+        workspaceId: "w1",
+        paneId: "p2",
+      },
+      (target) => {
+        calls.push("activate");
+        targets.push(target);
+      },
+      () => calls.push("focus"),
+    );
+    notification.onclick?.(new Event("click"));
+
+    expect(calls).toEqual(["close", "focus", "activate"]);
+    expect(targets).toEqual([
+      {
+        connectionId: "alpha",
+        runtimeGeneration: 1,
+        workspaceId: "w1",
+        paneId: "p2",
+      },
+    ]);
+  });
+
+  test("still dispatches navigation when browser window focus is denied", () => {
+    let activated = false;
+    const notification = {
+      onclick: null as ((event: Event) => void) | null,
+      close: () => undefined,
+    };
+
+    bindTaskNotificationActivation(
+      notification,
+      {
+        connectionId: "alpha",
+        runtimeGeneration: 1,
+        workspaceId: "w1",
+        paneId: "p2",
+      },
+      () => {
+        activated = true;
+      },
+      () => {
+        throw new Error("focus denied");
+      },
+    );
+
+    expect(() => notification.onclick?.(new Event("click"))).not.toThrow();
+    expect(activated).toBe(true);
+  });
+
+  test("rejects malformed notification targets", () => {
+    expect(isTaskNotificationTarget(null)).toBe(false);
+    expect(isTaskNotificationTarget({ workspaceId: "w1" })).toBe(false);
+    expect(isTaskNotificationTarget({ workspaceId: "", paneId: "p2" })).toBe(
+      false,
+    );
+    expect(
+      isTaskNotificationTarget({
+        connectionId: "alpha",
+        runtimeGeneration: 1,
+        workspaceId: "w1",
+        paneId: "p2",
+      }),
+    ).toBe(true);
   });
 });

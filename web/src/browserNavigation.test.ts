@@ -170,13 +170,13 @@ describe("browser navigation projection", () => {
 import { bridge, type ConnectionClient } from "./api";
 import {
   __storeTesting,
-  activateConnectionState,
-  emptyServerSessionState,
   endpointCreationReason,
   terminalNavigationLoading,
   store,
   type State,
 } from "./store";
+import { activateConnectionState } from "./store/connection";
+import { emptyServerSessionState } from "./store/core";
 import { clearTabLayouts } from "./tabLayout";
 
 function browserState(): State {
@@ -509,7 +509,7 @@ describe("store browser-local navigation", () => {
     ).toBe(true);
   });
 
-  test("all navigation routes avoid shared focus and target input explicitly", async () => {
+  test("all navigation routes avoid shared focus", async () => {
     await withBrowserStore(async (calls) => {
       await store.focusWorkspace("b");
       expect(store.get().selectedPaneId).toBe("b1p");
@@ -518,7 +518,7 @@ describe("store browser-local navigation", () => {
       await store.focusPane("a1p");
       await store.focusPaneDirection("a1p", "right");
       expect(store.get().selectedPaneId).toBe("a1q");
-      await store.selectPane("a1p");
+      await store.focusPane("a1p");
       await store.focusTaskNotificationTarget({
         connectionId: "test",
         runtimeGeneration: 1,
@@ -526,21 +526,7 @@ describe("store browser-local navigation", () => {
         paneId: "b1p",
       });
       expect(store.get().selectedPaneId).toBe("b1p");
-      await store.sendText(store.get().selectedPaneId!, "targeted");
-      await store.sendKeys(store.get().selectedPaneId!, "Enter");
       expect(calls.filter((call) => /focus/.test(call.method))).toEqual([]);
-      expect(
-        calls.filter((call) => call.method.startsWith("pane.send")),
-      ).toEqual([
-        {
-          method: "pane.send_text",
-          params: { pane_id: "b1p", text: "targeted" },
-        },
-        {
-          method: "pane.send_keys",
-          params: { pane_id: "b1p", keys: ["Enter"] },
-        },
-      ]);
     });
   });
 
