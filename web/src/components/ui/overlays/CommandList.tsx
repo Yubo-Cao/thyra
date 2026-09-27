@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { Autocomplete } from "react-aria-components/Autocomplete";
 import {
   Header,
@@ -26,14 +26,14 @@ export function CommandList({
   focusCurrent = false,
   className,
 }: CommandListProps) {
-  const currentRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!focusCurrent) return;
-    const focus = () => currentRef.current?.focus();
-    focus();
-    const frame = requestAnimationFrame(focus);
-    return () => cancelAnimationFrame(frame);
-  }, [focusCurrent]);
+  // The option element mounts after the collection is built; focus it once.
+  const focusedCurrent = useRef(false);
+  const focusCurrentOption = useCallback((node: HTMLDivElement | null) => {
+    if (!node || focusedCurrent.current) return;
+    focusedCurrent.current = true;
+    node.focus();
+    requestAnimationFrame(() => node.focus());
+  }, []);
   return (
     <div className={cn("command", className)}>
       <Autocomplete
@@ -71,7 +71,11 @@ export function CommandList({
                 <ListBoxItem
                   key={item.id}
                   id={item.id}
-                  ref={item.current ? currentRef : undefined}
+                  ref={
+                    focusCurrent && item.current
+                      ? focusCurrentOption
+                      : undefined
+                  }
                   textValue={item.textValue}
                   isDisabled={item.disabled}
                   aria-label={item["aria-label"]}
