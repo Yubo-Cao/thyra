@@ -1,5 +1,6 @@
 import {
   BridgeError,
+  type BridgeErrorCode,
   type BridgeFailure,
   bridgeErrorFrom,
 } from "./bridgeError";
@@ -502,23 +503,18 @@ export class Bridge {
       generation,
       serverRuntimeGeneration,
       call: (method, params = {}, options) => {
+        const fail = (code: BridgeErrorCode, message: string) =>
+          Promise.reject(new BridgeError(code, message));
         if (!this.helloAcceptedForSocket) {
-          return Promise.reject(
-            new BridgeError(
-              "hello_unavailable",
-              t("bridge hello is unavailable"),
-            ),
-          );
+          return fail("hello_unavailable", t("bridge hello is unavailable"));
         }
         if (
           generation !== this._clientGeneration ||
           connectionId !== this._activeConnectionId
         ) {
-          return Promise.reject(
-            new BridgeError(
-              "connection_changed",
-              t("connection changed during request"),
-            ),
+          return fail(
+            "connection_changed",
+            t("connection changed during request"),
           );
         }
         if (
@@ -527,14 +523,20 @@ export class Bridge {
             this.runtimeGenerations.get(connectionId) !==
               serverRuntimeGeneration)
         ) {
-          return Promise.reject(
-            new BridgeError(
-              "runtime_generation_unavailable",
-              t("connection runtime generation is unavailable"),
-            ),
+          return fail(
+            "runtime_generation_unavailable",
+            t("connection runtime generation is unavailable"),
           );
         }
-        return this.callScoped(
+        if (isBridgeGlobalMethod(method)) {
+          return fail(
+            "protocol",
+            t("global RPC cannot use a connection client: {method}", {
+              method,
+            }),
+          );
+        }
+        return this.sendCall(
           connectionId,
           generation,
           serverRuntimeGeneration,
@@ -1126,32 +1128,6 @@ export class Bridge {
     });
   }
 
-  private callScoped(
-    connectionId: string,
-    generation: number,
-    serverRuntimeGeneration: number | null,
-    method: string,
-    params: Record<string, unknown>,
-    options?: CallOptions,
-  ): Promise<any> {
-    if (isBridgeGlobalMethod(method)) {
-      return Promise.reject(
-        new BridgeError(
-          "protocol",
-          t("global RPC cannot use a connection client: {method}", { method }),
-        ),
-      );
-    }
-    return this.sendCall(
-      connectionId,
-      generation,
-      serverRuntimeGeneration,
-      method,
-      params,
-      options,
-    );
-  }
-
   /**
    * Compatibility entry point. Global methods remain global; every downstream
    * method is explicitly scoped to the current browser routing lease.
@@ -1171,34 +1147,13 @@ export class Bridge {
         options,
       );
     }
-    if (!this.helloAcceptedForSocket) {
-      return Promise.reject(
-        new BridgeError("hello_unavailable", t("bridge hello is unavailable")),
-      );
-    }
-    const serverRuntimeGeneration =
-      this._hello?.capabilities?.connection_runtime_generation === true
-        ? (this.runtimeGenerations.get(this._activeConnectionId) ?? null)
-        : null;
-    if (
-      this._hello?.capabilities?.connection_runtime_generation === true &&
-      serverRuntimeGeneration === null
-    ) {
-      return Promise.reject(
-        new BridgeError(
-          "runtime_generation_unavailable",
-          t("connection runtime generation is unavailable"),
-        ),
-      );
-    }
-    return this.callScoped(
-      this._activeConnectionId,
-      this._clientGeneration,
-      serverRuntimeGeneration,
-      method,
-      params,
-      options,
-    );
+    const active = this._activeConnectionId;
+    const scoped =
+      this._hello?.capabilities?.connection_runtime_generation === true;
+    return this.connection(
+      active,
+      scoped ? (this.runtimeGenerations.get(active) ?? null) : null,
+    ).call(method, params, options);
   }
 
   onHello(cb: (hello: BridgeHello) => void): () => void {
