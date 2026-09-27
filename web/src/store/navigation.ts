@@ -12,6 +12,7 @@ import {
   endpointMethodReason,
   parseEndpointAdvertisement,
 } from "../endpointAvailability";
+import { workspaceCan } from "../capabilities";
 import { t } from "../i18n";
 import type { TaskNotificationTarget } from "../taskNotifications";
 import { provisionalTabLayout, tabLayoutFor } from "../tabLayout";
@@ -92,10 +93,15 @@ export function endpointCreationReason(
   method: "tab.create" | "workspace.create",
   workspaceId = snapshot.browserNavigation.workspaceId,
 ): string | null {
-  // Viewers (and share-link guests) create nothing; the bridge refuses it.
+  // Offer only what the bridge allows: tabs where the caller may edit,
+  // workspaces to instance admins.
   if (
-    snapshot.workspaces.find((item) => item.workspace_id === workspaceId)
-      ?.access === "viewer"
+    method === "workspace.create"
+      ? snapshot.host === false
+      : !workspaceCan(
+          snapshot.workspaces.find((item) => item.workspace_id === workspaceId),
+          "edit",
+        )
   )
     return t("View only");
   if (snapshot.navigationMode === "shared") return null;

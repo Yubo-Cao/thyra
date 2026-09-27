@@ -24,6 +24,8 @@ function navigationTopology() {
     active_tab_id: `${id}1`,
     agent_status: "idle",
     cwd: `/tmp/${id}`,
+    // What the bridge reports to an instance admin.
+    capabilities: ["edit", "manage"],
   }));
   const tabs: Tab[] = ["a1", "a2", "b1"].map((id, i) => ({
     tab_id: id,

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useHostCapable, workspaceCan } from "../capabilities";
 import { paneHasAgentHistory } from "../components/agentSession";
 import { IconButton } from "../components/ui/IconButton";
 import { t } from "../i18n";
@@ -65,8 +66,10 @@ export function useMobileControls(
   useEffect(() => {
     setOpenComposerScopeKey(null);
   }, [composerScopeKey]);
-  // Viewers (and share-link guests) watch only: no composer, no launcher.
-  const readOnly = focusedWorkspace?.access === "viewer";
+  // Without `edit` (viewers, share-link guests) the page watches only: no
+  // composer, no tab changes.
+  const readOnly =
+    !!focusedWorkspace && !workspaceCan(focusedWorkspace, "edit");
   const composerDraftKey =
     activePane?.terminal_id && !readOnly
       ? terminalComposerDraftKey(
@@ -216,6 +219,8 @@ export function MobileTerminalControls({
   const { collapsed, tabSheetOpen, composerDraftKey, composerOpen } = controls;
   const composerHasDraft = useComposerHasDraft(composerDraftKey);
   const tabIndex = collapsed ? -1 : 0;
+  // The project launcher starts commands on the host: instance admins only.
+  const host = useHostCapable();
   return (
     <>
       <IconButton
@@ -243,18 +248,20 @@ export function MobileTerminalControls({
           }
           aria-hidden={collapsed}
         >
-          <IconButton
-            className="mobile-launcher"
-            title={t("Launch agent")}
-            label={t("Launch agent in a folder")}
-            icon={<FolderOpen size={16} aria-hidden="true" />}
-            tabIndex={tabIndex}
-            onPointerDown={blurActiveInput}
-            onClick={() => {
-              controls.setTabSheetOpen(false);
-              onOpenProjectLauncher();
-            }}
-          />
+          {host ? (
+            <IconButton
+              className="mobile-launcher"
+              title={t("Launch agent")}
+              label={t("Launch agent in a folder")}
+              icon={<FolderOpen size={16} aria-hidden="true" />}
+              tabIndex={tabIndex}
+              onPointerDown={blurActiveInput}
+              onClick={() => {
+                controls.setTabSheetOpen(false);
+                onOpenProjectLauncher();
+              }}
+            />
+          ) : null}
           <IconButton
             className={tabSheetOpen ? "active" : ""}
             title={t("Tabs")}

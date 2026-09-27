@@ -161,6 +161,8 @@ export interface BridgePrincipal {
   /** `guest`: an anonymous visitor who opened a read-only share link. */
   kind: "local" | "user" | "guest";
   role: "admin" | "member" | "guest";
+  /** Host-wide capabilities; `host`: instance-admin actions. */
+  capabilities?: "host"[];
   user: {
     id: string;
     name: string;

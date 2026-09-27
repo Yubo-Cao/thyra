@@ -18,6 +18,7 @@ import type {
   MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
 import { paneLayoutNeedsSwitcher } from "../paneLayoutSizing";
+import { useWorkspaceCan } from "../capabilities";
 import { type State, store, useStoreSelector } from "../store";
 import { terminalMountKey } from "../terminalConnection";
 import { blurActiveInput } from "./MobileControls";
@@ -216,6 +217,8 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
   );
   const [responsivePaneSwitcher, setResponsivePaneSwitcher] = useState(false);
   const layout = s.layout;
+  // Dragging a divider resizes the pane for everyone: editors and up.
+  const canResize = useWorkspaceCan(layout?.workspace_id, "edit");
   const visiblePanes =
     layout?.panes.filter((lp) =>
       s.panes.some((pane) => pane.pane_id === lp.pane_id),
@@ -412,7 +415,7 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
           </div>
         );
       })}
-      {layout.splits.map((split) => {
+      {(canResize ? layout.splits : []).map((split) => {
         const horizontal = split.direction === "right";
         const boundary = splitBoundaryFromPaneRects(layout.panes, split);
         return (

@@ -5,6 +5,7 @@
 //   preferences -> core -> notifications -> refresh -> actions -> updates
 //   -> popup -> connection -> navigation -> workspaces, worktrees, git
 import { bridge, type ConnectionSummary } from "../api";
+import { hostCapable } from "../capabilities";
 import { t } from "../i18n";
 import { afterStartup } from "../startupGate";
 import {
@@ -79,7 +80,10 @@ function init() {
     if (taskNotificationStorageChanged(event))
       reloadTaskNotificationPreferences();
   });
-  bridge.onHello((hello) => handleHello(hello.default_connection_id));
+  bridge.onHello((hello) => {
+    handleHello(hello.default_connection_id);
+    set({ host: hostCapable(hello.principal) });
+  });
   bridge.onStatus(handleStatus);
   bridge.onEvent(handleHerdrEvent);
   bridge.onPopup(handlePopupPush);

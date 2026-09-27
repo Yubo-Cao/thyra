@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { bridge, type BridgePrincipal } from "./api";
+import { hostCapable } from "./capabilities";
 
 // Who this page acts for, from the bridge hello: an account (admin or
 // member), direct local use, or a share-link guest. The bridge enforces
@@ -26,8 +27,7 @@ export function currentPrincipal(): BridgePrincipal | null {
 
 /** Instance admins (and direct local use) manage the host; members do not. */
 export function isInstanceAdmin(principal = current): boolean {
-  // Older bridges send no principal: they only know the owner.
-  return !principal || principal.role === "admin";
+  return hostCapable(principal);
 }
 
 export function usePrincipal(): BridgePrincipal | null {

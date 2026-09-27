@@ -1,5 +1,6 @@
 import { Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { workspaceCan } from "../capabilities";
 import { t } from "../i18n";
 import { store, useStoreSelector, useEndpointCreationReason } from "../store";
 import { AgentStatusIcon } from "./AgentStatusIcon";
@@ -55,6 +56,7 @@ export function MobileTabSheet({
   };
 
   const focusedWs = s.workspaces.find((w) => w.focused);
+  const canEdit = workspaceCan(focusedWs, "edit");
   const createReason = useEndpointCreationReason(
     "tab.create",
     focusedWs?.workspace_id,
@@ -135,17 +137,19 @@ export function MobileTabSheet({
                     .map((pane) => pane.pane_id)}
                 />
               </Button>
-              <IconButton
-                label={t("Close {name}", { name })}
-                icon={<X size={14} />}
-                disabled={transitionPending}
-                onClick={() => {
-                  // The close confirmation lives in the app shell, which
-                  // this modal sheet makes inert: close the sheet first.
-                  closeIfIdle();
-                  requestCloseTab(tab.tab_id);
-                }}
-              />
+              {canEdit ? (
+                <IconButton
+                  label={t("Close {name}", { name })}
+                  icon={<X size={14} />}
+                  disabled={transitionPending}
+                  onClick={() => {
+                    // The close confirmation lives in the app shell, which
+                    // this modal sheet makes inert: close the sheet first.
+                    closeIfIdle();
+                    requestCloseTab(tab.tab_id);
+                  }}
+                />
+              ) : null}
             </div>
           );
         })}

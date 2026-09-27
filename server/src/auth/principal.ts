@@ -1,3 +1,4 @@
+import { principalCapabilities } from "../authz/capabilities";
 import type { RequestAccess } from "../http/request-access";
 import {
   type TailnetAuthMode,
@@ -80,15 +81,25 @@ export function isInstanceAdmin(principal: Principal | null | undefined) {
   );
 }
 
-/** Public summary of a principal for `/api/auth/me` and the hello. */
+/**
+ * Public summary of a principal for `/api/auth/me` and the hello, with the
+ * host-wide `capabilities` the interface may offer (see authz/capabilities).
+ */
 export function principalView(principal: Principal) {
+  const capabilities = principalCapabilities(isInstanceAdmin(principal));
   if (principal.kind === "local")
-    return { kind: "local" as const, role: "admin" as const, user: null };
+    return {
+      kind: "local" as const,
+      role: "admin" as const,
+      user: null,
+      capabilities,
+    };
   if (principal.kind === "guest")
     return {
       kind: "guest" as const,
       role: "guest" as const,
       user: null,
+      capabilities,
       session_id: principal.guest.publicId,
       share: {
         connection_id: principal.link.connectionId,
@@ -109,6 +120,7 @@ export function principalView(principal: Principal) {
       role: principal.user.role,
     },
     session_id: principal.session.publicId,
+    capabilities,
   };
 }
 

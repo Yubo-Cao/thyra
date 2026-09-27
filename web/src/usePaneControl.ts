@@ -11,6 +11,7 @@ import {
   updateCollaborationPresence,
   type CollaborationSnapshot,
 } from "./collaboration";
+import { workspaceCan } from "./capabilities";
 import { paneControlClient, paneControlState } from "./paneControl";
 import { store, useStoreSelector } from "./store";
 
@@ -31,13 +32,13 @@ export function usePaneControl(
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const participantId = collaborationProfile().participantId;
-  // Viewers of this workspace watch only; the bridge refuses their input.
-  // Owners (and instance admins) may take control during the protection.
-  const workspaceAccess = useStoreSelector((state) => {
+  // Without `edit` here (viewers, guests) the page only watches; the bridge
+  // refuses input. With `manage` (owners, instance admins) it may take
+  // control during another person's protection.
+  const workspace = useStoreSelector((state) => {
     const pane = state.panes.find((item) => item.pane_id === paneId);
     return pane
       ? state.workspaces.find((item) => item.workspace_id === pane.workspace_id)
-          ?.access
       : undefined;
   });
   useEffect(
@@ -67,8 +68,8 @@ export function usePaneControl(
     viewingScope === scope,
     Date.now(),
     {
-      readOnly: workspaceAccess === "viewer",
-      overridesProtection: workspaceAccess === "owner",
+      readOnly: !!workspace && !workspaceCan(workspace, "edit"),
+      overridesProtection: workspaceCan(workspace, "manage"),
       personId: collaborationSelfIdentity()?.person_id ?? null,
     },
   );

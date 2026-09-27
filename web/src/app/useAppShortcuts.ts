@@ -1,3 +1,4 @@
+import { workspaceCan } from "../capabilities";
 import { useEffect } from "react";
 import { CONFIG_MENU_ID } from "../components/ConfigMenu";
 import { requestClosePane, requestCloseTab } from "../components/TabBar";
@@ -191,6 +192,12 @@ export function useAppShortcuts({
           (workspace) => workspace.focused,
         );
         if (!focusedWorkspace) return;
+        // Write shortcuts do nothing where the caller may not edit.
+        if (
+          (tabAction === "create" || tabAction === "close") &&
+          !workspaceCan(focusedWorkspace, "edit")
+        )
+          return;
         if (tabAction === "create") {
           void store.createTab(focusedWorkspace.workspace_id, {
             numberedLabel: true,
@@ -227,7 +234,9 @@ export function useAppShortcuts({
       if (pluginAction) {
         // Typing into the popup's own terminal never reaches here, since
         // isEditableElement stops at the xterm textarea.
-        if (claimUnlessEditing() || e.repeat) return;
+        // Plugin actions run code on the host: instance admins only.
+        if (claimUnlessEditing() || e.repeat || store.get().host === false)
+          return;
         const current = store.get();
         const layoutActivePaneId = activePaneIdForSnapshot(current);
         const activePane = current.panes.find(
@@ -266,6 +275,11 @@ export function useAppShortcuts({
           ) ??
           current.panes.find((pane) => pane.tab_id === activeTab?.tab_id);
         if (!activePane) return;
+        if (
+          paneAction.type !== "focus" &&
+          !workspaceCan(focusedWorkspace, "edit")
+        )
+          return;
         if (paneAction.type === "split") {
           void store.splitPane(activePane.pane_id, paneAction.direction);
         } else if (paneAction.type === "zoom") {

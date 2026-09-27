@@ -1,3 +1,4 @@
+import { useHostCapable } from "../capabilities";
 import {
   CircleAlert,
   Pause,
@@ -861,6 +862,9 @@ export function ConnectionSwitcher({ defaultOpen }: ConnectionSwitcherProps) {
       });
   };
 
+  const host = useHostCapable();
+  // Pausing other browsers and editing connection profiles are
+  // instance-admin actions.
   const items: MenuEntry[] = [
     {
       id: "browser",
@@ -878,7 +882,7 @@ export function ConnectionSwitcher({ defaultOpen }: ConnectionSwitcherProps) {
             else store.pauseConnection();
           },
         },
-        ...(transport.pauseOthersLabel
+        ...(transport.pauseOthersLabel && host
           ? [
               {
                 id: "browser-pause-others",
@@ -911,17 +915,21 @@ export function ConnectionSwitcher({ defaultOpen }: ConnectionSwitcherProps) {
         onAction: () => selectConnection(connection),
       })),
     },
-    {
-      id: "manage",
-      items: [
-        {
-          id: "manage",
-          label: t("Manage connections"),
-          icon: <Server size={14} />,
-          onAction: () => setManageOpen(true),
-        },
-      ],
-    },
+    ...(host
+      ? [
+          {
+            id: "manage",
+            items: [
+              {
+                id: "manage",
+                label: t("Manage connections"),
+                icon: <Server size={14} />,
+                onAction: () => setManageOpen(true),
+              },
+            ],
+          },
+        ]
+      : []),
   ];
 
   return (

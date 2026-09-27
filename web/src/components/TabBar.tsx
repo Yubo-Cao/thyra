@@ -1,3 +1,4 @@
+import { workspaceCan } from "../capabilities";
 import { t } from "../i18n";
 import { agentStatusText } from "../agentOrder";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
@@ -167,8 +168,8 @@ export function TabBar({
                   label: t("Focus tab"),
                   onAction: () => store.focusTab(menuTab.tab_id),
                 },
-                // Viewers (and share-link guests) only look.
-                ...(focusedWs.access === "viewer"
+                // Without `edit` (viewers, share-link guests) only look.
+                ...(!workspaceCan(focusedWs, "edit")
                   ? []
                   : [
                       {

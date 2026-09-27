@@ -1,3 +1,4 @@
+import { workspaceCan } from "../capabilities";
 import { useRef, useState } from "react";
 import { t } from "../i18n";
 import type { Workspace } from "../types";
@@ -88,9 +89,8 @@ export function ContextMenu({
   // The bridge enforces roles; hide what this caller cannot do. Worktrees
   // and branch auto-update run host-side hooks: instance admins only.
   const admin = useInstanceAdmin();
-  const role = w?.access ?? "owner";
-  const editor = role !== "viewer";
-  const owner = role === "owner";
+  const editor = workspaceCan(w, "edit");
+  const owner = workspaceCan(w, "manage");
 
   const sections = (() => {
     if (!w) return [];

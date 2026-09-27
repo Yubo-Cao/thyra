@@ -1,3 +1,4 @@
+import { useHostCapable, workspaceCan } from "../capabilities";
 import { thyraLocalStorage } from "../browserStorage";
 import {
   type DragEvent,
@@ -234,7 +235,8 @@ function FileExplorerContent({
     ? workspaces.find((w) => w.workspace_id === workspaceId)
     : focusedWorkspace;
   // Viewers (and share-link guests) browse and download, never write.
-  const readOnly = workspace?.access === "viewer";
+  const readOnly = !workspaceCan(workspace, "edit");
+  const host = useHostCapable();
   const cacheWorkspaceId = workspace?.workspace_id;
   const cacheResourceKey = resourceKey ?? cacheWorkspaceId;
   const showHiddenStorageKey = connectionStorageKey(
@@ -1534,24 +1536,27 @@ function FileExplorerContent({
         <div className="file-explorer-browser">
           {workspace ? (
             <div className="ui-bar file-explorer-modebar">
-              <SegmentedControl
-                className="file-explorer-mode-switch"
-                aria-label={t("Explorer scope")}
-                value={filesystem ? "filesystem" : "workspace"}
-                onChange={setExplorerMode}
-                options={[
-                  {
-                    value: "workspace",
-                    label: t("Workspace"),
-                    title: t("Browse this workspace checkout"),
-                  },
-                  {
-                    value: "filesystem",
-                    label: t("Filesystem"),
-                    title: t("Browse any path on the connected host"),
-                  },
-                ]}
-              />
+              {/* Browsing the whole host is an instance-admin action. */}
+              {host ? (
+                <SegmentedControl
+                  className="file-explorer-mode-switch"
+                  aria-label={t("Explorer scope")}
+                  value={filesystem ? "filesystem" : "workspace"}
+                  onChange={setExplorerMode}
+                  options={[
+                    {
+                      value: "workspace",
+                      label: t("Workspace"),
+                      title: t("Browse this workspace checkout"),
+                    },
+                    {
+                      value: "filesystem",
+                      label: t("Filesystem"),
+                      title: t("Browse any path on the connected host"),
+                    },
+                  ]}
+                />
+              ) : null}
               {!filesystem ? (
                 <span
                   className="file-explorer-mode-root"

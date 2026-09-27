@@ -5,6 +5,7 @@ import {
   keyboardContextMenuPoint,
   treeKeyboardAction,
 } from "./treeKeyboard";
+import { useWorkspaceCan } from "../capabilities";
 import { store, useStoreSelector } from "../store";
 import type { Pane } from "../types";
 import { formatMemoryLimit, shortId } from "../utils";
@@ -269,6 +270,7 @@ export function AgentContextMenu({
   const lastPaneRef = useRef<Pane | null>(null);
   if (state) lastPaneRef.current = state.pane;
   const pane = lastPaneRef.current;
+  const canEdit = useWorkspaceCan(pane?.workspace_id, "edit");
   if (!pane) return null;
 
   const paneName = paneDisplayName(pane);
@@ -325,17 +327,21 @@ export function AgentContextMenu({
             },
           ],
         },
-        {
-          title: t("Pane"),
-          danger: true,
-          items: [
-            {
-              id: "close-pane",
-              label: t("Close pane"),
-              onAction: () => onClosePane(pane),
-            },
-          ],
-        },
+        ...(canEdit
+          ? [
+              {
+                title: t("Pane"),
+                danger: true,
+                items: [
+                  {
+                    id: "close-pane",
+                    label: t("Close pane"),
+                    onAction: () => onClosePane(pane),
+                  },
+                ],
+              },
+            ]
+          : []),
       ]}
     />
   );

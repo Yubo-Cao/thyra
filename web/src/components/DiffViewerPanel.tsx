@@ -1,3 +1,4 @@
+import { workspaceCan } from "../capabilities";
 import { thyraLocalStorage } from "../browserStorage";
 import {
   forwardRef,
@@ -1168,7 +1169,7 @@ export const DiffViewerPanel = forwardRef<
                   ],
                 },
                 // Viewers (and share-link guests) run no Git actions.
-                ...(workspace?.access === "viewer"
+                ...(!workspaceCan(workspace, "edit")
                   ? []
                   : [
                       {

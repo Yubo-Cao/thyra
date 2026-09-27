@@ -355,6 +355,7 @@ Proxied and non-loopback access logs in with a passkey, except tailnet users rec
 Workspace owners share a workspace from its context menu (**Share workspace…**) as viewer, editor, or owner; viewers watch and browse history, and one writer at a time types into a pane (**Take control**).
 The same dialog's **Links** create anonymous read-only links to the workspace or one pane (copied once, 1 hour to 7 days, optional use limit, revocable); guests see a **Read-only** badge with **Leave shared view** and never type.
 Someone already signed in who opens a link keeps their own account unless they choose **Open as guest**.
+Viewers and guests see no action they cannot use: menus, buttons, shortcuts and the command menu follow the capabilities the bridge reports for each workspace, and host-wide actions (new workspaces, worktrees, the project launcher, connections) appear only for instance admins.
 Editing a terminal is shell access on the host; read [Security](./SECURITY.md) before sharing.
 
 ![Configuration dialog on the Appearance tab: theme, accent, text size, terminal font, language, and layout](docs/images/thyra-desktop-settings.png)

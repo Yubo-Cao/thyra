@@ -1,4 +1,5 @@
 import type { WorkspaceRole } from "../accounts/store";
+import { workspaceCapabilities } from "./capabilities";
 import { workspaceOfScopedId } from "./authorize";
 
 /**
@@ -69,8 +70,9 @@ function workspaceOfItem(item: unknown): string | null {
 /**
  * Filter every top-level array of workspace-owned items (`workspaces`,
  * `tabs`, `panes`, `agents`, `layouts`, ...) to readable workspaces.
- * Workspace items gain `access` (the viewer's role) for the UI; under a
- * pane scope their active tab is the scoped pane's.
+ * Workspace items gain `access` (the viewer's role) and `capabilities`
+ * (what the UI may offer there) for the UI; under a pane scope their active
+ * tab is the scoped pane's.
  */
 export function filterListResult(
   result: unknown,
@@ -95,7 +97,15 @@ export function filterListResult(
       if (!role) return [];
       const value = record(item);
       if (!scope || !value) {
-        return key === "workspaces" ? [{ ...value, access: role }] : [item];
+        return key === "workspaces"
+          ? [
+              {
+                ...value,
+                access: role,
+                capabilities: workspaceCapabilities(role),
+              },
+            ]
+          : [item];
       }
       if (!inPaneScope(value, scope)) return [];
       if (key === "workspaces")
@@ -103,6 +113,7 @@ export function filterListResult(
           {
             ...value,
             access: role,
+            capabilities: workspaceCapabilities(role),
             ...(scope.tab ? { active_tab_id: scope.tab } : {}),
           },
         ];
@@ -114,14 +125,15 @@ export function filterListResult(
   return next;
 }
 
-/** Workspace items of an admin's list gain `access: "owner"`. */
+/** Workspace items of an admin's list gain `access: "owner"` and every capability. */
 export function annotateOwnerAccess(result: unknown): unknown {
   const value = record(result);
   if (!value || !Array.isArray(value.workspaces)) return result;
+  const capabilities = workspaceCapabilities("owner", true);
   return {
     ...value,
     workspaces: value.workspaces.map((item) =>
-      record(item) ? { ...record(item), access: "owner" } : item,
+      record(item) ? { ...record(item), access: "owner", capabilities } : item,
     ),
   };
 }

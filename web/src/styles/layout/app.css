@@ -94,15 +94,9 @@
   border-left: 0;
 }
 
-/* Viewers of the focused workspace, including share-link guests, watch
-   only: hide what would change it (the bridge refuses it anyway). */
-.app.read-only
-:is(
-  .tabbar-add,
-  .tabbar-close,
-  .mobile-launcher,
-  .workspace-tree-panel .panel-actions
-) {
+/* Without `edit` on the focused workspace (viewers, share-link guests) the
+   page watches only: hide what would change it (the bridge refuses it). */
+.app.read-only :is(.tabbar-add, .tabbar-close) {
   display: none;
 }
 

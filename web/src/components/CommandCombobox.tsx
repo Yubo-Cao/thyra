@@ -1,3 +1,4 @@
+import { workspaceCan } from "../capabilities";
 import {
   shortcutMatches,
   shortcutLabel,
@@ -71,9 +72,22 @@ type ActionGroupDefinition = {
   actions: ActionDefinition[];
 };
 
-/** Actions that change a workspace, hidden from its viewers. */
-const READ_ONLY_HIDDEN_ACTION =
-  /^(launch-agent|create-|current-create-tab|current-toggle-pane-zoom|current-(new|open|remove)-worktree|current-worktree-hooks|rename-|close-|split-|toggle-pane-zoom)/;
+/**
+ * The capability each writing action needs (the first matching key wins):
+ * `host` host-wide, `manage` and `edit` on the focused workspace. Actions
+ * the caller lacks are hidden; the bridge would refuse them anyway.
+ */
+const ACTION_CAPABILITIES: [RegExp, "host" | "manage" | "edit"][] = [
+  [
+    /^(launch-agent|create-workspace|current-(new|open|remove)-worktree|current-worktree-|(new|open)-worktree-|worktree-hooks-)/,
+    "host",
+  ],
+  [/^(rename|close)-workspace/, "manage"],
+  [
+    /^(current-create-tab|create-tab$|current-toggle-pane-zoom|rename-|close-|split-|toggle-pane-zoom)/,
+    "edit",
+  ],
+];
 
 function tabName(tab?: Tab) {
   if (!tab) return "";
@@ -904,26 +918,29 @@ export function CommandCombobox({
   }
 
   // Viewers (and share-link guests) keep navigation and reading only.
-  const readOnly = focusedWorkspace?.access === "viewer";
+  const can = {
+    host: store.get().host !== false,
+    manage: workspaceCan(focusedWorkspace, "manage"),
+    edit: workspaceCan(focusedWorkspace, "edit"),
+  };
   const actionGroups: ActionGroupDefinition[] = [
     { heading: t("Current"), actions: currentActions },
     { heading: t("Files"), actions: fileActions },
     { heading: t("Workspaces"), actions: workspaceActions },
-    { heading: t("Worktrees"), actions: readOnly ? [] : worktreeActions },
+    { heading: t("Worktrees"), actions: worktreeActions },
     { heading: t("Tabs"), actions: tabActions },
     { heading: t("Panes"), actions: paneActions },
     { heading: t("Agents"), actions: agentActions },
   ]
-    .map((group) =>
-      readOnly
-        ? {
-            ...group,
-            actions: group.actions.filter(
-              (action) => !READ_ONLY_HIDDEN_ACTION.test(action.key),
-            ),
-          }
-        : group,
-    )
+    .map((group) => ({
+      ...group,
+      actions: group.actions.filter((action) => {
+        const needs = ACTION_CAPABILITIES.find(([pattern]) =>
+          pattern.test(action.key),
+        )?.[1];
+        return !needs || can[needs];
+      }),
+    }))
     .filter((group) => group.actions.length > 0);
 
   const normalizedSearch = normalizeSearchText(search);

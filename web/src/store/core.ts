@@ -57,6 +57,8 @@ export type PopupInfo = NonNullable<PopupStatePush["popup"]>;
 
 export interface State extends ServerSessionState {
   status: ConnectionStatus;
+  /** Host-wide actions are offered (`hostCapable` of the hello principal). */
+  host?: boolean;
   connectionPaused: boolean;
   bridgeStatus: BridgeStatus | null;
   connections: ConnectionSummary[];

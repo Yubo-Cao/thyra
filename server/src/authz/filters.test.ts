@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { principalCapabilities, workspaceCapabilities } from "./capabilities";
 import type { WorkspaceRole } from "../accounts/store";
 import {
   annotateOwnerAccess,
@@ -28,14 +29,29 @@ describe("result filters", () => {
       navigation_mode: "browser-local",
     };
     expect(filterListResult(result, roleOf)).toEqual({
-      workspaces: [{ workspace_id: "w1", label: "shared", access: "viewer" }],
+      workspaces: [
+        {
+          workspace_id: "w1",
+          label: "shared",
+          access: "viewer",
+          capabilities: [],
+        },
+      ],
       tabs: [{ tab_id: "w1:t1", workspace_id: "w1" }],
       panes: [{ pane_id: "w3:p1" }],
       navigation_mode: "browser-local",
     });
     expect(
       annotateOwnerAccess({ workspaces: [{ workspace_id: "w2" }] }),
-    ).toEqual({ workspaces: [{ workspace_id: "w2", access: "owner" }] });
+    ).toEqual({
+      workspaces: [
+        {
+          workspace_id: "w2",
+          access: "owner",
+          capabilities: ["edit", "manage"],
+        },
+      ],
+    });
   });
 
   test("presence shows only people in readable workspaces", () => {
@@ -115,7 +131,11 @@ describe("result filters", () => {
     ).toEqual({
       event: {
         event: "workspace.moved",
-        data: { workspaces: [{ workspace_id: "w1", access: "viewer" }] },
+        data: {
+          workspaces: [
+            { workspace_id: "w1", access: "viewer", capabilities: [] },
+          ],
+        },
       },
     });
     expect(
@@ -249,7 +269,12 @@ describe("pane-scoped share links", () => {
     };
     expect(filterListResult(result, guestRole, scope)).toEqual({
       workspaces: [
-        { workspace_id: "w1", active_tab_id: "w1:t1", access: "viewer" },
+        {
+          workspace_id: "w1",
+          active_tab_id: "w1:t1",
+          access: "viewer",
+          capabilities: [],
+        },
       ],
       tabs: [{ tab_id: "w1:t1", workspace_id: "w1" }],
       panes: [{ pane_id: "w1:p2", tab_id: "w1:t1", workspace_id: "w1" }],
@@ -326,5 +351,16 @@ describe("pane-scoped share links", () => {
     expect(
       pass({ event: "workspace.renamed", data: { workspace_id: "w2" } }),
     ).toBeNull();
+  });
+});
+
+describe("capabilities", () => {
+  test("follow the authorization table for each role", () => {
+    expect(workspaceCapabilities("viewer")).toEqual([]);
+    expect(workspaceCapabilities("editor")).toEqual(["edit"]);
+    expect(workspaceCapabilities("owner")).toEqual(["edit", "manage"]);
+    expect(workspaceCapabilities(null, true)).toEqual(["edit", "manage"]);
+    expect(principalCapabilities(true)).toEqual(["host"]);
+    expect(principalCapabilities(false)).toEqual([]);
   });
 });

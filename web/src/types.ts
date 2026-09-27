@@ -63,9 +63,13 @@ export interface Workspace {
   worktree?: WorktreeInfo;
   /** The caller's role here: owners share it, viewers only watch. */
   access?: WorkspaceAccess;
+  /** What the bridge lets the caller do here (see capabilities.ts). */
+  capabilities?: WorkspaceCapability[];
 }
 
 export type WorkspaceAccess = "owner" | "editor" | "viewer";
+/** `edit`: layout, input, files and Git; `manage`: rename, close, share. */
+export type WorkspaceCapability = "edit" | "manage";
 
 export interface Tab {
   tab_id: string;

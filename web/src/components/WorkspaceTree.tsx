@@ -1,3 +1,4 @@
+import { useHostCapable } from "../capabilities";
 import { thyraLocalStorage, thyraStorageEventKey } from "../browserStorage";
 import { store, useStoreSelector } from "../store";
 import type { GitStatusSummary, Pane, Tab, Workspace } from "../types";
@@ -244,6 +245,7 @@ export function WorkspaceTree({
     })),
   );
   const connectionClient = useConnectionClient();
+  const host = useHostCapable();
   const agentOrderStorageKey = connectionStorageKey(
     s.activeConnectionId,
     AGENT_ORDER_STORAGE_KEY,
@@ -562,11 +564,13 @@ export function WorkspaceTree({
         >
           <div className="panel-head">
             <h2>{t("Workspaces")}</h2>
-            <IconButton
-              label={t("New workspace")}
-              icon={<Plus size={16} />}
-              onClick={() => setCreateOpen(true)}
-            />
+            {host ? (
+              <IconButton
+                label={t("New workspace")}
+                icon={<Plus size={16} />}
+                onClick={() => setCreateOpen(true)}
+              />
+            ) : null}
           </div>
           <div className="workspace-tree-content">
             <p className="muted">
@@ -603,23 +607,26 @@ export function WorkspaceTree({
     >
       <div className="panel-head">
         <h2>{t("Workspaces")}</h2>
-        <div className="panel-actions">
-          {focusedRepoWorkspace ? (
+        {/* Creating workspaces and worktrees are instance-admin actions. */}
+        {host ? (
+          <div className="panel-actions">
+            {focusedRepoWorkspace ? (
+              <IconButton
+                label={t("Open worktree lifecycle")}
+                tooltip={t("Worktree lifecycle")}
+                icon={<GitBranch size={14} />}
+                onClick={() =>
+                  setLifecycleWorkspaceId(focusedRepoWorkspace.workspace_id)
+                }
+              />
+            ) : null}
             <IconButton
-              label={t("Open worktree lifecycle")}
-              tooltip={t("Worktree lifecycle")}
-              icon={<GitBranch size={14} />}
-              onClick={() =>
-                setLifecycleWorkspaceId(focusedRepoWorkspace.workspace_id)
-              }
+              label={t("New workspace")}
+              icon={<Plus size={16} />}
+              onClick={() => setCreateOpen(true)}
             />
-          ) : null}
-          <IconButton
-            label={t("New workspace")}
-            icon={<Plus size={16} />}
-            onClick={() => setCreateOpen(true)}
-          />
-        </div>
+          </div>
+        ) : null}
       </div>
       <div
         className="workspace-tree-content"
@@ -647,17 +654,22 @@ export function WorkspaceTree({
             onSelectAgent={onSelectAgent}
             onAgentContextMenu={(pane, x, y) => setAgentMenu({ pane, x, y })}
             onContextMenu={(w, x, y) => setMenu({ workspace: w, x, y })}
-            workspaceDrag={{
-              isDragging: draggedWorkspaceId === w.workspace_id,
-              dropPosition:
-                workspaceDropTarget?.workspaceId === w.workspace_id
-                  ? workspaceDropTarget.position
-                  : null,
-              onDragStart: (e) => onWorkspaceDragStart(w, e),
-              onDragOver: (e) => onWorkspaceDragOver(w, e),
-              onDrop: (e) => onWorkspaceDrop(w, e),
-              onDragEnd: clearWorkspaceDrag,
-            }}
+            // Reordering changes every user's list: instance admins only.
+            workspaceDrag={
+              host
+                ? {
+                    isDragging: draggedWorkspaceId === w.workspace_id,
+                    dropPosition:
+                      workspaceDropTarget?.workspaceId === w.workspace_id
+                        ? workspaceDropTarget.position
+                        : null,
+                    onDragStart: (e) => onWorkspaceDragStart(w, e),
+                    onDragOver: (e) => onWorkspaceDragOver(w, e),
+                    onDrop: (e) => onWorkspaceDrop(w, e),
+                    onDragEnd: clearWorkspaceDrag,
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

@@ -1,3 +1,4 @@
+import { workspaceCan } from "../capabilities";
 import { shortcutMatches } from "../shortcutPreferences";
 import {
   FILE_WRITE_CONFLICT_MESSAGE,
@@ -190,8 +191,10 @@ export function FilePreviewContent({
     !!preview.workspace_id &&
     preview.size <= FILE_WRITE_MAX_BYTES &&
     // Viewers (and share-link guests) read files but never write them.
-    workspaces.find((item) => item.workspace_id === preview.workspace_id)
-      ?.access !== "viewer";
+    workspaceCan(
+      workspaces.find((item) => item.workspace_id === preview.workspace_id),
+      "edit",
+    );
   const updateDraft = useCallback(
     (next: EditorDraft | null) => {
       if (!draftKey) return;
