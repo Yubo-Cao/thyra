@@ -163,6 +163,20 @@ Serve `.pages-dist/` to check `/tutorial/`, narrow layouts, keyboard navigation,
 and JavaScript-disabled reading. Canonical/social/sitemap URLs use
 <https://thyra.yubo.fun/>. Never commit generated output.
 
+### Product screenshots
+
+Every screenshot in the READMEs, `FEATURES.md`, `docs/`, and the site comes from one command:
+
+```bash
+bun run build:web
+bun scripts/capture-screenshots.ts [--only desktop-changes,mobile-launcher] [--port 8820]
+```
+
+It seeds the demo in `scripts/demo/` (Git projects, fake `claude`/`codex` agents, session files, launcher pins) into a throwaway Herdr server and Thyra on a spare port, captures desktop and phone shots in English and Chinese with Playwright WebKit, and writes optimized PNGs plus the site's hero AVIFs.
+It never touches a live Herdr and stops everything it started; `--serve` keeps the demo running for inspection instead.
+It needs `playwright-core` (`PLAYWRIGHT_CORE=<dir>`) with its WebKit build and `vips`; with `bwrap` installed the demo home appears as `/home/demo`.
+Rerun it after visible UI changes and look at every image before committing.
+
 **Deploy Pages** runs on `main` pushes or manual retry. Upload requires a published
 Thyra release as GitHub Latest; the installer probe blocks missing assets,
 HTTP/network failures, and source-only builds. After repo renames, align the
