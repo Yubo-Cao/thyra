@@ -321,7 +321,7 @@ describe("bridge connection lifecycle", () => {
     const response = bridge.call(
       "worktree.remove",
       { workspace_id: "w1" },
-      null,
+      { timeoutMs: null },
     );
     const request = JSON.parse(ManualWebSocket.instance.sent[0]);
     await Bun.sleep(5);
@@ -334,6 +334,72 @@ describe("bridge connection lifecycle", () => {
     } as MessageEvent);
 
     await expect(response).resolves.toEqual({ ok: true });
+  });
+
+  test("an aborted call rejects with a typed error and drops its reply", async () => {
+    class ManualWebSocket extends HangingWebSocket {
+      static instance: ManualWebSocket;
+      sent: string[] = [];
+
+      constructor() {
+        super();
+        ManualWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = ManualWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+
+      send(raw = "") {
+        this.sent.push(raw);
+      }
+    }
+    installBrowserGlobals(ManualWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge();
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ManualWebSocket.instance);
+    const client = bridge.connection();
+
+    const alreadyAborted = client.call(
+      "git.diff",
+      {},
+      { signal: AbortSignal.abort() },
+    );
+    await expect(alreadyAborted).rejects.toMatchObject({ code: "aborted" });
+    expect(ManualWebSocket.instance.sent).toHaveLength(0);
+
+    const controller = new AbortController();
+    const response = client.call("git.diff", {}, { signal: controller.signal });
+    const request = JSON.parse(ManualWebSocket.instance.sent[0]);
+    controller.abort();
+    await expect(response).rejects.toMatchObject({
+      name: "BridgeError",
+      code: "aborted",
+    });
+    // A late reply is ignored, and aborting again is harmless.
+    ManualWebSocket.instance.onmessage?.({
+      data: JSON.stringify({
+        connection_id: "legacy-default",
+        id: request.id,
+        result: { ok: true },
+      }),
+    } as MessageEvent);
+    controller.abort();
+
+    const settled = new AbortController();
+    const answered = client.call("git.diff", {}, { signal: settled.signal });
+    const next = JSON.parse(ManualWebSocket.instance.sent[1]);
+    ManualWebSocket.instance.onmessage?.({
+      data: JSON.stringify({
+        connection_id: "legacy-default",
+        id: next.id,
+        result: { ok: true },
+      }),
+    } as MessageEvent);
+    await expect(answered).resolves.toEqual({ ok: true });
+    settled.abort();
+    await expect(answered).resolves.toEqual({ ok: true });
   });
 
   test("dispatches terminal clipboard pushes and removes listeners", async () => {

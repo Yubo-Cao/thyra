@@ -83,6 +83,7 @@ export default {
   "not connected to bridge": "未连接到桥接服务",
   "bridge send buffer is full": "桥接服务发送缓冲区已满",
   "timeout: {method}": "请求超时：{method}",
+  "request aborted: {method}": "请求已取消：{method}",
   "bridge send failed": "向桥接服务发送失败",
   "global RPC cannot use a connection client: {method}":
     "全局 RPC 无法使用连接客户端：{method}",

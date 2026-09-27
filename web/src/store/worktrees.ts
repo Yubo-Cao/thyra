@@ -303,7 +303,7 @@ export const worktreeActions = {
           // Hooks are part of this RPC and can legitimately run longer than
           // Herdr's own bounded remove call. Let disconnects end the browser
           // wait instead of reporting a timeout while deletion continues.
-          null,
+          { timeoutMs: null },
         );
         const beforeRemoveNotice = summarizeDirectHookResult(
           result?.before_remove_hook,

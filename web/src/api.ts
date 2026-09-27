@@ -258,11 +258,20 @@ export interface BridgeControlMsg {
 type Pending = {
   resolve: (v: any) => void;
   reject: (e: Error) => void;
-  timer: ReturnType<typeof setTimeout> | null;
   connectionId: string | null;
   clientGeneration: number;
   serverRuntimeGeneration: number | null;
 };
+
+export interface CallOptions {
+  /** Reply deadline; `null` waits indefinitely. Defaults to 30 seconds. */
+  timeoutMs?: number | null;
+  /**
+   * Rejects the call with an `aborted` BridgeError and drops its reply. The
+   * bridge has no cancel RPC, so the request itself still runs.
+   */
+  signal?: AbortSignal;
+}
 
 export interface ConnectionClient {
   readonly connectionId: string;
@@ -271,7 +280,7 @@ export interface ConnectionClient {
   call(
     method: string,
     params?: Record<string, unknown>,
-    timeoutMs?: number | null,
+    options?: CallOptions,
   ): Promise<any>;
   isCurrent(): boolean;
   acceptsServerGeneration(value: unknown): boolean;
@@ -492,7 +501,7 @@ export class Bridge {
       connectionId,
       generation,
       serverRuntimeGeneration,
-      call: (method, params = {}, timeoutMs = RPC_TIMEOUT_MS) => {
+      call: (method, params = {}, options) => {
         if (!this.helloAcceptedForSocket) {
           return Promise.reject(
             new BridgeError(
@@ -531,7 +540,7 @@ export class Bridge {
           serverRuntimeGeneration,
           method,
           params,
-          timeoutMs,
+          options,
         );
       },
       isCurrent: () =>
@@ -659,7 +668,7 @@ export class Bridge {
     if (this.heartbeatInFlight) return;
     this.heartbeatInFlight = true;
     const probeStartedAt = performance.now();
-    this.call("bridge.ping", {}, HEARTBEAT_TIMEOUT_MS).then(
+    this.call("bridge.ping", {}, { timeoutMs: HEARTBEAT_TIMEOUT_MS }).then(
       () => {
         this.heartbeatInFlight = false;
       },
@@ -726,7 +735,6 @@ export class Bridge {
   ) {
     for (const [id, pending] of this.pending) {
       if (!predicate(pending)) continue;
-      if (pending.timer !== null) clearTimeout(pending.timer);
       pending.reject(bridgeErrorFrom(reason));
       this.pending.delete(id);
     }
@@ -833,7 +841,6 @@ export class Bridge {
       }
       const pending = this.pending.get(msg.id)!;
       this.pending.delete(msg.id);
-      if (pending.timer !== null) clearTimeout(pending.timer);
       const requiresRuntimeGeneration =
         this._hello?.capabilities?.connection_runtime_generation === true;
       if (
@@ -1036,8 +1043,11 @@ export class Bridge {
     serverRuntimeGeneration: number | null,
     method: string,
     params: Record<string, unknown>,
-    timeoutMs: number | null,
+    { timeoutMs = RPC_TIMEOUT_MS, signal }: CallOptions = {},
   ): Promise<any> {
+    const aborted = () =>
+      new BridgeError("aborted", t("request aborted: {method}", { method }));
+    if (signal?.aborted) return Promise.reject(aborted());
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(
@@ -1054,23 +1064,36 @@ export class Bridge {
     }
     const id = `c${++this.seq}_${Date.now().toString(36)}`;
     return new Promise((resolve, reject) => {
+      // Every settlement path drops the pending entry, then cleans up here.
+      const settle =
+        <T>(finish: (value: T) => void) =>
+        (value: T) => {
+          if (timer !== null) clearTimeout(timer);
+          signal?.removeEventListener("abort", abort);
+          finish(value);
+        };
+      const fail = settle(reject);
+      const expire = (error: () => BridgeError) => () => {
+        if (this.pending.delete(id)) fail(error());
+      };
+      const abort = expire(aborted);
       const timer =
         timeoutMs === null
           ? null
-          : setTimeout(() => {
-              if (this.pending.delete(id)) {
-                reject(
+          : setTimeout(
+              expire(
+                () =>
                   new BridgeError(
                     "timeout",
                     t("timeout: {method}", { method }),
                   ),
-                );
-              }
-            }, timeoutMs);
+              ),
+              timeoutMs,
+            );
+      signal?.addEventListener("abort", abort, { once: true });
       this.pending.set(id, {
-        resolve,
-        reject,
-        timer,
+        resolve: settle(resolve),
+        reject: fail,
         connectionId,
         clientGeneration,
         serverRuntimeGeneration,
@@ -1092,14 +1115,13 @@ export class Bridge {
           }),
         );
       } catch {
-        if (timer !== null) clearTimeout(timer);
         this.pending.delete(id);
         const failure: BridgeFailure = {
           code: "send_failed",
           message: msg("bridge send failed"),
         };
         this.forceReconnect(failure);
-        reject(bridgeErrorFrom(failure));
+        fail(bridgeErrorFrom(failure));
       }
     });
   }
@@ -1110,7 +1132,7 @@ export class Bridge {
     serverRuntimeGeneration: number | null,
     method: string,
     params: Record<string, unknown>,
-    timeoutMs: number | null,
+    options?: CallOptions,
   ): Promise<any> {
     if (isBridgeGlobalMethod(method)) {
       return Promise.reject(
@@ -1126,7 +1148,7 @@ export class Bridge {
       serverRuntimeGeneration,
       method,
       params,
-      timeoutMs,
+      options,
     );
   }
 
@@ -1137,7 +1159,7 @@ export class Bridge {
   call(
     method: string,
     params: Record<string, unknown> = {},
-    timeoutMs: number | null = RPC_TIMEOUT_MS,
+    options?: CallOptions,
   ): Promise<any> {
     if (isBridgeGlobalMethod(method)) {
       return this.sendCall(
@@ -1146,7 +1168,7 @@ export class Bridge {
         null,
         method,
         params,
-        timeoutMs,
+        options,
       );
     }
     if (!this.helloAcceptedForSocket) {
@@ -1175,7 +1197,7 @@ export class Bridge {
       serverRuntimeGeneration,
       method,
       params,
-      timeoutMs,
+      options,
     );
   }
 

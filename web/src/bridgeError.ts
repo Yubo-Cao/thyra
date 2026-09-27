@@ -31,6 +31,8 @@ export type BridgeErrorCode =
   | "logged_out"
   /** The call reached the bridge but no reply arrived in time. */
   | "timeout"
+  /** The caller aborted the call; any reply is dropped. */
+  | "aborted"
   /** The call or its reply violated the bridge protocol. */
   | "protocol"
   /** The bridge or Herdr answered with an error. */
