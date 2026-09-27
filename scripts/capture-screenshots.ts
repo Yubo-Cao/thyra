@@ -587,6 +587,8 @@ async function startEnvironment(): Promise<Environment> {
           },
         ],
       }),
+      // Thyra refuses a registry other users can read.
+      0o600,
     );
     const bridgeEnv = isolatedEnv(env, {
       PATH: `${join(root, "thyra-bin")}:${process.env.PATH ?? ""}`,
