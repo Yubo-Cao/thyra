@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2015 # "check && check || fail" guards are intended; fail exits.
 # Thyra installer for Linux and macOS.
 #
 #   curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh | sh
