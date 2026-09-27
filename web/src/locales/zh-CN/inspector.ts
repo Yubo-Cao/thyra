@@ -7,13 +7,9 @@ export default {
   "connection changed during diff request": "请求差异期间连接已更改",
   "last-step diff requires a fresh summary snapshot":
     "上一步差异需要最新的摘要快照",
-  "queued diff summary request retired": "排队中的差异摘要请求已取消",
-  "connection changed before queued diff summary request":
-    "排队中的差异摘要请求开始前连接已更改",
   "connection changed during diff summary request":
     "请求差异摘要期间连接已更改",
   "connection changed during file preview": "预览文件期间连接已更改",
-  "file preview request superseded": "文件预览请求已被新请求替代",
   "connection changed during create": "创建期间连接已更改",
   "upload failed {status}": "上传失败：{status}",
   "connection changed during delete": "删除期间连接已更改",

@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import {
   ChevronDown,
@@ -29,11 +28,10 @@ import { downloadFileFromUrl } from "../downloadFile";
 import {
   refreshGitDiffSummary,
   useGitDiffSummaryState,
-} from "../gitDiffSummaryStore";
+} from "../inspectorQueries";
 import {
   fileExplorerRefreshKey,
-  readFileExplorerRefresh,
-  subscribeFileExplorerRefresh,
+  useFileExplorerRefresh,
 } from "../fileExplorerRefresh";
 import { store, useStoreSelector } from "../store";
 import { t } from "../i18n";
@@ -475,11 +473,7 @@ function FileExplorerContent({
     connectionClient,
     cacheWorkspaceId ?? "",
   );
-  const explorerRefreshVersion = useSyncExternalStore(
-    (listener) => subscribeFileExplorerRefresh(explorerRefreshKey, listener),
-    () => readFileExplorerRefresh(explorerRefreshKey),
-    () => readFileExplorerRefresh(explorerRefreshKey),
-  );
+  const explorerRefreshVersion = useFileExplorerRefresh(explorerRefreshKey);
   const explorerRefreshRef = useRef({
     key: explorerRefreshKey,
     version: explorerRefreshVersion,

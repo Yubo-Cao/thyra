@@ -3,8 +3,14 @@ import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { connectionStorageKey } from "../connectionStorage";
 import { gitDiffCode, type GitDiffCode } from "../gitDiffStatus";
-import { retireGitDiffSummaryResource } from "../gitDiffSummaryStore";
 import { t } from "../i18n";
+import {
+  fetchFresh,
+  inspectorQueries,
+  retainQueries,
+  retireGitDiffSummaryResource,
+  scopedKey,
+} from "../inspectorQueries";
 import { connectionClientScopeKey } from "../useConnectionClient";
 import type {
   FileExplorerEntry,
@@ -73,11 +79,6 @@ type FileGitStatus = {
 const explorerCache = new Map<string, FileExplorerCache>();
 const explorerCacheRevisions = new Map<string, number>();
 const explorerPrefetches = new Map<string, Promise<void>>();
-const previewCache = new Map<string, FilePreview>();
-const previewRequests = new Map<string, Promise<FilePreview>>();
-const previewRequestRevisions = new Map<string, number>();
-const MAX_PREVIEW_CACHE_BYTES = 16 * 1024 * 1024;
-let previewCacheBytes = 0;
 let previewResourceRevision = 0;
 export const FILE_SHOW_HIDDEN_PREFIX = "fileExplorerShowHidden:";
 
@@ -200,12 +201,7 @@ export function filePreviewCacheKey(
   workspaceId: string | undefined,
   path: string,
 ) {
-  return connectionClientScopeKey(
-    client,
-    "preview",
-    workspaceId ?? "focused",
-    path,
-  );
+  return scopedKey(client, "preview", workspaceId ?? "focused", path);
 }
 
 function estimatedPreviewBytes(preview: FilePreview) {
@@ -215,98 +211,25 @@ function estimatedPreviewBytes(preview: FilePreview) {
   );
 }
 
-export function readCachedPreview(key: string) {
-  const preview = previewCache.get(key);
-  if (!preview) return undefined;
-  previewCache.delete(key);
-  previewCache.set(key, preview);
-  return preview;
+retainQueries("preview", 16 * 1024 * 1024, estimatedPreviewBytes);
+
+export function readCachedPreview(key: unknown[]) {
+  return inspectorQueries.getQueryData<FilePreview>(key);
 }
 
-function removeCachedPreview(key: string, retireRequest = false) {
-  const existing = previewCache.get(key);
-  if (existing) {
-    previewCacheBytes = Math.max(
-      0,
-      previewCacheBytes - estimatedPreviewBytes(existing),
-    );
-  }
-  previewCache.delete(key);
-  if (retireRequest) {
-    const running = previewRequests.has(key);
-    previewRequests.delete(key);
-    if (running) {
-      previewRequestRevisions.set(
-        key,
-        (previewRequestRevisions.get(key) ?? 0) + 1,
-      );
-    } else {
-      previewRequestRevisions.delete(key);
-    }
-  } else if (!previewRequests.has(key)) {
-    previewRequestRevisions.delete(key);
-  }
-}
-
-function previewCacheKeyParts(key: string) {
-  try {
-    const parts = JSON.parse(key) as unknown[];
-    if (
-      typeof parts[0] !== "string" ||
-      typeof parts[1] !== "number" ||
-      parts[2] !== "preview" ||
-      typeof parts[3] !== "string" ||
-      typeof parts[4] !== "string"
-    ) {
-      return null;
-    }
-    return {
-      connectionId: parts[0],
-      generation: parts[1],
-      workspaceId: parts[3],
-      path: parts[4],
-    };
-  } catch {
-    return null;
-  }
-}
-
+/** Drops cached previews of a path (or a subtree) and aborts their requests. */
 export function invalidateFilePreviewCache(
   client: Pick<ConnectionClient, "connectionId" | "generation">,
   workspaceId: string,
   path: string,
   recursive = false,
 ) {
-  const keys = new Set([...previewCache.keys(), ...previewRequests.keys()]);
-  for (const key of keys) {
-    const parts = previewCacheKeyParts(key);
-    if (
-      !parts ||
-      parts.connectionId !== client.connectionId ||
-      parts.generation !== client.generation ||
-      parts.workspaceId !== workspaceId
-    ) {
-      continue;
-    }
-    if (
-      parts.path === path ||
-      (recursive && parts.path.startsWith(`${path}/`))
-    ) {
-      removeCachedPreview(key, true);
-    }
-  }
-}
-
-function writeCachedPreview(key: string, preview: FilePreview) {
-  removeCachedPreview(key);
-  previewCache.set(key, preview);
-  previewCacheBytes += estimatedPreviewBytes(preview);
-
-  while (previewCacheBytes > MAX_PREVIEW_CACHE_BYTES && previewCache.size > 1) {
-    const oldestKey = previewCache.keys().next().value;
-    if (typeof oldestKey !== "string") break;
-    removeCachedPreview(oldestKey);
-  }
+  inspectorQueries.removeQueries({
+    queryKey: scopedKey(client, "preview", workspaceId),
+    predicate: ({ queryKey }) =>
+      queryKey[4] === path ||
+      (recursive && String(queryKey[4]).startsWith(`${path}/`)),
+  });
 }
 
 export function parentDirectoryPaths(path: string) {
@@ -556,44 +479,21 @@ export function requestFilePreview(
       new Error(t("connection changed during file preview")),
     );
   }
-  const key = filePreviewCacheKey(client, workspaceId, path);
-  const cached = readCachedPreview(key);
-  if (cached && !options.refresh) return Promise.resolve(cached);
-  const running = previewRequests.get(key);
-  if (running) return running;
-
-  const revision = (previewRequestRevisions.get(key) ?? 0) + 1;
-  previewRequestRevisions.set(key, revision);
-  const task = client.call("file.read", {
-    workspace_id: workspaceId,
-    path,
-  }) as Promise<FilePreview>;
-  const scopedTask = task
-    .then((preview) => {
+  const query = {
+    queryKey: filePreviewCacheKey(client, workspaceId, path),
+    queryFn: async ({ signal }: { signal: AbortSignal }) => {
+      const preview = (await client.call(
+        "file.read",
+        { workspace_id: workspaceId, path },
+        { signal },
+      )) as FilePreview;
       if (!client.isCurrent()) {
         throw new Error(t("connection changed during file preview"));
       }
-      if (previewRequestRevisions.get(key) !== revision) {
-        throw new Error(t("file preview request superseded"));
-      }
-      previewResourceRevision += 1;
-      const versionedPreview = {
-        ...preview,
-        resource_revision: previewResourceRevision,
-      };
-      writeCachedPreview(key, versionedPreview);
-      return versionedPreview;
-    })
-    .finally(() => {
-      if (previewRequests.get(key) === scopedTask) {
-        previewRequests.delete(key);
-      }
-      if (!previewCache.has(key) && !previewRequests.has(key)) {
-        previewRequestRevisions.delete(key);
-      }
-    });
-  previewRequests.set(key, scopedTask);
-  return scopedTask;
+      return { ...preview, resource_revision: ++previewResourceRevision };
+    },
+  };
+  return options.refresh ? fetchFresh(query) : inspectorQueries.query(query);
 }
 
 /** Host paths (absolute or `~`) use filesystem scope; others are checkout-relative. */

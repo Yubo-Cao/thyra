@@ -27,11 +27,11 @@ import {
   lastStepCompletionKey,
   useLastStepCompletion,
 } from "../lastStepCompletionStore";
+import { isCancelledError } from "@tanstack/react-query";
 import {
   refreshGitDiffSummary,
-  retireGitDiffSummary,
   useGitDiffSummaryState,
-} from "../gitDiffSummaryStore";
+} from "../inspectorQueries";
 import { store } from "../store";
 import { getLocale, t } from "../i18n";
 import { copyTextFromUserGesture } from "../terminalClipboard";
@@ -381,7 +381,8 @@ export const DiffViewerPanel = forwardRef<
         { afterCurrent },
       );
     } catch (e) {
-      if (isCurrentContext(workspaceId, scope)) {
+      // A cancelled request was retired for a newer one.
+      if (isCurrentContext(workspaceId, scope) && !isCancelledError(e)) {
         updateCache({ error: (e as Error).message });
       }
     }
@@ -401,13 +402,8 @@ export const DiffViewerPanel = forwardRef<
       return;
     }
 
+    // The completion already dropped this workspace's last-step summaries.
     if (diffScopeRef.current === "last-step") {
-      retireGitDiffSummary(
-        connectionClient,
-        cacheWorkspaceId,
-        "last-step",
-        cacheResourceKey,
-      );
       void loadSummary(cache.selected, false, true);
       return;
     }
@@ -418,12 +414,6 @@ export const DiffViewerPanel = forwardRef<
         "last-step",
         cacheResourceKey,
       ),
-    );
-    retireGitDiffSummary(
-      connectionClient,
-      cacheWorkspaceId,
-      "last-step",
-      cacheResourceKey,
     );
     // Completion notifications are not debounced with pane-list refreshes, so
     // rapid quiet-to-active edges cannot leave the prior step cached forever.

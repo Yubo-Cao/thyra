@@ -5,9 +5,11 @@ import type { GitDiffEntry, GitDiffFile, GitDiffSummary } from "../types";
 import { connectionClientScopeKey } from "../useConnectionClient";
 import { connectionStorageKey } from "../connectionStorage";
 import {
+  inspectorQueries,
   refreshGitDiffSummary,
   retireGitDiffSummaryResource,
-} from "../gitDiffSummaryStore";
+  scopedKey,
+} from "../inspectorQueries";
 import { diffAutoCollapseInfo } from "./diffAutoCollapse";
 
 // Diff viewer caches and background warmups. The app shell prefetches the
@@ -42,7 +44,6 @@ export type DiffScope = "working" | "branch-main" | "last-step";
 const diffCache = new Map<string, DiffCache>();
 const diffCacheRevisions = new Map<string, number>();
 const diffPrefetches = new Map<string, Promise<void>>();
-const diffFileRequests = new Map<string, Promise<GitDiffFile>>();
 const DIFF_PREFETCH_CONCURRENCY = 3;
 const MAX_CACHED_DIFF_FILES = 24;
 const MAX_CACHED_DIFF_BYTES = 8 * 1024 * 1024;
@@ -269,25 +270,6 @@ export function retireDiffCache(key: string) {
   diffCache.delete(key);
 }
 
-function diffFileRequestKey(
-  client: Pick<ConnectionClient, "connectionId" | "generation">,
-  workspaceId: string,
-  scope: DiffScope,
-  entry: GitDiffEntry,
-  revision: number,
-  snapshotId?: string,
-) {
-  return connectionClientScopeKey(
-    client,
-    "diff-file",
-    workspaceId,
-    scope,
-    diffEntryKey(entry),
-    revision,
-    snapshotId ?? "live",
-  );
-}
-
 export function diffSelectionStorageKey(
   connectionId: string,
   workspaceId: string,
@@ -461,38 +443,38 @@ export function requestDiffFile(
       new Error(t("last-step diff requires a fresh summary snapshot")),
     );
   }
-  const requestKey = diffFileRequestKey(
-    client,
-    workspaceId,
-    scope,
-    entry,
-    revision,
-    snapshotId,
-  );
-  const running = diffFileRequests.get(requestKey);
-  if (running) return running;
-  const task = client.call("git.diff_file", {
-    workspace_id: workspaceId,
-    mode: scope,
-    path: entry.path,
-    old_path: entry.old_path,
-    kind: entry.kind,
-    snapshot_id: snapshotId,
-  }) as Promise<GitDiffFile>;
-  diffFileRequests.set(
-    requestKey,
-    task
-      .then((file) => {
-        if (!client.isCurrent()) {
-          throw new Error(t("connection changed during diff request"));
-        }
-        return file;
-      })
-      .finally(() => {
-        diffFileRequests.delete(requestKey);
-      }),
-  );
-  return diffFileRequests.get(requestKey)!;
+  // Shares a running request; the result lives in the panel's diff cache.
+  return inspectorQueries.query({
+    queryKey: scopedKey(
+      client,
+      "diff-file",
+      workspaceId,
+      scope,
+      diffEntryKey(entry),
+      revision,
+      snapshotId ?? "live",
+    ),
+    queryFn: async ({ signal }) => {
+      const file = (await client.call(
+        "git.diff_file",
+        {
+          workspace_id: workspaceId,
+          mode: scope,
+          path: entry.path,
+          old_path: entry.old_path,
+          kind: entry.kind,
+          snapshot_id: snapshotId,
+        },
+        { signal },
+      )) as GitDiffFile;
+      if (!client.isCurrent()) {
+        throw new Error(t("connection changed during diff request"));
+      }
+      return file;
+    },
+    gcTime: 0,
+    staleTime: 0,
+  });
 }
 
 function cacheDiffFile(

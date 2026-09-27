@@ -256,7 +256,6 @@ describe("connection-scoped file previews", () => {
       client: scopedClient,
       refresh: true,
     });
-    expect(refresh).toBe(initial);
     expect(calls).toBe(1);
 
     resolvePreview?.(preview("shared"));
