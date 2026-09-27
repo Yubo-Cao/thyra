@@ -1,3 +1,20 @@
+/* CodeMirror review annotation markers. */
+.cm-review-annotation-marker {
+  min-width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.cm-review-annotation-marker.is-stale {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
 .workspace-inspector .file-preview {
 }
 

@@ -150,7 +150,10 @@ const MAX_WEBGL_RECOVERIES = 3;
  * box drawing and Powerline glyphs and programming ligatures. Falls back to
  * xterm's DOM renderer when WebGL is unavailable or its context is lost.
  */
-export function attachTerminalRenderer(term: Terminal): () => void {
+export function attachTerminalRenderer(
+  term: Terminal,
+  onMetricsChange?: () => void,
+): () => void {
   let disposed = false;
   let addon: { dispose(): void; clearTextureAtlas(): void } | null = null;
   let joiner: number | null = null;
@@ -181,6 +184,10 @@ export function attachTerminalRenderer(term: Terminal): () => void {
           setGpu(false);
           return;
         }
+        // The GPU renderer measures cells itself. A terminal fitted with the
+        // DOM renderer's metrics before this chunk arrived (slow links) would
+        // otherwise keep a column count that no longer fills its container.
+        onMetricsChange?.();
         addon = webgl;
         webgl.onContextLoss(() => {
           webgl.dispose();
@@ -215,6 +222,7 @@ export function attachTerminalRenderer(term: Terminal): () => void {
     term.options.fontFamily = `${family} `;
     term.options.fontFamily = family;
     addon?.clearTextureAtlas();
+    onMetricsChange?.();
   };
   const fontSpec = () =>
     `${term.options.fontSize ?? 13}px "${TERMINAL_WEB_FONT_FAMILY}"`;

@@ -77,7 +77,7 @@ Releases must package/inspect every supported archive/checksum; see
 | `styles/tokens.css` | Theme variables and the geometry scale (`--ui-bar-height`, `--ui-row-height`, `--ui-control-height`, `--ui-token-height`) |
 | `styles/ui.css` | Styles for the shared primitives in `components/ui/` |
 | `styles/base.css` | Resets/shared primitives: modals, forms, badges, statuses, panels, loading |
-| `styles/vendor.css` | Shared syntax/diff overrides; consumer-specific overrides stay with components |
+| `styles/vendor.css` | Vendor overrides the first screen needs; syntax/diff overrides load with their lazy consumers (e.g. `components/syntaxHighlighting.css`) |
 | `styles/layout/*.css` | App-shell regions, imported once by `App.tsx` |
 | `components/<Name>.css` | Component-owned styles, imported/deleted with the component; same for `components/ui/` |
 
@@ -94,6 +94,10 @@ not in a separate mobile stylesheet. Shell/Suspense fallback styles must load
 before lazy content. Independently loaded features need explicit shared imports
 or global base styles; never depend on another feature having opened. Shared
 co-located CSS is valid when static imports cover every rendering path.
+
+The first screen (app shell, switchers, active terminal) is budgeted by `scripts/check-web-assets.mjs`.
+Menus, dialogs, pickers and panels load on first use through `lazyPanel` (`web/src/lazyWithReload.ts`) behind `LazyBoundary`/`Latched` (`components/LazyBoundary.tsx`); their triggers and the styles those need stay eager.
+Add likely-next surfaces to the idle prefetch list in `App.tsx`.
 
 ## Pages Website and Tutorial
 

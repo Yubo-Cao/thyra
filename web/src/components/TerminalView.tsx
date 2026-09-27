@@ -9,10 +9,7 @@ import {
   WORKSPACE_ANNOTATION_REQUEST_EVENT,
   type WorkspaceAnnotationRequest,
 } from "../workspaceResource";
-import {
-  AnnotationComposerPopover,
-  type AnnotationComposerDraft,
-} from "./AnnotationComposerPopover";
+import type { AnnotationComposerDraft } from "./AnnotationComposerPopover";
 import { t } from "../i18n";
 import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../layoutPreferences";
 import { resolveTerminalFontFamily, terminalFontOptions } from "../appearance";
@@ -148,11 +145,14 @@ import {
   type TerminalResolvedLink,
   type TerminalTouchLink,
 } from "../terminalLinkProvider";
+import type { TerminalFileLinkMenuState } from "./TerminalFileLinkMenu";
 import {
-  TerminalFileLinkMenu,
-  type TerminalFileLinkMenuState,
-} from "./TerminalFileLinkMenu";
-import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
+  annotationComposerPanel,
+  createWorkspaceDialog,
+  terminalComposerPanel,
+  terminalFileLinkMenuPanel,
+} from "./lazyPanels";
+import { LazyBoundary, LazyPendingStatus, Latched } from "./LazyBoundary";
 import { directoryPreviewName } from "../filesystemPaths";
 import { sanitizeTerminalHttpUrl, terminalFileUriPath } from "../terminalLinks";
 import {
@@ -185,7 +185,6 @@ import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
 import { applyTerminalTheme } from "../terminalThemes";
 import { paneHasAgentHistory } from "./agentSession";
 import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
-import { TerminalComposer } from "./TerminalComposer";
 import {
   TerminalVoiceButton,
   TerminalVoicePanel,
@@ -196,6 +195,13 @@ import {
   type TerminalFrameParts,
   terminalFrameText,
 } from "../../../shared/terminalFrame";
+
+// Surfaces a terminal opens on demand load with their first use, keeping
+// the terminal chunk down to what first output and input need.
+const TerminalComposer = terminalComposerPanel.Component;
+const AnnotationComposerPopover = annotationComposerPanel.Component;
+const TerminalFileLinkMenu = terminalFileLinkMenuPanel.Component;
+const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 
 function focusTerminalEndpoint(
   client: ConnectionClient,
@@ -1143,7 +1149,10 @@ export function TerminalView({
     term.loadAddon(new UnicodeGraphemesAddon());
     term.loadAddon(fit);
     term.open(container);
-    const detachRenderer = attachTerminalRenderer(term);
+    const detachRenderer = attachTerminalRenderer(term, () => {
+      const size = fitVisibleTerminal();
+      if (size) resizeSyncRef.current?.schedule(size);
+    });
     if (isApplePlatform()) {
       term.element?.classList.add("xterm-apple-row-spacing-fix");
     }
@@ -3404,22 +3413,26 @@ export function TerminalView({
     <>
       {fileLinkMenu
         ? createPortal(
-            <TerminalFileLinkMenu
-              state={fileLinkMenu}
-              client={connectionClient}
-              onClose={() => setFileLinkMenu(null)}
-              onPreview={openPathInInspector}
-              onWorkspace={setWorkspaceDirectory}
-            />,
+            <LazyBoundary fallback={<LazyPendingStatus />}>
+              <TerminalFileLinkMenu
+                state={fileLinkMenu}
+                client={connectionClient}
+                onClose={() => setFileLinkMenu(null)}
+                onPreview={openPathInInspector}
+                onWorkspace={setWorkspaceDirectory}
+              />
+            </LazyBoundary>,
             document.body,
           )
         : null}
-      <CreateWorkspaceDialog
-        open={workspaceDirectory !== null}
-        initialCwd={workspaceDirectory ?? ""}
-        initialName={directoryPreviewName(workspaceDirectory ?? "")}
-        onClose={() => setWorkspaceDirectory(null)}
-      />
+      <Latched open={workspaceDirectory !== null}>
+        <CreateWorkspaceDialog
+          open={workspaceDirectory !== null}
+          initialCwd={workspaceDirectory ?? ""}
+          initialName={directoryPreviewName(workspaceDirectory ?? "")}
+          onClose={() => setWorkspaceDirectory(null)}
+        />
+      </Latched>
       {reviewSelection &&
       !reviewSelection.composing &&
       touchHandles.length === 0
@@ -3627,52 +3640,54 @@ export function TerminalView({
             document.body,
           )
         : null}
-      <AnnotationComposerPopover
-        draft={reviewSelection?.composing ? reviewSelection : null}
-        onClose={() => {
-          touchSelectionRef.current?.reset();
-          setReviewSelection(null);
-        }}
-        onSave={(comment) => {
-          if (!reviewSelection || !connectionClient.isCurrent()) return;
-          const source = store
-            .get()
-            .panes.find(
-              (candidate) =>
-                candidate.pane_id === reviewSelection.paneId &&
-                candidate.workspace_id === reviewSelection.workspaceId &&
-                candidate.tab_id === reviewSelection.tabId &&
-                candidate.terminal_id === reviewSelection.terminalId,
-            );
-          if (!source) {
+      <Latched open={!!reviewSelection?.composing}>
+        <AnnotationComposerPopover
+          draft={reviewSelection?.composing ? reviewSelection : null}
+          onClose={() => {
+            touchSelectionRef.current?.reset();
             setReviewSelection(null);
-            return;
-          }
-          const annotation = createReviewAnnotation({
-            source: "terminal",
-            anchor: "quote",
-            paneId: source.pane_id,
-            title: reviewSelection.title,
-            quote: reviewSelection.quote,
-            comment,
-          }) as TerminalReviewAnnotation;
-          window.dispatchEvent(
-            new CustomEvent<WorkspaceAnnotationRequest>(
-              WORKSPACE_ANNOTATION_REQUEST_EVENT,
-              {
-                detail: {
-                  connectionId: connectionClient.connectionId,
-                  generation: connectionClient.generation,
-                  workspaceId: source.workspace_id,
-                  annotation,
+          }}
+          onSave={(comment) => {
+            if (!reviewSelection || !connectionClient.isCurrent()) return;
+            const source = store
+              .get()
+              .panes.find(
+                (candidate) =>
+                  candidate.pane_id === reviewSelection.paneId &&
+                  candidate.workspace_id === reviewSelection.workspaceId &&
+                  candidate.tab_id === reviewSelection.tabId &&
+                  candidate.terminal_id === reviewSelection.terminalId,
+              );
+            if (!source) {
+              setReviewSelection(null);
+              return;
+            }
+            const annotation = createReviewAnnotation({
+              source: "terminal",
+              anchor: "quote",
+              paneId: source.pane_id,
+              title: reviewSelection.title,
+              quote: reviewSelection.quote,
+              comment,
+            }) as TerminalReviewAnnotation;
+            window.dispatchEvent(
+              new CustomEvent<WorkspaceAnnotationRequest>(
+                WORKSPACE_ANNOTATION_REQUEST_EVENT,
+                {
+                  detail: {
+                    connectionId: connectionClient.connectionId,
+                    generation: connectionClient.generation,
+                    workspaceId: source.workspace_id,
+                    annotation,
+                  },
                 },
-              },
-            ),
-          );
-          touchSelectionRef.current?.reset();
-          setReviewSelection(null);
-        }}
-      />
+              ),
+            );
+            touchSelectionRef.current?.reset();
+            setReviewSelection(null);
+          }}
+        />
+      </Latched>
       <div className="terminal-shell">
         <div
           className={`terminal-pane-head ui-bar ${isActivePane ? "is-active" : ""}`}
@@ -4011,16 +4026,18 @@ export function TerminalView({
           </div>
         ) : null}
         {composerOpen ? (
-          <TerminalComposer
-            draftKey={composerDraftKey}
-            shortcutRows={mobileShortcuts}
-            onRunShortcut={runMobileShortcut}
-            shortcutDisabledReason={mobileShortcutReason}
-            onClose={() => setComposerOpen(false)}
-            onSubmit={submitTerminalComposer}
-            onUploadImage={uploadComposerImage}
-            onError={notifyComposerError}
-          />
+          <LazyBoundary fallback={<LazyPendingStatus />}>
+            <TerminalComposer
+              draftKey={composerDraftKey}
+              shortcutRows={mobileShortcuts}
+              onRunShortcut={runMobileShortcut}
+              shortcutDisabledReason={mobileShortcutReason}
+              onClose={() => setComposerOpen(false)}
+              onSubmit={submitTerminalComposer}
+              onUploadImage={uploadComposerImage}
+              onError={notifyComposerError}
+            />
+          </LazyBoundary>
         ) : null}
         {s.connectionPaused ? (
           <div className="terminal-loading" role="status" aria-live="polite">

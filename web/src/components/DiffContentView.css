@@ -1,3 +1,29 @@
+/* Pierre diff surface. */
+.pierre-diff-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--diff-bg);
+  scrollbar-gutter: stable;
+}
+
+.pierre-diff-scroll-content,
+.pierre-diff-surface,
+.pierre-diff-surface > diffs-container {
+  min-width: 0;
+  width: 100%;
+}
+
+.pierre-diff-surface {
+  overflow: hidden;
+  background: var(--diff-bg);
+}
+
+.pierre-diff-surface > diffs-container {
+  display: block;
+}
+
 .workspace-inspector.is-compact .diff-content-view {
   border: 0;
 }

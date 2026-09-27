@@ -183,4 +183,6 @@ export default {
   "Pause browser sync": "暂停浏览器同步",
   "Resume browser sync": "恢复浏览器同步",
   "Reconnect browser": "重新连接浏览器",
+  // Lazily loaded surfaces
+  "Could not load this part of Thyra": "无法加载 Thyra 的这一部分",
 } satisfies Record<string, string>;

@@ -4,16 +4,26 @@ import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
-// Lazy Monaco and voice-capture chunks (worklet, VAD, transport) add files.
-const maxFileCount = 170;
+// Lazy Monaco and voice-capture chunks (worklet, VAD, transport) add files,
+// as do per-surface lazy chunks and the small shared chunks Rollup splits
+// between them (single lucide icons, ui primitives).
+const maxFileCount = 240;
 // The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB.
 const maxTotalBytes = 16 * 1024 * 1024;
-// React 19 and HeroUI v3 (React Aria) set the floor; dialogs, menus and
-// other overlays should still load on demand to stay inside this budget.
-const maxInitialJsBytes = 1000 * 1024;
-const maxInitialJsGzipBytes = 300 * 1024;
-// HeroUI component styles are imported per component in styles/heroui.css.
-const maxInitialCssBytes = 420 * 1024;
+// The entry holds the app shell and switchers (workspace tree, agent list,
+// tab bar); React DOM is about 40% of it. Menus, dialogs, pickers and panels
+// load on demand (see components/lazyPanels.ts and LazyBoundary.tsx).
+const maxInitialJsBytes = 580 * 1024;
+const maxInitialJsGzipBytes = 182 * 1024;
+// HeroUI component styles and Tailwind utilities (styles/heroui.css) are
+// about 250 KiB of this; feature styles load with their lazy components.
+const maxInitialCssBytes = 348 * 1024;
+// The first screen also renders the active terminal, whose chunk (xterm.js
+// and its eager addons) loads right after the entry. The WebGL renderer
+// loads after first output and is not counted.
+const firstScreenFeature = "TerminalView";
+const maxFirstScreenJsGzipBytes = 330 * 1024;
+const maxFirstScreenCssBytes = 368 * 1024;
 // The bundled terminal font is sliced into many small unicode-range chunks that
 // load on demand (scripts/build-terminal-font.ts); budget it on its own.
 const fontDirectory = "assets/fonts";
@@ -39,6 +49,16 @@ export function initialAssetFiles(
   }
   for (const entry of entries) visit(entry);
   return [...files];
+}
+
+/** Entry points plus the terminal chunk that the first screen always loads. */
+export function firstScreenEntries(manifest) {
+  const entries = Object.keys(manifest).filter(
+    (key) => manifest[key].isEntry || manifest[key].name === firstScreenFeature,
+  );
+  if (!entries.some((key) => manifest[key].name === firstScreenFeature))
+    throw new Error(`Missing Vite feature chunk: ${firstScreenFeature}`);
+  return entries;
 }
 
 export function assertLazyGrammarAssets(manifest) {
@@ -109,24 +129,47 @@ async function checkAssets() {
     );
   }
   assertLazyGrammarAssets(manifest);
-  let jsBytes = 0;
-  let jsGzipBytes = 0;
-  let cssBytes = 0;
-  for (const file of initialAssetFiles(manifest)) {
-    const content = await readFile(`${publicRoot}/${file}`);
-    if (file.endsWith(".js")) {
-      jsBytes += content.length;
-      jsGzipBytes += gzipSync(content).length;
-    } else if (file.endsWith(".css")) {
-      cssBytes += content.length;
+  const measure = async (files) => {
+    let jsBytes = 0;
+    let jsGzipBytes = 0;
+    let cssBytes = 0;
+    for (const file of files) {
+      const content = await readFile(`${publicRoot}/${file}`);
+      if (file.endsWith(".js")) {
+        jsBytes += content.length;
+        jsGzipBytes += gzipSync(content).length;
+      } else if (file.endsWith(".css")) {
+        cssBytes += content.length;
+      }
     }
-  }
+    return { jsBytes, jsGzipBytes, cssBytes };
+  };
+  const { jsBytes, jsGzipBytes, cssBytes } = await measure(
+    initialAssetFiles(manifest),
+  );
+  const firstScreen = await measure(
+    initialAssetFiles(manifest, firstScreenEntries(manifest)),
+  );
   const checks = [
     ["files", fileCount, maxFileCount, 1, "files"],
     ["total", totalBytes, maxTotalBytes, 1024 * 1024, "MiB"],
     ["initial JS", jsBytes, maxInitialJsBytes, 1024, "KiB"],
     ["initial JS gzip", jsGzipBytes, maxInitialJsGzipBytes, 1024, "KiB"],
     ["initial CSS", cssBytes, maxInitialCssBytes, 1024, "KiB"],
+    [
+      "first screen JS gzip",
+      firstScreen.jsGzipBytes,
+      maxFirstScreenJsGzipBytes,
+      1024,
+      "KiB",
+    ],
+    [
+      "first screen CSS",
+      firstScreen.cssBytes,
+      maxFirstScreenCssBytes,
+      1024,
+      "KiB",
+    ],
     ["font files", fonts.fileCount, maxFontFileCount, 1, "files"],
     ["font total", fonts.totalBytes, maxFontBytes, 1024 * 1024, "MiB"],
   ];

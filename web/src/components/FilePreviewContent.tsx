@@ -74,6 +74,7 @@ import { lazyWithReload } from "../lazyWithReload";
 import { Button } from "./ui/Button";
 import { Token } from "./ui/Token";
 import { SegmentedControl } from "./ui/SegmentedControl";
+import "./syntaxHighlighting.css";
 import "./FilePreviewContent.css";
 
 const FileEditor = lazyWithReload("file-editor", () =>

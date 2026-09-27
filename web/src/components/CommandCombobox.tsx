@@ -1,6 +1,5 @@
 import {
   shortcutMatches,
-  shortcutTitle,
   shortcutLabel,
   useShortcutPreferences,
   getShortcutSnapshot,
@@ -16,14 +15,12 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  ChevronsUpDown,
   FileDiff,
   FileText,
   FolderPlus,
   FolderOpen,
   GitCommitHorizontal,
   GitBranch,
-  Keyboard,
   Maximize2,
   PanelTop,
   SplitSquareHorizontal,
@@ -56,6 +53,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { canCreateWorktree, worktreeCreationSource } from "../worktree";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
+import { CommandMenuTrigger, isCommandMenuShortcut } from "./CommandMenu";
 
 type TextAction =
   | { type: "rename-workspace"; workspace: Workspace }
@@ -80,12 +78,6 @@ type ActionGroupDefinition = {
   heading: string;
   actions: ActionDefinition[];
 };
-
-function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 function tabName(tab?: Tab) {
   if (!tab) return "";
@@ -251,17 +243,22 @@ export function runCommandNumberShortcut<T>(
   return true;
 }
 
+export type CommandComboboxProps = {
+  onOpenFileExplorer?: (workspaceId?: string) => void;
+  onOpenFile?: (workspaceId: string, entry: FileExplorerEntry) => void;
+  onOpenDiffViewer?: (workspaceId?: string) => void;
+  onOpenProjectLauncher?: () => void;
+  /** Open on mount: the lazy shell mounts this on the first open request. */
+  defaultOpen?: boolean;
+};
+
 export function CommandCombobox({
   onOpenFileExplorer,
   onOpenFile,
   onOpenDiffViewer,
   onOpenProjectLauncher,
-}: {
-  onOpenFileExplorer?: (workspaceId?: string) => void;
-  onOpenFile?: (workspaceId: string, entry: FileExplorerEntry) => void;
-  onOpenDiffViewer?: (workspaceId?: string) => void;
-  onOpenProjectLauncher?: () => void;
-}) {
+  defaultOpen = false,
+}: CommandComboboxProps) {
   useShortcutPreferences();
   const s = useStoreSelector(
     (state) => ({
@@ -276,7 +273,7 @@ export function CommandCombobox({
     }),
     shallowEqual,
   );
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
   const [selectedActionValue, setSelectedActionValue] = useState("");
   const [selectedActionSearch, setSelectedActionSearch] = useState("");
@@ -356,19 +353,7 @@ export function CommandCombobox({
   );
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // The pane switcher owns K even when its held modifiers match this
-      // shortcut. Both handlers run on window, so listener order cannot decide.
-      if (
-        e.defaultPrevented ||
-        document.querySelector(".modal-backdrop, .pane-jump-backdrop")
-      )
-        return;
-      if (!shortcutMatches(e, "command.menu") || e.repeat) return;
-      if (
-        isTypingTarget(e.target) &&
-        !(e.target as HTMLElement).closest(".command-popover, .xterm")
-      )
-        return;
+      if (!isCommandMenuShortcut(e)) return;
       e.preventDefault();
       e.stopPropagation();
       setOpen((value) => {
@@ -1036,16 +1021,7 @@ export function CommandCombobox({
     <>
       <Popover open={open} onOpenChange={setCommandOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
-            className={`topbar-button command-trigger ${open ? "is-active" : ""}`}
-            aria-label={t("Open command menu")}
-            title={shortcutTitle(t("Open command menu"), "command.menu")}
-          >
-            <Keyboard size={15} />
-            <span>{t("Actions")}</span>
-            <ChevronsUpDown size={14} />
-          </button>
+          <CommandMenuTrigger active={open} />
         </PopoverTrigger>
         <PopoverContent
           className="command-popover"

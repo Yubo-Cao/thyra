@@ -142,6 +142,17 @@
   box-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 28%, transparent);
 }
 
+.config-menu {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* A topbar menu whose content chunk is still downloading. */
+.topbar-button[aria-busy="true"] {
+  cursor: progress;
+}
+
 .menu-update-dot {
   position: absolute;
   top: 4px;

@@ -1,6 +1,5 @@
 import {
   Check,
-  ChevronDown,
   CircleAlert,
   Pause,
   Pencil,
@@ -38,6 +37,11 @@ import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { ConfirmDialog } from "./ModalDialogs";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  ConnectionSwitcherTrigger,
+  type MenuFocus,
+  runtimeStateClass,
+} from "./ConnectionSwitcherTrigger";
 import "./ConnectionSwitcher.css";
 
 type Draft = {
@@ -78,10 +82,6 @@ function sshDraftFor(connection?: ConnectionSummary): SshDraft {
     remoteClientSocketPath: connection?.remote_client_socket_path ?? "",
     autoConnect: connection?.auto_connect ?? true,
   };
-}
-
-function runtimeStateClass(connection: Pick<ConnectionSummary, "state">) {
-  return `connection-runtime-${connection.state}`;
 }
 
 const DIALOG_FOCUSABLE_SELECTOR = [
@@ -1084,22 +1084,25 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function ConnectionSwitcher() {
+export type ConnectionSwitcherProps = {
+  /** Open on mount with this focus: the lazy shell mounts the menu on its
+   *  first open request. */
+  defaultOpen?: MenuFocus;
+};
+
+export function ConnectionSwitcher({ defaultOpen }: ConnectionSwitcherProps) {
   const state = useStoreSelector(
     (snapshot) => ({
       activeConnectionId: snapshot.activeConnectionId,
-      connectionPaused: snapshot.connectionPaused,
       connections: snapshot.connections,
-      defaultConnectionId: snapshot.defaultConnectionId,
-      status: snapshot.status,
     }),
     shallowEqual,
   );
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [manageOpen, setManageOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const initialMenuFocus = useRef<"active" | "first" | "last">("active");
+  const initialMenuFocus = useRef<MenuFocus>(defaultOpen ?? "active");
   const openingManager = useRef(false);
   const menuExitFocus = useRef<HTMLElement | null>(null);
   const selectionRequestRef = useRef(0);
@@ -1107,27 +1110,6 @@ export function ConnectionSwitcher() {
     setManageOpen(false);
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
-  const active =
-    state.connections.find(
-      (connection) => connection.id === state.activeConnectionId,
-    ) ??
-    ({
-      id: state.activeConnectionId,
-      label:
-        state.activeConnectionId === "legacy-default"
-          ? t("Default")
-          : state.activeConnectionId,
-      source: "legacy-config",
-      is_default: state.defaultConnectionId === state.activeConnectionId,
-      state: "disconnected",
-      generation: 0,
-    } satisfies ConnectionSummary);
-
-  const browserWarning = state.connectionPaused
-    ? t("Browser sync paused")
-    : state.status === "disconnected"
-      ? t("Browser disconnected from bridge")
-      : null;
 
   const menuItems = () =>
     Array.from(
@@ -1192,14 +1174,9 @@ export function ConnectionSwitcher() {
       >
         <div className="connection-switcher">
           <PopoverTrigger asChild>
-            <button
+            <ConnectionSwitcherTrigger
               ref={triggerRef}
-              type="button"
-              className={`connection-switcher-trigger ${open ? "is-active" : ""} ${browserWarning ? "has-browser-warning" : ""}`}
-              aria-label={`${active.label}, ${connectionTypeLabel(active)}, ${connectionLifecycleLabel(active.state)}${browserWarning ? `, ${browserWarning}` : ""}`}
-              title={browserWarning ?? undefined}
-              aria-haspopup="menu"
-              aria-expanded={open}
+              active={open}
               onKeyDown={(event) => {
                 if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
                   return;
@@ -1209,24 +1186,7 @@ export function ConnectionSwitcher() {
                   event.key === "ArrowUp" ? "last" : "first";
                 setOpen(true);
               }}
-            >
-              <span
-                className={`connection-runtime-dot ${runtimeStateClass(active)}`}
-              />
-              <span className="connection-switcher-label">{active.label}</span>
-              {browserWarning ? (
-                <CircleAlert
-                  className="connection-switcher-warning"
-                  size={13}
-                  aria-hidden="true"
-                />
-              ) : null}
-              <span className="connection-switcher-meta">
-                {connectionTypeLabel(active)} /{" "}
-                {connectionLifecycleLabel(active.state)}
-              </span>
-              <ChevronDown size={13} />
-            </button>
+            />
           </PopoverTrigger>
           <PopoverContent
             ref={menuRef}

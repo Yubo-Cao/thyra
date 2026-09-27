@@ -19,6 +19,8 @@ import { AgentStatusIcon } from "./AgentStatusIcon";
 import { observeClampedContextMenu } from "./contextMenuPosition";
 import { TREE_DEPTH_INDENT } from "./treeIndent";
 import { Token } from "./ui/Token";
+// AgentContextMenu shares the workspace menu styles.
+import "./ContextMenu.css";
 import "./WorkspaceAgentRows.css";
 
 const LONG_PRESS_MS = 550;

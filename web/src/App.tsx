@@ -72,14 +72,29 @@ import { AgentIcon } from "./components/AgentIcon";
 import { paneHasAgentHistory } from "./components/agentSession";
 import { CloseButton } from "./components/CloseButton";
 import { focusIfUnchanged } from "./components/dialogFocus";
-import { CommandCombobox } from "./components/CommandCombobox";
-import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
-import { ConnectionSwitcher } from "./components/ConnectionSwitcher";
+import { CommandMenu, commandComboboxPanel } from "./components/CommandMenu";
+import {
+  CONFIG_MENU_ID,
+  ConfigMenu,
+  configMenuPanel,
+} from "./components/ConfigMenu";
+import {
+  connectionSwitcherPanel,
+  LazyConnectionSwitcher,
+} from "./components/ConnectionSwitcherTrigger";
+import { themedSelectPanel } from "./components/LazyThemedSelect";
+import {
+  annotationComposerPanel,
+  createWorkspaceDialog,
+  terminalComposerPanel,
+  terminalFileLinkMenuPanel,
+} from "./components/lazyPanels";
+import { prefetchWhenIdle } from "./idlePrefetch";
 import {
   type ActiveDiffSelection,
   clearDiffViewerResourceCache,
   prefetchDiffViewerWorkspace,
-} from "./components/DiffViewerPanel";
+} from "./components/diffViewerResources";
 import { clearDiffContentResourceState } from "./components/diffContentState";
 import {
   clearFileExplorerResourceCache,
@@ -87,14 +102,20 @@ import {
   requestFilePreview,
 } from "./components/fileExplorerResources";
 import { type ActiveFilePreviewSelection } from "./components/FilePreviewContent";
-import { AnnotationPanel } from "./components/AnnotationPanel";
 import { GlobalTooltip } from "./components/GlobalTooltip";
-import { MobileTabSheet } from "./components/MobileTabSheet";
 import { requestClosePane, requestCloseTab, TabBar } from "./components/TabBar";
 import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
-import { WorkspaceTree } from "./components/WorkspaceTree";
+import {
+  WorkspaceTree,
+  workspaceContextMenu,
+} from "./components/WorkspaceTree";
 import { isIosDevice } from "./downloadFile";
-import { lazyWithReload } from "./lazyWithReload";
+import { lazyPanel, lazyWithReload } from "./lazyWithReload";
+import {
+  Latched,
+  LazyBoundary,
+  LazyPendingStatus,
+} from "./components/LazyBoundary";
 import {
   LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -192,11 +213,45 @@ import "./styles/layout/sidebar.css";
 import "./styles/layout/toast.css";
 import "./styles/layout/mobile-nav.css";
 
-const WorkspaceInspectorHost = lazyWithReload("workspace-inspector", () =>
-  import("./components/WorkspaceInspectorHost").then((module) => ({
-    default: module.WorkspaceInspectorHost,
-  })),
+const workspaceInspectorPanel = lazyPanel("workspace-inspector", () =>
+  import("./components/WorkspaceInspectorHost").then(
+    (module) => module.WorkspaceInspectorHost,
+  ),
 );
+const WorkspaceInspectorHost = workspaceInspectorPanel.Component;
+
+// Surfaces that open on demand; Latched keeps them mounted afterwards.
+const annotationPanel = lazyPanel("annotation-panel", () =>
+  import("./components/AnnotationPanel").then(
+    (module) => module.AnnotationPanel,
+  ),
+);
+const AnnotationPanel = annotationPanel.Component;
+const mobileTabSheet = lazyPanel("mobile-tab-sheet", () =>
+  import("./components/MobileTabSheet").then((module) => module.MobileTabSheet),
+);
+const MobileTabSheet = mobileTabSheet.Component;
+
+// Once the terminal is up, fetch the surfaces people open next, most likely
+// first, one chunk per idle period (skipped under Data Saver and on 2G).
+const IDLE_PREFETCH_DELAY_MS = 3000;
+function idlePrefetchLoaders(mobile: boolean) {
+  return [
+    ...(mobile ? [terminalComposerPanel.preload] : []),
+    commandComboboxPanel.preload,
+    configMenuPanel.preload,
+    connectionSwitcherPanel.preload,
+    workspaceContextMenu.preload,
+    themedSelectPanel.preload,
+    annotationComposerPanel.preload,
+    terminalFileLinkMenuPanel.preload,
+    createWorkspaceDialog.preload,
+    projectLauncherPanel.preload,
+    ...(mobile ? [mobileTabSheet.preload] : [terminalComposerPanel.preload]),
+    workspaceInspectorPanel.preload,
+    annotationPanel.preload,
+  ];
+}
 
 const MIN_SIDEBAR = 180;
 const MAX_SIDEBAR = 560;
@@ -210,11 +265,12 @@ const LazyTerminalView = lazyWithReload("terminal-view", () =>
     default: module.TerminalView,
   })),
 );
-const LazyProjectLauncher = lazyWithReload("project-launcher", () =>
-  import("./components/ProjectLauncher").then((module) => ({
-    default: module.ProjectLauncher,
-  })),
+const projectLauncherPanel = lazyPanel("project-launcher", () =>
+  import("./components/ProjectLauncher").then(
+    (module) => module.ProjectLauncher,
+  ),
 );
+const LazyProjectLauncher = projectLauncherPanel.Component;
 const LazyCollaborationBar = lazyWithReload("collaboration-bar", () =>
   import("./components/CollaborationBar").then((module) => ({
     default: module.CollaborationBar,
@@ -2623,6 +2679,22 @@ export default function App() {
   useEffect(() => {
     store.init();
   }, []);
+  const idlePrefetchStartedRef = useRef(false);
+  const mobileRef = useRef(mobile);
+  mobileRef.current = mobile;
+  const terminalConnected = s.status === "connected";
+  useEffect(() => {
+    if (!terminalConnected || idlePrefetchStartedRef.current) return;
+    const timer = window.setTimeout(() => {
+      idlePrefetchStartedRef.current = true;
+      // The terminal chunk is already on its way; start after it arrives.
+      void import("./components/TerminalView").then(
+        () => void prefetchWhenIdle(idlePrefetchLoaders(mobileRef.current)),
+        () => undefined,
+      );
+    }, IDLE_PREFETCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [terminalConnected]);
   useEffect(() => {
     if (mobile && mobileView === "annotations")
       setMobileControlsCollapsed(false);
@@ -3528,14 +3600,14 @@ export default function App() {
             <span className="brand-title">Thyra</span>
             <span className="brand-version">v{packageJson.version}</span>
           </div>
-          <ConnectionSwitcher />
+          <LazyConnectionSwitcher />
           <Suspense fallback={null}>
             <LazyCollaborationBar />
           </Suspense>
         </div>
         <div className="topbar-actions">
           <div className="topbar-command-group">
-            <CommandCombobox
+            <CommandMenu
               key={`${resourceUiKey}:commands`}
               onOpenFileExplorer={openFileExplorer}
               onOpenFile={openFileExplorerFile}
@@ -3662,18 +3734,20 @@ export default function App() {
         </button>
       </nav>
       {projectLauncherOpen ? (
-        <Suspense fallback={null}>
+        <LazyBoundary fallback={<LazyPendingStatus />}>
           <LazyProjectLauncher
             onClose={() => setProjectLauncherOpen(false)}
             onLaunched={activateTerminalSurface}
           />
-        </Suspense>
+        </LazyBoundary>
       ) : null}
-      <MobileTabSheet
-        open={mobile && mobileTabSheetOpen}
-        onClose={() => setMobileTabSheetOpen(false)}
-        onShowSession={activateTerminalSurface}
-      />
+      <Latched open={mobile && mobileTabSheetOpen}>
+        <MobileTabSheet
+          open={mobile && mobileTabSheetOpen}
+          onClose={() => setMobileTabSheetOpen(false)}
+          onShowSession={activateTerminalSurface}
+        />
+      </Latched>
       <button
         type="button"
         className={`mobile-workspace-shortcut ${
@@ -4079,49 +4153,55 @@ export default function App() {
                 </div>
               ) : null}
             </div>
-            <AnnotationPanel
+            <Latched
               key={annotationStorageKey}
               open={annotationsOpen && !!annotationScope}
-              annotations={annotations}
-              floating={annotationsFloating && !mobile && !!annotationScope}
-              onToggleFloating={mobile ? undefined : toggleAnnotationsFloating}
-              agentPanes={annotationAgentPanes}
-              preferredPaneId={annotationPreferredPaneId}
-              busy={annotationDeliveryBusy}
-              focusedAnnotationId={focusedAnnotationId}
-              onClose={closeAnnotations}
-              onUpdateComment={(id, comment) =>
-                commitAnnotations((current) =>
-                  current.map((annotation) =>
-                    annotation.id === id
-                      ? { ...annotation, comment }
-                      : annotation,
-                  ),
-                )
-              }
-              onDelete={(id) => {
-                commitAnnotations((current) =>
-                  current.filter((annotation) => annotation.id !== id),
-                );
-                if (focusedAnnotationId === id) setFocusedAnnotationId(null);
-              }}
-              onMove={(id, delta) =>
-                commitAnnotations((current) =>
-                  moveReviewAnnotation(current, id, delta),
-                )
-              }
-              onGoToAgent={
-                deliveredPaneId &&
-                annotationAgentPanes.some(
-                  (pane) => pane.pane_id === deliveredPaneId,
-                )
-                  ? goToDeliveredAgent
-                  : undefined
-              }
-              onClear={clearAnnotations}
-              onCopy={() => void copyFeedback()}
-              onSend={(paneId) => void sendFeedback(paneId)}
-            />
+            >
+              <AnnotationPanel
+                open={annotationsOpen && !!annotationScope}
+                annotations={annotations}
+                floating={annotationsFloating && !mobile && !!annotationScope}
+                onToggleFloating={
+                  mobile ? undefined : toggleAnnotationsFloating
+                }
+                agentPanes={annotationAgentPanes}
+                preferredPaneId={annotationPreferredPaneId}
+                busy={annotationDeliveryBusy}
+                focusedAnnotationId={focusedAnnotationId}
+                onClose={closeAnnotations}
+                onUpdateComment={(id, comment) =>
+                  commitAnnotations((current) =>
+                    current.map((annotation) =>
+                      annotation.id === id
+                        ? { ...annotation, comment }
+                        : annotation,
+                    ),
+                  )
+                }
+                onDelete={(id) => {
+                  commitAnnotations((current) =>
+                    current.filter((annotation) => annotation.id !== id),
+                  );
+                  if (focusedAnnotationId === id) setFocusedAnnotationId(null);
+                }}
+                onMove={(id, delta) =>
+                  commitAnnotations((current) =>
+                    moveReviewAnnotation(current, id, delta),
+                  )
+                }
+                onGoToAgent={
+                  deliveredPaneId &&
+                  annotationAgentPanes.some(
+                    (pane) => pane.pane_id === deliveredPaneId,
+                  )
+                    ? goToDeliveredAgent
+                    : undefined
+                }
+                onClear={clearAnnotations}
+                onCopy={() => void copyFeedback()}
+                onSend={(paneId) => void sendFeedback(paneId)}
+              />
+            </Latched>
           </div>
         </main>
       </div>

@@ -809,6 +809,35 @@ textarea:where(:not([data-rac])):focus {
   color: var(--danger-text);
 }
 
+/* Pending state while a lazily loaded surface's chunk downloads. It appears
+   only when the download is noticeable, so fast links never see it. */
+.lazy-pending-status {
+  position: fixed;
+  z-index: 6000;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--shell-panel);
+  box-shadow: var(--shadow-lg);
+  color: var(--muted);
+  font-size: var(--ui-font-size-xs);
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: lazy-pending-in 0.12s ease 0.2s both;
+}
+
+@keyframes lazy-pending-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Shared inline spinner (hooks, auto-sync, lifecycle dialogs). */
 .hook-loading-mark {
   width: 14px;

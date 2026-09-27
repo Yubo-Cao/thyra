@@ -9,9 +9,11 @@ import {
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ContextMenu, type ContextMenuState } from "./ContextMenu";
-import { ThemedSelect } from "./ThemedSelect";
-import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
+import type { ContextMenuState } from "./ContextMenu";
+import { LazyThemedSelect } from "./LazyThemedSelect";
+import { Latched } from "./LazyBoundary";
+import { createWorkspaceDialog } from "./lazyPanels";
+import { lazyPanel } from "../lazyWithReload";
 import { buildWorkspaceHierarchy, worktreeCreationSource } from "../worktree";
 import {
   ArrowDownWideNarrow,
@@ -189,6 +191,14 @@ function GitStatusBadges({
     </span>
   );
 }
+
+// Menus and dialogs load on first use; Latched keeps them mounted afterwards
+// so follow-up dialogs survive the menu closing.
+export const workspaceContextMenu = lazyPanel("workspace-context-menu", () =>
+  import("./ContextMenu").then((module) => module.ContextMenu),
+);
+const ContextMenu = workspaceContextMenu.Component;
+const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 
 export function WorkspaceTree({
   agentsFirst = false,
@@ -555,10 +565,12 @@ export function WorkspaceTree({
           </div>
           <AgentLayoutControl value={agentLayout} onChange={setAgentLayout} />
         </div>
-        <CreateWorkspaceDialog
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-        />
+        <Latched open={createOpen}>
+          <CreateWorkspaceDialog
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+          />
+        </Latched>
       </>
     );
   }
@@ -662,7 +674,7 @@ export function WorkspaceTree({
         <div className="panel-head">
           <h2>{t("Agents")}</h2>
           <div className="panel-actions agent-list-controls">
-            <ThemedSelect
+            <LazyThemedSelect
               className="agent-list-control"
               icon={<ArrowDownWideNarrow size={15} aria-hidden="true" />}
               align="end"
@@ -684,7 +696,7 @@ export function WorkspaceTree({
                 }));
               }}
             />
-            <ThemedSelect
+            <LazyThemedSelect
               className={`agent-list-control ${agentListPreferences.grouping !== "none" ? "is-active" : ""}`}
               icon={<Layers size={15} aria-hidden="true" />}
               align="end"
@@ -797,14 +809,16 @@ export function WorkspaceTree({
     <>
       {agentsFirst ? agentsPanel : workspacePanel}
       {agentsFirst ? workspacePanel : agentsPanel}
-      <ContextMenu
-        state={menu}
-        pinnedWorkspaceKeys={pinnedWorkspaceSet}
-        onPinnedChange={updatePinnedWorkspace}
-        onBrowseFiles={onBrowseFiles}
-        onReviewChanges={onReviewChanges}
-        onClose={() => setMenu(null)}
-      />
+      <Latched open={!!menu}>
+        <ContextMenu
+          state={menu}
+          pinnedWorkspaceKeys={pinnedWorkspaceSet}
+          onPinnedChange={updatePinnedWorkspace}
+          onBrowseFiles={onBrowseFiles}
+          onReviewChanges={onReviewChanges}
+          onClose={() => setMenu(null)}
+        />
+      </Latched>
       <AgentContextMenu
         state={agentMenu}
         onClose={() => setAgentMenu(null)}
@@ -851,10 +865,12 @@ export function WorkspaceTree({
           }
         }}
       />
-      <CreateWorkspaceDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-      />
+      <Latched open={createOpen}>
+        <CreateWorkspaceDialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+        />
+      </Latched>
       <WorktreeLifecycleDialog
         open={!!lifecycleWorkspaceId}
         workspaceId={lifecycleWorkspaceId}

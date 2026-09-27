@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertLazyGrammarAssets,
+  firstScreenEntries,
   initialAssetFiles,
 } from "./check-web-assets.mjs";
 
@@ -57,6 +58,21 @@ describe("initial web asset budget", () => {
     expect(() => assertLazyGrammarAssets({})).toThrow(
       "Missing Vite feature chunk",
     );
+  });
+
+  test("the first screen adds the terminal chunk to the entries", () => {
+    const manifest = {
+      "index.html": { isEntry: true, file: "app.js", dynamicImports: ["t"] },
+      t: { name: "TerminalView", file: "terminal.js", imports: ["x"] },
+      x: { file: "xterm.js", css: ["xterm.css"] },
+      other: { name: "ConfigMenuPanel", file: "menu.js" },
+    };
+    expect(
+      initialAssetFiles(manifest, firstScreenEntries(manifest)).sort(),
+    ).toEqual(["app.js", "terminal.js", "xterm.css", "xterm.js"]);
+    expect(() =>
+      firstScreenEntries({ "index.html": manifest["index.html"] }),
+    ).toThrow("Missing Vite feature chunk: TerminalView");
   });
 
   test("fails closed on missing entry points or missing eager chunks", () => {

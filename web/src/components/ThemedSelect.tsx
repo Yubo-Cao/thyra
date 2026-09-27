@@ -1,13 +1,26 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { cn } from "../utils";
 import { Command, CommandItem, CommandList } from "./ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ThemedSelectTrigger } from "./LazyThemedSelect";
 import "./ThemedSelect.css";
 
 export type ThemedSelectOption = {
   value: string;
   label: string;
+};
+
+export type ThemedSelectProps = {
+  value: string;
+  options: ThemedSelectOption[];
+  onChange: (value: string) => void;
+  icon?: ReactNode;
+  className?: string;
+  align?: "start" | "center" | "end";
+  "aria-label"?: string;
+  title?: string;
+  /** Open on mount: LazyThemedSelect mounts this on the first open request. */
+  defaultOpen?: boolean;
 };
 
 // Themed replacement for the native <select>: cmdk provides arrow/Home/End/
@@ -22,19 +35,10 @@ export function ThemedSelect({
   align = "start",
   "aria-label": ariaLabel,
   title,
-}: {
-  value: string;
-  options: ThemedSelectOption[];
-  onChange: (value: string) => void;
-  icon?: ReactNode;
-  className?: string;
-  align?: "start" | "center" | "end";
-  "aria-label"?: string;
-  title?: string;
-}) {
-  const [open, setOpen] = useState(false);
+  defaultOpen = false,
+}: ThemedSelectProps) {
+  const [open, setOpen] = useState(defaultOpen);
   const [highlighted, setHighlighted] = useState(value);
-  const current = options.find((option) => option.value === value);
   return (
     <Popover
       open={open}
@@ -44,21 +48,14 @@ export function ThemedSelect({
       }}
     >
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn("themed-select-trigger", className)}
+        <ThemedSelectTrigger
+          value={value}
+          options={options}
+          icon={icon}
+          className={className}
           aria-label={ariaLabel}
           title={title}
-        >
-          {icon ?? (
-            <>
-              <span className="themed-select-value">
-                {current?.label ?? value}
-              </span>
-              <ChevronDown size={13} aria-hidden="true" />
-            </>
-          )}
-        </button>
+        />
       </PopoverTrigger>
       <PopoverContent className="themed-select-content" align={align}>
         <Command
