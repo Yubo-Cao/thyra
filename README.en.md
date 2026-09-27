@@ -112,6 +112,7 @@ The process must stay running and reachable. **PWA mode is not offline access.**
   ([Markdown](./docs/TUTORIAL.md)): local work, mobile, and private remote access.
 - [Features and shortcuts](./FEATURES.md)
 - [Deployment](./docs/DEPLOYMENT.md): installation, configuration, services, builds.
+- [MCP server](./docs/DEPLOYMENT.md#mcp-server): read-only workspace access for Claude Code, Codex, and other agents.
 - [Architecture](./docs/ARCHITECTURE.md): system contracts.
 - [Security](./SECURITY.md) and [contributing](./CONTRIBUTING.md).
 
