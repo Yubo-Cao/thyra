@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useRef } from "react";
 import { t } from "../i18n";
-import { focusDialogElement } from "./dialogFocus";
 import {
-  AgentMessageContent,
-  agentMessageRoleLabel,
+  AgentMessageActions,
+  AgentMessageBody,
+  AgentMessageMeta,
+  agentMessageTitle,
+  useAgentMessageViewMode,
   type AgentMessage,
 } from "./AgentMessageContent";
+import { Dialog } from "./ui/Dialog";
 import "./AgentMessageDialog.css";
 
 export function AgentMessageDialog({
@@ -16,47 +18,45 @@ export function AgentMessageDialog({
   message: AgentMessage | null;
   onClose: () => void;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const messageId = message?.id ?? null;
+  // Keep the last message so the dialog's exit animation still shows it.
+  const lastMessageRef = useRef(message);
+  if (message) lastMessageRef.current = message;
+  const shown = lastMessageRef.current;
+  if (!shown) return null;
+  return <MessageDialog message={shown} open={!!message} onClose={onClose} />;
+}
 
-  useEffect(() => {
-    if (messageId === null) return;
-    const cancelFocus = focusDialogElement(dialogRef.current);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
-    };
-  }, [messageId, onClose]);
-
-  if (!message) return null;
-
-  // Render at the document root: on mobile the transformed .app box becomes
-  // the containing block for fixed elements, and the inspector slot's stacking
-  // context (z-index 3) would leave the topbar (z-index 120) painted over the
-  // dialog. A body-level backdrop escapes both.
-  return createPortal(
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        ref={dialogRef}
-        className="modal agent-message-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Full {role} message", {
-          role: agentMessageRoleLabel(message).toLowerCase(),
-        })}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <AgentMessageContent message={message} onClose={onClose} />
-      </div>
-    </div>,
-    document.body,
+function MessageDialog({
+  message,
+  open,
+  onClose,
+}: {
+  message: AgentMessage;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [viewMode, toggleViewMode] = useAgentMessageViewMode(message);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={agentMessageTitle(message)}
+      description={<AgentMessageMeta message={message} />}
+      headerActions={
+        <AgentMessageActions
+          message={message}
+          viewMode={viewMode}
+          onToggleViewMode={toggleViewMode}
+        />
+      }
+      closeLabel={t("Close message")}
+      size="lg"
+      className="agent-message-dialog"
+      bodyClassName="agent-message-dialog-body"
+    >
+      <AgentMessageBody message={message} viewMode={viewMode} />
+    </Dialog>
   );
 }

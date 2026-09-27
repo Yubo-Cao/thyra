@@ -1,34 +1,39 @@
-.agent-session-modal {
-  width: min(1040px, 100%);
-  height: min(820px, calc(100dvh - 36px), 100%);
+.agent-session-dialog.ui-dialog {
+  --ui-dialog-width: 1040px;
+  height: min(820px, 100%);
+}
+
+/* The body is a column: the overview and tabs stay put while the timeline
+   or code preview below them scrolls. */
+.agent-session-dialog .agent-session-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+  padding-top: 8px;
 }
 
-.agent-session-modal-head {
-  flex: 0 0 auto;
-}
-
-.agent-session-identity {
+/* Workspace, pane name, and pane ID under an agent icon. */
+.agent-pane-identity {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 9px;
-}
-
-.agent-session-identity > div {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.agent-session-identity span {
-  overflow: hidden;
+  gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--ui-font-size-xs);
+}
+
+.agent-pane-identity > span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-pane-identity > span + span::before {
+  content: "·";
+  margin-right: 6px;
 }
 
 .agent-session-overview {
@@ -80,7 +85,7 @@
   flex: 0 0 auto;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 24px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
@@ -102,111 +107,6 @@
   font-family: var(--mono-font);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.agent-session-command {
-  display: block;
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  overflow-x: auto;
-  color: var(--text);
-  font-family: var(--mono-font);
-  font-size: 12px;
-  white-space: nowrap;
-  background: var(--code-bg);
-  border: 0;
-}
-
-.agent-session-actions {
-  position: relative;
-  z-index: 2;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  background: var(--shell-panel);
-}
-
-.agent-session-mode-switch {
-  min-width: 0;
-  display: inline-flex;
-  flex: 0 1 auto;
-  overflow: hidden;
-  border: 0;
-  background: var(--input-bg);
-}
-
-.agent-session-mode-switch button {
-  min-width: 82px;
-  justify-content: center;
-  padding: 7px 10px;
-  color: var(--muted);
-  background: transparent;
-  border: none;
-}
-
-.agent-session-mode-switch button.is-active {
-  color: var(--text-strong);
-  background: var(--accent-soft);
-}
-
-.agent-session-export-menu {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.agent-session-export-menu > summary {
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 11px;
-  color: var(--text);
-  font-size: 12px;
-  list-style: none;
-  background: var(--panel);
-  border: 0;
-  cursor: pointer;
-}
-
-.agent-session-export-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-session-export-menu[open] > summary,
-.agent-session-export-menu > summary:hover {
-  color: var(--text-strong);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.agent-session-export-menu > div {
-  position: absolute;
-  top: calc(100% + 5px);
-  right: 0;
-  z-index: 4;
-  width: 132px;
-  display: grid;
-  gap: 3px;
-  padding: 5px;
-  background: var(--panel);
-  border: 0;
-  box-shadow: var(--shadow-lg);
-}
-
-.agent-session-export-menu button {
-  justify-content: flex-start;
-  padding: 7px 8px;
-  color: var(--text);
-  text-align: left;
-  background: transparent;
-  border: none;
-}
-
-.agent-session-export-menu button:hover {
-  color: var(--text-strong);
-  background: var(--accent-soft);
 }
 
 .agent-session-state {
@@ -245,21 +145,6 @@
   flex: 1 1 auto;
   display: flex;
   overflow: hidden;
-}
-
-.agent-session-preview {
-  flex: 1 1 auto;
-  min-height: 240px;
-  margin: 0;
-  overflow: auto;
-  padding: 12px;
-  color: var(--text-code);
-  font-family: var(--mono-font);
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre;
-  background: var(--input-bg);
-  border: 0;
 }
 
 .agent-session-timeline {
@@ -447,22 +332,20 @@
   font-size: 10px;
 }
 
+.agent-session-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.agent-session-tabs {
+  flex: 1 1 auto;
+}
+
 /* Keep mobile styling in sync with the saved layout and URL override. */
 :where(html[data-layout="mobile"]) {
-  .agent-session-modal {
-    width: 100%;
-    height: min(
-      calc(
-        100dvh -
-        28px -
-        env(safe-area-inset-top, 0px) -
-        env(safe-area-inset-bottom, 0px)
-      ),
-      100%
-    );
-    max-height: min(calc(100vh - 28px), 100%);
-  }
-
   .agent-session-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -477,33 +360,15 @@
   }
 
   .agent-session-file-row {
-    grid-template-columns: minmax(0, 1fr) 24px;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .agent-session-file-row > span {
     display: none;
   }
 
-  .agent-session-actions {
-    align-items: stretch;
-  }
-
-  .agent-session-mode-switch {
-    flex: 1 1 auto;
-  }
-
-  .agent-session-mode-switch button {
-    min-width: 0;
-    flex: 1 1 0;
-  }
-
   .agent-session-exchange {
     grid-template-columns: minmax(0, 1fr);
     gap: 5px;
-  }
-
-  .agent-session-preview {
-    min-height: 180px;
-    font-size: 11px;
   }
 }

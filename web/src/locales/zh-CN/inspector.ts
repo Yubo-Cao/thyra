@@ -4,6 +4,7 @@ export default {
   "Resize file navigation": "调整文件导航大小",
   "Drag to resize; double-click to reset": "拖动以调整大小；双击以重置",
   "Workspace Inspector": "工作区检查器",
+  "Inspector view": "检查器视图",
   Workspace: "工作区",
   "Linked worktree": "关联的工作树",
   Worktree: "工作树",

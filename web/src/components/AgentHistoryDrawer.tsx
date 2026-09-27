@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
-import { Copy, Download, Eye, Info, RefreshCw, X } from "lucide-react";
+import { Copy, Download, Eye, Info, RefreshCw } from "lucide-react";
 import { useStoreSelector } from "../store";
 import { copyTextWithFeedback } from "../copyText";
 import { useConnectionClient } from "../useConnectionClient";
@@ -36,16 +36,26 @@ import {
   type AgentHistoryResponse,
   type HistoryEntry as AgentHistoryEntry,
 } from "./agentHistory";
-import { AgentSessionPreviewDialog } from "./AgentSessionPreviewDialog";
+import {
+  AgentPaneIdentity,
+  AgentSessionPreviewDialog,
+  SessionOverview,
+} from "./AgentSessionPreviewDialog";
 import {
   type AgentSessionSummary,
   downloadSession,
   formatBytes,
   formatCount,
   formatOptionalCompact,
-  formatTokenTotal,
   tokenUsage,
 } from "./agentSession";
+import { agentStatusTone } from "./WorkspaceAgentRows";
+import { agentStatusText } from "../agentOrder";
+import { Button } from "./ui/Button";
+import { CloseButton } from "./ui/CloseButton";
+import { IconButton } from "./ui/IconButton";
+import { SearchField } from "./ui/SearchField";
+import { Token } from "./ui/Token";
 import "./AgentHistoryDrawer.css";
 
 function formatRelativeTime(timestamp: string) {
@@ -59,6 +69,95 @@ function formatRelativeTime(timestamp: string) {
   if (absoluteSeconds < 86400)
     return formatUiRelativeTime(Math.round(seconds / 3600), "hour");
   return formatUiRelativeTime(Math.round(seconds / 86400), "day");
+}
+
+/**
+ * The 1px divider between a list and its detail, dragged or moved with the
+ * arrow keys, Home, and End; a double-click resets it. The ratio is measured
+ * across the parent grid minus its horizontal `inset`.
+ */
+export function SplitResizer({
+  ratio,
+  resetRatio = DEFAULT_INSPECTOR_NAVIGATION_RATIO,
+  inset = 0,
+  label,
+  controls,
+  onChange,
+  onCommit,
+}: {
+  ratio: number;
+  resetRatio?: number;
+  inset?: number;
+  label: string;
+  controls?: string;
+  onChange: (ratio: number) => void;
+  onCommit?: (ratio: number) => void;
+}) {
+  const ratioRef = useRef(ratio);
+  ratioRef.current = ratio;
+  const update = (next: number, commit = false) => {
+    ratioRef.current = next;
+    onChange(next);
+    if (commit) onCommit?.(next);
+  };
+  const width = (element: HTMLElement) =>
+    (element.parentElement?.getBoundingClientRect().width ?? 0) - inset;
+  const fromPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.parentElement?.getBoundingClientRect();
+    if (!bounds) return;
+    update(
+      inspectorNavigationRatioAtPosition(
+        event.clientX - bounds.left - inset / 2,
+        bounds.width - inset,
+      ),
+    );
+  };
+  const release = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    onCommit?.(ratioRef.current);
+  };
+  return (
+    <div
+      className="workspace-inspector-split-resizer"
+      role="separator"
+      tabIndex={0}
+      aria-label={label}
+      aria-orientation="vertical"
+      aria-controls={controls}
+      aria-valuemin={15}
+      aria-valuemax={75}
+      aria-valuenow={Math.round(ratio * 100)}
+      title={t("Drag to resize; double-click to reset")}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        fromPointer(event);
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId))
+          fromPointer(event);
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onDoubleClick={() => update(resetRatio, true)}
+      onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+        const available = width(event.currentTarget);
+        const offset =
+          event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? available
+              : event.key === "ArrowLeft" || event.key === "ArrowRight"
+                ? ratioRef.current * available +
+                  (event.key === "ArrowLeft" ? -16 : 16)
+                : null;
+        if (offset === null) return;
+        event.preventDefault();
+        update(inspectorNavigationRatioAtPosition(offset, available), true);
+      }}
+    />
+  );
 }
 
 type MessageMinimapVisibleRange = { start: number; end: number };
@@ -364,7 +463,6 @@ function AgentHistoryMinimap({
         <div
           ref={indicatorRef}
           className="agent-history-minimap-scrollbar-thumb"
-          style={{ display: "none" }}
         />
       </div>
     </div>
@@ -427,7 +525,6 @@ export function AgentHistoryDrawer({
   const timelineRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const minimapIndicatorRef = useRef<HTMLDivElement>(null);
-  const wideSplitRef = useRef<HTMLDivElement>(null);
   const visibleRangeKeyRef = useRef("");
   const highlightTimerRef = useRef<number | null>(null);
   const loadSeqRef = useRef(0);
@@ -933,47 +1030,6 @@ export function AgentHistoryDrawer({
     [messageEntries, wide],
   );
 
-  const updateWideRatioFromPointer = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const split = wideSplitRef.current;
-      if (!split) return;
-      const bounds = split.getBoundingClientRect();
-      setWideListRatio(
-        inspectorNavigationRatioAtPosition(
-          event.clientX - bounds.left,
-          bounds.width,
-        ),
-      );
-    },
-    [],
-  );
-
-  const handleWideResizerKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      const split = wideSplitRef.current;
-      if (!split) return;
-      const availableWidth = split.getBoundingClientRect().width;
-      let next: number | null = null;
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        next = inspectorNavigationRatioAtPosition(
-          wideListRatio * availableWidth +
-            (event.key === "ArrowLeft" ? -16 : 16),
-          availableWidth,
-        );
-      } else if (event.key === "Home") {
-        next = inspectorNavigationRatioAtPosition(0, availableWidth);
-      } else if (event.key === "End") {
-        next = inspectorNavigationRatioAtPosition(
-          availableWidth,
-          availableWidth,
-        );
-      }
-      if (next === null) return;
-      event.preventDefault();
-      setWideListRatio(next);
-    },
-    [wideListRatio],
-  );
   const sessionReady = session?.status === "ok";
   const historyReady = history?.status === "ok" || messages.length > 0;
   const hasSessionData = sessionReady || historyReady;
@@ -992,43 +1048,32 @@ export function AgentHistoryDrawer({
 
   const sessionActions = sessionReady ? (
     <>
-      <button
-        type="button"
-        className="agent-history-icon"
+      <IconButton
+        label={t("Open transcript")}
+        icon={<Eye size={14} />}
         onClick={openSessionPreview}
-        aria-label={t("Open transcript")}
-        title={t("Open transcript")}
-      >
-        <Eye size={14} />
-      </button>
-      <button
-        type="button"
-        className="agent-history-icon"
+      />
+      <IconButton
+        label={t("Export raw session")}
+        icon={<Download size={14} />}
         onClick={() => downloadSession(pane, connectionClient)}
-        aria-label={t("Export raw session")}
-        title={t("Export raw session")}
-      >
-        <Download size={14} />
-      </button>
+      />
     </>
   ) : null;
 
   const historyFilters = (
     <>
-      <div className="agent-history-search">
-        <input
-          type="search"
-          aria-label={t("Search history messages")}
-          placeholder={t("Search loaded messages")}
-          title={t(
-            "Search loaded message text. Tool content is searchable after loading it.",
-          )}
-          value={query}
-          onChange={(event) =>
-            changeFilters(filters, event.currentTarget.value)
-          }
-        />
-      </div>
+      <SearchField
+        className="agent-history-search"
+        fullWidth
+        aria-label={t("Search history messages")}
+        placeholder={t("Search loaded messages")}
+        title={t(
+          "Search loaded message text. Tool content is searchable after loading it.",
+        )}
+        value={query}
+        onValueChange={(value) => changeFilters(filters, value)}
+      />
       <AgentHistoryFilters
         filters={filters}
         counts={counts}
@@ -1082,13 +1127,12 @@ export function AgentHistoryDrawer({
               {query.trim()
                 ? t("No entries match the search and selected message types.")
                 : t("No entries match the selected message types.")}
-              <button
-                type="button"
-                className="secondary-btn"
+              <Button
+                variant="secondary"
                 onClick={() => changeFilters(ALL_HISTORY_FILTERS, "")}
               >
                 {query.trim() ? t("Reset filters") : t("Show all types")}
-              </button>
+              </Button>
             </>
           ) : (
             t("No history entries were found in this session.")
@@ -1105,7 +1149,6 @@ export function AgentHistoryDrawer({
   const wideMessagesPanel = (
     <div
       className="agent-history-wide"
-      ref={wideSplitRef}
       role="region"
       aria-label={t("History messages")}
       style={
@@ -1119,45 +1162,15 @@ export function AgentHistoryDrawer({
         {historyMinimap}
         {historyTimeline}
       </div>
-      <div
-        className="workspace-inspector-split-resizer"
-        role="separator"
-        tabIndex={0}
-        aria-label={t("Resize message list")}
-        aria-orientation="vertical"
-        aria-valuemin={15}
-        aria-valuemax={75}
-        aria-valuenow={Math.round(wideListRatio * 100)}
-        title={t("Drag to resize; double-click to reset")}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
-          updateWideRatioFromPointer(event);
-        }}
-        onPointerMove={(event) => {
-          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          updateWideRatioFromPointer(event);
-        }}
-        onPointerUp={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-          }
-        }}
-        onPointerCancel={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-          }
-        }}
-        onDoubleClick={() =>
-          setWideListRatio(DEFAULT_INSPECTOR_NAVIGATION_RATIO)
-        }
-        onKeyDown={handleWideResizerKeyDown}
+      <SplitResizer
+        ratio={wideListRatio}
+        label={t("Resize message list")}
+        onChange={setWideListRatio}
       />
       <div className="agent-history-wide-detail">
         {wideSelectedEntry ? (
           <AgentMessageContent
             message={hydrateEntry(wideSelectedEntry)}
-            embedded
             onClose={() => setWideSelectedId(null)}
           />
         ) : (
@@ -1185,8 +1198,7 @@ export function AgentHistoryDrawer({
               <strong>
                 {t("Session")}
                 {messages.length > 0 ? (
-                  <span
-                    className="agent-history-count"
+                  <Token
                     aria-label={t("{shown} of {total} history entries", {
                       shown: messageEntries.length,
                       total: messages.length,
@@ -1198,55 +1210,41 @@ export function AgentHistoryDrawer({
                     {messageEntries.length === messages.length
                       ? messages.length
                       : `${messageEntries.length}/${messages.length}`}
-                  </span>
+                  </Token>
                 ) : null}
               </strong>
-              <span title={workspaceLabel}>
-                {workspaceLabel} · {pane.agent ?? t("Agent")} ·{" "}
-                {shortId(pane.pane_id)}
-              </span>
+              <AgentPaneIdentity pane={pane} workspaceLabel={workspaceLabel} />
             </div>
           </div>
-          <span
-            className={`agent-history-status is-${pane.agent_status.toLowerCase()}`}
-          >
-            {pane.agent_status}
-          </span>
+          <Token tone={agentStatusTone(pane.agent_status)}>
+            {agentStatusText(pane.agent_status)}
+          </Token>
           <div className="agent-history-actions">
-            <button
-              type="button"
-              className="agent-history-icon"
-              aria-label={t("Session details")}
-              aria-pressed={detailsOpen}
-              title={
+            <IconButton
+              label={t("Session details")}
+              tooltip={
                 detailsOpen ? t("Show history") : t("Show session details")
               }
+              icon={<Info size={14} />}
+              aria-pressed={detailsOpen}
               onClick={() => setDetailsOpen((current) => !current)}
               disabled={!hasSessionData}
-            >
-              <Info size={14} />
-            </button>
+            />
             {sessionActions}
-            <button
-              type="button"
-              className={`agent-history-icon ${loading ? "is-loading" : ""}`}
+            <IconButton
+              className={loading ? "is-loading" : undefined}
+              label={t("Refresh session")}
+              tooltip={t("Refresh")}
+              icon={<RefreshCw size={14} />}
               onClick={loadHistory}
-              aria-label={t("Refresh session")}
-              title={t("Refresh")}
               disabled={loading}
-            >
-              <RefreshCw size={14} />
-            </button>
+            />
             {!embedded ? (
-              <button
-                type="button"
-                className="agent-history-icon"
+              <CloseButton
+                label={t("Close session")}
+                tooltip={t("Close")}
                 onClick={() => onOpenChange(false)}
-                aria-label={t("Close session")}
-                title={t("Close")}
-              >
-                <X size={14} />
-              </button>
+              />
             ) : null}
           </div>
         </div>
@@ -1258,25 +1256,18 @@ export function AgentHistoryDrawer({
             {unavailableCommand ? (
               <div className="agent-history-command-row">
                 <code>{unavailableCommand}</code>
-                <button
-                  type="button"
-                  className="agent-history-icon"
+                <IconButton
+                  label={t("Copy integration command")}
+                  tooltip={t("Copy command")}
+                  icon={<Copy size={13} />}
                   onClick={() => void copyTextWithFeedback(unavailableCommand)}
-                  aria-label={t("Copy integration command")}
-                  title={t("Copy command")}
-                >
-                  <Copy size={13} />
-                </button>
+                />
               </div>
             ) : null}
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={loadHistory}
-            >
+            <Button variant="secondary" onClick={loadHistory}>
               <RefreshCw size={13} />
               {t("Retry")}
-            </button>
+            </Button>
           </div>
         ) : (
           <>
@@ -1302,44 +1293,14 @@ export function AgentHistoryDrawer({
                 aria-label={t("Session details")}
               >
                 {sessionReady ? (
-                  <section
-                    className="agent-history-overview"
-                    aria-label={t("Session overview")}
-                  >
-                    <div>
-                      <strong>{formatCount(session.stats.turns)}</strong>
-                      <span>{t("Turns")}</span>
-                    </div>
-                    <div>
-                      <strong>{formatTokenTotal(session)}</strong>
-                      <span>{t("Tokens")}</span>
-                    </div>
-                    <div>
-                      <strong
-                        title={
-                          updatedAt ? formatUiDateTime(updatedAt) : undefined
-                        }
-                      >
-                        {updatedAt ? formatRelativeTime(updatedAt) : "-"}
-                      </strong>
-                      <span>{t("Updated")}</span>
-                    </div>
-                    <p>
-                      {t("Input {count}", {
-                        count: formatOptionalCompact(usage?.input_tokens),
-                      })}
-                      <span>·</span>
-                      {t("Cached {count}", {
-                        count: formatOptionalCompact(
-                          usage?.cached_input_tokens,
-                        ),
-                      })}
-                      <span>·</span>
-                      {t("Output {count}", {
-                        count: formatOptionalCompact(usage?.output_tokens),
-                      })}
-                    </p>
-                  </section>
+                  <SessionOverview
+                    summary={session}
+                    tokensLabel={t("Tokens")}
+                    updated={updatedAt ? formatRelativeTime(updatedAt) : "-"}
+                    updatedTitle={
+                      updatedAt ? formatUiDateTime(updatedAt) : undefined
+                    }
+                  />
                 ) : null}
                 <DetailRow label={t("Workspace")} value={workspaceLabel} />
                 <DetailRow label={t("Agent")} value={pane.agent ?? "-"} />
@@ -1408,15 +1369,11 @@ function DetailRow({
       <span>{label}</span>
       <code title={value}>{value}</code>
       {copyable ? (
-        <button
-          type="button"
-          className="agent-history-icon"
+        <IconButton
+          label={t("Copy {label}", { label: label.toLowerCase() })}
+          icon={<Copy size={13} />}
           onClick={() => void copyTextWithFeedback(value)}
-          aria-label={t("Copy {label}", { label: label.toLowerCase() })}
-          title={t("Copy {label}", { label: label.toLowerCase() })}
-        >
-          <Copy size={13} />
-        </button>
+        />
       ) : null}
     </div>
   );

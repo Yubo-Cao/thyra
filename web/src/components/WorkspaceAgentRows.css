@@ -147,17 +147,10 @@
 }
 
 .agent-group-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
+  --button-fg: var(--text);
+  justify-content: flex-start;
   margin: 4px 0;
-  padding: 6px 4px;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  text-align: left;
+  padding-inline: 4px;
 }
 
 .agent-group-toggle > span:first-of-type {
@@ -178,6 +171,47 @@
   }
 
   .agent-group-toggle {
-    min-height: 36px;
+    --button-height: 36px;
+  }
+
+  /* MobileTabSheet: the phone's tab switcher, a bottom-sheet Dialog of
+     touch-sized rows. Kept here so its lazy chunk ships no stylesheet. */
+  .mobile-tab-sheet.ui-dialog {
+    max-height: min(62dvh, 430px);
+  }
+
+  .mobile-tab-sheet-list {
+    display: grid;
+    gap: 4px;
+  }
+
+  .mobile-tab-sheet-list > div {
+    display: flex;
+    gap: 4px;
+  }
+
+  .mobile-tab-sheet-list .button {
+    --button-height: 40px;
+  }
+
+  .mobile-tab-sheet-focus {
+    --button-bg: var(--bg);
+    --button-fg: var(--text);
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .mobile-tab-sheet-focus[aria-current="true"] {
+    --button-bg: var(--accent-soft);
+    --button-fg: var(--text-strong);
+  }
+
+  .mobile-tab-sheet-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

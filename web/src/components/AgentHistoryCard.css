@@ -195,6 +195,18 @@
   font-weight: 500;
 }
 
+.agent-history-copy {
+  --button-height: 22px;
+  flex: 0 0 auto;
+}
+
+/* Redacted tool content: a dashed placeholder that loads it on demand. */
+.agent-history-tool-load {
+  --button-height: 40px;
+  border: 1px dashed var(--border);
+  --button-bg: transparent;
+}
+
 /* Keep mobile styling in sync with the saved layout and URL override. */
 :where(html[data-layout="mobile"]) {
   .agent-history-card pre {

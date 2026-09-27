@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Copy, X } from "lucide-react";
+import { Copy } from "lucide-react";
 import { t } from "../i18n";
 import { formatUiDateTime } from "../uiLocale";
 import { copyTextWithFeedback } from "../copyText";
-import { CloseButton } from "./CloseButton";
 import { MarkdownPreview } from "./markdown";
+import { Button } from "./ui/Button";
+import { CloseButton } from "./ui/CloseButton";
+import { IconButton } from "./ui/IconButton";
 import "./AgentMessageContent.css";
 
 export type AgentMessage = {
@@ -19,6 +21,8 @@ export type AgentMessage = {
   text_bytes?: number;
 };
 
+type ViewMode = "rendered" | "raw";
+
 export function agentMessageRoleLabel(message: AgentMessage) {
   if (message.role !== "tool")
     return message.role === "assistant" ? t("Assistant") : t("User");
@@ -30,109 +34,151 @@ export function agentMessageRoleLabel(message: AgentMessage) {
       : t("Tool output: {tool}", { tool });
 }
 
-// Message rendering is shared by the modal and the inline History reader.
-export function AgentMessageContent({
-  message,
-  embedded = false,
-  onClose,
-}: {
-  message: AgentMessage;
-  embedded?: boolean;
-  onClose: () => void;
-}) {
-  const isTool = message.role === "tool";
-  const [viewMode, setViewMode] = useState<"rendered" | "raw">(
-    message.role === "assistant" ? "rendered" : "raw",
+export function agentMessageTitle(message: AgentMessage) {
+  return t("{role} Message", { role: agentMessageRoleLabel(message) });
+}
+
+// Redacted tool entry whose on-demand content has not arrived (yet).
+function contentPending(message: AgentMessage) {
+  return (
+    message.role === "tool" &&
+    message.text.length === 0 &&
+    (message.text_bytes ?? 0) > 0
   );
+}
+
+function defaultViewMode(message: AgentMessage): ViewMode {
+  return message.role === "assistant" ? "rendered" : "raw";
+}
+
+/** Rendered/raw choice for one message, reset when another entry opens. */
+export function useAgentMessageViewMode(message: AgentMessage) {
+  const [viewMode, setViewMode] = useState(() => defaultViewMode(message));
   const [viewModeMessageId, setViewModeMessageId] = useState(message.id);
   if (message.id !== viewModeMessageId) {
     // A refreshed snapshot replaces objects, not the user's selected message.
     // Reset only when switching to another entry.
     setViewModeMessageId(message.id);
-    setViewMode(message.role === "assistant" ? "rendered" : "raw");
+    setViewMode(defaultViewMode(message));
   }
-  // Redacted tool entry whose on-demand content has not arrived (yet).
-  const contentPending =
-    isTool && message.text.length === 0 && (message.text_bytes ?? 0) > 0;
-  const roleLabel = agentMessageRoleLabel(message);
+  const toggle = () =>
+    setViewMode((mode) => (mode === "rendered" ? "raw" : "rendered"));
+  return [viewMode, toggle] as const;
+}
 
+/** Time and call ID under the message title. */
+export function AgentMessageMeta({ message }: { message: AgentMessage }) {
   return (
     <>
-      <div
-        className={`modal-head agent-message-modal-head ${embedded ? "is-embedded" : ""}`}
-      >
+      <time dateTime={message.sent_at}>
+        {formatUiDateTime(message.sent_at)}
+      </time>
+      {message.source_call_id ? (
+        <span className="agent-message-call-id">
+          {t("Call ID: {id}", { id: message.source_call_id })}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** Rendered/raw toggle and copy, shared by the dialog and the inline reader. */
+export function AgentMessageActions({
+  message,
+  viewMode,
+  onToggleViewMode,
+}: {
+  message: AgentMessage;
+  viewMode: ViewMode;
+  onToggleViewMode: () => void;
+}) {
+  return (
+    <>
+      {message.role !== "tool" ? (
+        <Button
+          onClick={onToggleViewMode}
+          aria-label={
+            viewMode === "rendered"
+              ? t("Show raw markdown")
+              : t("Show rendered markdown")
+          }
+          data-tooltip={
+            viewMode === "rendered" ? t("Show raw") : t("Show rendered")
+          }
+        >
+          {viewMode === "rendered" ? t("Raw") : t("Rendered")}
+        </Button>
+      ) : null}
+      {!contentPending(message) ? (
+        <IconButton
+          label={t("Copy message")}
+          tooltip={t("Copy")}
+          icon={<Copy size={15} />}
+          onClick={() => void copyTextWithFeedback(message.text)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+export function AgentMessageBody({
+  message,
+  viewMode,
+}: {
+  message: AgentMessage;
+  viewMode: ViewMode;
+}) {
+  if (contentPending(message)) {
+    return (
+      <pre className="agent-message-modal-content">
+        {t("Loading tool content…")}
+      </pre>
+    );
+  }
+  if (message.role !== "tool" && viewMode === "rendered") {
+    return (
+      <div className="agent-message-modal-content is-rendered">
+        <MarkdownPreview
+          text={message.text}
+          className="agent-message-markdown"
+          breaks
+        />
+      </div>
+    );
+  }
+  return <pre className="agent-message-modal-content">{message.text}</pre>;
+}
+
+// The inline History reader: the message with its own header bar.
+export function AgentMessageContent({
+  message,
+  onClose,
+}: {
+  message: AgentMessage;
+  onClose: () => void;
+}) {
+  const [viewMode, toggleViewMode] = useAgentMessageViewMode(message);
+  return (
+    <>
+      <div className="agent-message-modal-head">
         <div>
-          <h3>{t("{role} Message", { role: roleLabel })}</h3>
-          <time dateTime={message.sent_at}>
-            {formatUiDateTime(message.sent_at)}
-          </time>
-          {message.source_call_id ? (
-            <p>{t("Call ID: {id}", { id: message.source_call_id })}</p>
-          ) : null}
+          <h3>{agentMessageTitle(message)}</h3>
+          <AgentMessageMeta message={message} />
         </div>
         <div className="agent-message-modal-actions">
-          {!isTool ? (
-            <button
-              type="button"
-              className="agent-message-mode-toggle"
-              onClick={() =>
-                setViewMode((mode) =>
-                  mode === "rendered" ? "raw" : "rendered",
-                )
-              }
-              aria-label={
-                viewMode === "rendered"
-                  ? t("Show raw markdown")
-                  : t("Show rendered markdown")
-              }
-              title={
-                viewMode === "rendered" ? t("Show raw") : t("Show rendered")
-              }
-            >
-              {viewMode === "rendered" ? t("Raw") : t("Rendered")}
-            </button>
-          ) : null}
-          {!contentPending ? (
-            <button
-              type="button"
-              className="agent-history-icon"
-              onClick={() => void copyTextWithFeedback(message.text)}
-              aria-label={t("Copy message")}
-              title={t("Copy")}
-            >
-              <Copy size={15} />
-            </button>
-          ) : null}
-          {embedded ? (
-            <button
-              type="button"
-              className="agent-history-icon"
-              onClick={onClose}
-              aria-label={t("Close message detail")}
-              title={t("Close detail")}
-            >
-              <X size={15} />
-            </button>
-          ) : (
-            <CloseButton label={t("Close message")} onClick={onClose} />
-          )}
-        </div>
-      </div>
-      {contentPending ? (
-        <pre className="agent-message-modal-content">
-          {t("Loading tool content…")}
-        </pre>
-      ) : !isTool && viewMode === "rendered" ? (
-        <div className="agent-message-modal-content is-rendered">
-          <MarkdownPreview
-            text={message.text}
-            className="agent-message-markdown"
-            breaks
+          <AgentMessageActions
+            message={message}
+            viewMode={viewMode}
+            onToggleViewMode={toggleViewMode}
+          />
+          <CloseButton
+            label={t("Close message detail")}
+            tooltip={t("Close detail")}
+            onClick={onClose}
           />
         </div>
-      ) : (
-        <pre className="agent-message-modal-content">{message.text}</pre>
-      )}
+      </div>
+      <AgentMessageBody message={message} viewMode={viewMode} />
     </>
   );
 }

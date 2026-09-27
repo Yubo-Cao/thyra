@@ -1,6 +1,5 @@
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 import { t } from "../i18n";
 import {
   shallowEqual,
@@ -10,10 +9,10 @@ import {
 } from "../store";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { summarizeTabAgents } from "./agentSession";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
 import { requestCloseTab, tabName } from "./TabBar";
-import "./MobileTabSheet.css";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { IconButton } from "./ui/IconButton";
 
 /**
  * Bottom-sheet tab switcher for narrow layouts. The tab strip hides itself on
@@ -37,15 +36,13 @@ export function MobileTabSheet({
     }),
     shallowEqual,
   );
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
   const transitionPendingRef = useRef(false);
   const [transitionPending, setTransitionPending] = useState(false);
 
+  // A switch or create in flight keeps the sheet open until it lands.
   const closeIfIdle = () => {
     if (!transitionPendingRef.current) onClose();
   };
-  onCloseRef.current = closeIfIdle;
 
   const runTabTransition = async (operation: () => Promise<unknown>) => {
     if (transitionPendingRef.current) return;
@@ -72,121 +69,86 @@ export function MobileTabSheet({
         .sort((a, b) => a.number - b.number)
     : [];
 
-  useEffect(() => {
-    if (!open) return;
-    const cancelFocus = focusDialogElement(sheetRef.current);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // Let stacked dialogs (e.g. the close-tab confirmation) handle Escape.
-      if (
-        document.querySelector(
-          ".modal-backdrop:not(.mobile-tab-sheet-backdrop)",
-        )
-      )
-        return;
-      event.preventDefault();
-      event.stopPropagation();
-      onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
-    };
-  }, [open]);
-
-  if (!open || !focusedWs) return null;
-
-  return createPortal(
-    <div
-      className="modal-backdrop mobile-tab-sheet-backdrop"
-      onMouseDown={closeIfIdle}
+  return (
+    <Dialog
+      open={open && !!focusedWs}
+      onOpenChange={(next) => {
+        if (!next) closeIfIdle();
+      }}
+      title={t("Tabs")}
+      closeLabel={t("Close tab switcher")}
+      busy={transitionPending}
+      className="mobile-tab-sheet"
+      footer={
+        focusedWs ? (
+          <Button
+            variant="secondary"
+            fullWidth
+            title={createReason ?? undefined}
+            disabled={transitionPending || !!createReason}
+            onClick={() =>
+              void runTabTransition(() =>
+                store.createTab(focusedWs.workspace_id),
+              )
+            }
+          >
+            <Plus size={15} />
+            <span>{createReason ?? t("New Tab")}</span>
+          </Button>
+        ) : null
+      }
     >
-      <div
-        ref={sheetRef}
-        className="mobile-tab-sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Tabs")}
-        aria-busy={transitionPending}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="mobile-tab-sheet-head">
-          <h3>{t("Tabs")}</h3>
-          <CloseButton
-            label={t("Close tab switcher")}
-            disabled={transitionPending}
-            onClick={closeIfIdle}
-          />
-        </div>
-        <div className="mobile-tab-sheet-list" role="list">
-          {tabs.map((tab) => {
-            const name = tabName(tab);
-            const agentSummary = summarizeTabAgents(s.panes, tab.tab_id);
-            return (
-              <div
-                key={tab.tab_id}
-                role="listitem"
-                className={`mobile-tab-sheet-row ${tab.focused ? "is-active" : ""}`}
+      <div className="mobile-tab-sheet-list" role="list">
+        {tabs.map((tab) => {
+          const name = tabName(tab);
+          const agentSummary = summarizeTabAgents(s.panes, tab.tab_id);
+          return (
+            <div key={tab.tab_id} role="listitem">
+              <Button
+                fullWidth
+                className="mobile-tab-sheet-focus"
+                aria-current={tab.focused || undefined}
+                disabled={transitionPending}
+                onClick={() =>
+                  void runTabTransition(() => store.focusTab(tab.tab_id))
+                }
               >
-                <button
-                  type="button"
-                  className="mobile-tab-sheet-focus"
-                  disabled={transitionPending}
-                  onClick={() =>
-                    void runTabTransition(() => store.focusTab(tab.tab_id))
-                  }
-                >
-                  {agentSummary ? (
-                    <span
-                      className="tabbar-agent-marker"
-                      aria-label={t("{agent}, status {status}", {
-                        agent: agentSummary.primaryAgent,
-                        status: agentSummary.status,
-                      })}
-                    >
-                      <AgentStatusIcon
-                        agent={agentSummary.primaryAgent}
-                        status={agentSummary.status}
-                      />
-                      {agentSummary.additionalAgents > 0 ? (
-                        <span className="tabbar-agent-more">
-                          +{agentSummary.additionalAgents}
-                        </span>
-                      ) : null}
-                    </span>
-                  ) : null}
-                  <span className="mobile-tab-sheet-name">{name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="mobile-tab-sheet-close"
-                  aria-label={t("Close {name}", { name })}
-                  title={t("Close {name}", { name })}
-                  disabled={transitionPending}
-                  onClick={() => requestCloseTab(tab.tab_id)}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          className="mobile-tab-sheet-new"
-          title={createReason ?? undefined}
-          disabled={transitionPending || !!createReason}
-          onClick={() =>
-            void runTabTransition(() => store.createTab(focusedWs.workspace_id))
-          }
-        >
-          <Plus size={15} />
-          <span>{createReason ?? t("New Tab")}</span>
-        </button>
+                {agentSummary ? (
+                  <span
+                    className="tabbar-agent-marker"
+                    aria-label={t("{agent}, status {status}", {
+                      agent: agentSummary.primaryAgent,
+                      status: agentSummary.status,
+                    })}
+                  >
+                    <AgentStatusIcon
+                      agent={agentSummary.primaryAgent}
+                      status={agentSummary.status}
+                    />
+                    {agentSummary.additionalAgents > 0 ? (
+                      <span className="tabbar-agent-more">
+                        +{agentSummary.additionalAgents}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+                <span className="mobile-tab-sheet-name">{name}</span>
+              </Button>
+              <IconButton
+                label={t("Close {name}", { name })}
+                icon={<X size={14} />}
+                disabled={transitionPending}
+                onClick={() => {
+                  // The close confirmation lives in the app shell, which
+                  // this modal sheet makes inert: close the sheet first.
+                  closeIfIdle();
+                  requestCloseTab(tab.tab_id);
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
-    </div>,
-    document.body,
+    </Dialog>
   );
 }

@@ -88,12 +88,18 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.tree-row .git-badge {
+.tree-row > .git-status > .ui-token,
+.tree-row > .ui-token {
   padding-inline: 2px;
 }
 
+/* Only the branch ellipsizes; counts stay whole and the row tooltip has the
+   full branch name. */
 .tree-row .git-branch {
+  --chip-fg: var(--text);
   min-width: 0;
+  max-width: 92px;
+  flex-shrink: 1;
 }
 
 .ws-label {
@@ -104,28 +110,11 @@
   color: var(--text-strong);
 }
 
+/* The disclosure twisty keeps the 16px indent column of leaf rows. */
 .workspace-group-toggle {
+  --button-height: 20px;
   width: 16px;
-  height: 20px;
   flex: 0 0 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.workspace-group-toggle:hover {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--text);
-}
-
-.workspace-group-toggle:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
 }
 
 .ws-label {
@@ -256,14 +245,6 @@
 
 .agent-row.drop-after::after {
   bottom: -1px;
-}
-
-/* ===== badges ===== */
-.tree-row > .app-badge {
-  max-width: 72px;
-  overflow: hidden;
-  flex: 0 1 auto;
-  text-overflow: ellipsis;
 }
 
 /* Keep mobile styling in sync with the saved layout and URL override. */

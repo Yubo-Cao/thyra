@@ -23,6 +23,7 @@ import {
   GitBranch,
   Layers,
   Pin,
+  Plus,
 } from "lucide-react";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
 import {
@@ -64,7 +65,6 @@ import {
 } from "../workspaceAgentLayout";
 import { useConnectionClient } from "../useConnectionClient";
 import { activePaneIdForSnapshot } from "../paneJump";
-import { ConfirmDialog } from "./ModalDialogs";
 import {
   AgentContextMenu,
   type AgentMenuState,
@@ -83,6 +83,8 @@ import {
 } from "./treeKeyboard";
 import { TREE_DEPTH_INDENT } from "./treeIndent";
 import { groupPanesByTab, shouldShowTabGroups } from "../paneIdentity";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import { Token } from "./ui/Token";
 import "./WorkspaceTree.css";
@@ -160,12 +162,9 @@ function GitStatusBadges({
   if (!status) return null;
   if (status.error) {
     return (
-      <span
-        className="git-badge git-badge-error"
-        title={gitStatusTitle(status)}
-      >
+      <Token code tone="danger" title={gitStatusTitle(status)}>
         git?
-      </span>
+      </Token>
     );
   }
 
@@ -177,16 +176,24 @@ function GitStatusBadges({
   return (
     <span className="git-status" title={gitStatusTitle(status)}>
       {showBranch ? (
-        <span className="git-badge git-branch">{branch}</span>
+        <Token code className="git-branch">
+          {branch}
+        </Token>
       ) : null}
       {changed > 0 ? (
-        <span className="git-badge git-dirty">Δ{changed}</span>
+        <Token code tone="warning">
+          Δ{changed}
+        </Token>
       ) : null}
       {status.ahead > 0 ? (
-        <span className="git-badge git-ahead">↑{status.ahead}</span>
+        <Token code tone="accent">
+          ↑{status.ahead}
+        </Token>
       ) : null}
       {status.behind > 0 ? (
-        <span className="git-badge git-behind">↓{status.behind}</span>
+        <Token code tone="accent">
+          ↓{status.behind}
+        </Token>
       ) : null}
     </span>
   );
@@ -197,7 +204,11 @@ function GitStatusBadges({
 export const workspaceContextMenu = lazyPanel("workspace-context-menu", () =>
   import("./ContextMenu").then((module) => module.ContextMenu),
 );
+const confirmDialogPanel = lazyPanel("tree-confirm-dialog", () =>
+  import("./ui/ConfirmDialog").then((module) => module.ConfirmDialog),
+);
 const ContextMenu = workspaceContextMenu.Component;
+const ConfirmDialog = confirmDialogPanel.Component;
 const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 
 export function WorkspaceTree({
@@ -241,6 +252,10 @@ export function WorkspaceTree({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [agentMenu, setAgentMenu] = useState<AgentMenuState | null>(null);
   const [pendingClosePane, setPendingClosePane] = useState<Pane | null>(null);
+  // The confirmation keeps naming the pane while it animates closed.
+  const lastClosePaneRef = useRef<Pane | null>(null);
+  if (pendingClosePane) lastClosePaneRef.current = pendingClosePane;
+  const closePaneShown = pendingClosePane ?? lastClosePaneRef.current;
   const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(
     null,
   );
@@ -548,13 +563,11 @@ export function WorkspaceTree({
         >
           <div className="panel-head">
             <h2>{t("Workspaces")}</h2>
-            <button
-              className="panel-add"
-              title={t("New workspace")}
+            <IconButton
+              label={t("New workspace")}
+              icon={<Plus size={16} />}
               onClick={() => setCreateOpen(true)}
-            >
-              +
-            </button>
+            />
           </div>
           <div className="workspace-tree-content">
             <p className="muted">
@@ -593,25 +606,20 @@ export function WorkspaceTree({
         <h2>{t("Workspaces")}</h2>
         <div className="panel-actions">
           {focusedRepoWorkspace ? (
-            <button
-              type="button"
-              className="panel-add panel-action-icon"
-              title={t("Worktree lifecycle")}
-              aria-label={t("Open worktree lifecycle")}
+            <IconButton
+              label={t("Open worktree lifecycle")}
+              tooltip={t("Worktree lifecycle")}
+              icon={<GitBranch size={14} />}
               onClick={() =>
                 setLifecycleWorkspaceId(focusedRepoWorkspace.workspace_id)
               }
-            >
-              <GitBranch size={14} />
-            </button>
+            />
           ) : null}
-          <button
-            className="panel-add"
-            title={t("New workspace")}
+          <IconButton
+            label={t("New workspace")}
+            icon={<Plus size={16} />}
             onClick={() => setCreateOpen(true)}
-          >
-            +
-          </button>
+          />
         </div>
       </div>
       <div
@@ -729,8 +737,8 @@ export function WorkspaceTree({
               return (
                 <div key={groupKey} className="agent-list-group">
                   {agentListPreferences.grouping !== "none" ? (
-                    <button
-                      type="button"
+                    <Button
+                      fullWidth
                       className="agent-group-toggle"
                       aria-expanded={!collapsed}
                       onClick={() =>
@@ -748,8 +756,8 @@ export function WorkspaceTree({
                         <ChevronDown size={13} />
                       )}
                       <span>{group.label}</span>
-                      <span className="muted">{group.panes.length}</span>
-                    </button>
+                      <Token>{group.panes.length}</Token>
+                    </Button>
                   ) : null}
                   {(!collapsed || agentListPreferences.grouping === "none") &&
                     group.panes.map((pane) => {
@@ -834,37 +842,41 @@ export function WorkspaceTree({
         }
         onClosePane={setPendingClosePane}
       />
-      <ConfirmDialog
-        open={!!pendingClosePane}
-        title={t("Close Agent Pane")}
-        message={
-          pendingClosePane
-            ? t('Close pane "{pane}"?{warning}', {
-                pane: shortId(pendingClosePane.pane_id),
-                warning: terminalComposerCloseWarning(
-                  terminalComposerDraftPaneIds(
-                    s.activeConnectionId,
-                    s.connectionGeneration,
-                    [pendingClosePane.pane_id],
-                  ).length,
-                ),
-              })
-            : t("Close this pane?")
-        }
-        confirmLabel={t("Close")}
-        danger
-        onClose={() => setPendingClosePane(null)}
-        onConfirm={() => {
-          if (pendingClosePane) {
-            clearTerminalComposerDrafts(
-              s.activeConnectionId,
-              s.connectionGeneration,
-              [pendingClosePane.pane_id],
-            );
-            store.closePane(pendingClosePane.pane_id);
+      <Latched open={!!pendingClosePane}>
+        <ConfirmDialog
+          open={!!pendingClosePane}
+          title={t("Close Agent Pane")}
+          message={
+            closePaneShown
+              ? t('Close pane "{pane}"?{warning}', {
+                  pane: shortId(closePaneShown.pane_id),
+                  warning: terminalComposerCloseWarning(
+                    terminalComposerDraftPaneIds(
+                      s.activeConnectionId,
+                      s.connectionGeneration,
+                      [closePaneShown.pane_id],
+                    ).length,
+                  ),
+                })
+              : t("Close this pane?")
           }
-        }}
-      />
+          confirmLabel={t("Close")}
+          tone="danger"
+          onOpenChange={(open) => {
+            if (!open) setPendingClosePane(null);
+          }}
+          onConfirm={() => {
+            if (pendingClosePane) {
+              clearTerminalComposerDrafts(
+                s.activeConnectionId,
+                s.connectionGeneration,
+                [pendingClosePane.pane_id],
+              );
+              store.closePane(pendingClosePane.pane_id);
+            }
+          }}
+        />
+      </Latched>
       <Latched open={createOpen}>
         <CreateWorkspaceDialog
           open={createOpen}
@@ -1147,13 +1159,12 @@ function WorkspaceRow({
         }
       >
         {hasNestedItems ? (
-          <button
-            type="button"
+          <IconButton
             className="workspace-group-toggle"
             tabIndex={-1}
-            title={collapsed ? t("Expand workspace") : t("Collapse workspace")}
-            aria-label={
-              collapsed ? t("Expand workspace") : t("Collapse workspace")
+            label={collapsed ? t("Expand workspace") : t("Collapse workspace")}
+            icon={
+              collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />
             }
             aria-expanded={!collapsed}
             onPointerDown={(event) => event.stopPropagation()}
@@ -1170,9 +1181,7 @@ function WorkspaceRow({
               event.stopPropagation();
               onCollapsedChange(w, !collapsed);
             }}
-          >
-            {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-          </button>
+          />
         ) : (
           <span className="twisty" aria-hidden="true" />
         )}

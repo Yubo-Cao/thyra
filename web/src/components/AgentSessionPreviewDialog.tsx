@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState, memo } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState, memo } from "react";
 import {
   Brain,
   ChevronRight,
@@ -16,6 +15,7 @@ import { uiIntlLocale } from "../uiLocale";
 import { copyTextWithFeedback } from "../copyText";
 import { useConnectionClient } from "../useConnectionClient";
 import { shortId } from "../utils";
+import { paneDisplayName } from "../paneIdentity";
 import { AgentIcon } from "./AgentIcon";
 import { CodePreview } from "./CodePreview";
 import {
@@ -32,8 +32,12 @@ import {
   groupTrajectoryTurns,
   toolArgumentsPreview,
 } from "./agentSession";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { IconButton } from "./ui/IconButton";
+import { Menu } from "./ui/Menu";
+import { Tabs } from "./ui/Tabs";
+import { Token } from "./ui/Token";
 import "./AgentSessionPreviewDialog.css";
 
 function formatStepTime(timestamp?: string) {
@@ -97,6 +101,84 @@ function meaningfulMessage(step: AgentSessionTrajectoryStep) {
   return step.message;
 }
 
+type SessionView = "timeline" | "atif" | "raw";
+
+/** Turns, tokens, and last update of a session, with the token breakdown. */
+export function SessionOverview({
+  summary,
+  tokensLabel,
+  updated,
+  updatedTitle,
+  reasoning = false,
+}: {
+  summary: AgentSessionSummary;
+  tokensLabel: string;
+  updated: string;
+  updatedTitle?: string;
+  reasoning?: boolean;
+}) {
+  const usage = summary.stats.token_usage;
+  const counts = [
+    t("Input {count}", { count: formatOptionalCompact(usage?.input_tokens) }),
+    t("Cached {count}", {
+      count: formatOptionalCompact(usage?.cached_input_tokens),
+    }),
+    t("Output {count}", { count: formatOptionalCompact(usage?.output_tokens) }),
+    ...(reasoning
+      ? [
+          t("Reasoning {count}", {
+            count: formatOptionalCompact(usage?.reasoning_output_tokens),
+          }),
+        ]
+      : []),
+  ];
+  return (
+    <section
+      className="agent-session-overview"
+      aria-label={t("Session overview")}
+    >
+      <div>
+        <strong>{formatCount(summary.stats.turns)}</strong>
+        <span>{t("Turns")}</span>
+      </div>
+      <div>
+        <strong>{formatTokenTotal(summary)}</strong>
+        <span>{tokensLabel}</span>
+      </div>
+      <div>
+        <strong title={updatedTitle}>{updated}</strong>
+        <span>{t("Updated")}</span>
+      </div>
+      <p>{counts.join(" · ")}</p>
+    </section>
+  );
+}
+
+/**
+ * Where an agent pane lives: its workspace, the pane's own name, and its ID.
+ * The agent icon beside it already names the agent, so the agent's name is
+ * never repeated here.
+ */
+export function AgentPaneIdentity({
+  pane,
+  workspaceLabel,
+}: {
+  pane: Pane;
+  workspaceLabel: string;
+}) {
+  const paneId = shortId(pane.pane_id);
+  const paneName = paneDisplayName(pane);
+  return (
+    <span className="agent-pane-identity">
+      <span title={workspaceLabel}>{workspaceLabel}</span>
+      {paneName !== paneId ? <span title={paneName}>{paneName}</span> : null}
+      <Token code title={pane.pane_id}>
+        {paneId}
+      </Token>
+    </span>
+  );
+}
+
 export function AgentSessionPreviewDialog({
   pane,
   summary,
@@ -112,37 +194,28 @@ export function AgentSessionPreviewDialog({
 }) {
   const workspaces = useStoreSelector((state) => state.workspaces);
   const connectionClient = useConnectionClient();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<"timeline" | "atif" | "raw">("timeline");
+  const [mode, setMode] = useState<SessionView>("timeline");
+  // The last pane stays rendered while the dialog animates closed.
+  const [shownPane, setShownPane] = useState(pane);
+  if (pane && pane !== shownPane) setShownPane(pane);
+  // Every opening starts on the Timeline.
+  const [openedPaneId, setOpenedPaneId] = useState(pane?.pane_id);
+  if (pane?.pane_id !== openedPaneId) {
+    setOpenedPaneId(pane?.pane_id);
+    if (pane) setMode("timeline");
+  }
   const turns = useMemo(
     () => groupTrajectoryTurns(summary?.trajectory?.steps ?? []),
     [summary?.trajectory?.steps],
   );
-  const paneId = pane?.pane_id;
 
-  useEffect(() => {
-    if (!paneId) return;
-    setMode("timeline");
-    const cancelFocus = focusDialogElement(dialogRef.current);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
-    };
-  }, [onClose, paneId]);
-
-  if (!pane) return null;
+  const current = pane ?? shownPane;
+  if (!current) return null;
 
   const workspaceLabel =
-    workspaces.find((workspace) => workspace.workspace_id === pane.workspace_id)
-      ?.label ?? pane.workspace_id;
-  const usage = summary?.stats.token_usage;
+    workspaces.find(
+      (workspace) => workspace.workspace_id === current.workspace_id,
+    )?.label ?? current.workspace_id;
   const text = summary?.text ?? "";
   const atifText = summary?.trajectory
     ? JSON.stringify(summary.trajectory, null, 2)
@@ -152,197 +225,129 @@ export function AgentSessionPreviewDialog({
     summary?.detail ||
     t("No readable session transcript was reported for this agent.");
 
-  // Render at the document root for the same reason as AgentMessageDialog:
-  // on mobile the transformed .app box and the inspector slot's stacking
-  // context would otherwise let the topbar paint over the dialog.
-  return createPortal(
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        ref={dialogRef}
-        className="modal agent-session-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Session Inspector")}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="modal-head agent-session-modal-head">
-          <div className="agent-session-identity">
-            <AgentIcon agent={pane.agent} />
+  return (
+    <Dialog
+      open={!!pane}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={t("Session Inspector")}
+      description={
+        <AgentPaneIdentity pane={current} workspaceLabel={workspaceLabel} />
+      }
+      headerStart={<AgentIcon agent={current.agent} />}
+      closeLabel={t("Close Session Inspector")}
+      size="lg"
+      busy={loading}
+      className="agent-session-dialog"
+      bodyClassName="agent-session-body"
+    >
+      {summary?.status === "ok" ? (
+        <>
+          <SessionOverview
+            summary={summary}
+            tokensLabel={t("Total tokens")}
+            updated={formatSessionTime(summary.updated_at)}
+            updatedTitle={formatSessionTime(summary.updated_at)}
+            reasoning
+          />
+          <div className="agent-session-file-row">
             <div>
-              <h3>{t("Session Inspector")}</h3>
-              <span>
-                {workspaceLabel} · {pane.agent ?? t("Agent")} ·{" "}
-                {shortId(pane.pane_id)}
-              </span>
+              <span>{t("Session file")}</span>
+              <code title={summary.path}>{summary.path}</code>
             </div>
+            <span>
+              {t("{records} records · {size}", {
+                records: formatCount(summary.stats.records),
+                size: formatBytes(summary.file?.size),
+              })}
+            </span>
+            <IconButton
+              label={t("Copy session file path")}
+              tooltip={t("Copy path")}
+              icon={<Copy size={13} />}
+              onClick={() => void copyTextWithFeedback(summary.path)}
+            />
           </div>
-          <CloseButton label={t("Close Session Inspector")} onClick={onClose} />
+        </>
+      ) : null}
+
+      {loading ? (
+        <div className="agent-session-state">
+          <span className="terminal-loading-dot" />
+          {t("Loading session")}
         </div>
-
-        {summary?.status === "ok" ? (
-          <>
-            <section
-              className="agent-session-overview"
-              aria-label={t("Session overview")}
-            >
-              <div>
-                <strong>{formatCount(summary.stats.turns)}</strong>
-                <span>{t("Turns")}</span>
-              </div>
-              <div>
-                <strong>{formatTokenTotal(summary)}</strong>
-                <span>{t("Total tokens")}</span>
-              </div>
-              <div>
-                <strong title={formatSessionTime(summary.updated_at)}>
-                  {formatSessionTime(summary.updated_at)}
-                </strong>
-                <span>{t("Updated")}</span>
-              </div>
-              <p>
-                {t("Input {count}", {
-                  count: formatOptionalCompact(usage?.input_tokens),
-                })}
-                <span>·</span>
-                {t("Cached {count}", {
-                  count: formatOptionalCompact(usage?.cached_input_tokens),
-                })}
-                <span>·</span>
-                {t("Output {count}", {
-                  count: formatOptionalCompact(usage?.output_tokens),
-                })}
-                <span>·</span>
-                {t("Reasoning {count}", {
-                  count: formatOptionalCompact(usage?.reasoning_output_tokens),
-                })}
-              </p>
-            </section>
-            <div className="agent-session-file-row">
-              <div>
-                <span>{t("Session file")}</span>
-                <code title={summary.path}>{summary.path}</code>
-              </div>
-              <span>
-                {t("{records} records · {size}", {
-                  records: formatCount(summary.stats.records),
-                  size: formatBytes(summary.file?.size),
-                })}
-              </span>
-              <button
-                type="button"
-                className="agent-history-icon"
-                onClick={() => void copyTextWithFeedback(summary.path)}
-                aria-label={t("Copy session file path")}
-                title={t("Copy path")}
-              >
-                <Copy size={13} />
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        {loading ? (
-          <div className="agent-session-state">
-            <span className="terminal-loading-dot" />
-            {t("Loading session")}
-          </div>
-        ) : summary?.status !== "ok" || error ? (
-          <div className="agent-session-state is-error">
-            <strong>{t("Session unavailable")}</strong>
-            <span>{unavailableDetail}</span>
-            {summary?.command ? <code>{summary.command}</code> : null}
-          </div>
-        ) : (
-          <>
-            <div className="agent-session-actions">
-              <div
-                className="agent-session-mode-switch"
-                role="tablist"
-                aria-label={t("Session Inspector view")}
-              >
-                <button
-                  type="button"
-                  className={mode === "timeline" ? "is-active" : ""}
-                  onClick={() => setMode("timeline")}
-                  role="tab"
-                  aria-selected={mode === "timeline"}
-                >
-                  {t("Timeline")}
-                </button>
-                <button
-                  type="button"
-                  className={mode === "atif" ? "is-active" : ""}
-                  onClick={() => setMode("atif")}
-                  role="tab"
-                  aria-selected={mode === "atif"}
-                >
-                  ATIF
-                </button>
-                <button
-                  type="button"
-                  className={mode === "raw" ? "is-active" : ""}
-                  onClick={() => setMode("raw")}
-                  role="tab"
-                  aria-selected={mode === "raw"}
-                >
-                  {t("Raw")}
-                </button>
-              </div>
-              <details className="agent-session-export-menu">
-                <summary>
+      ) : summary?.status !== "ok" || error ? (
+        <div className="agent-session-state is-error">
+          <strong>{t("Session unavailable")}</strong>
+          <span>{unavailableDetail}</span>
+          {summary?.command ? <code>{summary.command}</code> : null}
+        </div>
+      ) : (
+        <>
+          <div className="agent-session-actions">
+            <Tabs
+              className="agent-session-tabs"
+              aria-label={t("Session Inspector view")}
+              value={mode}
+              onChange={setMode}
+              items={[
+                { id: "timeline", label: t("Timeline") },
+                { id: "atif", label: "ATIF" },
+                { id: "raw", label: t("Raw") },
+              ]}
+            />
+            <Menu
+              aria-label={t("Export")}
+              placement="bottom end"
+              trigger={
+                <Button variant="secondary">
                   <Download size={14} />
                   {t("Export")}
-                </summary>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadSessionAtif(
-                        pane,
-                        summary.session?.value || summary.path,
-                        connectionClient,
-                      )
-                    }
-                  >
-                    {t("Export ATIF")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadSession(pane, connectionClient)}
-                  >
-                    {t("Export raw")}
-                  </button>
-                </div>
-              </details>
+                </Button>
+              }
+              items={[
+                {
+                  id: "atif",
+                  label: t("Export ATIF"),
+                  onAction: () =>
+                    downloadSessionAtif(
+                      current,
+                      summary.session?.value || summary.path,
+                      connectionClient,
+                    ),
+                },
+                {
+                  id: "raw",
+                  label: t("Export raw"),
+                  onAction: () => downloadSession(current, connectionClient),
+                },
+              ]}
+            />
+          </div>
+          {summary.truncated ? (
+            <div className="file-preview-banner">
+              {t("Preview truncated. Export raw to get the full session file.")}
             </div>
-            {summary.truncated ? (
-              <div className="file-preview-banner">
-                {t(
-                  "Preview truncated. Export raw to get the full session file.",
-                )}
-              </div>
-            ) : null}
-            <div className="agent-session-content">
-              {mode === "timeline" ? (
-                <SessionTimeline turns={turns} />
-              ) : mode === "atif" ? (
-                atifText ? (
-                  <CodePreview text={atifText} searchable />
-                ) : (
-                  <div className="agent-session-state">
-                    {t("No ATIF trajectory available.")}
-                  </div>
-                )
+          ) : null}
+          <div className="agent-session-content">
+            {mode === "timeline" ? (
+              <SessionTimeline turns={turns} />
+            ) : mode === "atif" ? (
+              atifText ? (
+                <CodePreview text={atifText} searchable />
               ) : (
-                <CodePreview text={text} searchable />
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </div>,
-    document.body,
+                <div className="agent-session-state">
+                  {t("No ATIF trajectory available.")}
+                </div>
+              )
+            ) : (
+              <CodePreview text={text} searchable />
+            )}
+          </div>
+        </>
+      )}
+    </Dialog>
   );
 }
 

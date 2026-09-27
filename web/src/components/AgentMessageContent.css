@@ -1,17 +1,68 @@
-.agent-message-mode-toggle {
+/* The inline History reader's header bar. */
+.agent-message-modal-head {
   flex: 0 0 auto;
-  height: 24px;
-  margin-right: 4px;
-  padding: 0 9px;
-  background: var(--viewer-panel-bg);
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 700;
+  min-height: var(--ui-bar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 16px;
+  background: var(--viewer-header-bg);
+  border-bottom: 1px solid var(--border-soft);
 }
 
-.agent-message-mode-toggle:hover {
+.agent-message-modal-head > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.agent-message-modal-head h3 {
+  margin: 0;
   color: var(--text-strong);
-  border-color: var(--accent);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.agent-message-modal-head time,
+.agent-message-call-id {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-message-modal-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.agent-message-modal-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  color: var(--text-code);
+  font-family: var(--mono-font);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--input-bg);
+  border: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.agent-message-modal-content.is-rendered {
+  color: var(--text);
+  font-family: inherit;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .agent-message-markdown {
@@ -22,6 +73,11 @@
 
 /* Keep mobile styling in sync with the saved layout and URL override. */
 :where(html[data-layout="mobile"]) {
+  .agent-message-modal-content {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
   .agent-message-markdown {
     font-size: 12px;
     line-height: 1.55;

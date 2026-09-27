@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   focusTreeItem,
   keyboardContextMenuPoint,
@@ -6,7 +6,7 @@ import {
 } from "./treeKeyboard";
 import { store, useStoreSelector } from "../store";
 import type { Pane } from "../types";
-import { agentClass, formatMemoryLimit, shortId } from "../utils";
+import { formatMemoryLimit, shortId } from "../utils";
 import { agentStatusText } from "../agentOrder";
 import { t } from "../i18n";
 import {
@@ -14,35 +14,38 @@ import {
   paneDisplayName,
   paneLocationName,
 } from "../paneIdentity";
-import { shouldShowAgentStatusLabel } from "./agentSession";
+import {
+  agentStateKind,
+  shouldShowAgentStatusLabel,
+  type AgentStateKind,
+} from "./agentSession";
 import { AgentStatusIcon } from "./AgentStatusIcon";
-import { observeClampedContextMenu } from "./contextMenuPosition";
 import { TREE_DEPTH_INDENT } from "./treeIndent";
-import { Token } from "./ui/Token";
-// AgentContextMenu shares the workspace menu styles.
-import "./ContextMenu.css";
+import { ContextMenu } from "./ui/ContextMenu";
+import { Token, type TokenTone } from "./ui/Token";
 import "./WorkspaceAgentRows.css";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
+
+const AGENT_STATUS_TONES: Record<AgentStateKind, TokenTone> = {
+  working: "warning",
+  blocked: "danger",
+  done: "success",
+  idle: "accent",
+  unknown: "neutral",
+};
+
+/** Token tone for an agent status label (rows, the history header). */
+export function agentStatusTone(status?: string): TokenTone {
+  return AGENT_STATUS_TONES[agentStateKind(status)];
+}
 
 export interface AgentMenuState {
   pane: Pane;
   x: number;
   y: number;
 }
-
-type AgentContextMenuItem = {
-  label: string;
-  danger?: boolean;
-  action: () => void;
-};
-
-type AgentContextMenuGroup = {
-  label: string;
-  items: AgentContextMenuItem[];
-  danger?: boolean;
-};
 
 export function AgentRow({
   pane,
@@ -231,8 +234,9 @@ export function AgentRow({
             {nested ? name : (workspaceLabel ?? pane.workspace_id)}
           </span>
           {pane.memory_incident ? (
-            <span
-              className="app-badge badge-blocked agent-row-status"
+            <Token
+              tone="danger"
+              className="agent-row-status"
               title={
                 pane.memory_incident.processes === 1
                   ? t(
@@ -256,14 +260,15 @@ export function AgentRow({
               }
             >
               {t("killed")}
-            </span>
+            </Token>
           ) : null}
           {showStatus ? (
-            <span
-              className={`${agentClass(pane.agent_status)} agent-row-status`}
+            <Token
+              tone={agentStatusTone(pane.agent_status)}
+              className="agent-row-status"
             >
               {agentStatusText(pane.agent_status)}
-            </span>
+            </Token>
           ) : null}
           {showPaneId ? (
             <Token code className="agent-row-id" title={pane.pane_id}>
@@ -306,128 +311,78 @@ export function AgentContextMenu({
   onExportSession: (pane: Pane) => void;
   onClosePane: (pane: Pane) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  // The last pane keeps the menu's content while it animates closed.
+  const lastPaneRef = useRef<Pane | null>(null);
+  if (state) lastPaneRef.current = state.pane;
+  const pane = lastPaneRef.current;
+  if (!pane) return null;
 
-  useEffect(() => {
-    if (!state) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const onScroll = (e: Event) => {
-      const target = e.target;
-      if (target instanceof Node && ref.current?.contains(target)) return;
-      onClose();
-    };
-    const timer = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-      window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", onScroll, true);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [state, onClose]);
-
-  useLayoutEffect(() => {
-    const menu = ref.current;
-    if (!state || !menu) return;
-    return observeClampedContextMenu(menu, {
-      left: state.x,
-      top: state.y,
-    });
-  }, [state]);
-
-  if (!state) return null;
-
-  const groups: AgentContextMenuGroup[] = [
-    {
-      label: t("Open"),
-      items: [
-        { label: t("Open terminal"), action: () => onFocus(state.pane) },
-        {
-          label: t("Browse files at agent CWD"),
-          action: () => onBrowseFiles?.(state.pane),
-        },
-        {
-          label: t("Review workspace changes"),
-          action: () => onReviewChanges?.(state.pane),
-        },
-      ],
-    },
-    {
-      label: t("Session"),
-      items: [
-        {
-          label: t("View agent history"),
-          action: () => onViewHistory?.(state.pane),
-        },
-        {
-          label: t("Export session"),
-          action: () => onExportSession(state.pane),
-        },
-      ],
-    },
-    {
-      label: t("Pane"),
-      danger: true,
-      items: [
-        {
-          label: t("Close pane"),
-          danger: true,
-          action: () => onClosePane(state.pane),
-        },
-      ],
-    },
-  ];
-  const style: React.CSSProperties = {
-    position: "fixed",
-    left: state.x,
-    top: state.y,
-    zIndex: 1000,
-  };
-  const agentName = state.pane.agent ?? "Agent";
-  const paneName = paneDisplayName(state.pane);
-  const locationName = paneLocationName(state.pane);
-
+  const paneName = paneDisplayName(pane);
+  const locationName = paneLocationName(pane);
   return (
-    <div ref={ref} className="context-menu context-menu--grouped" style={style}>
-      <div className="context-menu-header">
-        <span>{agentName}</span>
-        <strong title={paneName}>{paneName}</strong>
-        <small>
-          <code>{state.pane.pane_id}</code> ·{" "}
-          {agentStatusText(state.pane.agent_status)}
-          {locationName && locationName !== paneName
-            ? ` · ${locationName}`
-            : ""}
-        </small>
-      </div>
-      {groups.map((group) => (
-        <div
-          key={group.label}
-          className={`context-menu-group ${group.danger ? "is-danger" : ""}`}
-        >
-          <div className="context-menu-group-title">{group.label}</div>
-          {group.items.map((item) => (
-            <button
-              key={item.label}
-              className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
-              onClick={() => {
-                onClose();
-                item.action();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ))}
-    </div>
+    <ContextMenu
+      position={state ? { x: state.x, y: state.y } : null}
+      onClose={onClose}
+      aria-label={t("Pane actions")}
+      header={{
+        title: paneName,
+        subtitle: [
+          pane.agent ?? t("Agent"),
+          pane.pane_id,
+          agentStatusText(pane.agent_status),
+          locationName && locationName !== paneName ? locationName : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      }}
+      items={[
+        {
+          title: t("Open"),
+          items: [
+            {
+              id: "open-terminal",
+              label: t("Open terminal"),
+              onAction: () => onFocus(pane),
+            },
+            {
+              id: "browse-files",
+              label: t("Browse files at agent CWD"),
+              onAction: () => onBrowseFiles?.(pane),
+            },
+            {
+              id: "review-changes",
+              label: t("Review workspace changes"),
+              onAction: () => onReviewChanges?.(pane),
+            },
+          ],
+        },
+        {
+          title: t("Session"),
+          items: [
+            {
+              id: "view-history",
+              label: t("View agent history"),
+              onAction: () => onViewHistory?.(pane),
+            },
+            {
+              id: "export-session",
+              label: t("Export session"),
+              onAction: () => onExportSession(pane),
+            },
+          ],
+        },
+        {
+          title: t("Pane"),
+          danger: true,
+          items: [
+            {
+              id: "close-pane",
+              label: t("Close pane"),
+              onAction: () => onClosePane(pane),
+            },
+          ],
+        },
+      ]}
+    />
   );
 }

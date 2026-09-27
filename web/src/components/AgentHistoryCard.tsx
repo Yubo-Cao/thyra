@@ -5,6 +5,8 @@ import { formatBytes } from "./agentSession";
 import { t } from "../i18n";
 import { formatUiDateTime } from "../uiLocale";
 import { copyTextWithFeedback } from "../copyText";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 import "./AgentHistoryCard.css";
 
 export const HISTORY_PREVIEW_CHARS = 4000;
@@ -64,15 +66,13 @@ export const AgentHistoryCard = memo(function AgentHistoryCard({
         </time>
         <span />
         {!contentPending ? (
-          <button
-            type="button"
+          <IconButton
             className="agent-history-copy"
+            label={t("Copy entry {index}", { index })}
+            tooltip={t("Copy")}
+            icon={<Copy size={13} />}
             onClick={() => void copyTextWithFeedback(entry.text)}
-            aria-label={t("Copy entry {index}", { index })}
-            title={t("Copy")}
-          >
-            <Copy size={13} />
-          </button>
+          />
         ) : null}
       </div>
       {entry.source_call_id ? (
@@ -81,8 +81,9 @@ export const AgentHistoryCard = memo(function AgentHistoryCard({
         </div>
       ) : null}
       {contentPending ? (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          fullWidth
           className="agent-history-tool-load"
           disabled={contentLoading}
           onClick={() => onLoadContent?.(entry)}
@@ -101,7 +102,7 @@ export const AgentHistoryCard = memo(function AgentHistoryCard({
               : t("Load output ({size})", {
                   size: formatBytes(entry.text_bytes),
                 })}
-        </button>
+        </Button>
       ) : (
         <button
           type="button"

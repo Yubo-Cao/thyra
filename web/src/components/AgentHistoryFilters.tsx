@@ -4,6 +4,7 @@ import {
   type HistoryFilters,
 } from "./agentHistory";
 import { msg, t } from "../i18n";
+import { Button } from "./ui/Button";
 import "./AgentHistoryFilters.css";
 
 const labels: Record<HistoryCategory, string> = {
@@ -28,9 +29,8 @@ export function AgentHistoryFilters({
       aria-label={t("Filter history by message type")}
     >
       {HISTORY_CATEGORIES.map((category) => (
-        <button
+        <Button
           key={category}
-          type="button"
           className={`agent-history-filter is-${category}`}
           aria-label={t(labels[category])}
           aria-pressed={filters[category]}
@@ -47,7 +47,7 @@ export function AgentHistoryFilters({
         >
           {t(labels[category])}
           <span>{counts[category]}</span>
-        </button>
+        </Button>
       ))}
     </div>
   );

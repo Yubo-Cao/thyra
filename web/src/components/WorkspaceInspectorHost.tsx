@@ -7,7 +7,6 @@ import {
   Minimize2,
   PanelBottom,
   PanelRight,
-  X,
 } from "lucide-react";
 import {
   Suspense,
@@ -19,7 +18,6 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { ConnectionClient } from "../api";
 import { thyraLocalStorage } from "../browserStorage";
@@ -43,7 +41,7 @@ import {
   type InspectorView,
   type WorkspaceInspectorState,
 } from "../workspaceResource";
-import { AgentHistoryDrawer } from "./AgentHistoryDrawer";
+import { AgentHistoryDrawer, SplitResizer } from "./AgentHistoryDrawer";
 import { paneHasAgentHistory } from "./agentSession";
 import {
   type ActiveDiffSelection,
@@ -57,6 +55,10 @@ import {
   FilePreviewContent,
 } from "./FilePreviewContent";
 import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
+import { CloseButton } from "./ui/CloseButton";
+import { IconButton } from "./ui/IconButton";
+import { Tabs } from "./ui/Tabs";
+import { Token } from "./ui/Token";
 import "./WorkspaceInspectorHost.css";
 
 const DiffContentView = lazyWithReload("diff-content-view", () =>
@@ -83,113 +85,6 @@ function checkoutLabel(workspace?: Workspace) {
 }
 
 const INSPECTOR_RESOURCE_HORIZONTAL_PADDING = 16;
-
-function navigationRatioForPointer(
-  event: Pick<ReactPointerEvent<HTMLDivElement>, "clientX" | "currentTarget">,
-) {
-  const resource = event.currentTarget.parentElement;
-  if (!resource) return DEFAULT_INSPECTOR_NAVIGATION_RATIO;
-  const bounds = resource.getBoundingClientRect();
-  return inspectorNavigationRatioAtPosition(
-    event.clientX - bounds.left - INSPECTOR_RESOURCE_HORIZONTAL_PADDING / 2,
-    bounds.width - INSPECTOR_RESOURCE_HORIZONTAL_PADDING,
-  );
-}
-
-function InspectorSplitResizer({
-  ratio,
-  resetRatio = DEFAULT_INSPECTOR_NAVIGATION_RATIO,
-  navigationId,
-  detailId,
-  onChange,
-  onCommit,
-}: {
-  ratio: number;
-  resetRatio?: number;
-  navigationId: string;
-  detailId: string;
-  onChange: (ratio: number) => void;
-  onCommit: (ratio: number) => void;
-}) {
-  const dragRatioRef = useRef(ratio);
-  dragRatioRef.current = ratio;
-
-  const updateFromPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const next = navigationRatioForPointer(event);
-    dragRatioRef.current = next;
-    onChange(next);
-  };
-
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (
-      event.key !== "ArrowLeft" &&
-      event.key !== "ArrowRight" &&
-      event.key !== "Home" &&
-      event.key !== "End"
-    ) {
-      return;
-    }
-    event.preventDefault();
-    const resource = event.currentTarget.parentElement;
-    if (!resource) return;
-    const availableWidth =
-      resource.getBoundingClientRect().width -
-      INSPECTOR_RESOURCE_HORIZONTAL_PADDING;
-    const currentOffset = dragRatioRef.current * availableWidth;
-    const next = inspectorNavigationRatioAtPosition(
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? availableWidth
-          : currentOffset + (event.key === "ArrowLeft" ? -16 : 16),
-      availableWidth,
-    );
-    dragRatioRef.current = next;
-    onChange(next);
-    onCommit(next);
-  };
-
-  return (
-    <div
-      className="workspace-inspector-split-resizer"
-      role="separator"
-      tabIndex={0}
-      aria-label={t("Resize file navigation")}
-      aria-orientation="vertical"
-      aria-controls={`${navigationId} ${detailId}`}
-      aria-valuemin={15}
-      aria-valuemax={75}
-      aria-valuenow={Math.round(ratio * 100)}
-      title={t("Drag to resize; double-click to reset")}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.currentTarget.setPointerCapture(event.pointerId);
-        updateFromPointer(event);
-      }}
-      onPointerMove={(event) => {
-        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        updateFromPointer(event);
-      }}
-      onPointerUp={(event) => {
-        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        event.currentTarget.releasePointerCapture(event.pointerId);
-        onCommit(dragRatioRef.current);
-      }}
-      onPointerCancel={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        }
-        onCommit(dragRatioRef.current);
-      }}
-      onDoubleClick={() => {
-        dragRatioRef.current = resetRatio;
-        onChange(resetRatio);
-        onCommit(resetRatio);
-      }}
-      onKeyDown={handleKeyDown}
-    />
-  );
-}
 
 export function WorkspaceInspectorHost({
   state,
@@ -252,9 +147,6 @@ export function WorkspaceInspectorHost({
   useLayoutEffect(() => {
     onReady?.();
   }, [onReady]);
-  const filesTabRef = useRef<HTMLButtonElement | null>(null);
-  const changesTabRef = useRef<HTMLButtonElement | null>(null);
-  const historyTabRef = useRef<HTMLButtonElement | null>(null);
   const diffViewerRef = useRef<DiffViewerPanelHandle | null>(null);
   const splitId = useId();
   const [hostWidth, setHostWidth] = useState(0);
@@ -374,41 +266,16 @@ export function WorkspaceInspectorHost({
     setDrillInByView((current) => ({ ...current, files: true }));
   }, [fileSelection.entry, state.view]);
 
-  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === "ArrowDown" && state.view === "files") {
-      const treeItem = hostRef.current?.querySelector<HTMLElement>(
-        ".inspector-files-resource .file-row[role='treeitem'][tabindex='0']",
-      );
-      if (treeItem) {
-        event.preventDefault();
-        treeItem.focus({ preventScroll: true });
-        treeItem.scrollIntoView({ block: "nearest" });
-      }
-      return;
-    }
-    const views: InspectorView[] = historyAvailable
-      ? ["files", "changes", "history"]
-      : ["files", "changes"];
-    const currentIndex = Math.max(0, views.indexOf(state.view));
-    const nextView: InspectorView | undefined =
-      event.key === "Home"
-        ? views[0]
-        : event.key === "End"
-          ? views[views.length - 1]
-          : event.key === "ArrowLeft"
-            ? views[(currentIndex - 1 + views.length) % views.length]
-            : event.key === "ArrowRight"
-              ? views[(currentIndex + 1) % views.length]
-              : undefined;
-    if (!nextView) return;
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" || state.view !== "files") return;
+    if (!(event.target as HTMLElement).matches("[role='tab']")) return;
+    const treeItem = hostRef.current?.querySelector<HTMLElement>(
+      ".inspector-files-resource .file-row[role='treeitem'][tabindex='0']",
+    );
+    if (!treeItem) return;
     event.preventDefault();
-    onViewChange(nextView);
-    const refs = {
-      files: filesTabRef,
-      changes: changesTabRef,
-      history: historyTabRef,
-    };
-    refs[nextView].current?.focus();
+    treeItem.focus({ preventScroll: true });
+    treeItem.scrollIntoView({ block: "nearest" });
   };
 
   useEffect(() => {
@@ -448,12 +315,13 @@ export function WorkspaceInspectorHost({
           <span className="workspace-inspector-checkout">
             {checkoutLabel(workspace)}
             {workspace?.worktree?.is_linked_worktree ? (
-              <span
-                className="workspace-inspector-wt"
+              <Token
+                tone="accent"
+                icon={<GitFork size={11} aria-hidden="true" />}
                 title={t("Linked worktree")}
               >
-                <GitFork size={11} aria-hidden="true" /> {t("Worktree")}
-              </span>
+                {t("Worktree")}
+              </Token>
             ) : null}
           </span>
           {workspace?.worktree?.checkout_path || workspace?.cwd ? (
@@ -465,104 +333,98 @@ export function WorkspaceInspectorHost({
             </code>
           ) : null}
         </div>
-        <div className="workspace-inspector-tabs" role="tablist">
-          <button
-            ref={filesTabRef}
-            type="button"
-            role="tab"
-            aria-selected={state.view === "files"}
-            tabIndex={state.view === "files" ? 0 : -1}
-            className={state.view === "files" ? "is-active" : ""}
-            onClick={() => onViewChange("files")}
-            onKeyDown={handleTabKeyDown}
-          >
-            <FolderTree size={14} /> {t("Files")}
-          </button>
-          <button
-            ref={changesTabRef}
-            type="button"
-            role="tab"
-            aria-selected={state.view === "changes"}
-            tabIndex={state.view === "changes" ? 0 : -1}
-            className={state.view === "changes" ? "is-active" : ""}
-            onClick={() => onViewChange("changes")}
-            onKeyDown={handleTabKeyDown}
-          >
-            <FileDiff size={14} /> {t("Changes")}
-            {changeCount > 0 ? (
-              <span className="workspace-inspector-count">{changeCount}</span>
-            ) : null}
-          </button>
-          <button
-            ref={historyTabRef}
-            type="button"
-            role="tab"
-            aria-selected={state.view === "history"}
-            tabIndex={state.view === "history" ? 0 : -1}
-            className={state.view === "history" ? "is-active" : ""}
-            title={
-              historyAvailable
-                ? t("Agent history")
-                : t("Select an active agent pane to view history")
-            }
-            disabled={!historyAvailable && state.view !== "history"}
-            onClick={() => {
-              if (historyAvailable) onViewChange("history");
+        {/* ArrowDown from the Files tab enters the file tree; the other
+            tab keys are handled by Tabs. */}
+        <div className="workspace-inspector-tabs" onKeyDown={handleTabKeyDown}>
+          <Tabs
+            aria-label={t("Inspector view")}
+            value={state.view}
+            onChange={(view) => {
+              if (view !== "history" || historyAvailable) onViewChange(view);
             }}
-            onKeyDown={handleTabKeyDown}
-          >
-            <History size={14} /> {t("History")}
-          </button>
+            items={[
+              {
+                id: "files",
+                icon: <FolderTree size={14} />,
+                label: t("Files"),
+              },
+              {
+                id: "changes",
+                icon: <FileDiff size={14} />,
+                label: (
+                  <>
+                    {t("Changes")}
+                    {changeCount > 0 ? (
+                      <Token tone="warning">{changeCount}</Token>
+                    ) : null}
+                  </>
+                ),
+              },
+              {
+                id: "history",
+                icon: <History size={14} />,
+                label: (
+                  <span
+                    title={
+                      historyAvailable
+                        ? t("Agent history")
+                        : t("Select an active agent pane to view history")
+                    }
+                  >
+                    {t("History")}
+                  </span>
+                ),
+                disabled: !historyAvailable && state.view !== "history",
+              },
+            ]}
+          />
         </div>
         <div className="workspace-inspector-actions">
-          <button
-            type="button"
+          <IconButton
             className="workspace-inspector-dock-action"
-            title={
-              state.dock === "right" ? t("Dock at bottom") : t("Dock at right")
-            }
-            aria-label={
+            label={
               state.dock === "right"
                 ? t("Dock Inspector at bottom")
                 : t("Dock Inspector at right")
             }
+            tooltip={
+              state.dock === "right" ? t("Dock at bottom") : t("Dock at right")
+            }
+            icon={
+              state.dock === "right" ? (
+                <PanelBottom size={15} />
+              ) : (
+                <PanelRight size={15} />
+              )
+            }
             onClick={() =>
               onDockChange(state.dock === "right" ? "bottom" : "right")
             }
-          >
-            {state.dock === "right" ? (
-              <PanelBottom size={15} />
-            ) : (
-              <PanelRight size={15} />
-            )}
-          </button>
-          <button
-            type="button"
+          />
+          <IconButton
             className="workspace-inspector-expand-action"
-            title={shortcutTitle(
+            label={
+              state.expanded
+                ? t("Restore Inspector dock")
+                : t("Expand Inspector")
+            }
+            tooltip={shortcutTitle(
               state.expanded
                 ? t("Restore Inspector dock")
                 : t("Expand Inspector"),
               "inspector.expand",
             )}
-            aria-label={
-              state.expanded
-                ? t("Restore Inspector dock")
-                : t("Expand Inspector")
+            icon={
+              state.expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />
             }
             aria-pressed={state.expanded}
             onClick={() => onExpandedChange(!state.expanded)}
-          >
-            {state.expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-          </button>
-          <button
-            type="button"
-            title={t("Close Inspector")}
-            aria-label={t("Close Workspace Inspector")}
+          />
+          <CloseButton
+            label={t("Close Workspace Inspector")}
+            tooltip={t("Close Inspector")}
             onClick={onClose}
-          >
-            <X size={16} />
-          </button>
+          />
         </div>
       </header>
 
@@ -609,11 +471,12 @@ export function WorkspaceInspectorHost({
               />
             </div>
             {splitEnabled ? (
-              <InspectorSplitResizer
+              <SplitResizer
                 ratio={navigationRatios.files}
                 resetRatio={defaultNavigationRatio}
-                navigationId={navigationIds.files}
-                detailId={detailIds.files}
+                inset={INSPECTOR_RESOURCE_HORIZONTAL_PADDING}
+                label={t("Resize file navigation")}
+                controls={`${navigationIds.files} ${detailIds.files}`}
                 onChange={(ratio) => setNavigationRatio("files", ratio)}
                 onCommit={(ratio) => commitNavigationRatio("files", ratio)}
               />
@@ -733,11 +596,12 @@ export function WorkspaceInspectorHost({
               />
             </div>
             {splitEnabled ? (
-              <InspectorSplitResizer
+              <SplitResizer
                 ratio={navigationRatios.changes}
                 resetRatio={defaultNavigationRatio}
-                navigationId={navigationIds.changes}
-                detailId={detailIds.changes}
+                inset={INSPECTOR_RESOURCE_HORIZONTAL_PADDING}
+                label={t("Resize file navigation")}
+                controls={`${navigationIds.changes} ${detailIds.changes}`}
                 onChange={(ratio) => setNavigationRatio("changes", ratio)}
                 onCommit={(ratio) => commitNavigationRatio("changes", ratio)}
               />
