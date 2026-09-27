@@ -33,6 +33,7 @@ import {
   browserPaneInDirection,
 } from "./browserNavigation";
 import { useRef, useSyncExternalStore } from "react";
+import { afterStartup } from "./startupGate";
 import {
   bridge,
   type ConnectionClient,
@@ -1483,6 +1484,8 @@ function startUpdatePolling(): Promise<void> {
 }
 
 function stopPolling() {
+  cancelDeferredUpdatePolling?.();
+  cancelDeferredUpdatePolling = null;
   if (refreshTimer) {
     clearTimeout(refreshTimer);
     refreshTimer = null;
@@ -1498,9 +1501,17 @@ function stopPolling() {
   queuedConnectionKeys.clear();
 }
 
+// The update check is not needed for the first screen; it waits until a
+// terminal has output so it never competes with it on slow links.
+let cancelDeferredUpdatePolling: (() => void) | null = null;
+
 function startPolling() {
   startMetadataPolling();
-  startUpdatePolling();
+  cancelDeferredUpdatePolling?.();
+  cancelDeferredUpdatePolling = afterStartup(() => {
+    cancelDeferredUpdatePolling = null;
+    void startUpdatePolling();
+  });
 }
 
 function selectConnectionNow(connectionId: string, refresh = true): boolean {
@@ -2163,7 +2174,9 @@ export const store = {
   init() {
     if (initialized) return;
     initialized = true;
-    void store.restoreTaskNotifications();
+    // Background-notification sync (service worker, push subscription) is
+    // not needed for the first terminal output.
+    afterStartup(() => void store.restoreTaskNotifications());
     window.addEventListener("storage", (event) => {
       const key = thyraStorageEventKey(event);
       if (

@@ -183,6 +183,7 @@ import {
 } from "../terminalScroll";
 import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
 import { applyTerminalTheme } from "../terminalThemes";
+import { noteTerminalOutput } from "../startupGate";
 import { paneHasAgentHistory } from "./agentSession";
 import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
 import {
@@ -1149,6 +1150,11 @@ export function TerminalView({
     term.loadAddon(new UnicodeGraphemesAddon());
     term.loadAddon(fit);
     term.open(container);
+    // Startup warmups elsewhere wait for the first rendered output.
+    const firstOutput = term.onWriteParsed(() => {
+      firstOutput.dispose();
+      noteTerminalOutput();
+    });
     const detachRenderer = attachTerminalRenderer(term, () => {
       const size = fitVisibleTerminal();
       if (size) resizeSyncRef.current?.schedule(size);

@@ -90,6 +90,7 @@ import {
   terminalFileLinkMenuPanel,
 } from "./components/lazyPanels";
 import { prefetchWhenIdle } from "./idlePrefetch";
+import { useStartupSettled } from "./startupGate";
 import {
   type ActiveDiffSelection,
   clearDiffViewerResourceCache,
@@ -232,9 +233,9 @@ const mobileTabSheet = lazyPanel("mobile-tab-sheet", () =>
 );
 const MobileTabSheet = mobileTabSheet.Component;
 
-// Once the terminal is up, fetch the surfaces people open next, most likely
-// first, one chunk per idle period (skipped under Data Saver and on 2G).
-const IDLE_PREFETCH_DELAY_MS = 3000;
+// Once the terminal has output, fetch the surfaces people open next, most
+// likely first, one chunk per idle period (skipped under Data Saver and 2G).
+const IDLE_PREFETCH_DELAY_MS = 1000;
 function idlePrefetchLoaders(mobile: boolean) {
   return [
     ...(mobile ? [terminalComposerPanel.preload] : []),
@@ -1315,6 +1316,8 @@ export default function App() {
   );
   const connectionClient = useConnectionClient();
   const { mobile, preferences: layoutPreferences } = useLayoutPreferences();
+  // Startup work the terminal and switchers do not need waits for this.
+  const startupReady = useStartupSettled(s.status === "connected");
   useEffect(() => {
     activateTerminalComposerDraftScope(
       s.activeConnectionId,
@@ -2682,9 +2685,8 @@ export default function App() {
   const idlePrefetchStartedRef = useRef(false);
   const mobileRef = useRef(mobile);
   mobileRef.current = mobile;
-  const terminalConnected = s.status === "connected";
   useEffect(() => {
-    if (!terminalConnected || idlePrefetchStartedRef.current) return;
+    if (!startupReady || idlePrefetchStartedRef.current) return;
     const timer = window.setTimeout(() => {
       idlePrefetchStartedRef.current = true;
       // The terminal chunk is already on its way; start after it arrives.
@@ -2694,7 +2696,7 @@ export default function App() {
       );
     }, IDLE_PREFETCH_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [terminalConnected]);
+  }, [startupReady]);
   useEffect(() => {
     if (mobile && mobileView === "annotations")
       setMobileControlsCollapsed(false);
@@ -2875,7 +2877,9 @@ export default function App() {
     );
   }, [activeFilePreview.entry?.path, inspectorResourceStateKey]);
   useEffect(() => {
-    if (!focusedWorkspace) return;
+    // Warm the file list and diff only after the terminal has output, so the
+    // warmup never competes with it for bandwidth on slow links.
+    if (!focusedWorkspace || !startupReady) return;
     const scope = resourceScopeForWorkspace(
       connectionClient.connectionId,
       focusedWorkspace,
@@ -2901,7 +2905,7 @@ export default function App() {
         resourceKey,
       );
     }
-  }, [connectionClient, focusedWorkspace, inspectorState]);
+  }, [connectionClient, focusedWorkspace, inspectorState, startupReady]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
@@ -3601,9 +3605,11 @@ export default function App() {
             <span className="brand-version">v{packageJson.version}</span>
           </div>
           <LazyConnectionSwitcher />
-          <Suspense fallback={null}>
-            <LazyCollaborationBar />
-          </Suspense>
+          {startupReady ? (
+            <Suspense fallback={null}>
+              <LazyCollaborationBar />
+            </Suspense>
+          ) : null}
         </div>
         <div className="topbar-actions">
           <div className="topbar-command-group">
