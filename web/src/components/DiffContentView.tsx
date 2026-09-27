@@ -43,7 +43,7 @@ import {
   writeDiffCollapseState,
   expandDiffEntryOnActivate,
 } from "./diffContentState";
-import { diffSyntaxLanguageForPath } from "./diffSyntaxHighlighting";
+import { bundledLanguages, syntaxLanguageForPath } from "../syntaxLanguage";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import { SearchField } from "./ui/SearchField";
@@ -72,7 +72,7 @@ const DIFF_WORKER_POOL_OPTIONS: WorkerPoolOptions = {
 };
 const DIFF_HIGHLIGHTER_OPTIONS: WorkerInitializationRenderOptions = {
   theme: DEFAULT_THEMES,
-  preferredHighlighter: "shiki-wasm",
+  preferredHighlighter: "shiki-js",
 };
 
 type ImagePreviewState = {
@@ -254,7 +254,6 @@ function imagePreviewKey(client: ConnectionClient, file: GitDiffFile) {
 function isEditableSearchTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.closest(".diff-search")) return false;
-  if (target.closest(".cm-editor")) return true;
   if (target.isContentEditable) return true;
   return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
@@ -354,13 +353,18 @@ class DiffRenderBoundary extends Component<
 
 let nextPatchCacheKey = 0;
 
+function diffLanguageForPath(path: string) {
+  const language = syntaxLanguageForPath(path);
+  return language in bundledLanguages ? language : "text";
+}
+
 export function highlightedPatch(patch: string, path: string) {
   const diff = getSingularPatch(patch);
   // Pierre 1.4 no longer assigns keys; each parsed patch needs its own worker cache entry.
   diff.cacheKey = `patch:${++nextPatchCacheKey}`;
-  const language = diffSyntaxLanguageForPath(path);
+  const language = diffLanguageForPath(path);
   // Pierre applies lang to both sides; let it infer each side of a language-changing rename.
-  if (!diff.prevName || diffSyntaxLanguageForPath(diff.prevName) === language)
+  if (!diff.prevName || diffLanguageForPath(diff.prevName) === language)
     diff.lang = language;
   return diff;
 }
@@ -857,7 +861,7 @@ export function DiffContentView({
       maxLineDiffLength: 2_000,
       tokenizeMaxLineLength: 4_000,
       tokenizeMaxLength: 250_000,
-      preferredHighlighter: "shiki-wasm",
+      preferredHighlighter: "shiki-js",
     }),
     [effectiveViewMode, theme, wrapEnabled],
   );

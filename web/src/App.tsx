@@ -618,7 +618,6 @@ function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.closest(".xterm")) return false;
   if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return true;
-  if (target.closest(".file-preview-code .cm-editor")) return false;
   return target.isContentEditable;
 }
 

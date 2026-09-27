@@ -1,18 +1,78 @@
 .code-preview {
   flex: 1 1 auto;
-  min-height: 240px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--viewer-code-bg);
+}
+
+.code-preview-search {
+  gap: 4px;
+  padding: 0 6px;
+  background: var(--viewer-header-bg);
+}
+
+.code-preview-search-count {
+  min-width: 48px;
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.code-preview-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0;
+  padding: 10px 0;
   overflow: auto;
-  padding: 12px;
   color: var(--text-code);
   font-family: var(--mono-font);
   font-size: 12px;
-  line-height: 1.45;
-  white-space: pre;
-  background: var(--input-bg);
-  border: 0;
+  line-height: 1.55;
+  outline: none;
 }
 
-.code-preview {
-  padding: 0;
+.code-preview-code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  counter-reset: line;
+  font: inherit;
+}
+
+.code-preview-code .line {
+  counter-increment: line;
+  padding-right: 12px;
+}
+
+/* Generated line numbers are not part of the selection or copied text. */
+.code-preview-code .line::before {
+  content: counter(line);
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  box-sizing: content-box;
+  width: max(var(--code-gutter), 2ch);
+  margin-right: 12px;
+  padding: 0 10px 0 12px;
+  background: var(--viewer-code-bg);
+  box-shadow: inset -1px 0 var(--border-soft);
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+
+.code-preview-code ::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+::highlight(code-preview-match) {
+  background-color: color-mix(in srgb, var(--yellow) 36%, transparent);
+}
+
+::highlight(code-preview-current) {
+  background-color: color-mix(in srgb, var(--yellow) 70%, transparent);
+  color: var(--text-strong);
 }

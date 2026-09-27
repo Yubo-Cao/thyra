@@ -79,7 +79,7 @@ Releases must package/inspect every supported archive/checksum; see
 | `styles/heroui.css` | Tailwind v4 theme, HeroUI base and eager component styles, HeroUI-to-token variable mapping |
 | `styles/ui.css` | `.ui-bar` and `@layer thyra` tuning of the eager primitives in `components/ui/`; other wrappers co-locate their sheet (`ui/fields.css`, `ui/overlays/overlays.css`) |
 | `styles/base.css` | Resets/shared primitives: modals, forms, badges, statuses, panels, loading |
-| `styles/vendor.css` | Vendor overrides the first screen needs; syntax/diff overrides load with their lazy consumers (e.g. `components/syntaxHighlighting.css`) |
+| `styles/vendor.css` | Vendor overrides the first screen needs; syntax/diff styles load with their lazy consumers (e.g. `components/CodePreview.css`) |
 | `styles/layout/*.css` | App-shell regions, imported once by `App.tsx` |
 | `components/<Name>.css` | Component-owned styles, imported/deleted with the component; same for `components/ui/` |
 

@@ -12,10 +12,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
   type ReactNode,
 } from "react";
-import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import {
   ChevronLeft,
   FolderPlus,
@@ -37,14 +35,12 @@ import { MarkdownPreview } from "./markdown";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { ImagePreview } from "./ImagePreview";
 import {
-  codeMirrorSearchPhrases,
-  handlePreviewEditorCopy,
   isEditablePreviewTarget,
   isPreviewKeyboardTarget,
-  selectAllInPreviewEditor,
   selectAllInPreviewElement,
 } from "./previewSelection";
-import { highlightCodeTokens } from "./syntaxHighlighting";
+import { CodePreview, type CodePreviewHandle } from "./CodePreview";
+import { syntaxLanguageForPath } from "../syntaxLanguage";
 import { store, useStoreSelector } from "../store";
 import { relativePathWithinCheckout } from "../workspaceResource";
 import {
@@ -60,7 +56,6 @@ import { CloseButton } from "./ui/CloseButton";
 import { IconButton } from "./ui/IconButton";
 import { Token } from "./ui/Token";
 import { SegmentedControl } from "./ui/SegmentedControl";
-import "./syntaxHighlighting.css";
 import "./FilePreviewContent.css";
 
 const FileEditor = lazyWithReload("file-editor", () =>
@@ -116,49 +111,6 @@ export type FilePreviewSelectionMeta = {
 type AppTheme = "dark" | "light";
 
 const PDF_INLINE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
-
-type CodeMirrorPreviewDeps = Awaited<
-  ReturnType<typeof importCodeMirrorPreviewDeps>
->;
-
-let codeMirrorPreviewDepsPromise: Promise<CodeMirrorPreviewDeps> | null = null;
-
-async function importCodeMirrorPreviewDeps() {
-  const [codemirror, state, view, searchModule] = await Promise.all([
-    import("codemirror"),
-    import("@codemirror/state"),
-    import("@codemirror/view"),
-    import("@codemirror/search"),
-  ]);
-
-  return {
-    basicSetup: codemirror.basicSetup,
-    configuredShortcutGuard: state.Prec.highest(
-      view.keymap.of([
-        { key: "Mod-f", run: () => true },
-        { key: "Mod-a", run: () => true },
-      ]),
-    ),
-    Compartment: state.Compartment,
-    Decoration: view.Decoration,
-    EditorState: state.EditorState,
-    EditorView: view.EditorView,
-    keymap: view.keymap,
-    openSearchPanel: searchModule.openSearchPanel,
-    search: searchModule.search,
-    searchKeymap: searchModule.searchKeymap,
-  };
-}
-
-function loadCodeMirrorPreviewDeps() {
-  codeMirrorPreviewDepsPromise ??= importCodeMirrorPreviewDeps();
-  return codeMirrorPreviewDepsPromise;
-}
-
-function openPreviewSearch(view: CodeMirrorEditorView | null) {
-  if (!view) return;
-  void loadCodeMirrorPreviewDeps().then((deps) => deps.openSearchPanel(view));
-}
 
 function isMarkdownPath(path: string) {
   const lower = path.toLowerCase();
@@ -229,7 +181,7 @@ export function FilePreviewContent({
   const workspaces = useStoreSelector((state) => state.workspaces);
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const previewContentRef = useRef<HTMLDivElement | null>(null);
-  const editorViewRef = useRef<CodeMirrorEditorView | null>(null);
+  const codePreviewRef = useRef<CodePreviewHandle | null>(null);
   const onOpenChangesRef = useRef(onOpenChanges);
   onOpenChangesRef.current = onOpenChanges;
   const [previewMode, setPreviewMode] = useState<"rendered" | "raw">(
@@ -493,7 +445,7 @@ export function FilePreviewContent({
         if (renderRichPreview) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        openPreviewSearch(editorViewRef.current);
+        codePreviewRef.current?.openSearch();
         return;
       }
       if (!isPreviewKeyboardTarget(section, e.target)) return;
@@ -502,23 +454,13 @@ export function FilePreviewContent({
       if (renderRichPreview) {
         selectAllInPreviewElement(previewContentRef.current);
       } else {
-        selectAllInPreviewEditor(editorViewRef.current);
+        codePreviewRef.current?.selectAll();
       }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
   }, [editing, hasPreviewText, renderRichPreview, showingChanges]);
-
-  useEffect(() => {
-    const section = previewSectionRef.current;
-    if (!section) return;
-    const onCopy = (event: ClipboardEvent) => {
-      handlePreviewEditorCopy(editorViewRef.current, event);
-    };
-    section.addEventListener("copy", onCopy);
-    return () => section.removeEventListener("copy", onCopy);
-  }, []);
 
   const copyPreviewText = async () => {
     if (previewText === null) return;
@@ -550,7 +492,7 @@ export function FilePreviewContent({
           if (showingChanges || renderRichPreview || editing) return;
           e.preventDefault();
           e.stopPropagation();
-          openPreviewSearch(editorViewRef.current);
+          codePreviewRef.current?.openSearch();
         }
       }}
     >
@@ -846,11 +788,10 @@ export function FilePreviewContent({
           hasPreviewText &&
           !renderRichPreview &&
           !hasPdfPreview ? (
-            <CodeMirrorPreview
+            <CodePreview
               text={previewText}
-              path={previewPath}
-              theme={theme}
-              editorViewRef={editorViewRef}
+              language={syntaxLanguageForPath(previewPath)}
+              handle={codePreviewRef}
             />
           ) : null}
         </div>
@@ -862,224 +803,5 @@ export function FilePreviewContent({
         onClose={() => setWorkspaceDialogOpen(false)}
       />
     </section>
-  );
-}
-
-function CodeMirrorPreview({
-  text,
-  path,
-  theme,
-  editorViewRef,
-}: {
-  text: string;
-  path: string;
-  theme: AppTheme;
-  editorViewRef: MutableRefObject<CodeMirrorEditorView | null>;
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const parent = containerRef.current;
-    if (!parent) return;
-    let cancelled = false;
-    let view: CodeMirrorEditorView | null = null;
-    parent.textContent = "";
-
-    void loadCodeMirrorPreviewDeps().then((deps) => {
-      if (cancelled || !containerRef.current) return;
-      parent.textContent = "";
-      const syntaxCompartment = new deps.Compartment();
-      view = new deps.EditorView({
-        parent,
-        state: deps.EditorState.create({
-          doc: text,
-          extensions: [
-            deps.basicSetup,
-            deps.configuredShortcutGuard,
-            deps.search({ top: true }),
-            deps.keymap.of(deps.searchKeymap),
-            deps.EditorState.phrases.of(codeMirrorSearchPhrases()),
-            deps.EditorState.readOnly.of(true),
-            deps.EditorView.editable.of(false),
-            deps.EditorView.contentAttributes.of({ tabindex: "0" }),
-            syntaxCompartment.of([]),
-            deps.EditorView.theme(
-              {
-                "&": {
-                  height: "100%",
-                  backgroundColor: "var(--viewer-code-bg)",
-                  color: "var(--text-code)",
-                },
-                ".cm-scroller": {
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-                  fontSize: "12px",
-                  lineHeight: "1.55",
-                },
-                ".cm-content": {
-                  caretColor: "var(--accent)",
-                  padding: "10px 0",
-                },
-                ".cm-content ::selection": {
-                  backgroundColor:
-                    "color-mix(in srgb, var(--accent) 32%, transparent) !important",
-                  color: "inherit",
-                },
-                ".cm-line": {
-                  padding: "0 12px",
-                },
-                ".cm-gutters": {
-                  backgroundColor: "var(--viewer-code-bg)",
-                  color: "var(--muted)",
-                  borderRight: "1px solid var(--border-soft)",
-                },
-                ".cm-lineNumbers .cm-gutterElement": {
-                  padding: "0 10px 0 12px",
-                  minWidth: "42px",
-                },
-                ".cm-activeLineGutter, .cm-activeLine": {
-                  backgroundColor:
-                    "color-mix(in srgb, var(--accent) 10%, transparent)",
-                },
-                ".cm-selectionBackground, &.cm-focused .cm-selectionBackground":
-                  {
-                    backgroundColor:
-                      "color-mix(in srgb, var(--accent) 32%, transparent) !important",
-                  },
-                ".cm-cursor": {
-                  borderLeftColor: "var(--accent)",
-                },
-                ".cm-panels, .cm-panels.cm-panels-top, .cm-panels.cm-panels-bottom":
-                  {
-                    backgroundColor: "var(--viewer-header-bg)",
-                    color: "var(--text)",
-                    borderColor: "var(--border-soft)",
-                  },
-                ".cm-panel.cm-search": {
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 10px",
-                  backgroundColor: "var(--viewer-header-bg)",
-                  color: "var(--text)",
-                },
-                ".cm-panel.cm-search .cm-textfield, .cm-panel.cm-search input":
-                  {
-                    height: "30px",
-                    padding: "0 8px",
-                    backgroundColor: "var(--field-bg)",
-                    color: "var(--text)",
-                    border: "0",
-                    borderRadius: "0",
-                    outline: "none",
-                  },
-                ".cm-panel.cm-search .cm-textfield:focus, .cm-panel.cm-search input:focus":
-                  {
-                    boxShadow: "inset 0 -2px 0 var(--accent)",
-                  },
-                ".cm-panel.cm-search .cm-button, .cm-panel.cm-search button": {
-                  height: "30px",
-                  padding: "0 10px",
-                  backgroundColor: "var(--panel-2)",
-                  color: "var(--text)",
-                  border: "0",
-                  borderRadius: "0",
-                  backgroundImage: "none",
-                  font: "inherit",
-                },
-                ".cm-panel.cm-search .cm-button:hover, .cm-panel.cm-search button:hover":
-                  {
-                    backgroundColor: "var(--viewer-header-bg)",
-                  },
-                ".cm-panel.cm-search .cm-button:disabled, .cm-panel.cm-search button:disabled":
-                  {
-                    opacity: "0.48",
-                  },
-                ".cm-panel.cm-search label": {
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  color: "var(--text)",
-                },
-                ".cm-panel.cm-search input[type=checkbox]": {
-                  width: "16px",
-                  height: "16px",
-                  margin: "0",
-                  padding: "0",
-                  accentColor: "var(--accent)",
-                },
-                ".cm-searchMatch": {
-                  backgroundColor:
-                    "color-mix(in srgb, var(--yellow) 36%, transparent)",
-                  outline:
-                    "1px solid color-mix(in srgb, var(--yellow) 45%, transparent)",
-                },
-                ".cm-searchMatch-selected": {
-                  backgroundColor:
-                    "color-mix(in srgb, var(--yellow) 58%, transparent)",
-                  color: "var(--text-strong)",
-                  outline: "1px solid var(--yellow)",
-                },
-                ".cm-matchingBracket": {
-                  backgroundColor:
-                    "color-mix(in srgb, var(--accent) 18%, transparent)",
-                  color: "var(--text-strong)",
-                  outline:
-                    "1px solid color-mix(in srgb, var(--accent) 38%, transparent)",
-                },
-                ".cm-nonmatchingBracket": {
-                  backgroundColor: "var(--danger-soft)",
-                  color: "var(--danger-text)",
-                  outline: "1px solid var(--danger-border)",
-                },
-                ".cm-foldPlaceholder": {
-                  backgroundColor: "var(--viewer-panel-bg)",
-                  color: "var(--muted)",
-                  border: "1px solid var(--viewer-border)",
-                },
-                ".cm-tooltip, .cm-tooltip.cm-tooltip-autocomplete": {
-                  border: "1px solid var(--viewer-border)",
-                  backgroundColor: "var(--viewer-panel-bg)",
-                  color: "var(--text)",
-                },
-              },
-              { dark: theme === "dark" },
-            ),
-          ],
-        }),
-      });
-      editorViewRef.current = view;
-      const activeView = view;
-
-      void highlightCodeTokens(text, path)
-        .then((tokens) => {
-          if (cancelled || view !== activeView) return;
-          const decorations = deps.Decoration.set(
-            tokens.map(({ from, to, className }) =>
-              deps.Decoration.mark({ class: className }).range(from, to),
-            ),
-            true,
-          );
-          activeView.dispatch({
-            effects: syntaxCompartment.reconfigure(
-              deps.EditorView.decorations.of(decorations),
-            ),
-          });
-        })
-        .catch(() => {
-          // Highlighting is progressive; the plain-text preview remains usable.
-        });
-    });
-
-    return () => {
-      cancelled = true;
-      if (editorViewRef.current === view) editorViewRef.current = null;
-      view?.destroy();
-    };
-  }, [editorViewRef, path, text, theme]);
-
-  return (
-    <div ref={containerRef} className="file-preview-code syntax-highlighted" />
   );
 }

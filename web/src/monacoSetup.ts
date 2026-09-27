@@ -53,20 +53,24 @@ import * as typescript from "monaco-esm/languages/definitions/typescript/typescr
 import * as xml from "monaco-esm/languages/definitions/xml/xml.js";
 import * as yaml from "monaco-esm/languages/definitions/yaml/yaml.js";
 import EditorWorker from "monaco-esm/editor/editor.worker.js?worker";
+import { syntaxLanguageForPath } from "./syntaxLanguage";
 
 type MonarchModule = {
   conf: monaco.languages.LanguageConfiguration;
   language: monaco.languages.IMonarchLanguage;
 };
 
-// JSON has no Monarch grammar in Monaco; its JavaScript grammar tokenizes
-// strings, numbers, and literals well enough for editing.
+// Keyed by the Shiki ids of syntaxLanguageForPath. JSON has no Monarch
+// grammar in Monaco; its JavaScript grammar tokenizes JSON well enough.
 const GRAMMARS: Record<string, MonarchModule> = {
+  bash: shell,
   bat,
+  c: cpp,
   cpp,
   csharp,
   css,
   dockerfile,
+  fish: shell,
   go,
   graphql,
   hcl,
@@ -75,26 +79,42 @@ const GRAMMARS: Record<string, MonarchModule> = {
   java,
   javascript,
   json: javascript,
+  json5: javascript,
+  jsonc: javascript,
+  jsonl: javascript,
+  jsx: javascript,
   kotlin,
   less,
   lua,
   markdown,
+  mdx: markdown,
+  nginx: ini,
   perl,
   php,
   powershell,
+  properties: ini,
   protobuf,
   python,
   r,
   ruby,
   rust,
+  sass: scss,
   scss,
   shell,
   sql,
   swift,
+  toml: ini,
+  tsx: typescript,
   typescript,
   xml,
   yaml,
 };
+
+/** Monaco language id for a path; files without a grammar edit as plain text. */
+export function monacoLanguageForPath(path: string) {
+  const language = syntaxLanguageForPath(path);
+  return language in GRAMMARS ? language : "plaintext";
+}
 
 (
   self as unknown as { MonacoEnvironment: monaco.Environment }
@@ -134,7 +154,24 @@ export function applyMonacoTheme(theme: "dark" | "light") {
   monaco.editor.defineTheme(name, {
     base: dark ? "vs-dark" : "vs",
     inherit: true,
-    rules: [],
+    // Monarch token classes in the preview's syntax colors (CodePreview).
+    rules: Object.entries({
+      comment: "comment",
+      keyword: "keyword",
+      string: "string",
+      number: "number",
+      "type type.identifier tag": "type",
+      "attribute.name key": "property",
+      "variable predefined": "variable",
+      "delimiter operator": "punctuation",
+      "annotation metatag": "meta",
+    }).flatMap(([tokens, color]) =>
+      tokens.split(" ").map((token) => ({
+        token,
+        foreground: cssColor(`var(--syntax-${color})`, "#808080"),
+        fontStyle: token === "comment" ? "italic" : undefined,
+      })),
+    ),
     colors: {
       "editor.background": background,
       "editorGutter.background": background,

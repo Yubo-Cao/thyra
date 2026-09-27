@@ -335,14 +335,14 @@ export function AgentSessionPreviewDialog({
               <SessionTimeline turns={turns} />
             ) : mode === "atif" ? (
               atifText ? (
-                <CodePreview text={atifText} searchable />
+                <CodePreview text={atifText} language="json" />
               ) : (
                 <div className="agent-session-state">
                   {t("No ATIF trajectory available.")}
                 </div>
               )
             ) : (
-              <CodePreview text={text} searchable />
+              <CodePreview text={text} language="jsonl" />
             )}
           </div>
         </>
