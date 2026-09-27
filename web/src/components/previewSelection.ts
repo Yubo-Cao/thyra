@@ -1,12 +1,5 @@
-/**
- * True when a keyboard event targets a native editable element, where
- * find and select-all keep their default behavior.
- */
-export function isEditablePreviewTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
+// Find and select-all keep their default behavior in editable elements.
+export { isEditableElement as isEditablePreviewTarget } from "../utils";
 
 /**
  * True when a keyboard event comes from inside the preview or from a neutral

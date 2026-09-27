@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useLongPress } from "./useLongPress";
 import {
   focusTreeItem,
   keyboardContextMenuPoint,
@@ -25,9 +26,6 @@ import { TREE_DEPTH_INDENT } from "./treeIndent";
 import { ContextMenu } from "./ui/ContextMenu";
 import { Token, type TokenTone } from "./ui/Token";
 import "./WorkspaceAgentRows.css";
-
-const LONG_PRESS_MS = 550;
-const LONG_PRESS_MOVE_PX = 10;
 
 const AGENT_STATUS_TONES: Record<AgentStateKind, TokenTone> = {
   working: "warning",
@@ -84,21 +82,10 @@ export function AgentRow({
     ),
   );
   const tabLabel = customTabLabel(tab?.label);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressStart = useRef<{ x: number; y: number } | null>(null);
-  const longPressTriggered = useRef(false);
-
-  const clearLongPressTimer = () => {
-    if (!longPressTimer.current) return;
-    clearTimeout(longPressTimer.current);
-    longPressTimer.current = null;
-  };
-
-  useEffect(() => clearLongPressTimer, []);
-
   const openMenu = (x: number, y: number) => {
     onOpenMenu(x, y);
   };
+  const longPress = useLongPress(openMenu);
   const showStatus = shouldShowAgentStatusLabel(pane.agent_status);
   const nested = variant === "nested";
   const locationName = paneLocationName(pane);
@@ -129,12 +116,7 @@ export function AgentRow({
       aria-selected={nested ? selected : undefined}
       aria-pressed={nested ? undefined : selected}
       onClick={(e) => {
-        if (longPressTriggered.current) {
-          longPressTriggered.current = false;
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
+        if (longPress.consumeClick(e)) return;
         void store.focusPane(pane.pane_id);
         onSelect?.(pane);
       }}
@@ -172,38 +154,7 @@ export function AgentRow({
           openMenu(point.x, point.y);
         }
       }}
-      onPointerDown={(e) => {
-        if (e.pointerType === "mouse") return;
-        longPressTriggered.current = false;
-        longPressStart.current = { x: e.clientX, y: e.clientY };
-        clearLongPressTimer();
-        longPressTimer.current = setTimeout(() => {
-          longPressTriggered.current = true;
-          openMenu(e.clientX, e.clientY);
-        }, LONG_PRESS_MS);
-      }}
-      onPointerMove={(e) => {
-        const start = longPressStart.current;
-        if (!start) return;
-        const dx = Math.abs(e.clientX - start.x);
-        const dy = Math.abs(e.clientY - start.y);
-        if (dx > LONG_PRESS_MOVE_PX || dy > LONG_PRESS_MOVE_PX) {
-          clearLongPressTimer();
-          longPressStart.current = null;
-        }
-      }}
-      onPointerUp={() => {
-        clearLongPressTimer();
-        longPressStart.current = null;
-      }}
-      onPointerCancel={() => {
-        clearLongPressTimer();
-        longPressStart.current = null;
-      }}
-      onPointerLeave={() => {
-        clearLongPressTimer();
-        longPressStart.current = null;
-      }}
+      {...longPress.handlers}
       onContextMenu={(e) => {
         e.preventDefault();
         openMenu(e.clientX, e.clientY);

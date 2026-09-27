@@ -8,6 +8,7 @@ import {
   useEndpointCreationReason,
 } from "../store";
 import { useEffect, useRef, useState } from "react";
+import { useLongPress } from "./useLongPress";
 import { createPortal } from "react-dom";
 import { PanelRight, Plus, X } from "lucide-react";
 import type { Tab } from "../types";
@@ -25,8 +26,6 @@ import { ContextMenu } from "./ui/ContextMenu";
 import { IconButton } from "./ui/IconButton";
 import "./TabBar.css";
 
-const LONG_PRESS_MS = 550;
-const LONG_PRESS_MOVE_PX = 10;
 const REQUEST_CLOSE_TAB_EVENT = "thyra:request-close-tab";
 const REQUEST_CLOSE_PANE_EVENT = "thyra:request-close-pane";
 
@@ -373,51 +372,12 @@ function TabLongPressTarget({
   children: React.ReactNode;
   onOpenMenu: (x: number, y: number) => void;
 }) {
-  // Touch long-press opens the same menu as desktop right-click.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressStart = useRef<{ x: number; y: number } | null>(null);
-  const longPressTriggered = useRef(false);
-
-  const clearLongPressTimer = () => {
-    if (!longPressTimer.current) return;
-    clearTimeout(longPressTimer.current);
-    longPressTimer.current = null;
-  };
-
-  useEffect(() => clearLongPressTimer, []);
-
+  const longPress = useLongPress(onOpenMenu);
   return (
     <span
       className="tabbar-name-hit"
-      onClick={(e) => {
-        if (!longPressTriggered.current) return;
-        longPressTriggered.current = false;
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onPointerDown={(e) => {
-        if (e.pointerType === "mouse") return;
-        longPressTriggered.current = false;
-        longPressStart.current = { x: e.clientX, y: e.clientY };
-        clearLongPressTimer();
-        longPressTimer.current = setTimeout(() => {
-          longPressTriggered.current = true;
-          onOpenMenu(e.clientX, e.clientY);
-        }, LONG_PRESS_MS);
-      }}
-      onPointerMove={(e) => {
-        const start = longPressStart.current;
-        if (!start) return;
-        const dx = Math.abs(e.clientX - start.x);
-        const dy = Math.abs(e.clientY - start.y);
-        if (dx > LONG_PRESS_MOVE_PX || dy > LONG_PRESS_MOVE_PX) {
-          clearLongPressTimer();
-          longPressStart.current = null;
-        }
-      }}
-      onPointerUp={clearLongPressTimer}
-      onPointerCancel={clearLongPressTimer}
-      onPointerLeave={clearLongPressTimer}
+      onClick={longPress.consumeClick}
+      {...longPress.handlers}
       title={tab.tab_id}
     >
       {children}

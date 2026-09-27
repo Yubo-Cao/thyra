@@ -10,6 +10,7 @@ import { lazyPanel } from "../lazyWithReload";
 import { shortcutMatches, shortcutTitle } from "../shortcutPreferences";
 import type { CommandComboboxProps } from "./CommandCombobox";
 import { LazyBoundary } from "./LazyBoundary";
+import { isEditableElement } from "../utils";
 import { Button } from "./ui/Button";
 // The trigger's styles (.command-trigger) live with the command primitives.
 import "./ui/command.css";
@@ -19,12 +20,6 @@ import "./ui/command.css";
 export const commandComboboxPanel = lazyPanel("command-menu", () =>
   import("./CommandCombobox").then((module) => module.CommandCombobox),
 );
-
-function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 export function isCommandMenuShortcut(e: KeyboardEvent) {
   // The pane switcher owns K even when its held modifiers match this
@@ -38,7 +33,7 @@ export function isCommandMenuShortcut(e: KeyboardEvent) {
     return false;
   if (!shortcutMatches(e, "command.menu") || e.repeat) return false;
   return !(
-    isTypingTarget(e.target) &&
+    isEditableElement(e.target) &&
     !(e.target as HTMLElement).closest(".command-popover, .xterm")
   );
 }

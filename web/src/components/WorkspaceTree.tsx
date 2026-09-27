@@ -9,6 +9,7 @@ import {
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLongPress } from "./useLongPress";
 import type { ContextMenuState } from "./ContextMenu";
 import { LazyThemedSelect } from "./LazyThemedSelect";
 import { Latched } from "./LazyBoundary";
@@ -89,8 +90,6 @@ import { SegmentedControl } from "./ui/SegmentedControl";
 import { Token } from "./ui/Token";
 import "./WorkspaceTree.css";
 
-const LONG_PRESS_MS = 550;
-const LONG_PRESS_MOVE_PX = 10;
 const EMPTY_AGENT_PANES_BY_WORKSPACE = new Map<string, Pane[]>();
 const EMPTY_AGENT_PANES: Pane[] = [];
 
@@ -1006,19 +1005,6 @@ function WorkspaceRow({
   const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
   const isPendingFocus =
     s.pendingFocusWorkspaceId === w.workspace_id && !w.focused;
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressStart = useRef<{ x: number; y: number } | null>(null);
-  const longPressTriggered = useRef(false);
-
-  const clearLongPressTimer = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  useEffect(() => clearLongPressTimer, []);
-
   const openMenu = (x: number, y: number) => {
     onContextMenu(w, x, y);
   };
@@ -1027,32 +1013,7 @@ function WorkspaceRow({
     onSelect?.(w);
   };
 
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === "mouse") return;
-    longPressTriggered.current = false;
-    longPressStart.current = { x: e.clientX, y: e.clientY };
-    clearLongPressTimer();
-    longPressTimer.current = setTimeout(() => {
-      longPressTriggered.current = true;
-      openMenu(e.clientX, e.clientY);
-    }, LONG_PRESS_MS);
-  };
-
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const start = longPressStart.current;
-    if (!start) return;
-    const dx = Math.abs(e.clientX - start.x);
-    const dy = Math.abs(e.clientY - start.y);
-    if (dx > LONG_PRESS_MOVE_PX || dy > LONG_PRESS_MOVE_PX) {
-      clearLongPressTimer();
-      longPressStart.current = null;
-    }
-  };
-
-  const onPointerEnd = () => {
-    clearLongPressTimer();
-    longPressStart.current = null;
-  };
+  const longPress = useLongPress(openMenu);
 
   return (
     <>
@@ -1089,12 +1050,7 @@ function WorkspaceRow({
         aria-selected={w.focused}
         aria-expanded={hasNestedItems ? !collapsed : undefined}
         onClick={(e) => {
-          if (longPressTriggered.current) {
-            longPressTriggered.current = false;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
+          if (longPress.consumeClick(e)) return;
           selectWorkspace();
         }}
         onKeyDown={(event) => {
@@ -1138,11 +1094,7 @@ function WorkspaceRow({
             openMenu(point.x, point.y);
           }
         }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerEnd}
-        onPointerCancel={onPointerEnd}
-        onPointerLeave={onPointerEnd}
+        {...longPress.handlers}
         onContextMenu={(e) => {
           e.preventDefault();
           openMenu(e.clientX, e.clientY);
