@@ -185,7 +185,7 @@ describe("Pages references", () => {
   test("website and tutorial reuse the current README screenshots", async () => {
     const [readme, site, tutorial, build] = await Promise.all(
       [
-        "../README.md",
+        "../README.en.md",
         "../site/index.html",
         "../docs/TUTORIAL.md",
         "./build-pages.ts",
@@ -204,14 +204,14 @@ describe("Pages references", () => {
     }
   });
 
-  test("the Chinese README mirrors every screenshot with its Chinese-UI capture", async () => {
+  test("the default Chinese README mirrors every English screenshot with its Chinese-UI capture", async () => {
     const [readme, chinese] = await Promise.all(
-      ["../README.md", "../README.zh-CN.md"].map((path) =>
+      ["../README.en.md", "../README.md"].map((path) =>
         Bun.file(new URL(path, import.meta.url)).text(),
       ),
     );
-    expect(readme).toContain("[简体中文](./README.zh-CN.md)");
-    expect(chinese).toContain("[English](./README.md)");
+    expect(readme).toContain("[简体中文](./README.md)");
+    expect(chinese).toContain("[English](./README.en.md)");
     const images = (markdown: string) => [
       ...new Set(markdown.match(/docs\/images\/[a-z-]+\.png/g)),
     ];
@@ -226,7 +226,7 @@ describe("Pages references", () => {
     const referencing = await Promise.all(
       [
         "../README.md",
-        "../README.zh-CN.md",
+        "../README.en.md",
         "../FEATURES.md",
         "../docs/TUTORIAL.md",
         "../docs/DEPLOYMENT.md",

@@ -52,9 +52,9 @@ abstractions.
 
 ## Documentation Guidelines
 
-Keep `README.md` concise and English-only. `README.zh-CN.md` is its Simplified
-Chinese mirror: update both in the same change, keep the same sections, and use
-the `-zh` Chinese-UI screenshots there. Use the README as the project entry point and
+`README.md` is the default, Simplified Chinese entry point; `README.en.md` is its
+English mirror. Update both in the same change, keep the same sections, and use
+the `-zh` Chinese-UI screenshots in `README.md`. Keep both concise. Use the README as the project entry point and
 link to focused documents instead of embedding detailed operation or
 implementation material. Put the feature tour and shortcuts in `FEATURES.md`,
 deployment and configuration instructions in `docs/DEPLOYMENT.md`, and system

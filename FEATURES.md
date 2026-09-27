@@ -287,7 +287,7 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   connection/pane; closing their pane/tab/workspace asks before discarding.
 - Install as a PWA for an app window; a bundled Nerd Font supplies terminal
   icons. **PWA is not offline access**: Thyra must remain reachable.
-  See [installation steps](README.md#install-as-a-pwa).
+  See [installation steps](README.en.md#install-as-a-pwa).
 
 <!-- markdownlint-disable-next-line MD033 -->
 <img src="docs/images/thyra-mobile-terminal.png" alt="Phone terminal with the shortcut grid open and Ctrl latched for the next key" width="300">

@@ -64,7 +64,7 @@ test("Pages deploys on main pushes or manual dispatch and checks installer avail
     "../site/index.html",
     "../site/main.js",
     "../README.md",
-    "../README.zh-CN.md",
+    "../README.en.md",
     "../docs/DEPLOYMENT.md",
   ]) {
     expect(await Bun.file(new URL(path, import.meta.url)).text()).toContain(

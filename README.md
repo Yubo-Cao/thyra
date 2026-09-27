@@ -1,67 +1,67 @@
 # Thyra
 
-English | [简体中文](./README.zh-CN.md)
+简体中文 | [English](./README.en.md)
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./site/assets/thyra-lockup-on-charcoal.png" />
-    <img src="./site/assets/thyra-lockup-charcoal.png" alt="Thyra logo" width="400" />
+    <img src="./site/assets/thyra-lockup-charcoal.png" alt="Thyra 标志" width="400" />
   </picture>
 </p>
 
-A **browser client** for [Herdr](https://herdr.dev). Control terminals, inspect
-agent sessions, and review files and diffs on desktop or mobile.
-**Requires a Herdr server;** the installer sets one up.
+[Herdr](https://herdr.dev) 的**浏览器客户端**。
+在电脑或手机上操作终端、查看 Agent 会话、审阅文件和 diff。
+**需要 Herdr 服务端；** 安装脚本会一并装好。
 
-## Screenshots
+## 截图
 
-### Desktop
+### 桌面端
 
-[![Thyra with Claude working in a terminal and the Changes inspector showing a wrapped diff][desktop-changes]][desktop-changes]
+[![Thyra 界面：Claude 在终端中工作，右侧检查器的“更改”页显示自动换行的 diff][desktop-changes]][desktop-changes]
 
-Agents and their status in the workspace tree, a live terminal, and the working-tree diff side by side.
+工作区树里能看到每个 Agent 的状态，实时终端和工作区 diff 并排显示。
 
 <!-- markdownlint-disable MD033 -->
 
 <table width="100%">
   <thead>
     <tr>
-      <th width="50%" align="center">File preview (light theme)</th>
-      <th width="50%" align="center">Agent history</th>
+      <th width="50%" align="center">文件预览（浅色主题）</th>
+      <th width="50%" align="center">Agent 历史记录</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td width="50%" align="center" valign="top">
-        <a href="./docs/images/thyra-desktop-files.png"><img src="./docs/images/thyra-desktop-files.png" alt="Expanded file explorer rendering a README with a Mermaid diagram and a table, in the light theme" width="100%" /></a>
+        <a href="./docs/images/thyra-desktop-files-zh.png"><img src="./docs/images/thyra-desktop-files-zh.png" alt="展开的文件浏览器以浅色主题渲染 README，包含 Mermaid 图和表格" width="100%" /></a>
       </td>
       <td width="50%" align="center" valign="top">
-        <a href="./docs/images/thyra-desktop-history.png"><img src="./docs/images/thyra-desktop-history.png" alt="Inspector History tab listing a Claude Code session's prompt and replies" width="100%" /></a>
+        <a href="./docs/images/thyra-desktop-history-zh.png"><img src="./docs/images/thyra-desktop-history-zh.png" alt="检查器的历史记录页列出 Claude Code 会话中的提问和回复" width="100%" /></a>
       </td>
     </tr>
   </tbody>
 </table>
 
-### Mobile
+### 移动端
 
 <table width="100%">
   <thead>
     <tr>
-      <th width="33.33%" align="center">Project launcher</th>
-      <th width="33.33%" align="center">Shortcut grid</th>
-      <th width="33.33%" align="center">Diff review</th>
+      <th width="33.33%" align="center">项目启动器</th>
+      <th width="33.33%" align="center">快捷键面板</th>
+      <th width="33.33%" align="center">审阅 diff</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/thyra-mobile-launcher.png"><img src="./docs/images/thyra-mobile-launcher.png" alt="Launcher sheet with pinned and recent folders, offering Claude or Codex for the selected folder" width="100%" /></a>
+        <a href="./docs/images/thyra-mobile-launcher-zh.png"><img src="./docs/images/thyra-mobile-launcher-zh.png" alt="启动器面板列出已固定和最近的文件夹，可为选中的文件夹启动 Claude 或 Codex" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/thyra-mobile-terminal.png"><img src="./docs/images/thyra-mobile-terminal.png" alt="Phone terminal with the shortcut grid open and Ctrl latched for the next key" width="100%" /></a>
+        <a href="./docs/images/thyra-mobile-terminal-zh.png"><img src="./docs/images/thyra-mobile-terminal-zh.png" alt="手机终端打开了快捷键面板，Ctrl 已锁定，作用于下一个键" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/thyra-mobile-changes.png"><img src="./docs/images/thyra-mobile-changes.png" alt="Unified, wrapped diff of a changed file on a phone" width="100%" /></a>
+        <a href="./docs/images/thyra-mobile-changes-zh.png"><img src="./docs/images/thyra-mobile-changes-zh.png" alt="手机上以统一视图、自动换行显示的文件 diff" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -69,72 +69,68 @@ Agents and their status in the workspace tree, a live terminal, and the working-
 
 <!-- markdownlint-enable MD033 -->
 
-Click any screenshot to open the full-resolution image.
-The interface is also available in Simplified Chinese; the [Chinese README](./README.zh-CN.md) shows it.
+点击截图可查看原图。界面语言默认跟随浏览器，也可在“设置 > 外观 > 语言”中切换。
 
-[desktop-changes]: ./docs/images/thyra-desktop-changes.png
+[desktop-changes]: ./docs/images/thyra-desktop-changes-zh.png
 
-## Quick start
+## 快速开始
 
-Linux (x86-64, ARM64) and macOS (Apple Silicon, Intel):
+Linux（x86-64、ARM64）和 macOS（Apple Silicon、Intel）：
 
 ```bash
 curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh | sh
 ```
 
-Windows 10 1809+ and 11 (x64, ARM64), in PowerShell:
+Windows 10 1809+ 和 11（x64、ARM64），在 PowerShell 中运行：
 
 ```powershell
 irm https://github.com/Yubo-Cao/thyra/releases/latest/download/install.ps1 | iex
 ```
 
-The installer verifies SHA-256 checksums, installs Thyra and the Herdr server build it pins into your user account without sudo or administrator rights, starts both as user services, and prints the address: `http://127.0.0.1:8787` on the same machine.
-It never replaces a Herdr you installed yourself.
-Rerun the same command to upgrade; `sh -s -- --uninstall` (or `-Uninstall` on Windows) removes it.
-For phones and other computers, publish the loopback address privately with [Tailscale Serve](./docs/TUTORIAL.md#tailscale).
-See [deployment](./docs/DEPLOYMENT.md#install-with-the-one-line-installer) for options, manual installs, services, and remote access.
+安装脚本会校验 SHA-256，把 Thyra 和它锁定版本的 Herdr 服务端装到当前用户目录下（不需要 sudo 或管理员权限），以用户服务的形式启动两者，最后打印访问地址：本机为 `http://127.0.0.1:8787`。
+它不会替换你自己安装的 Herdr。
+重新运行同一条命令即可升级；`sh -s -- --uninstall`（Windows 上为 `-Uninstall`）可卸载。
+要从手机或其他电脑访问，请用 [Tailscale Serve](./docs/TUTORIAL.md#tailscale) 私密地发布这个本机地址。
+安装选项、手动安装、服务和远程访问见[部署文档](./docs/DEPLOYMENT.md#install-with-the-one-line-installer)。
 
-## Install as a PWA
+## 安装为 PWA
 
-**PWA installation is recommended for daily use:** a separate app window without
-browser tabs or the address bar. Open and authenticate with Thyra, then install:
+**日常使用推荐安装为 PWA：** 独立的应用窗口，没有浏览器标签页和地址栏。先打开 Thyra 并完成登录，然后：
 
-- **iPhone/iPad Safari:** Share -> Add to Home Screen.
-- **macOS Safari 17+:** File -> Add to Dock.
-- **Chrome/Edge:** browser menu -> Install app.
+- **iPhone/iPad Safari：** 分享 -> 添加到主屏幕。
+- **macOS Safari 17+：** 文件 -> 添加到程序坞。
+- **Chrome/Edge：** 浏览器菜单 -> 安装应用。
 
-The process must stay running and reachable. **PWA mode is not offline access.**
+Thyra 进程必须保持运行且可以访问。**PWA 模式不提供离线访问。**
 
-## Documentation
+## 文档
 
-- [Website](https://thyra.yubo.fun/) and
-  [hands-on tutorial](https://thyra.yubo.fun/tutorial/)
-  ([Markdown](./docs/TUTORIAL.md)): local work, mobile, and private remote access.
-- [Features and shortcuts](./FEATURES.md)
-- [Deployment](./docs/DEPLOYMENT.md): installation, configuration, services, builds.
-- [Architecture](./docs/ARCHITECTURE.md): system contracts.
-- [Security](./SECURITY.md) and [contributing](./CONTRIBUTING.md).
+以下文档目前只有英文版：
 
-## Development
+- [网站](https://thyra.yubo.fun/)和[上手教程](https://thyra.yubo.fun/tutorial/)（[Markdown](./docs/TUTORIAL.md)）：本机使用、手机访问和私密远程访问。
+- [功能与快捷键](./FEATURES.md)
+- [部署](./docs/DEPLOYMENT.md)：安装、配置、服务和构建。
+- [架构](./docs/ARCHITECTURE.md)：系统约定。
+- [安全](./SECURITY.md)和[贡献指南](./CONTRIBUTING.md)。
 
-Use Bun 1.4.1 or newer and a running Herdr server:
+## 开发
+
+需要 Bun 1.4.1 或更新版本，以及一个正在运行的 Herdr 服务端：
 
 ```bash
 bun install --frozen-lockfile
-# Run in separate terminals:
+# 在不同的终端中分别运行：
 bun run dev:server
 bun run dev:web
 ```
 
-Open <http://localhost:5173>. See [CONTRIBUTING.md](./CONTRIBUTING.md) for checks
-and pull requests.
+打开 <http://localhost:5173>。检查项和 PR 流程见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
-## Security
+## 安全
 
-Thyra controls terminals and modifies real files. Keep the default loopback
-binding; read [SECURITY.md](./SECURITY.md) before allowing another device access.
+Thyra 能控制终端，也会修改真实文件。请保持默认的仅本机（loopback）监听；允许其他设备访问前，请先阅读 [SECURITY.md](./SECURITY.md)。
 
-## License
+## 许可证
 
-Code: [MIT](./LICENSE). Thyra began as a fork of Roamgate by Arthur; the original copyright notice is kept in the license.
-Bundled fonts and brand assets retain their original terms; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+代码采用 [MIT](./LICENSE) 许可证。Thyra 最初 fork 自 Arthur 的 Roamgate，许可证中保留了原版权声明。
+内置字体和品牌素材沿用各自的原始条款，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
