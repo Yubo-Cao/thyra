@@ -37,9 +37,6 @@ browser leaves terminals running; host sleep, shutdown, or process exit can stop
 
 Standalone defaults to `127.0.0.1:8787`, which **bypasses login even with a
 password**. A new user/plugin service defaults to `0.0.0.0:8787` with a token.
-Existing Herdr Studio / Thyra 0.7.0 installations should follow
-[migration guidance](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
-before changing services.
 
 ![Desktop workspace with project navigation, terminals, and changed files](./images/thyra-desktop-changes.png)
 

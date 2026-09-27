@@ -8,7 +8,7 @@ import {
 } from "./prepare-release";
 
 const PACKAGE_JSON = `{
-  "name": "herdr-gui",
+  "name": "thyra",
   "private": true,
   "version": "0.4.1",
   "scripts": {
@@ -17,8 +17,8 @@ const PACKAGE_JSON = `{
 }
 `;
 
-const PLUGIN_MANIFEST = `id = "herdr.studio"
-name = "Herdr Studio"
+const PLUGIN_MANIFEST = `id = "thyra"
+name = "Thyra"
 version = "0.4.1"
 min_herdr_version = "0.7.2"
 `;

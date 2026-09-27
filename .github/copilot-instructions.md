@@ -12,8 +12,7 @@ Thyra is an independent community Web and PWA client for Herdr. It has two parts
 - `scripts/`: release and packaging helpers.
 
 Generated build output lives in `server/public`,
-`server/src/public-files.gen.ts`, `server/thyra*`, legacy `server/herdr-gui*`,
-and `dist/`. These are
+`server/src/public-files.gen.ts`, `server/thyra*`, and `dist/`. These are
 build artifacts; they must not be edited or committed.
 
 ## Review priorities

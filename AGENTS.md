@@ -10,8 +10,7 @@ co-located `web/src/components/*.css` files (see the style organization
 guidelines in `CONTRIBUTING.md`).
 Server and bridge code lives in `server/src`. Release helpers live in `scripts/`.
 Generated build output belongs in `web/dist`, `server/public`,
-`server/src/public-files.gen.ts`, `server/thyra*`, legacy `server/herdr-gui*`,
-and `dist/`; these paths
+`server/src/public-files.gen.ts`, `server/thyra*`, and `dist/`; these paths
 are ignored and should not be committed.
 
 ## Build, Test, and Development Commands
@@ -91,8 +90,8 @@ to `https://github.com/Yubo-Cao/thyra` (`origin`), as
 part of finishing a task. This is standing authorization to commit, integrate,
 and push task changes to `main`; do not ask for push or merge
 permission again unless the owner changes this instruction.
-Thyra is independent: it split from powerfooI/roamgate and has no `upstream`
-remote. Do not add one or port changes back without the owner asking.
+Thyra is independent and has no `upstream` remote. Do not add one or port
+changes from other repositories without the owner asking.
 
 - Verify the push destination before writing.
 - Run the required checks, review the diff, and commit only the task's changes.

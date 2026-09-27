@@ -50,7 +50,7 @@ function run(argv: string[], cwd = REPO_ROOT): number {
   });
   if (result.error) {
     console.error(
-      `studio-plugin: cannot run ${argv[0]}: ${result.error.message}`,
+      `thyra-plugin: cannot run ${argv[0]}: ${result.error.message}`,
     );
     return 1;
   }
@@ -86,7 +86,7 @@ export const PLATFORM_ASSETS: Record<
 };
 
 const RELEASE_REPOSITORY = "Yubo-Cao/thyra";
-const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/studio-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Thyra tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
+const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/thyra-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Thyra tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
 
 export function releaseAssetFor(
   platform: string,
@@ -100,34 +100,18 @@ export function parseSha256File(text: string): string | null {
   return match?.[1] ?? null;
 }
 
-export function supportsIdentityMigrationPrebuilt(version: string): boolean {
-  const match =
-    /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(
-      version,
-    );
-  if (!match) return false;
-  const [major, minor, patch] = match.slice(1, 4).map(Number);
-  return major > 0 || minor > 7 || (minor === 7 && patch > 0);
-}
-
 async function downloadPrebuilt(): Promise<number> {
   const version = packageVersion();
-  if (!supportsIdentityMigrationPrebuilt(version)) {
-    console.error(
-      `studio-plugin: published versions through 0.7.0 use legacy service/data/plugin identities. This checkout requires a source build. ${SOURCE_INSTALL_HINT}`,
-    );
-    return 1;
-  }
   const target = releaseAssetFor(process.platform, process.arch);
   if (!target) {
     console.error(
-      `studio-plugin: no prebuilt binary for ${process.platform}-${process.arch}. ${SOURCE_INSTALL_HINT}`,
+      `thyra-plugin: no prebuilt binary for ${process.platform}-${process.arch}. ${SOURCE_INSTALL_HINT}`,
     );
     return 1;
   }
   const base = `https://github.com/${RELEASE_REPOSITORY}/releases/download/v${version}`;
   const archiveName = `${target.asset}.tar.xz`;
-  console.error(`studio-plugin: downloading ${archiveName} (v${version})`);
+  console.error(`thyra-plugin: downloading ${archiveName} (v${version})`);
   let tmp: string | null = null;
   try {
     const [checksumResponse, archiveResponse] = await Promise.all([
@@ -136,7 +120,7 @@ async function downloadPrebuilt(): Promise<number> {
     ]);
     if (!checksumResponse.ok || !archiveResponse.ok) {
       console.error(
-        `studio-plugin: download failed for Thyra v${version} (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}). ${SOURCE_INSTALL_HINT}`,
+        `thyra-plugin: download failed for Thyra v${version} (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}). ${SOURCE_INSTALL_HINT}`,
       );
       return 1;
     }
@@ -145,11 +129,11 @@ async function downloadPrebuilt(): Promise<number> {
     const actual = createHash("sha256").update(archive).digest("hex");
     if (!expected || actual !== expected) {
       console.error(
-        `studio-plugin: checksum mismatch (expected ${expected ?? "<none>"}, got ${actual})`,
+        `thyra-plugin: checksum mismatch (expected ${expected ?? "<none>"}, got ${actual})`,
       );
       return 1;
     }
-    tmp = mkdtempSync(join(tmpdir(), "studio-plugin-"));
+    tmp = mkdtempSync(join(tmpdir(), "thyra-plugin-"));
     const archivePath = join(tmp, archiveName);
     writeFileSync(archivePath, archive);
     const extract = spawnSync("tar", ["-xJf", archivePath, "-C", tmp], {
@@ -157,13 +141,13 @@ async function downloadPrebuilt(): Promise<number> {
     });
     if (extract.error) {
       console.error(
-        `studio-plugin: cannot run tar: ${extract.error.message} (tar with xz support is required)`,
+        `thyra-plugin: cannot run tar: ${extract.error.message} (tar with xz support is required)`,
       );
       return 1;
     }
     if (extract.status !== 0) {
       console.error(
-        `studio-plugin: extraction failed (exit ${extract.status}): ${extract.stderr.trim()}`,
+        `thyra-plugin: extraction failed (exit ${extract.status}): ${extract.stderr.trim()}`,
       );
       return 1;
     }
@@ -173,11 +157,11 @@ async function downloadPrebuilt(): Promise<number> {
     const destination = join(serverDir, target.binary);
     copyFileSync(extracted, destination);
     if (process.platform !== "win32") chmodSync(destination, 0o755);
-    console.error(`studio-plugin: installed ${target.binary} ${version}`);
+    console.error(`thyra-plugin: installed ${target.binary} ${version}`);
     return 0;
   } catch (error) {
     console.error(
-      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}. ${SOURCE_INSTALL_HINT}`,
+      `thyra-plugin: download failed: ${error instanceof Error ? error.message : String(error)}. ${SOURCE_INSTALL_HINT}`,
     );
     return 1;
   } finally {
@@ -198,13 +182,11 @@ function buildSource(): number {
 async function ensureBinary(): Promise<string | null> {
   const existing = binaryPath();
   if (existing) return existing;
-  console.error("studio-plugin: thyra binary missing, downloading it first");
+  console.error("thyra-plugin: thyra binary missing, downloading it first");
   if ((await downloadPrebuilt()) !== 0) return null;
   const downloaded = binaryPath();
   if (!downloaded) {
-    console.error(
-      "studio-plugin: download finished but no binary was produced",
-    );
+    console.error("thyra-plugin: download finished but no binary was produced");
   }
   return downloaded;
 }
@@ -291,7 +273,7 @@ function printUrl(): number {
   const envFile = readableConfigFile(configDir(), "thyra.env");
   if (!existsSync(envFile)) {
     console.error(
-      `studio-plugin: no service environment at ${envFile}, showing defaults`,
+      `thyra-plugin: no service environment at ${envFile}, showing defaults`,
     );
   }
   console.log(computeUrl());
@@ -425,7 +407,7 @@ async function main(): Promise<number> {
       return panel();
     default:
       console.error(
-        "usage: studio-plugin.ts <build|build-source|start|restart|status|url|version|uninstall|panel>",
+        "usage: thyra-plugin.ts <build|build-source|start|restart|status|url|version|uninstall|panel>",
       );
       return process.argv[2] ? 1 : 0;
   }

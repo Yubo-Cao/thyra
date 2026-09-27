@@ -4,12 +4,11 @@ umask 077
 
 program=${0##*/}
 herdr_candidate=
-studio_candidate=
+thyra_candidate=
 build_id=
 stock_version=
 herdr_service=herdr.service
-studio_service=thyra.service
-legacy_studio_service=herdr-gui.service
+thyra_service=thyra.service
 install_dir="$HOME/.local/bin"
 release_root=${HERDR_DEPLOY_RELEASE_ROOT:-"$HOME/.local/lib/herdr-deployments"}
 
@@ -20,13 +19,13 @@ fail() {
 
 usage() {
   printf '%s\n' \
-    "Usage: $program --herdr PATH --studio PATH [options]" \
+    "Usage: $program --herdr PATH --thyra PATH [options]" \
     "" \
     "Options:" \
     "  --build-id ID              Versioned release directory name" \
     "  --stock-version VERSION    Require the exact version used by stock clients" \
     "  --herdr-service UNIT       Default: herdr.service" \
-    "  --studio-service UNIT      Default: thyra.service" \
+    "  --thyra-service UNIT       Default: thyra.service" \
     "  --release-root DIR         Default: ~/.local/lib/herdr-deployments"
 }
 
@@ -37,9 +36,9 @@ while (($#)); do
       herdr_candidate=$2
       shift 2
       ;;
-    --studio)
-      (($# >= 2)) || fail "--studio requires a path"
-      studio_candidate=$2
+    --thyra)
+      (($# >= 2)) || fail "--thyra requires a path"
+      thyra_candidate=$2
       shift 2
       ;;
     --build-id)
@@ -57,9 +56,9 @@ while (($#)); do
       herdr_service=$2
       shift 2
       ;;
-    --studio-service)
-      (($# >= 2)) || fail "--studio-service requires a unit"
-      studio_service=$2
+    --thyra-service)
+      (($# >= 2)) || fail "--thyra-service requires a unit"
+      thyra_service=$2
       shift 2
       ;;
     --release-root)
@@ -76,13 +75,13 @@ while (($#)); do
 done
 
 [[ -n $herdr_candidate ]] || fail "--herdr is required"
-[[ -n $studio_candidate ]] || fail "--studio is required"
+[[ -n $thyra_candidate ]] || fail "--thyra is required"
 [[ -f $herdr_candidate && ! -L $herdr_candidate && -x $herdr_candidate ]] ||
   fail "Herdr candidate must be an executable regular file"
-[[ -f $studio_candidate && ! -L $studio_candidate && -x $studio_candidate ]] ||
-  fail "Studio candidate must be an executable regular file"
+[[ -f $thyra_candidate && ! -L $thyra_candidate && -x $thyra_candidate ]] ||
+  fail "Thyra candidate must be an executable regular file"
 [[ $herdr_service =~ ^[A-Za-z0-9@_.-]+$ ]] || fail "invalid Herdr service name"
-[[ $studio_service =~ ^[A-Za-z0-9@_.-]+$ ]] || fail "invalid Studio service name"
+[[ $thyra_service =~ ^[A-Za-z0-9@_.-]+$ ]] || fail "invalid Thyra service name"
 
 for command_name in systemctl install mv mktemp sha256sum jq readlink awk date find grep; do
   command -v "$command_name" >/dev/null 2>&1 ||
@@ -102,16 +101,9 @@ systemd_version=$(systemctl --version | awk 'NR == 1 { print $2 }')
   fail "$herdr_service must use Type=simple"
 systemctl --user is-active --quiet "$herdr_service" ||
   fail "$herdr_service is not active; live handoff requires a running server"
-# Thyra replaces the legacy herdr-gui service; migrate it first (see
-# docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui) so two services
-# never compete for the same port and configuration.
-if [[ $studio_service != "$legacy_studio_service" ]] &&
-  systemctl --user is-active --quiet "$legacy_studio_service"; then
-  fail "$legacy_studio_service is still active; migrate it to $studio_service first"
-fi
-studio_was_active=false
-if systemctl --user is-active --quiet "$studio_service"; then
-  studio_was_active=true
+thyra_was_active=false
+if systemctl --user is-active --quiet "$thyra_service"; then
+  thyra_was_active=true
 fi
 
 candidate_status=$("$herdr_candidate" status client --json)
@@ -125,10 +117,9 @@ fi
   jq -e '.. | objects | select(.const? == "collaboration.list")' >/dev/null ||
   fail "Herdr candidate does not include the collaboration API"
 
-studio_version=$("$studio_candidate" --version)
-studio_version=${studio_version#thyra }
-studio_version=${studio_version#herdr-gui }
-[[ -n $studio_version ]] || fail "could not determine Studio candidate version"
+thyra_version=$("$thyra_candidate" --version)
+thyra_version=${thyra_version#thyra }
+[[ -n $thyra_version ]] || fail "could not determine Thyra candidate version"
 
 if [[ -z $build_id ]]; then
   herdr_sha=$(sha256sum "$herdr_candidate" | awk 'NR == 1 { print substr($1, 1, 12) }')
@@ -140,9 +131,9 @@ release_dir=$release_root/$build_id
 [[ ! -e $release_dir ]] || fail "release already exists: $release_dir"
 install -d -m 0755 "$release_root" "$release_dir" "$install_dir"
 release_herdr=$release_dir/herdr
-release_studio=$release_dir/thyra
+release_thyra=$release_dir/thyra
 install -m 0755 "$herdr_candidate" "$release_herdr"
-install -m 0755 "$studio_candidate" "$release_studio"
+install -m 0755 "$thyra_candidate" "$release_thyra"
 
 config_home=${XDG_CONFIG_HOME:-"$HOME/.config"}
 dropin_dir=$config_home/systemd/user/$herdr_service.d
@@ -259,24 +250,24 @@ atomic_install() {
 }
 
 atomic_install "$release_herdr" "$install_dir/herdr"
-atomic_install "$release_studio" "$install_dir/thyra"
+atomic_install "$release_thyra" "$install_dir/thyra"
 exec_start=$(systemctl --user show "$herdr_service" --property=ExecStart --value)
 [[ $exec_start == *"path=$install_dir/herdr ;"* ]] ||
   fail "$herdr_service cold-start command does not use $install_dir/herdr"
-if $studio_was_active; then
-  systemctl --user restart "$studio_service"
-  systemctl --user is-active --quiet "$studio_service" ||
-    fail "$studio_service did not become active"
+if $thyra_was_active; then
+  systemctl --user restart "$thyra_service"
+  systemctl --user is-active --quiet "$thyra_service" ||
+    fail "$thyra_service did not become active"
 fi
 
 printf 'Live deployment complete.\n'
 printf '  release: %s\n' "$release_dir"
 printf '  Herdr:  %s (PID %s; %s preserved cgroup processes)\n' \
   "$candidate_version" "$replacement_pid" "$((${#before_pids[@]} - 1))"
-if $studio_was_active; then
-  printf '  Studio: %s (restarted)\n' "$studio_version"
+if $thyra_was_active; then
+  printf '  Thyra:  %s (restarted)\n' "$thyra_version"
 else
-  printf '  Studio: %s (installed; service left inactive)\n' "$studio_version"
+  printf '  Thyra:  %s (installed; service left inactive)\n' "$thyra_version"
 fi
 printf 'Use systemctl --user reload %s for future process-preserving replacements.\n' \
   "$herdr_service"

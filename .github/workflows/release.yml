@@ -159,7 +159,7 @@ jobs:
           path: dist
           pattern: thyra-*
           merge-multiple: true
-      - name: Reject missing assets and legacy update aliases
+      - name: Reject missing or unexpected release assets
         run: node scripts/check-release-assets.mjs "${GITHUB_REF_NAME#v}"
       - name: Create GitHub release
         env:

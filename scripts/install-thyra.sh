@@ -2,10 +2,10 @@
 set -eu
 
 github_repository="Yubo-Cao/thyra"
-# New names take precedence even when explicitly empty (VERSION= means latest).
-custom_release_base="${THYRA_RELEASE_BASE_URL-${HERDR_GUI_RELEASE_BASE_URL:-}}"
-install_dir="${THYRA_INSTALL_DIR-${HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin}}"
-requested_version="${THYRA_VERSION-${HERDR_GUI_VERSION:-}}"
+# An empty THYRA_VERSION means latest; an empty THYRA_INSTALL_DIR is rejected.
+custom_release_base="${THYRA_RELEASE_BASE_URL:-}"
+install_dir="${THYRA_INSTALL_DIR-$HOME/.local/bin}"
+requested_version="${THYRA_VERSION:-}"
 
 fail() {
   printf 'Thyra installer: %s\n' "$*" >&2

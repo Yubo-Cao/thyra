@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-test("renamed systemd template runs Thyra and uses the Thyra environment file", async () => {
+test("systemd template runs Thyra and uses the Thyra environment file", async () => {
   const unit = await Bun.file(
     new URL("../deploy/systemd/thyra.service", import.meta.url),
   ).text();
@@ -17,9 +17,8 @@ test("launchd template executes the installed Thyra binary with Thyra identities
     new URL("./install-thyra.sh", import.meta.url),
   ).text();
   expect(installer).toContain('target="$install_dir/thyra"');
-  expect(installer).toContain("HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin");
+  expect(installer).toContain("THYRA_INSTALL_DIR-$HOME/.local/bin");
   expect(plist).toContain('exec "$HOME/.local/bin/thyra"');
-  expect(plist).not.toContain('exec "$HOME/.local/bin/herdr-gui"');
   expect(plist).toContain("<string>dev.thyra</string>");
   expect(plist).toContain("$HOME/.config/thyra/thyra.env");
   expect(plist).not.toContain("RESTART_SUPERVISOR");

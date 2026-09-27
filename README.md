@@ -71,10 +71,6 @@ Click any screenshot to open the full-resolution image.
 
 [desktop-changes]: ./docs/images/thyra-desktop-changes.png
 
-> **Moving from Herdr Studio / herdr-gui?** Automatic upgrades are not supported.
-> Follow the [migration guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
-> to install Thyra manually.
-
 ## Quick start
 
 1. Install and start [Herdr](https://herdr.dev), or let Thyra install and
@@ -94,8 +90,7 @@ Click any screenshot to open the full-resolution image.
    On Windows, extract the archive and run `thyra.exe`. Open the printed URL.
 
 See [deployment](./docs/DEPLOYMENT.md) for checksums, configuration, updates,
-and services, or [historical installation](./docs/DEPLOYMENT.md#install-historical-herdr-studio)
-for `herdr-gui` 0.6.2.
+and services.
 
 ## Install as a PWA
 
@@ -139,7 +134,5 @@ binding; read [SECURITY.md](./SECURITY.md) before allowing another device access
 
 ## License
 
-Code: [MIT](./LICENSE). Thyra began as a fork of
-[Roamgate](https://github.com/powerfooI/roamgate) by Arthur and is developed
-independently; the original copyright notice is kept in the license. Bundled fonts and brand assets retain their original
-terms; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Code: [MIT](./LICENSE). Thyra began as a fork of Roamgate by Arthur; the original copyright notice is kept in the license.
+Bundled fonts and brand assets retain their original terms; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

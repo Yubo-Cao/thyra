@@ -52,12 +52,10 @@ mirror) and its manifest/checksums. Checksums detect corruption and bind the
 archive, **not independently verify publisher identity**. Custom mirrors are
 trusted executable-code infrastructure.
 
-`HERDR_GUI_*` aliases `THYRA_*`; explicit new values win, even empty ones.
-Auth-token migration preserves the old secret. Protect both copies and backups;
-see [migration and rotation](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
-Update requests require normal listener authentication plus `x-thyra-update: 1`.
-Legacy `x-herdr-gui-update: 1` is accepted; the new header wins if both appear.
-Neither header replaces login.
+Protect the auth token and its backups; see
+[token rotation](./docs/DEPLOYMENT.md#run-as-a-user-service).
+Update requests require normal listener authentication plus `x-thyra-update: 1`,
+which does not replace login.
 
 Web Push subscription mutations require listener authentication, JSON, and
 `x-thyra-push: 1`; cross-site browser requests are rejected. Push endpoints

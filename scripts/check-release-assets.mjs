@@ -22,7 +22,7 @@ export function releaseAssetNames(version) {
   ]);
 }
 
-/** A release must never accidentally reopen the legacy clients' update feed. */
+/** A release publishes exactly the expected Thyra assets and nothing else. */
 export function verifyReleaseAssetNames(names, version) {
   const expected = releaseAssetNames(version);
   const unexpected = names.filter((name) => !expected.includes(name));
@@ -42,7 +42,5 @@ if (
     await readdir(process.argv[3] ?? "dist"),
     process.argv[2],
   );
-  process.stdout.write(
-    "Verified Thyra-only release assets; no legacy update or installer aliases.\n",
-  );
+  process.stdout.write("Verified Thyra release assets.\n");
 }

@@ -54,8 +54,7 @@ See [endpoint contracts](./ARCHITECTURE.md#terminal-endpoints) and
 
 ## Install a release
 
-Thyra 0.7.0+ releases provide Linux/macOS/Windows x86-64 and ARM64 assets.
-Older releases may lack native Windows ARM64; prefer it when available.
+Releases provide Linux/macOS/Windows x86-64 and ARM64 assets.
 Unpublished versions require a [source build](#build-a-standalone-executable).
 
 On Linux/macOS, the checksum-verifying installer writes `~/.local/bin/thyra`:
@@ -127,94 +126,10 @@ Then remove only its generated definition:
 `systemctl --user daemon-reload`. Remove an installed binary only if unwanted
 and owned by this setup; never delete the shared `~/.local/bin` directory.
 
-## Transition from Herdr Studio / herdr-gui
-
-**Herdr Studio / herdr-gui 0.6.2 and earlier require manual installation.**
-Thyra 0.7.0+ publishes only `thyra-*` assets/manifests and
-`install-thyra.sh`. Old Latest/update channels no longer deliver fixes and may
-error; historical tagged downloads and running processes remain intact.
-Legacy assets are not republished because old clients can discover archives
-without manifests. Custom mirrors/pinned historical downloads are outside this cutoff.
-
-**Service, data, and plugin identity migration requires Thyra 0.7.1+.**
-0.7.0 can update its binary through the new channel, but still uses legacy service
-names, paths, and `herdr.studio` plugin ID. Binary updates never rename services
-or migrate plugin registrations automatically.
-
-1. Back up executable, service definition, and config with permissions intact.
-   Include `~/.config/herdr-gui/` and Windows `%APPDATA%\herdr-gui\` plus the old
-   `~/.config/herdr-gui/` settings/profile location.
-2. Before replacing the executable, stop/uninstall with `herdr-gui service uninstall`
-   or the previous Thyra binary's `service uninstall`. For custom wrappers,
-   stop/disable/archive through the native manager and preserve args/environment.
-   Stop unmanaged processes too; never leave both auto-start entries enabled.
-3. Install 0.7.1+ or build source, then explicitly run `thyra service install`
-   (`./server/thyra service install` for source). Install rejects existing/loaded
-   legacy services and detection errors, even with `--force`, before changing files.
-4. Verify status, login, and connections. To roll back, uninstall with the new
-   binary, restore the old binary/definition, and enable only that service.
-   New-directory changes are not synchronized back.
-
-After an in-place 0.7.0 update, the new CLI can route status/restart/reload/uninstall
-to the **sole unmodified generated legacy definition pointing at this executable**.
-It preserves name/environment/data and installs nothing automatically. Ambiguous
-old/new services, custom/symlinked definitions, loaded services missing definitions,
-or detection errors require the previous binary/native manager; the CLI never guesses.
-
-New data lives in `~/.config/thyra` or Windows `%APPDATA%\thyra`:
-
-- Missing tokens/settings/connections copy on first use; service install also
-  copies `herdr-gui.env` to `thyra.env`. Existing new files win, even empty/invalid.
-- Copies retain originals and restrict permissions to the owner's existing
-  read/write bits. Copy failures stop without replacement credentials; legacy
-  symlinks are rejected. Explicit registry-path overrides are not migrated.
-- Windows reads old settings/profiles from historical `~/.config/herdr-gui`.
-  Stop old writers first: migration is one-way, not synchronization.
-- Browser `thyra:` keys copy missing legacy values on the **same origin** only.
-  New values win; remembered deletions prevent old drafts reappearing. The website
-  checklist follows the same rule. Host/port changes cannot transfer storage.
-
-[Plugin migration](#herdr-plugin) is explicit. Historical releases retain their contracts.
-
-### Repository and website addresses
-
-Thyra lives at [Yubo-Cao/thyra](https://github.com/Yubo-Cao/thyra), with the
-website at <https://thyra.yubo.fun/> ([tutorial](https://thyra.yubo.fun/tutorial/)).
-It split from [powerfooI/roamgate](https://github.com/powerfooI/roamgate)
-(formerly `herdr-studio`) in September 2026 and does not track that repository.
-Roamgate installs migrate on first start: `THYRA_*` variables override
-`ROAMGATE_*`, which override `HERDR_GUI_*`; files missing from `~/.config/thyra`
-are copied once from `~/.config/roamgate`; browser `roamgate:` keys are copied to
-`thyra:` on the same origin. Replace a `roamgate.service` unit with
-`thyra service install` after stopping it.
-
-### Install historical Herdr Studio
-
-The retained [legacy installer](../scripts/install-herdr-gui.sh) installs only
-`herdr-gui`, has no working Latest channel, and is absent from new releases.
-Pin a historical tag, with no future fixes through that channel:
-
-```bash
-curl -fsSL \
-  https://github.com/powerfooI/roamgate/releases/download/v0.6.2/install-herdr-gui.sh \
-  | HERDR_GUI_VERSION=0.6.2 sh
-```
-
 ## Herdr plugin
 
-Requires Herdr 0.7.2+ and Bun for the shim. Plugin ID is `thyra` from 0.7.1;
-0.7.0 uses `herdr.studio`. The shim refuses prebuilt downloads through 0.7.0.
-
-**Migrating `herdr.studio`:** stop/uninstall its old service first, close old plugin
-panes, finish pending actions, then unregister:
-
-```bash
-herdr plugin disable herdr.studio
-herdr plugin unlink herdr.studio
-```
-
-Unlink retains checkout/data, including managed checkouts. Keep them for rollback;
-do not run old and new start actions together. Thyra never edits Herdr's registry.
+Requires Herdr 0.7.2+ and Bun for the shim. The plugin ID is `thyra`.
+Thyra never edits Herdr's plugin registry.
 
 For an **unreleased checkout**, build before linking (existing binaries are not
 validated). Keep the checkout and rebuild after updates:
@@ -222,7 +137,7 @@ validated). Keep the checkout and rebuild after updates:
 ```bash
 git clone https://github.com/Yubo-Cao/thyra.git
 cd thyra
-bun scripts/studio-plugin.ts build-source
+bun scripts/thyra-plugin.ts build-source
 herdr plugin link .
 ```
 
@@ -230,14 +145,14 @@ herdr plugin link .
 (`thyra.exe` on Windows). Linking after success skips release download;
 neither step starts the service.
 
-For a **published release**, replace `X.Y.Z` with 0.7.1 or newer:
+For a **published release**, replace `X.Y.Z` with its version:
 
 ```bash
 herdr plugin install Yubo-Cao/thyra --ref vX.Y.Z
 ```
 
 The manifest downloads/checksum-verifies that version's binary. Failure never
-falls back to compilation or legacy assets; unpublished versions cannot use this path.
+falls back to compilation; unpublished versions cannot use this path.
 
 Plugin actions manage the same [user service](#run-as-a-user-service):
 
@@ -260,10 +175,6 @@ visible to other Herdr clients.
 Flags override environment variables, then defaults; `thyra --help` lists all
 options. Standalone ignores cwd `.env`/`bunfig.toml`: export variables, pass flags,
 or edit the service environment file. Source `bun run` retains normal Bun loading.
-
-`THYRA_*` accepts legacy `HERDR_GUI_*` aliases, including installer settings.
-The new name wins **even when empty**. Herdr's `HERDR_*` settings are unchanged;
-explicit connection registry paths remain authoritative, including empty values.
 
 | Flag | Environment variable | Default |
 | --- | --- | --- |
@@ -288,7 +199,7 @@ explicit connection registry paths remain authoritative, including empty values.
 | `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
 
 Update mirrors need platform archives, `.sha256` files, and
-`thyra-<platform>.update.json` with `name: "thyra"`. Missing/legacy manifests
+`thyra-<platform>.update.json` with `name: "thyra"`. Missing or invalid manifests
 fail closed without archive discovery. HTTPS is required except loopback tests;
 credentials, queries, and fragments in URLs are rejected.
 
@@ -513,7 +424,7 @@ Commands run through `sh -c`, remotely for SSH connections.
 | `THYRA_HOOK_CHECKOUT_PATH` | Same target path |
 | `THYRA_HOOK_SOURCE_CHECKOUT_PATH` | Same source path |
 
-Legacy `HERDR_GUI_HOOK_*` aliases remain. Notices show bounded diagnostics.
+Notices show bounded diagnostics.
 **Failed teardown stops removal; other failures do not roll back completed actions.**
 Hooks default on; inspect/disable per repository under **Worktree hooks** or
 **Worktree Lifecycle**. They are trusted, unsandboxed code: review before acting.
@@ -523,7 +434,7 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 | Command | Behavior |
 | --- | --- |
 | `thyra service install` | Create/update definition and start |
-| `thyra service install --force` | Replace a non-Thyra definition (not a legacy migration bypass) |
+| `thyra service install --force` | Replace a non-Thyra definition |
 | `thyra service status` | Native manager status |
 | `thyra service restart` | Restart after environment changes |
 | `thyra service reload` | Reload definition, then restart |
@@ -535,7 +446,6 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 | macOS | `~/Library/LaunchAgents/dev.thyra.plist`, label `dev.thyra`, `KeepAlive`; logs `~/Library/Logs/thyra.stdout.log` / `thyra.stderr.log` |
 | Windows | Task `dev.thyra-<user-key>` (config-path hash), `%APPDATA%\thyra\thyra-task.ps1`; login start, normal privileges, restart on failure |
 
-Stop/remove legacy services first via the [migration procedure](#transition-from-herdr-studio--herdr-gui).
 **New services bind `0.0.0.0:8787`**, generate a persistent token, and print
 localhost/LAN token URLs. Config lives in `~/.config/thyra/thyra.env` or
 `%APPDATA%\thyra\thyra.env`, preserved on reinstall/uninstall. Edit HOST,
@@ -550,8 +460,7 @@ curl -fsS http://127.0.0.1:8787/healthz
 Tokens live in `~/.config/thyra/auth-token` or `%APPDATA%\thyra\auth-token`.
 A `?token=...` visit sets an HttpOnly cookie and removes the URL token. To rotate,
 stop the service, replace the file with a fresh 64-character lowercase hexadecimal
-secret (mode `0600`), then restart. **Deleting only the new file can restore a
-readable legacy token**, not rotate it.
+secret (mode `0600`), then restart.
 
 Manual templates live under `deploy/`. Keep systemd as restart owner for wrappers:
 
@@ -612,7 +521,7 @@ cd /path/to/herdr
 # the forked remote binary instead of offering a destructive remote update.
 HERDR_BUILD_CHANNEL=stable HERDR_BUILD_ID="$build_id" cargo build --release
 
-cd /path/to/herdr-studio
+cd /path/to/thyra
 bun run build:linux-x64
 ```
 
@@ -625,7 +534,7 @@ target. Run the deployment script on that target host:
 ```bash
 ./scripts/deploy-herdr-stack-live.sh \
   --herdr ./artifacts/herdr \
-  --studio ./artifacts/thyra-linux-x64 \
+  --thyra ./artifacts/thyra-linux-x64 \
   --stock-version 0.9.1 \
   --build-id "$build_id"
 ```
@@ -635,10 +544,7 @@ candidate advertises the requested stock-client version and contains the
 collaboration API, installs a versioned release, applies the systemd drop-in,
 performs the live handoff, and verifies all pre-existing non-server PIDs remain
 in the cgroup. Only after that does it atomically update
-`~/.local/bin/herdr` and `~/.local/bin/thyra`. It refuses to run while the
-legacy `herdr-gui.service` is active; complete the
-[transition](#transition-from-herdr-studio--herdr-gui) first, then run
-`thyra service install` once. If Thyra was active, the
+`~/.local/bin/herdr` and `~/.local/bin/thyra`. If Thyra was active, the
 script restarts it; if it was inactive, the new binary is installed without
 starting the service. Herdr itself is never restarted. Previous binaries are
 retained as `.previous` files.
@@ -656,7 +562,7 @@ machine that hosts active agents.
 ## Build a standalone executable
 
 ```bash
-bun scripts/studio-plugin.ts build-source
+bun scripts/thyra-plugin.ts build-source
 # Output: server/thyra (server/thyra.exe on Windows)
 ```
 

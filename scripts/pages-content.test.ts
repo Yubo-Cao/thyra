@@ -199,9 +199,6 @@ describe("Pages references", () => {
         screenshots,
       );
     }
-    for (const source of [site, tutorial, build]) {
-      expect(source).not.toMatch(/herdr-studio-(?:desktop|mobile)-/);
-    }
     for (const image of tutorial.match(screenshotPattern) ?? []) {
       expect(screenshots).toContain(image);
     }

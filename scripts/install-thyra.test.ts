@@ -33,29 +33,26 @@ function currentReleasePlatform(): string {
   );
 }
 
-function createInstallerFixture(
-  checksumName?: string,
-  product: "thyra" | "herdr-gui" = "thyra",
-) {
+function createInstallerFixture(checksumName?: string) {
   const root = mkdtempSync(join(tmpdir(), "thyra-installer-test-"));
   temporaryRoots.push(root);
   const assets = join(root, "assets");
   const fakeBin = join(root, "bin");
   const installDir = join(root, "install");
   const platform = currentReleasePlatform();
-  const packageDir = `${product}-${platform}`;
+  const packageDir = `thyra-${platform}`;
   const archiveName = `${packageDir}.tar.xz`;
   const packagePath = join(assets, packageDir);
   mkdirSync(packagePath, { recursive: true });
   mkdirSync(fakeBin, { recursive: true });
 
-  const binary = join(packagePath, product);
+  const binary = join(packagePath, "thyra");
   writeFileSync(
     binary,
-    `#!/bin/sh\n[ "\${1:-}" = "--version" ] && { echo "${product} 9.8.7"; exit 0; }\nexit 1\n`,
+    `#!/bin/sh\n[ "\${1:-}" = "--version" ] && { echo "thyra 9.8.7"; exit 0; }\nexit 1\n`,
     { mode: 0o755 },
   );
-  writeFileSync(join(packagePath, "VERSION"), `${product} 9.8.7 ${platform}\n`);
+  writeFileSync(join(packagePath, "VERSION"), `thyra 9.8.7 ${platform}\n`);
 
   const archive = join(assets, archiveName);
   const packaged = Bun.spawnSync(
@@ -96,7 +93,7 @@ cp "$FIXTURE_DIR/\${url##*/}" "$out"
   );
   chmodSync(fakeCurl, 0o755);
 
-  return { root, assets, fakeBin, installDir, product };
+  return { root, assets, fakeBin, installDir };
 }
 
 function runInstaller(
@@ -104,25 +101,19 @@ function runInstaller(
   releaseBaseUrl = "http://127.0.0.1/releases",
   environment: Record<string, string | undefined> = {},
 ) {
-  return Bun.spawnSync(
-    ["sh", join(import.meta.dir, `install-${fixture.product}.sh`)],
-    {
-      env: {
-        ...process.env,
-        PATH: `${fixture.fakeBin}:${process.env.PATH ?? ""}`,
-        FIXTURE_DIR: fixture.assets,
-        HERDR_GUI_RELEASE_BASE_URL: releaseBaseUrl,
-        HERDR_GUI_INSTALL_DIR: fixture.installDir,
-        HERDR_GUI_VERSION: undefined,
-        THYRA_RELEASE_BASE_URL: undefined,
-        THYRA_INSTALL_DIR: undefined,
-        THYRA_VERSION: undefined,
-        ...environment,
-      },
-      stdout: "pipe",
-      stderr: "pipe",
+  return Bun.spawnSync(["sh", join(import.meta.dir, "install-thyra.sh")], {
+    env: {
+      ...process.env,
+      PATH: `${fixture.fakeBin}:${process.env.PATH ?? ""}`,
+      FIXTURE_DIR: fixture.assets,
+      THYRA_RELEASE_BASE_URL: releaseBaseUrl,
+      THYRA_INSTALL_DIR: fixture.installDir,
+      THYRA_VERSION: undefined,
+      ...environment,
     },
-  );
+    stdout: "pipe",
+    stderr: "pipe",
+  });
 }
 
 afterEach(() => {
@@ -132,65 +123,11 @@ afterEach(() => {
 });
 
 describe("release installer", () => {
-  test("retains the legacy installer without replacing Thyra", () => {
-    const fixture = createInstallerFixture(undefined, "herdr-gui");
-    mkdirSync(fixture.installDir, { recursive: true });
-    writeFileSync(join(fixture.installDir, "thyra"), "keep Thyra\n");
-    writeFileSync(
-      join(fixture.installDir, "herdr-gui"),
-      "previous legacy binary\n",
-    );
-    const result = runInstaller(fixture);
-    expect(result.exitCode).toBe(0);
-    const installed = Bun.spawnSync([
-      join(fixture.installDir, "herdr-gui"),
-      "--version",
-    ]);
-    expect(installed.exitCode).toBe(0);
-    expect(installed.stdout.toString().trim()).toBe("herdr-gui 9.8.7");
-    expect(
-      readFileSync(join(fixture.installDir, "herdr-gui.previous"), "utf8"),
-    ).toBe("previous legacy binary\n");
-    expect(readFileSync(join(fixture.installDir, "thyra"), "utf8")).toBe(
-      "keep Thyra\n",
-    );
-  });
-
-  test("legacy checksum failure preserves the existing binary", () => {
-    const fixture = createInstallerFixture(undefined, "herdr-gui");
-    mkdirSync(fixture.installDir, { recursive: true });
-    writeFileSync(
-      join(fixture.installDir, "herdr-gui"),
-      "keep legacy binary\n",
-    );
-    const archiveName = `herdr-gui-${currentReleasePlatform()}.tar.xz`;
-    writeFileSync(
-      join(fixture.assets, `${archiveName}.sha256`),
-      `${"0".repeat(64)}  ${archiveName}\n`,
-    );
-    const result = runInstaller(fixture);
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toContain("package checksum mismatch");
-    expect(readFileSync(join(fixture.installDir, "herdr-gui"), "utf8")).toBe(
-      "keep legacy binary\n",
-    );
-    expect(existsSync(join(fixture.installDir, "herdr-gui.previous"))).toBe(
-      false,
-    );
-  });
-
-  test("prefers Thyra variables, including empty VERSION for latest", () => {
+  test("treats an empty version as latest", () => {
     const fixture = createInstallerFixture();
-    const installDir = join(fixture.root, "new-install");
-    const result = runInstaller(fixture, "https://invalid.example/?rejected", {
-      THYRA_RELEASE_BASE_URL: "http://127.0.0.1/releases",
-      THYRA_INSTALL_DIR: installDir,
-      THYRA_VERSION: "",
-      HERDR_GUI_VERSION: "invalid-version",
-    });
+    const result = runInstaller(fixture, undefined, { THYRA_VERSION: "" });
     expect(result.exitCode).toBe(0);
-    expect(existsSync(join(installDir, "thyra"))).toBe(true);
-    expect(existsSync(fixture.installDir)).toBe(false);
+    expect(existsSync(join(fixture.installDir, "thyra"))).toBe(true);
   });
 
   test("rejects an explicitly empty Thyra installation directory", () => {
@@ -211,11 +148,6 @@ describe("release installer", () => {
     writeFileSync(join(fixture.installDir, "thyra"), "previous binary\n", {
       mode: 0o755,
     });
-    writeFileSync(join(fixture.installDir, "herdr-gui"), "legacy GUI binary\n");
-    writeFileSync(
-      join(fixture.installDir, "herdr-studio"),
-      "legacy Studio binary\n",
-    );
     const result = runInstaller(fixture);
     expect(result.exitCode).toBe(0);
     expect(result.stderr.toString()).toBe("");
@@ -229,12 +161,6 @@ describe("release installer", () => {
     expect(
       readFileSync(join(fixture.installDir, "thyra.previous"), "utf8"),
     ).toBe("previous binary\n");
-    expect(readFileSync(join(fixture.installDir, "herdr-gui"), "utf8")).toBe(
-      "legacy GUI binary\n",
-    );
-    expect(readFileSync(join(fixture.installDir, "herdr-studio"), "utf8")).toBe(
-      "legacy Studio binary\n",
-    );
   });
 
   test("rejects filenames supplied by an untrusted checksum file", () => {

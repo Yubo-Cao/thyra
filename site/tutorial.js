@@ -48,18 +48,7 @@ const storageKey = "thyra-tutorial-checklist-v1";
 let savedChecks = [];
 let storageAvailable = true;
 try {
-  let raw = localStorage.getItem(storageKey);
-  if (raw === null) {
-    raw = localStorage.getItem("herdr-studio-tutorial-checklist-v1");
-    if (raw !== null) {
-      try {
-        localStorage.setItem(storageKey, raw);
-      } catch {
-        storageAvailable = false;
-      }
-    }
-  }
-  const stored = JSON.parse(raw ?? "[]");
+  const stored = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
   if (Array.isArray(stored)) savedChecks = stored;
 } catch {
   storageAvailable = false;

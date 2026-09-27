@@ -6,10 +6,9 @@ const source = readFileSync(
   new URL("../site/tutorial.js", import.meta.url),
   "utf8",
 );
-const legacyKey = "herdr-studio-tutorial-checklist-v1";
-const currentKey = "thyra-tutorial-checklist-v1";
+const storageKey = "thyra-tutorial-checklist-v1";
 
-function render(values: Map<string, string>, failWrite = false) {
+function render(values: Map<string, string>) {
   const check = {
     checked: false,
     disabled: true,
@@ -30,7 +29,6 @@ function render(values: Map<string, string>, failWrite = false) {
     localStorage: {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => {
-        if (failWrite) throw new Error("quota");
         values.set(key, value);
       },
     },
@@ -38,19 +36,14 @@ function render(values: Map<string, string>, failWrite = false) {
   return check.checked;
 }
 
-test("tutorial copies legacy progress once and preserves the original", () => {
-  const values = new Map([[legacyKey, "[true]"]]);
-  expect(render(values)).toBeTrue();
-  expect(values.get(currentKey)).toBe("[true]");
-  values.set(currentKey, "[false]");
-  expect(render(values)).toBeFalse();
-  expect(values.get(legacyKey)).toBe("[true]");
+test("tutorial restores saved progress from its own key", () => {
+  expect(render(new Map([[storageKey, "[true]"]]))).toBeTrue();
+  expect(render(new Map([[storageKey, "[false]"]]))).toBeFalse();
+  expect(render(new Map())).toBeFalse();
 });
 
-test("tutorial reads legacy progress despite write failure and retries later", () => {
-  const values = new Map([[legacyKey, "[true]"]]);
-  expect(render(values, true)).toBeTrue();
-  expect(values.has(currentKey)).toBeFalse();
-  expect(render(values)).toBeTrue();
-  expect(values.get(currentKey)).toBe("[true]");
+test("tutorial ignores other checklist keys", () => {
+  const values = new Map([["other-tutorial-checklist-v1", "[true]"]]);
+  expect(render(values)).toBeFalse();
+  expect(values.has(storageKey)).toBeFalse();
 });

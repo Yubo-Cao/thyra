@@ -16,8 +16,7 @@ import {
   parseSha256File,
   readServiceEnv,
   releaseAssetFor,
-  supportsIdentityMigrationPrebuilt,
-} from "./studio-plugin";
+} from "./thyra-plugin";
 
 describe("plugin build commands", () => {
   const roots: string[] = [];
@@ -29,15 +28,15 @@ describe("plugin build commands", () => {
 
   function checkout() {
     const root = realpathSync(
-      mkdtempSync(join(tmpdir(), "studio-plugin-build-test-")),
+      mkdtempSync(join(tmpdir(), "thyra-plugin-build-test-")),
     );
     roots.push(root);
     for (const dir of ["scripts", "web", "server", "bin"]) {
       mkdirSync(join(root, dir));
     }
     copyFileSync(
-      join(import.meta.dir, "studio-plugin.ts"),
-      join(root, "scripts/studio-plugin.ts"),
+      join(import.meta.dir, "thyra-plugin.ts"),
+      join(root, "scripts/thyra-plugin.ts"),
     );
     mkdirSync(join(root, "server/src/config"), { recursive: true });
     copyFileSync(
@@ -69,19 +68,6 @@ globalThis.fetch = async (url) => {
     return root;
   }
 
-  test("0.7.0 build refuses downloading legacy identities before mutation", () => {
-    const root = checkout();
-    writeFileSync(
-      join(root, "package.json"),
-      JSON.stringify({ version: "0.7.0" }),
-    );
-    const result = invoke(root, "build");
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain("requires a source build");
-    expect(existsSync(join(root, "fetch.log"))).toBeFalse();
-    expect(existsSync(join(root, "build.log"))).toBeFalse();
-  });
-
   function invoke(
     root: string,
     verb: string,
@@ -92,7 +78,7 @@ globalThis.fetch = async (url) => {
         process.execPath,
         "--preload",
         join(root, "fetch.js"),
-        join(root, "scripts/studio-plugin.ts"),
+        join(root, "scripts/thyra-plugin.ts"),
         verb,
       ],
       {
@@ -136,13 +122,13 @@ globalThis.fetch = async (url) => {
   });
 
   test.each(["404", "500", "throw"])(
-    "release-only build fails actionably on %s without source or legacy fallback",
+    "release-only build fails actionably on %s without a source fallback",
     (status) => {
       const root = checkout();
       const result = invoke(root, "build", { HTTP_STATUS: status });
       expect(result.exitCode).toBe(1);
       expect(result.stderr.toString()).toContain(
-        "bun scripts/studio-plugin.ts build-source",
+        "bun scripts/thyra-plugin.ts build-source",
       );
       expect(result.stderr.toString()).toContain("herdr plugin link .");
       expect(result.stderr.toString()).toContain("--ref vX.Y.Z");
@@ -158,13 +144,6 @@ globalThis.fetch = async (url) => {
       expect(existsSync(join(root, "server/thyra.exe"))).toBe(false);
     },
   );
-});
-
-test("prebuilt identity floor compares numeric versions", () => {
-  for (const version of ["0.6.2", "0.7.0", "0.7.0-beta.1", "unknown"])
-    expect(supportsIdentityMigrationPrebuilt(version)).toBeFalse();
-  for (const version of ["0.7.1", "0.8.0", "0.10.0", "1.0.0"])
-    expect(supportsIdentityMigrationPrebuilt(version)).toBeTrue();
 });
 
 describe("releaseAssetFor", () => {
@@ -229,7 +208,7 @@ describe("readServiceEnv", () => {
 describe("computeUrl", () => {
   const dirs: string[] = [];
   function fixture(files: Record<string, string>): string {
-    const dir = mkdtempSync(join(tmpdir(), "studio-plugin-"));
+    const dir = mkdtempSync(join(tmpdir(), "thyra-plugin-"));
     dirs.push(dir);
     for (const [name, text] of Object.entries(files)) {
       writeFileSync(join(dir, name), text);
@@ -268,10 +247,7 @@ describe("computeUrl", () => {
       "auth-token": "saved-token\n",
     });
     expect(computeUrl(dir)).toBe("http://localhost:8787");
-    writeFileSync(
-      join(dir, "thyra.env"),
-      "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nTHYRA_PASSWORD=\n",
-    );
+    writeFileSync(join(dir, "thyra.env"), "HOST=0.0.0.0\nTHYRA_PASSWORD=\n");
     expect(computeUrl(dir)).toBe("http://localhost:8787/?token=saved-token");
   });
 

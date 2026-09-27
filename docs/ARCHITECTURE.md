@@ -416,9 +416,8 @@ and reports failure. Host operations share this boundary; see [connection setup]
 
 Production embeds frontend assets and Bun into one executable; targets need no
 Bun/Node.js. Builds use the `thyra` release identity across binaries, archives,
-checksums, and manifests. Missing/legacy manifests fail closed without archive
-discovery. Publication requires all six platform asset sets and no legacy update
-aliases. Old clients require [manual migration](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
+checksums, and manifests. Missing or invalid manifests fail closed without archive
+discovery. Publication requires exactly the six platform asset sets.
 
 ## Trust boundary
 

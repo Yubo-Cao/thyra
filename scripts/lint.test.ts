@@ -173,7 +173,6 @@ test("generated assets, binaries and workspace dependencies stay ignored", () =>
     ".pages-dist/fixture.js",
     "dist/fixture.js",
     "node_modules/fixture.js",
-    "server/herdr-gui-fixture.js",
     "server/thyra-fixture.js",
     "server/public/fixture.js",
     "server/src/public-files.gen.ts",
