@@ -15,15 +15,15 @@ const maxTotalBytes = 16 * 1024 * 1024;
 // load on demand (see components/lazyPanels.ts and LazyBoundary.tsx).
 const maxInitialJsBytes = 580 * 1024;
 const maxInitialJsGzipBytes = 182 * 1024;
-// HeroUI component styles and Tailwind utilities (styles/heroui.css) are
-// about 250 KiB of this; feature styles load with their lazy components.
-const maxInitialCssBytes = 348 * 1024;
+// Inline HeroUI component styles and Tailwind utilities (styles/heroui.css);
+// overlay styles and feature styles load with their lazy components.
+const maxInitialCssBytes = 146 * 1024;
 // The first screen also renders the active terminal, whose chunk (xterm.js
 // and its eager addons) loads right after the entry. The WebGL renderer
 // loads after first output and is not counted.
 const firstScreenFeature = "TerminalView";
 const maxFirstScreenJsGzipBytes = 330 * 1024;
-const maxFirstScreenCssBytes = 368 * 1024;
+const maxFirstScreenCssBytes = 166 * 1024;
 // The bundled terminal font is sliced into many small unicode-range chunks that
 // load on demand (scripts/build-terminal-font.ts); budget it on its own.
 const fontDirectory = "assets/fonts";
