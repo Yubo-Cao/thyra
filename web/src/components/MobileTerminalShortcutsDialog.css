@@ -1,33 +1,14 @@
-.mobile-shortcuts-modal {
-  width: min(760px, 100%);
-  max-height: min(760px, calc(100dvh - 36px));
+.mobile-shortcuts-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.mobile-shortcuts-modal .modal-head {
-  align-items: flex-start;
-  margin: 0;
-}
-
-.mobile-shortcuts-modal .modal-head p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .mobile-shortcut-slot-board {
-  flex: 0 0 auto;
-  min-height: 0;
   display: grid;
   gap: 8px;
   overflow: auto;
   padding: 8px;
-  border: 0;
   background: var(--panel-2);
 }
 
@@ -61,19 +42,18 @@
   gap: 3px;
 }
 
+/* Slot Buttons: two-line key tiles; aria-pressed marks the edited slot. */
 .mobile-shortcut-slot {
+  --button-bg: color-mix(in srgb, var(--panel) 86%, var(--panel-2));
+  --button-bg-hover: color-mix(in srgb, var(--accent-soft) 50%, var(--panel));
+  --button-fg: var(--text-strong);
+  width: 100%;
   min-width: 0;
   height: 52px;
-  display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: 3px;
   padding: 4px;
   overflow: hidden;
-  border: 0;
-  background: color-mix(in srgb, var(--panel) 86%, var(--panel-2));
-  color: var(--text-strong);
 }
 
 .mobile-shortcut-slot strong,
@@ -96,23 +76,12 @@
 .mobile-shortcut-slot span {
   color: var(--muted);
   font-size: 9px;
+  font-weight: 400;
 }
 
 .mobile-shortcut-slot.is-empty {
-  border-style: dashed;
-  background: color-mix(in srgb, var(--input-bg) 45%, transparent);
-  color: var(--muted);
-}
-
-.mobile-shortcut-slot:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 50%, var(--panel));
-}
-
-.mobile-shortcut-slot.is-selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  --button-bg: color-mix(in srgb, var(--input-bg) 45%, transparent);
+  --button-fg: var(--muted);
 }
 
 .mobile-shortcut-side-board {
@@ -121,7 +90,6 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border: 0;
   background: var(--panel-2);
 }
 
@@ -160,10 +128,8 @@
 }
 
 .mobile-shortcut-slot-editor {
-  flex: 0 0 auto;
   min-height: 96px;
   padding: 10px;
-  border: 0;
   background: var(--panel-2);
 }
 
@@ -191,44 +157,20 @@
   font-size: 10px;
 }
 
-.mobile-shortcut-slot-editor-head button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--danger-text);
-}
-
 .mobile-shortcut-slot-editor-fields {
   display: grid;
   grid-template-columns: minmax(100px, 0.8fr) minmax(150px, 1.2fr);
+  align-items: end;
   gap: 8px;
 }
 
-.mobile-shortcut-slot-editor-fields label,
 .mobile-shortcut-field {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 4px;
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.mobile-shortcut-slot-editor-fields input,
-.mobile-shortcut-key-trigger {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  box-sizing: border-box;
-  border: 0;
-  background: var(--input-bg);
-  color: var(--text-strong);
-  font: 12px / 1.2 inherit;
-}
-
-.mobile-shortcut-slot-editor-fields input {
-  padding: 0 8px;
+  font-size: var(--ui-font-size-sm);
+  font-weight: 500;
 }
 
 .mobile-shortcut-slot-editor-empty {
@@ -243,14 +185,20 @@
   text-align: center;
 }
 
+/* Fields sit on the panel-2 editor, so they take the input fill. */
+.mobile-shortcut-slot-editor .input {
+  background: var(--input-bg);
+}
+
 .mobile-shortcut-key-trigger {
-  display: flex;
-  align-items: center;
+  --button-bg: var(--input-bg);
+  width: 100%;
+  min-width: 0;
+  height: var(--ui-row-height);
   justify-content: space-between;
-  gap: 6px;
   padding: 0 7px 0 8px;
-  text-align: left;
-  text-transform: none;
+  color: var(--text-strong);
+  font-weight: 400;
 }
 
 .mobile-shortcut-key-trigger > span {
@@ -265,24 +213,17 @@
   color: var(--muted);
 }
 
-.mobile-shortcut-key-trigger:hover:not(:disabled),
-.mobile-shortcut-key-trigger.is-open,
-.mobile-shortcut-key-trigger:focus-visible {
-  border-color: var(--accent);
-}
-
-.mobile-shortcut-key-trigger.is-open {
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.mobile-shortcut-key-popover {
-  z-index: 2100;
+.ui-popover.mobile-shortcut-key-popover {
   width: min(280px, calc(100vw - 24px));
-  max-height: min(
-    390px,
-    calc(var(--radix-popover-content-available-height) / var(--ui-scale, 1))
-  );
+  max-height: min(390px, var(--visual-viewport-max-height, 80vh));
   overflow: hidden;
+}
+
+.mobile-shortcut-key-popover .ui-popover-dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
   padding: 0;
 }
 
@@ -303,21 +244,6 @@
   white-space: nowrap;
 }
 
-.mobile-shortcut-key-option kbd {
-  min-width: 34px;
-  padding: 3px 5px;
-  border: 0;
-  background: var(--panel-2);
-  color: var(--muted);
-  font:
-    10px / 1 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Consolas,
-    monospace;
-  text-align: center;
-}
-
 .mobile-shortcut-key-option > svg {
   color: var(--accent);
   opacity: 0;
@@ -327,43 +253,12 @@
   opacity: 1;
 }
 
-.modal-actions.mobile-shortcuts-actions {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-
-.mobile-shortcuts-restore {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.mobile-shortcuts-restore > svg {
-  display: block;
-  flex: 0 0 auto;
+.mobile-shortcuts-dialog .mobile-shortcuts-restore {
+  margin-right: auto;
 }
 
 /* Keep mobile styling in sync with the saved layout and URL override. */
 :where(html[data-layout="mobile"]) {
-  .mobile-shortcuts-modal {
-    max-height: calc(
-      100dvh -
-      24px -
-      env(safe-area-inset-top, 0px) -
-      env(safe-area-inset-bottom, 0px)
-    );
-    gap: 10px;
-    padding: 12px;
-  }
-
-  .mobile-shortcut-slot-board {
-    overflow-x: auto;
-  }
-
   .mobile-shortcut-side-board {
     grid-template-columns: minmax(0, 1fr);
     overflow-x: auto;
@@ -391,19 +286,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .modal-actions.mobile-shortcuts-actions {
-    grid-template-columns: 1fr 1fr;
+  /* Restore defaults on its own row above Cancel and Save. */
+  .mobile-shortcuts-dialog .ui-dialog-footer {
+    flex-wrap: wrap;
   }
 
-  .mobile-shortcuts-actions > span {
-    display: none;
-  }
-
-  .mobile-shortcuts-actions button {
-    min-height: 34px;
-  }
-
-  .mobile-shortcuts-actions button:first-child {
-    grid-column: 1 / -1;
+  .mobile-shortcuts-dialog .mobile-shortcuts-restore {
+    flex: 1 0 100%;
+    margin-right: 0;
   }
 }

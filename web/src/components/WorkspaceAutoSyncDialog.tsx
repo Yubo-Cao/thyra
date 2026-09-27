@@ -3,8 +3,8 @@ import { t } from "../i18n";
 import { store } from "../store";
 import { UI_LOCALE } from "../uiLocale";
 import { useConnectionClient } from "../useConnectionClient";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
+import { Dialog } from "./ui/Dialog";
+import { Switch } from "./ui/Switch";
 import "./WorkspaceAutoSyncDialog.css";
 
 type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
@@ -38,7 +38,6 @@ export function WorkspaceAutoSyncDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const loadRequest = useRef(0);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(
     async (showLoading: boolean) => {
@@ -84,22 +83,6 @@ export function WorkspaceAutoSyncDialog({
     };
   }, [load, open, workspaceId]);
 
-  useEffect(() => {
-    if (!open) return;
-    return focusDialogElement(dialogRef.current);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, open]);
-
-  if (!open) return null;
-
   const setEnabled = async (enabled: boolean) => {
     if (!workspaceId || !connectionClient.isCurrent()) return;
     setSaving(true);
@@ -113,97 +96,80 @@ export function WorkspaceAutoSyncDialog({
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        ref={dialogRef}
-        className="modal compact-modal workspace-auto-sync-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Automatic branch updates")}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="modal-head">
-          <h2>{t("Automatic Branch Updates")}</h2>
-          <CloseButton onClick={onClose} />
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      size="sm"
+      className="workspace-auto-sync-dialog"
+      title={t("Automatic Branch Updates")}
+    >
+      <p className="auto-sync-description">
+        {t(
+          "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Thyra connection.",
+          { minutes: info?.interval_minutes ?? 10 },
+        )
+          .split("{remote}")
+          .flatMap((part, index) =>
+            index === 0
+              ? [part]
+              : [<code key={`remote-${index}`}>origin</code>, part],
+          )}
+      </p>
+
+      {loading ? (
+        <div className="auto-sync-loading" role="status">
+          <span>{t("Loading automatic update settings...")}</span>
         </div>
+      ) : (
+        <>
+          {error ? <p className="modal-error">{error}</p> : null}
 
-        <p className="auto-sync-description">
-          {t(
-            "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Thyra connection.",
-            { minutes: info?.interval_minutes ?? 10 },
-          )
-            .split("{remote}")
-            .flatMap((part, index) =>
-              index === 0
-                ? [part]
-                : [<code key={`remote-${index}`}>origin</code>, part],
-            )}
-        </p>
-
-        {loading ? (
-          <div className="auto-sync-loading" role="status">
-            <span className="hook-loading-mark" />
-            <span>{t("Loading automatic update settings...")}</span>
+          <div className="auto-sync-summary">
+            <SummaryRow
+              label={t("Workspace")}
+              value={info?.workspace_label ?? "-"}
+            />
+            <SummaryRow
+              label={t("Checkout")}
+              value={info?.checkout_path ?? "-"}
+            />
+            <SummaryRow label={t("Branch")} value={info?.last_branch ?? "-"} />
+            <SummaryRow
+              label={t("Last run")}
+              value={formatLastRun(info?.last_run_at)}
+            />
           </div>
-        ) : (
-          <>
-            {error ? <p className="modal-error">{error}</p> : null}
 
-            <div className="auto-sync-summary">
-              <SummaryRow
-                label={t("Workspace")}
-                value={info?.workspace_label ?? "-"}
-              />
-              <SummaryRow
-                label={t("Checkout")}
-                value={info?.checkout_path ?? "-"}
-              />
-              <SummaryRow
-                label={t("Branch")}
-                value={info?.last_branch ?? "-"}
-              />
-              <SummaryRow
-                label={t("Last run")}
-                value={formatLastRun(info?.last_run_at)}
-              />
+          <Switch
+            className="auto-sync-toggle-row"
+            labelPosition="start"
+            checked={info?.enabled ?? false}
+            disabled={!info}
+            description={
+              info?.running
+                ? t("Syncing origin's default branch now...")
+                : statusLabel(info?.last_status)
+            }
+            onChange={(checked) => {
+              if (!saving) void setEnabled(checked);
+            }}
+          >
+            {t("Keep branch updated")}
+          </Switch>
+
+          {info?.last_message ? (
+            <div
+              className="auto-sync-result"
+              data-status={info.last_status ?? "unknown"}
+            >
+              {info.last_message}
             </div>
-
-            <div className="auto-sync-toggle-row">
-              <div>
-                <strong>{t("Keep branch updated")}</strong>
-                <span>
-                  {info?.running
-                    ? t("Syncing origin's default branch now...")
-                    : statusLabel(info?.last_status)}
-                </span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={info?.enabled ?? false}
-                className={"settings-switch" + (info?.enabled ? " is-on" : "")}
-                disabled={!info || saving}
-                onClick={() => void setEnabled(!(info?.enabled ?? false))}
-              >
-                <span />
-              </button>
-            </div>
-
-            {info?.last_message ? (
-              <div
-                className={
-                  "auto-sync-result auto-sync-result-" +
-                  (info.last_status ?? "unknown")
-                }
-              >
-                {info.last_message}
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    </div>
+          ) : null}
+        </>
+      )}
+    </Dialog>
   );
 }
 

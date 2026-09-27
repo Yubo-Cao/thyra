@@ -1,59 +1,51 @@
-.configuration-backdrop[hidden],
-.configuration-modal [hidden] {
-  display: none;
+.configuration-dialog {
+  --ui-dialog-width: 640px;
 }
 
-.configuration-modal,
-.configuration-loading-modal {
-  width: min(640px, 100%);
-  max-height: min(760px, calc(100dvh / var(--ui-scale, 1) - 36px));
+/* A detail dialog opened from the configuration covers it: hide this one
+   (backdrop included) until the detail closes. */
+.ui-dialog-backdrop:has(.configuration-dialog.is-covered) {
+  visibility: hidden;
+}
+
+/* The tab strip stays put; only the selected panel scrolls. */
+.configuration-dialog .configuration-body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.configuration-modal .modal-head,
-.configuration-tabs,
-.configuration-modal .modal-actions {
-  flex: 0 0 auto;
-}
-
-.configuration-modal .modal-head p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 12px;
+  padding-top: 4px;
+  padding-bottom: 0;
 }
 
 .configuration-tabs {
+  flex: 1 1 auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-soft);
+  flex-direction: column;
+  min-height: 0;
 }
 
-.configuration-tabs button {
-  flex: 1 1 80px;
-  min-width: 0;
-  min-height: 36px;
-  padding: 6px;
-  font-size: 12px;
-  border-color: var(--border);
-  background: transparent;
-  color: var(--muted);
+.configuration-tabs > .tabs__list-container {
+  flex: 0 0 auto;
 }
 
-.configuration-tabs button[aria-selected="true"] {
-  color: var(--text-strong);
-  background: var(--accent-soft);
+.configuration-tabs .tabs__tab {
+  flex: 1 1 0;
 }
 
 .configuration-content {
-  overflow-y: auto;
+  flex: 1 1 auto;
   min-height: 0;
-  padding: 4px 0;
+  overflow-y: auto;
+  padding: 4px 0 12px;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
+}
+
+.configuration-footer-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .configuration-setting-label {
@@ -62,32 +54,10 @@
   gap: 4px;
 }
 
-.configuration-help {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 4px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-}
-
-.popover-content.configuration-help-content {
-  z-index: 6000;
+.ui-popover.configuration-help-content {
   width: 360px;
-  padding: 12px;
   font-size: 12px;
   line-height: 1.5;
-}
-
-@media (pointer: coarse) {
-  .configuration-help {
-    min-width: 44px;
-    min-height: 44px;
-  }
 }
 
 .configuration-scope {
@@ -98,54 +68,92 @@
   overflow-wrap: anywhere;
 }
 
-.configuration-modal .config-menu-item,
-.configuration-modal .config-preference-row {
+.configuration-dialog .config-menu-item,
+.configuration-dialog .config-preference-row {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   min-height: 52px;
   padding: 8px;
-  border: none;
-  background: transparent;
 }
 
-.configuration-modal .config-menu-item:hover {
-  background: var(--border-soft);
-}
-
-.configuration-modal .config-preference-row > .config-item-copy {
+.configuration-dialog .config-preference-row > .config-item-copy {
   grid-column: 2;
 }
 
-.configuration-modal .config-menu-item > svg {
-  display: block;
-}
-
-.configuration-modal .config-item-copy {
-  text-align: left;
+.configuration-dialog .config-item-copy {
   gap: 3px;
 }
 
-.configuration-modal .config-item-copy strong,
-.configuration-modal .config-item-copy span {
+.configuration-dialog .config-item-copy strong,
+.configuration-dialog .config-item-copy span {
   display: block;
   white-space: normal;
   overflow-wrap: anywhere;
   overflow: visible;
 }
 
-.configuration-modal .config-item-copy strong {
+.configuration-dialog .config-item-copy strong {
   font-size: 12px;
 }
 
-.configuration-modal .modal-actions {
+.config-accent-control > .toggle-button {
+  width: var(--ui-control-height);
+  padding: 0;
+}
+
+.config-accent-swatch {
+  --swatch: var(--accent);
+  width: 16px;
+  height: 16px;
+  display: block;
+  background: var(--swatch);
+}
+
+.config-accent-swatch[data-accent="blue"] {
+  --swatch: #7aa2f7;
+}
+
+.config-accent-swatch[data-accent="teal"] {
+  --swatch: #2dd4bf;
+}
+
+.config-accent-swatch[data-accent="green"] {
+  --swatch: #54d17a;
+}
+
+.config-accent-swatch[data-accent="amber"] {
+  --swatch: #f0b95a;
+}
+
+.config-accent-swatch[data-accent="rose"] {
+  --swatch: #f471b5;
+}
+
+.config-accent-swatch[data-accent="violet"] {
+  --swatch: #a78bfa;
+}
+
+/* Neutral: the panel color struck through. */
+.config-accent-swatch[data-accent="neutral"] {
+  background: linear-gradient(
+    135deg,
+    var(--panel-2) calc(50% - 1px),
+    var(--muted) calc(50% - 1px) calc(50% + 1px),
+    var(--panel-2) calc(50% + 1px)
+  );
+}
+
+.config-scale-control {
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-top: 12px;
-  margin-top: 8px;
-  border-top: 1px solid var(--border-soft);
-  font-size: 11px;
+}
+
+.config-scale-control .config-scale-value {
+  min-width: 46px;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
 }
 
 .configuration-error {
@@ -163,60 +171,37 @@
   min-width: 0;
 }
 
+.configuration-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Mobile: the drag handle sits above the title in the sheet header. */
 :where(html[data-layout="mobile"]) {
-  .configuration-backdrop {
-    padding: calc(12px + env(safe-area-inset-top, 0px)) 0 0;
+  .mobile-sheet .ui-dialog-header {
+    flex-wrap: wrap;
+    padding-top: 0;
   }
 
-  .configuration-modal,
-  .configuration-loading-modal {
-    width: 100%;
-    max-height: min(100%, calc(90dvh / var(--ui-scale, 1)));
-    margin: auto 0 0;
-    padding: 0 calc(12px + env(safe-area-inset-right, 0px))
-      calc(12px + env(safe-area-inset-bottom, 0px))
-      calc(12px + env(safe-area-inset-left, 0px));
-    border-bottom: none;
-    animation: configuration-sheet-in 160ms ease-out;
-  }
-}
-
-@keyframes configuration-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .configuration-modal,
-  .configuration-loading-modal {
-    animation: none;
+  .mobile-sheet .ui-dialog-header > .mobile-sheet-handle {
+    flex: 1 0 100%;
+    order: -1;
   }
 }
 
 @media (max-width: 500px) {
-  .configuration-tabs button {
-    flex-basis: calc(50% - 4px);
-  }
-
-  :where(html:not([data-layout="mobile"])) .configuration-modal {
-    padding: 12px;
-  }
-
-  .configuration-modal .config-preference-row {
+  .configuration-dialog .config-preference-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .configuration-modal .config-preference-row > .config-item-icon {
+  .configuration-dialog .config-preference-row > .config-item-icon {
     display: none;
   }
 
-  .configuration-modal .config-preference-row > .config-item-copy {
+  .configuration-dialog .config-preference-row > .config-item-copy {
     grid-column: 1;
   }
 }

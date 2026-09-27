@@ -27,7 +27,10 @@ export function MobileSheetHandle({
 
   useEffect(() => {
     const handle = button.current!;
-    const sheet = handle.parentElement!;
+    // The sheet is the nearest .mobile-sheet (a Dialog puts the handle in its header).
+    const sheet =
+      handle.parentElement!.closest<HTMLElement>(".mobile-sheet") ??
+      handle.parentElement!;
     let animation: Animation | null = null;
     let sizeAnimation: Animation | null = null;
     const duration = () =>

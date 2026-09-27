@@ -1,9 +1,9 @@
-.workspace-auto-sync-modal {
-  width: min(520px, 100%);
+.workspace-auto-sync-dialog {
+  --ui-dialog-width: 520px;
 }
 
 .auto-sync-description {
-  margin: -2px 0 14px;
+  margin: 0 0 14px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -15,30 +15,10 @@
 }
 
 .auto-sync-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   min-height: 58px;
+  justify-content: center;
   padding: 10px 12px;
-  border: 0;
   background: var(--panel-2);
-}
-
-.auto-sync-toggle-row > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.auto-sync-toggle-row strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.auto-sync-toggle-row span {
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .auto-sync-loading {
@@ -56,7 +36,6 @@
   gap: 7px;
   margin-bottom: 14px;
   padding: 11px 12px;
-  border: 0;
   background: var(--input-bg);
 }
 
@@ -85,7 +64,6 @@
 .auto-sync-result {
   margin-top: 10px;
   padding: 9px 11px;
-  border: 0;
   background: var(--input-bg);
   color: var(--muted);
   font-size: 12px;
@@ -93,13 +71,10 @@
   white-space: pre-wrap;
 }
 
-.auto-sync-result-updated,
-.auto-sync-result-up_to_date {
-  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+.auto-sync-result:is([data-status="updated"], [data-status="up_to_date"]) {
   color: var(--success-text);
 }
 
-.auto-sync-result-failed {
-  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+.auto-sync-result[data-status="failed"] {
   color: var(--danger-text);
 }

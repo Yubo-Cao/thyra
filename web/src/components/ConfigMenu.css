@@ -85,6 +85,7 @@
   letter-spacing: 0.5px;
 }
 
+/* Rows shared by the menu and the Configuration dialog. */
 .config-preference-row,
 .config-runtime-row {
   display: grid;
@@ -117,10 +118,6 @@
   grid-column: 2;
 }
 
-.config-item-copy .config-notification-status {
-  display: block;
-}
-
 .config-item-copy strong {
   overflow: hidden;
   color: var(--text);
@@ -134,173 +131,38 @@
   overflow: hidden;
   color: var(--muted);
   font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.config-theme-control {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 0;
-  background: var(--input-bg);
-}
-
-.config-theme-control button {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-}
-
-.config-theme-control button:hover {
-  color: var(--text);
-}
-
-.config-theme-control button.is-active {
-  border-color: var(--border);
-  background: var(--panel-2);
-  color: var(--text-strong);
-}
-
-.config-scale-control {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 0;
-  background: var(--input-bg);
-}
-
-.config-scale-control button {
-  min-width: 28px;
-  height: 26px;
-  padding: 0 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.config-scale-control button:hover:not(:disabled) {
-  color: var(--text);
-}
-
-.config-scale-control button:disabled {
-  opacity: 0.45;
-}
-
-.config-scale-control .config-scale-value {
-  min-width: 42px;
-  color: var(--text-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-.config-accent-control {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.config-accent-control button {
-  --swatch: var(--accent);
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 2px solid var(--panel);
-  background: var(--swatch);
-  box-shadow: 0 0 0 1px var(--border);
-}
-
-.config-accent-control button[data-accent="blue"] {
-  --swatch: #7aa2f7;
-}
-
-.config-accent-control button[data-accent="neutral"] {
-  position: relative;
-  overflow: hidden;
-  background: var(--panel);
-}
-
-.config-accent-control button[data-accent="neutral"]::after {
-  content: "";
-  position: absolute;
-  top: 8px;
-  left: 1px;
-  width: 14px;
-  height: 2px;
-  background: var(--muted);
-  transform: rotate(-45deg);
-}
-
-.config-accent-control button[data-accent="teal"] {
-  --swatch: #2dd4bf;
-}
-
-.config-accent-control button[data-accent="green"] {
-  --swatch: #54d17a;
-}
-
-.config-accent-control button[data-accent="amber"] {
-  --swatch: #f0b95a;
-}
-
-.config-accent-control button[data-accent="rose"] {
-  --swatch: #f471b5;
-}
-
-.config-accent-control button[data-accent="violet"] {
-  --swatch: #a78bfa;
-}
-
-.config-accent-control button:hover:not(:disabled) {
-  border-color: var(--panel);
-  transform: scale(1.08);
-}
-
-.config-accent-control button.is-active {
-  box-shadow:
-    0 0 0 1px var(--panel),
-    0 0 0 3px var(--text-strong);
-}
-
-.config-menu-item {
-  width: 100%;
-  min-height: 44px;
+/* Row buttons (Button): a full-width icon, two-line copy, chevron grid. */
+.config-menu-item,
+.config-details-toggle {
+  height: auto;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 9px;
   padding: 6px 8px;
-  border-color: transparent;
-  background: transparent;
+  text-align: left;
+}
+
+.config-menu-item {
+  min-height: 44px;
+}
+
+.config-details-toggle {
+  min-height: 40px;
   color: var(--text);
-}
-
-.config-menu-item:hover:not(:disabled) {
-  border-color: transparent;
-  background: var(--border-soft);
-}
-
-.config-menu-item > svg {
-  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .config-menu-item.is-primary {
-  background: var(--accent-soft);
-}
-
-.config-menu-item.is-primary:hover:not(:disabled) {
-  background: var(--accent-soft-hover);
+  --button-bg: var(--accent-soft);
+  --button-bg-hover: var(--accent-soft-hover);
 }
 
 .config-menu-item.is-primary .config-item-icon,
@@ -317,30 +179,6 @@
     Consolas,
     monospace;
   white-space: nowrap;
-}
-
-.config-details-toggle {
-  width: 100%;
-  min-height: 40px;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 9px;
-  padding: 5px 8px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  text-align: left;
-}
-
-.config-details-toggle:hover {
-  border-color: transparent;
-  background: var(--border-soft);
-}
-
-.config-details-toggle > svg {
-  color: var(--muted);
 }
 
 .config-details {
@@ -431,7 +269,8 @@
   }
 
   .config-title,
-  .config-preference-row,
+  .config-section > .herdr-setup-card,
+  .config-dropdown .config-preference-row,
   .config-runtime-row,
   .config-details-toggle,
   .config-details {
@@ -443,7 +282,7 @@
     font-size: 10px;
   }
 
-  .config-preference-row,
+  .config-dropdown .config-preference-row,
   .config-runtime-row,
   .config-details-toggle {
     grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -452,20 +291,21 @@
     padding: 4px 6px;
   }
 
-  .config-item-icon {
+  .config-dropdown .config-item-icon {
     width: 24px;
     height: 24px;
   }
 
-  .config-item-copy {
+  .config-dropdown .config-item-copy {
     gap: 0;
   }
 
-  .config-item-copy span {
+  .config-dropdown .config-item-copy span {
     display: none;
   }
 
-  .config-menu-item {
+  .config-dropdown .config-menu-item {
+    --button-bg: var(--input-bg);
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -473,15 +313,9 @@
     justify-content: center;
     gap: 6px;
     padding: 10px 6px;
-    border: 0;
-    background: var(--input-bg);
   }
 
-  .config-menu-item > svg {
-    display: none;
-  }
-
-  .config-menu-item-desktop-only {
+  .config-dropdown .config-menu-item > svg {
     display: none;
   }
 
@@ -493,76 +327,49 @@
     white-space: normal;
   }
 
-  .config-menu-item:hover:not(:disabled) {
-    border-color: var(--border-soft);
-  }
-
-  /* Row-style menu actions (e.g. Terminal theme) sit inside preference
-     sections, so they keep the desktop row layout instead of the tile grid. */
-  .config-menu-item.config-menu-item-row {
+  /* Row-style menu actions (Configuration, Log out) keep the desktop row
+     layout instead of the tile grid. */
+  .config-dropdown .config-menu-item.config-menu-item-row {
+    --button-bg: transparent;
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr) auto;
     gap: 8px;
     min-height: 38px;
     padding: 4px 6px;
-    border: none;
-    background: transparent;
   }
 
-  .config-menu-item.config-menu-item-row > svg {
+  .config-dropdown .config-menu-item.config-menu-item-row > svg {
     display: block;
   }
 
-  .config-menu-item.config-menu-item-row .config-item-icon {
+  .config-dropdown .config-menu-item.config-menu-item-row .config-item-icon {
     width: 24px;
     height: 24px;
   }
 
-  .config-menu-item.config-menu-item-row .config-item-copy {
+  .config-dropdown .config-menu-item.config-menu-item-row .config-item-copy {
     text-align: left;
   }
 
-  .config-menu-item.config-menu-item-row .config-item-copy strong {
+  .config-dropdown
+    .config-menu-item.config-menu-item-row
+    .config-item-copy
+    strong {
     font-size: 12px;
   }
 
-  .config-menu-item .config-item-icon {
+  .config-dropdown .config-menu-item .config-item-icon {
     width: 28px;
     height: 28px;
   }
 
-  .config-menu-item .config-item-copy {
+  .config-dropdown .config-menu-item .config-item-copy {
     width: 100%;
     text-align: center;
   }
 
-  .config-menu-item .config-item-copy strong {
+  .config-dropdown .config-menu-item .config-item-copy strong {
     font-size: 11px;
-  }
-
-  .config-theme-control button {
-    width: 30px;
-    height: 26px;
-  }
-
-  .config-accent-control button {
-    width: 18px;
-    height: 18px;
-  }
-
-  .config-accent-control button[data-accent="neutral"]::after {
-    top: 7px;
-    width: 12px;
-  }
-
-  .config-scale-control button {
-    min-width: 28px;
-    height: 26px;
-    padding: 0 5px;
-  }
-
-  .config-scale-control .config-scale-value {
-    min-width: 40px;
   }
 }

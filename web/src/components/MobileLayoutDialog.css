@@ -1,52 +1,20 @@
-.mobile-layout-modal {
-  width: min(560px, 100%);
-}
-
-.mobile-layout-modal .modal-head {
-  align-items: flex-start;
-}
-
-.mobile-layout-modal .modal-head p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.layout-preferences input {
-  min-width: 0;
-  max-width: 160px;
-  border: 0;
-  padding: 5px 6px;
-  background: var(--input-bg);
-  color: var(--text);
-  font: inherit;
-}
-
-.mobile-layout-modal .modal-actions {
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.mobile-layout-modal .modal-actions > span {
+.mobile-layout-note {
   flex: 1 1 180px;
+  color: var(--muted);
   font-size: 12px;
 }
 
 .layout-preferences {
   display: grid;
   gap: 12px;
-  padding: 12px 0;
 }
 
-.layout-preferences > label {
+.layout-preference {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
-}
-
-.layout-preferences > label {
   font-size: 13px;
 }
 
@@ -55,13 +23,10 @@
   font-size: 12px;
 }
 
-.layout-preferences input {
+.layout-breakpoint-field {
   width: 90px;
 }
 
-:where(html[data-layout="mobile"]) {
-  .layout-preferences input {
-    min-height: 36px;
-    font-size: 16px;
-  }
+:where(html[data-layout="mobile"]) .layout-breakpoint-field .input {
+  font-size: 16px;
 }

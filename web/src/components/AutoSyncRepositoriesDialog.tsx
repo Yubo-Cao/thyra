@@ -3,8 +3,9 @@ import { t } from "../i18n";
 import { store } from "../store";
 import { UI_LOCALE } from "../uiLocale";
 import { useConnectionClient } from "../useConnectionClient";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
+import { Dialog } from "./ui/Dialog";
+import { Switch } from "./ui/Switch";
+import { Token, type TokenTone } from "./ui/Token";
 import "./AutoSyncRepositoriesDialog.css";
 
 type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
@@ -40,7 +41,6 @@ export function AutoSyncRepositoriesDialog({
   const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
   const requestSequence = useRef(0);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(
     async (showLoading: boolean) => {
@@ -90,20 +90,6 @@ export function AutoSyncRepositoriesDialog({
     };
   }, [load, open]);
 
-  useEffect(() => {
-    if (!open) return;
-    return focusDialogElement(dialogRef.current);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, open]);
-
   if (!open) return null;
 
   const setEnabled = async (config: AutoSyncConfig, enabled: boolean) => {
@@ -123,118 +109,110 @@ export function AutoSyncRepositoriesDialog({
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        ref={dialogRef}
-        className="modal auto-sync-repositories-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Automatic branch update repositories")}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="modal-head">
-          <div>
-            <h2>{t("Automatic Branch Updates")}</h2>
-            <p>{t("Saved configurations run when their workspace is open")}</p>
-          </div>
-          <CloseButton onClick={onClose} />
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      className="auto-sync-repositories-dialog"
+      title={t("Automatic Branch Updates")}
+      description={t("Saved configurations run when their workspace is open")}
+    >
+      {loading ? (
+        <div className="auto-sync-config-loading" role="status">
+          <span>{t("Loading repository configurations...")}</span>
         </div>
-
-        {loading ? (
-          <div className="auto-sync-config-loading" role="status">
-            <span className="hook-loading-mark" />
-            <span>{t("Loading repository configurations...")}</span>
-          </div>
-        ) : (
-          <div className="auto-sync-config-content">
-            {error ? <p className="modal-error">{error}</p> : null}
-            {data?.configs.length ? (
-              <div className="auto-sync-config-list">
-                {data.configs.map((config) => {
-                  const saving = savingKeys.has(config.key);
-                  return (
-                    <div className="auto-sync-config-item" key={config.key}>
-                      <div className="auto-sync-config-main">
-                        <div className="auto-sync-config-heading">
-                          <strong>{configName(config)}</strong>
-                          <span
-                            className={
-                              "auto-sync-status auto-sync-status-" +
-                              (config.running
-                                ? "syncing"
-                                : (config.last_status ?? "idle"))
-                            }
-                          >
-                            {config.running
-                              ? t("Syncing")
-                              : statusLabel(config.last_status)}
-                          </span>
-                        </div>
-                        <code title={configLocation(config)}>
-                          {configLocation(config)}
-                        </code>
-                        <div className="auto-sync-config-meta">
-                          <span>
-                            {t("Every {minutes} min", {
-                              minutes: config.interval_minutes,
-                            })}
-                          </span>
-                          <span>{formatLastRun(config.last_run_at)}</span>
-                          {config.last_branch ? (
-                            <span>
-                              {t("Branch {branch}", {
-                                branch: config.last_branch,
-                              })}
-                            </span>
-                          ) : null}
-                        </div>
-                        {config.last_message ? (
-                          <p title={config.last_message}>
-                            {config.last_message}
-                          </p>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label={t("Automatic updates for {name}", {
-                          name: configName(config),
-                        })}
-                        aria-checked={config.enabled}
-                        className={
-                          "settings-switch" + (config.enabled ? " is-on" : "")
-                        }
-                        disabled={saving}
-                        onClick={() => void setEnabled(config, !config.enabled)}
+      ) : (
+        <div className="auto-sync-config-content">
+          {error ? <p className="modal-error">{error}</p> : null}
+          {data?.configs.length ? (
+            <div className="auto-sync-config-list">
+              {data.configs.map((config) => (
+                <div className="auto-sync-config-item" key={config.key}>
+                  <div className="auto-sync-config-main">
+                    <div className="auto-sync-config-heading">
+                      <strong>{configName(config)}</strong>
+                      <Token
+                        tone={statusTone(
+                          config.running ? "syncing" : config.last_status,
+                        )}
                       >
-                        <span />
-                      </button>
+                        {config.running
+                          ? t("Syncing")
+                          : statusLabel(config.last_status)}
+                      </Token>
                     </div>
-                  );
-                })}
-              </div>
-            ) : error ? null : (
-              <div className="auto-sync-config-empty">
-                <strong>{t("No saved repositories")}</strong>
-                <span>
-                  {t(
-                    "Enable automatic updates from a Workspace context menu first.",
-                  )}
-                </span>
-              </div>
-            )}
-            {data?.path ? (
-              <div className="auto-sync-config-store">
-                <span>{t("Settings")}</span>
-                <code title={data.path}>{data.path}</code>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-    </div>
+                    <code title={configLocation(config)}>
+                      {configLocation(config)}
+                    </code>
+                    <div className="auto-sync-config-meta">
+                      <span>
+                        {t("Every {minutes} min", {
+                          minutes: config.interval_minutes,
+                        })}
+                      </span>
+                      <span>{formatLastRun(config.last_run_at)}</span>
+                      {config.last_branch ? (
+                        <span>
+                          {t("Branch {branch}", {
+                            branch: config.last_branch,
+                          })}
+                        </span>
+                      ) : null}
+                    </div>
+                    {config.last_message ? (
+                      <p title={config.last_message}>{config.last_message}</p>
+                    ) : null}
+                  </div>
+                  <Switch
+                    aria-label={t("Automatic updates for {name}", {
+                      name: configName(config),
+                    })}
+                    checked={config.enabled}
+                    onChange={(checked) => {
+                      if (!savingKeys.has(config.key))
+                        void setEnabled(config, checked);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : error ? null : (
+            <div className="auto-sync-config-empty">
+              <strong>{t("No saved repositories")}</strong>
+              <span>
+                {t(
+                  "Enable automatic updates from a Workspace context menu first.",
+                )}
+              </span>
+            </div>
+          )}
+          {data?.path ? (
+            <div className="auto-sync-config-store">
+              <span>{t("Settings")}</span>
+              <code title={data.path}>{data.path}</code>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Dialog>
   );
+}
+
+function statusTone(status?: AutoSyncStatus | "syncing"): TokenTone {
+  switch (status) {
+    case "updated":
+    case "up_to_date":
+      return "success";
+    case "syncing":
+      return "accent";
+    case "skipped":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function configName(config: AutoSyncConfig) {

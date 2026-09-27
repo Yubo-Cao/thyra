@@ -3,7 +3,10 @@ import { Info, Wifi } from "lucide-react";
 import { bridge } from "../api";
 import { msg, t } from "../i18n";
 import { useConnectionClient } from "../useConnectionClient";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { Popover } from "./ui/Popover";
+import { Switch } from "./ui/Switch";
 
 const TRANSPORT_DESCRIPTION = msg(
   "Reduces Herdr-to-Thyra traffic when the server supports delta and reuse frames. Saved on the Thyra server for this connection and shared by all viewers. Changes briefly reconnect terminal displays; running tasks are not stopped. Older Herdr servers keep their existing transport.",
@@ -93,28 +96,19 @@ export function TerminalTransportSettings() {
         </span>
         <div className="config-item-copy">
           <div className="configuration-setting-label">
-            <strong id="terminal-transport-label">
-              {t("Terminal incremental transport")}
-            </strong>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="configuration-help"
-                  aria-label={t("About terminal incremental transport")}
-                  title={t(TRANSPORT_DESCRIPTION)}
-                >
-                  <Info size={14} aria-hidden="true" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="configuration-help-content"
-                aria-label={t("About terminal incremental transport")}
-                aria-describedby="terminal-transport-description"
-                collisionPadding={12}
-              >
-                {t(TRANSPORT_DESCRIPTION)}
-              </PopoverContent>
+            <strong>{t("Terminal incremental transport")}</strong>
+            <Popover
+              aria-label={t("About terminal incremental transport")}
+              className="configuration-help-content"
+              trigger={
+                <IconButton
+                  label={t("About terminal incremental transport")}
+                  icon={<Info size={14} aria-hidden="true" />}
+                  tooltip={false}
+                />
+              }
+            >
+              {t(TRANSPORT_DESCRIPTION)}
             </Popover>
           </div>
           <span role="status">
@@ -129,36 +123,27 @@ export function TerminalTransportSettings() {
                   : t("Disabled")}
           </span>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-labelledby="terminal-transport-label"
-          aria-describedby="terminal-transport-description"
-          aria-checked={enabled === true}
-          aria-disabled={enabled === null || saving || !client.isCurrent()}
-          className={"settings-switch" + (enabled ? " is-on" : "")}
-          onClick={() => {
-            if (enabled !== null) void save(!enabled);
+        <Switch
+          aria-label={t("Terminal incremental transport")}
+          checked={enabled === true}
+          disabled={enabled === null || !client.isCurrent()}
+          onChange={(checked) => {
+            if (enabled !== null) void save(checked);
           }}
-        >
-          <span />
-        </button>
+        />
       </div>
-      <p id="terminal-transport-description" hidden>
-        {t(TRANSPORT_DESCRIPTION)}
-      </p>
       {error ? (
         <div className="configuration-error" role="alert">
           <span>{error.message}</span>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             disabled={saving}
             onClick={() =>
               void (error.value === undefined ? load() : save(error.value))
             }
           >
             {t("Retry")}
-          </button>
+          </Button>
         </div>
       ) : null}
     </>

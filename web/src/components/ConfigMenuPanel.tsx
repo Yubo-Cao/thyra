@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -16,13 +15,17 @@ import {
   Wifi,
 } from "lucide-react";
 import packageJson from "../../package.json";
-import { logoutBrowserSession } from "../api";
+import { type ConnectionClient, logoutBrowserSession } from "../api";
+import { connectionHttpPath } from "../connectionHttp";
 import { msg, t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutLabel, useShortcutPreferences } from "../shortcutPreferences";
 import { shallowEqual, store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
+import { cn } from "../utils";
+import { Button } from "./ui/Button";
+import { Switch } from "./ui/Switch";
 import { CONFIG_MENU_ID, reloadApplicationPage } from "./ConfigMenu";
 import type {
   ConfigurationProps,
@@ -59,9 +62,6 @@ export type ConfigMenuDropdownProps = {
   setOpen: (open: boolean) => void;
   closeMenu: () => void;
   setConfigurationTab: (tab: ConfigurationTab) => void;
-  health: { socket?: string; auth_required?: boolean } | null;
-  herdrInfo: { version: string; protocol: number } | null;
-  herdrUnavailable: boolean;
   connectionDetailsOpen: boolean;
   setConnectionDetailsOpen: Toggle;
   loggingOut: boolean;
@@ -78,9 +78,6 @@ export function ConfigMenuDropdown({
   setOpen,
   closeMenu,
   setConfigurationTab,
-  health,
-  herdrInfo,
-  herdrUnavailable,
   connectionDetailsOpen,
   setConnectionDetailsOpen,
   loggingOut,
@@ -101,6 +98,8 @@ export function ConfigMenuDropdown({
     shallowEqual,
   );
   const connectionClient = useConnectionClient();
+  const { health, herdrInfo, herdrUnavailable } =
+    useMenuServerInfo(connectionClient);
   const layout = useLayoutPreferences();
   useShortcutPreferences();
   const updateAvailable = !!s.updateInfo?.update_available;
@@ -174,19 +173,14 @@ export function ConfigMenuDropdown({
                   {shortcutLabel("zen.toggle")}
                 </span>
               </div>
-              <button
-                type="button"
-                role="switch"
+              <Switch
                 aria-label={t("Zen mode")}
-                aria-checked={zenMode}
-                className={"settings-switch" + (zenMode ? " is-on" : "")}
-                onClick={() => {
-                  onZenModeChange(!zenMode);
+                checked={zenMode}
+                onChange={(checked) => {
+                  onZenModeChange(checked);
                   setOpen(false);
                 }}
-              >
-                <span />
-              </button>
+              />
             </div>
           )}
         </div>
@@ -272,9 +266,9 @@ export function ConfigMenuDropdown({
               compact
             />
           ) : null}
-          <button
-            type="button"
+          <Button
             className="config-details-toggle"
+            fullWidth
             aria-expanded={connectionDetailsOpen}
             onClick={() => setConnectionDetailsOpen((value) => !value)}
           >
@@ -287,7 +281,7 @@ export function ConfigMenuDropdown({
             ) : (
               <ChevronRight size={15} />
             )}
-          </button>
+          </Button>
           {connectionDetailsOpen ? (
             <div className="config-details">
               <ConfigRow label="URL" value={location.origin} />
@@ -357,6 +351,54 @@ export function ConfigMenuDropdown({
   );
 }
 
+/** Bridge health and Herdr server details, fetched each time the menu opens. */
+function useMenuServerInfo(connectionClient: ConnectionClient) {
+  const [health, setHealth] = useState<{
+    socket?: string;
+    auth_required?: boolean;
+  } | null>(null);
+  const [herdrInfo, setHerdrInfo] = useState<{
+    version: string;
+    protocol: number;
+  } | null>(null);
+  const [herdrUnavailable, setHerdrUnavailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setHealth(null);
+    setHerdrInfo(null);
+    setHerdrUnavailable(false);
+    fetch("/api/health", { credentials: "same-origin", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((info) => {
+        if (!cancelled) setHealth(info);
+      });
+    if (connectionClient.isCurrent()) {
+      const url = new URL(
+        connectionHttpPath(
+          connectionClient.connectionId,
+          "/herdr-info",
+          connectionClient.serverRuntimeGeneration,
+        ),
+        window.location.origin,
+      );
+      if (url.origin === window.location.origin)
+        fetch(url, { credentials: "same-origin", cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+          .then((info) => {
+            if (cancelled || !connectionClient.isCurrent()) return;
+            if (info) setHerdrInfo(info);
+            else setHerdrUnavailable(true);
+          });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionClient]);
+  return { health, herdrInfo, herdrUnavailable };
+}
+
 export function ConfigurationHost({
   configurationTab,
   onClose,
@@ -394,9 +436,9 @@ function ConfigMenuItem({
   className?: string;
 }) {
   return (
-    <button
-      type="button"
-      className={`config-menu-item${primary ? " is-primary" : ""}${className ? ` ${className}` : ""}`}
+    <Button
+      className={cn("config-menu-item", primary && "is-primary", className)}
+      fullWidth
       onClick={onClick}
       disabled={disabled}
     >
@@ -406,7 +448,7 @@ function ConfigMenuItem({
         {description ? <span>{description}</span> : null}
       </span>
       <ChevronRight size={15} />
-    </button>
+    </Button>
   );
 }
 function ConfigRow({ label, value }: { label: string; value: string }) {

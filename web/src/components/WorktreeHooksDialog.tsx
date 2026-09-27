@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { msg, t } from "../i18n";
 import { store } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
-import { CloseButton } from "./CloseButton";
+import { Checkbox } from "./ui/Checkbox";
+import { Dialog } from "./ui/Dialog";
 import "./WorktreeHooksDialog.css";
 
 const HOOKS = [
@@ -55,15 +56,6 @@ export function WorktreeHooksDialog({
   }
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
     if (!open || !workspaceId) return;
     let cancelled = false;
     const scopeVersion = scopeVersionRef.current;
@@ -92,8 +84,6 @@ export function WorktreeHooksDialog({
       cancelled = true;
     };
   }, [connectionClient, open, scopeKey, workspaceId]);
-
-  if (!open) return null;
 
   const setEnabled = async (enabled: boolean) => {
     if (!info?.key || !connectionClient.isCurrent()) return;
@@ -126,86 +116,78 @@ export function WorktreeHooksDialog({
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal worktree-hooks-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Worktree hooks")}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="modal-head">
-          <h2>{t("Worktree Hooks")}</h2>
-          <CloseButton onClick={onClose} />
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      size="lg"
+      className="worktree-hooks-dialog"
+      title={t("Worktree Hooks")}
+    >
+      <p className="hook-doc-note">
+        {withCode(
+          t(
+            "Hooks are loaded from the current repository's {file} {key} config.",
+          ),
+          { file: "paseo.json", key: "worktree" },
+        )}{" "}
+        <a
+          href="https://paseo.sh/docs/worktrees"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t("View docs")}
+        </a>
+      </p>
+
+      {loading ? (
+        <div className="hook-loading" role="status">
+          <span>{t("Loading worktree hooks...")}</span>
         </div>
-        <p className="hook-doc-note">
-          {withCode(
-            t(
-              "Hooks are loaded from the current repository's {file} {key} config.",
-            ),
-            { file: "paseo.json", key: "worktree" },
-          )}{" "}
-          <a
-            href="https://paseo.sh/docs/worktrees"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t("View docs")}
-          </a>
-        </p>
+      ) : (
+        <>
+          {error || info?.error ? (
+            <p className="modal-error">{error || info?.error}</p>
+          ) : null}
 
-        {loading ? (
-          <div className="hook-loading" role="status">
-            <span className="hook-loading-mark" />
-            <span>{t("Loading worktree hooks...")}</span>
+          <div className="hook-summary">
+            <SummaryRow label={t("Repo")} value={info?.repo_name ?? "-"} />
+            <SummaryRow label={t("Store key")} value={info?.key ?? "-"} />
+            <SummaryRow label="paseo.json" value={info?.paseo_path ?? "-"} />
+            <SummaryRow
+              label={t("Checkout")}
+              value={info?.checkout_path ?? "-"}
+            />
           </div>
-        ) : (
-          <>
-            {error || info?.error ? (
-              <p className="modal-error">{error || info?.error}</p>
-            ) : null}
 
-            <div className="hook-summary">
-              <SummaryRow label={t("Repo")} value={info?.repo_name ?? "-"} />
-              <SummaryRow label={t("Store key")} value={info?.key ?? "-"} />
-              <SummaryRow label="paseo.json" value={info?.paseo_path ?? "-"} />
-              <SummaryRow
-                label={t("Checkout")}
-                value={info?.checkout_path ?? "-"}
-              />
-            </div>
+          <Checkbox
+            className="hook-enabled"
+            checked={info?.enabled ?? true}
+            disabled={!info?.key}
+            onChange={(checked) => {
+              if (!saving) void setEnabled(checked);
+            }}
+          >
+            {saving ? t("Saving...") : t("Enable worktree hooks for this repo")}
+          </Checkbox>
 
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={info?.enabled ?? true}
-                disabled={!info?.key || saving}
-                onChange={(e) => void setEnabled(e.currentTarget.checked)}
-              />
-              <span>
-                {saving
-                  ? t("Saving...")
-                  : t("Enable worktree hooks for this repo")}
-              </span>
-            </label>
-
-            <div className="hook-fields">
-              {HOOKS.map(([name, label]) => {
-                const value = info?.hooks?.[name] ?? "";
-                return (
-                  <section key={name} className="hook-field">
-                    <span>{t(label)}</span>
-                    <pre className={value ? "" : "is-empty"}>
-                      <code>{value || t("Not configured")}</code>
-                    </pre>
-                  </section>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+          <div className="hook-fields">
+            {HOOKS.map(([name, label]) => {
+              const value = info?.hooks?.[name] ?? "";
+              return (
+                <section key={name} className="hook-field">
+                  <span>{t(label)}</span>
+                  <pre className={value ? "" : "is-empty"}>
+                    <code>{value || t("Not configured")}</code>
+                  </pre>
+                </section>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Dialog>
   );
 }
 

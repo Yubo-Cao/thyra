@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
 import { msg, t } from "../i18n";
-import { CloseButton } from "./CloseButton";
-import { ThemedSelect } from "./ThemedSelect";
-import { focusDialogElement } from "./dialogFocus";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { Select } from "./ui/Select";
+import { TextField } from "./ui/TextField";
 import {
   type LayoutMode,
   MOBILE_BREAKPOINT_MAX,
@@ -32,160 +32,108 @@ export function MobileLayoutDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (open) return focusDialogElement(dialogRef.current);
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // An open popover (themed select) consumes Escape to close itself.
-      if (document.querySelector(".popover-content")) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () =>
-      window.removeEventListener("keydown", onKey, { capture: true });
-  }, [open, onClose]);
   const { preferences, mobile, urlOverride } = useLayoutPreferences();
-  if (!open) return null;
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(event) => {
-        // Clicks inside portaled popovers bubble here through the React tree.
-        if (event.target === event.currentTarget) onClose();
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
       }}
+      title={t("Layout Preferences")}
+      description={t(
+        "Choose display mode, mobile breakpoint, and sidebar order.",
+      )}
+      closeLabel={t("Close Layout Preferences")}
+      className="mobile-layout-dialog"
+      footer={
+        <>
+          <span className="mobile-layout-note">
+            {t("Changes are saved in this browser.")}
+          </span>
+          <Button variant="primary" size="md" onClick={onClose}>
+            {t("Done")}
+          </Button>
+        </>
+      }
     >
-      <div
-        ref={dialogRef}
-        className="modal mobile-layout-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Layout Preferences")}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          if (event.key !== "Tab") return;
-          const controls = Array.from(
-            event.currentTarget.querySelectorAll<HTMLElement>(
-              "button:not(:disabled), input:not(:disabled), select:not(:disabled)",
-            ),
-          );
-          const first = controls[0];
-          const last = controls[controls.length - 1];
-          if (
-            event.shiftKey &&
-            (document.activeElement === first ||
-              document.activeElement === event.currentTarget)
-          ) {
-            event.preventDefault();
-            last?.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first?.focus();
-          }
-        }}
-      >
-        <div className="modal-head">
-          <div>
-            <h2>{t("Layout Preferences")}</h2>
-            <p>
-              {t("Choose display mode, mobile breakpoint, and sidebar order.")}
-            </p>
-          </div>
-          <CloseButton
-            label={t("Close Layout Preferences")}
-            onClick={onClose}
+      <div className="layout-preferences">
+        <label className="layout-preference">
+          <span>{t("Display mode")}</span>
+          <Select
+            aria-label={t("Display mode")}
+            align="end"
+            value={urlOverride ?? preferences.mode}
+            options={translateOptions(DISPLAY_MODE_OPTIONS)}
+            onChange={(mode) =>
+              updateLayoutPreferences({ mode: mode as LayoutMode })
+            }
           />
-        </div>
-        <div className="layout-preferences">
-          <label>
-            <span>{t("Display mode")}</span>
-            <ThemedSelect
-              aria-label={t("Display mode")}
-              value={urlOverride ?? preferences.mode}
-              options={translateOptions(DISPLAY_MODE_OPTIONS)}
-              onChange={(mode) =>
-                updateLayoutPreferences({ mode: mode as LayoutMode })
+        </label>
+        <p className="muted">
+          {urlOverride
+            ? mobile
+              ? t("Using mobile layout (URL override).")
+              : t("Using desktop layout (URL override).")
+            : mobile
+              ? t("Using mobile layout.")
+              : t("Using desktop layout.")}{" "}
+          {t(
+            "Bookmark with ?layout=mobile or ?layout=desktop to force a layout.",
+          )}
+        </p>
+        <label className="layout-preference">
+          <span>{t("Mobile up to (px)")}</span>
+          <TextField
+            key={preferences.mobileBreakpoint}
+            className="layout-breakpoint-field"
+            type="number"
+            min={MOBILE_BREAKPOINT_MIN}
+            max={MOBILE_BREAKPOINT_MAX}
+            step={1}
+            defaultValue={preferences.mobileBreakpoint}
+            onBlur={(event) => {
+              if (
+                event.currentTarget.value &&
+                event.currentTarget.validity.valid
+              ) {
+                updateLayoutPreferences({
+                  mobileBreakpoint: event.currentTarget.valueAsNumber,
+                });
+              } else {
+                event.currentTarget.value = String(
+                  preferences.mobileBreakpoint,
+                );
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+          />
+        </label>
+        {(["mobile", "desktop"] as const).map((view) => (
+          <label className="layout-preference" key={view}>
+            <span>
+              {view === "mobile" ? t("Mobile sidebar") : t("Desktop sidebar")}
+            </span>
+            <Select
+              aria-label={
+                view === "mobile" ? t("Mobile sidebar") : t("Desktop sidebar")
+              }
+              align="end"
+              value={preferences[`${view}SidebarOrder`]}
+              options={translateOptions(SIDEBAR_ORDER_OPTIONS)}
+              onChange={(order) =>
+                updateLayoutPreferences({
+                  [`${view}SidebarOrder`]: order as SidebarOrder,
+                })
               }
             />
           </label>
-          <p className="muted">
-            {urlOverride
-              ? mobile
-                ? t("Using mobile layout (URL override).")
-                : t("Using desktop layout (URL override).")
-              : mobile
-                ? t("Using mobile layout.")
-                : t("Using desktop layout.")}{" "}
-            {t(
-              "Bookmark with ?layout=mobile or ?layout=desktop to force a layout.",
-            )}
-          </p>
-          <label>
-            <span>{t("Mobile up to (px)")}</span>
-            <input
-              key={preferences.mobileBreakpoint}
-              type="number"
-              min={MOBILE_BREAKPOINT_MIN}
-              max={MOBILE_BREAKPOINT_MAX}
-              step={1}
-              defaultValue={preferences.mobileBreakpoint}
-              onBlur={(event) => {
-                if (
-                  event.currentTarget.value &&
-                  event.currentTarget.validity.valid
-                ) {
-                  updateLayoutPreferences({
-                    mobileBreakpoint: event.currentTarget.valueAsNumber,
-                  });
-                } else {
-                  event.currentTarget.value = String(
-                    preferences.mobileBreakpoint,
-                  );
-                }
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-            />
-          </label>
-          {(["mobile", "desktop"] as const).map((view) => (
-            <label key={view}>
-              <span>
-                {view === "mobile" ? t("Mobile sidebar") : t("Desktop sidebar")}
-              </span>
-              <ThemedSelect
-                aria-label={
-                  view === "mobile" ? t("Mobile sidebar") : t("Desktop sidebar")
-                }
-                value={preferences[`${view}SidebarOrder`]}
-                options={translateOptions(SIDEBAR_ORDER_OPTIONS)}
-                onChange={(order) =>
-                  updateLayoutPreferences({
-                    [`${view}SidebarOrder`]: order as SidebarOrder,
-                  })
-                }
-              />
-            </label>
-          ))}
-          <p className="muted">
-            {t("Sidebar order applies when Agents is set to Separate.")}
-          </p>
-        </div>
-        <div className="modal-actions">
-          <span className="muted">
-            {t("Changes are saved in this browser.")}
-          </span>
-          <button type="button" onClick={onClose}>
-            {t("Done")}
-          </button>
-        </div>
+        ))}
+        <p className="muted">
+          {t("Sidebar order applies when Agents is set to Separate.")}
+        </p>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
 import { t } from "../i18n";
-import { focusDialogElement } from "./dialogFocus";
 import { MobileSheetHandle } from "./MobileSheetHandle";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
 import "./ConfigurationDialog.css";
 
 export function ConfigurationLoadingDialog({
@@ -11,55 +11,31 @@ export function ConfigurationLoadingDialog({
   onClose: () => void;
   buttonLabel?: string;
 }) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const cancelFocus = focusDialogElement(buttonRef.current);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== "Tab") return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.key === "Escape") onClose();
-      else {
-        const handle =
-          buttonRef.current?.parentElement?.querySelector<HTMLButtonElement>(
-            ".mobile-sheet-handle",
-          );
-        if (
-          document.activeElement === buttonRef.current &&
-          handle?.getClientRects().length
-        )
-          handle.focus();
-        else buttonRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKey, { capture: true });
-    };
-  }, [onClose]);
   return (
-    <div
-      className="modal-backdrop configuration-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
-    >
-      <div
-        className="modal configuration-loading-modal mobile-sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Loading Configuration")}
-      >
+      title={t("Loading Configuration")}
+      size="sm"
+      closeButton={false}
+      className="mobile-sheet"
+      headerStart={
         <MobileSheetHandle
           label={t("Dismiss loading configuration")}
           onClose={onClose}
         />
-        <p role="status">{t("Loading configuration...")}</p>
-        <button ref={buttonRef} type="button" onClick={onClose}>
+      }
+      footer={
+        <Button variant="secondary" size="md" autoFocus onClick={onClose}>
           {buttonLabel}
-        </button>
-      </div>
-    </div>
+        </Button>
+      }
+    >
+      <p className="configuration-loading" role="status">
+        {t("Loading configuration...")}
+      </p>
+    </Dialog>
   );
 }

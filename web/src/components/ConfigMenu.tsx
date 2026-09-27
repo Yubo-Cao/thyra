@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connectionHttpPath } from "../connectionHttp";
 import { t } from "../i18n";
 import { lazyPanel } from "../lazyWithReload";
 import { useStoreSelector } from "../store";
-import { useConnectionClient } from "../useConnectionClient";
 import type {
   ConfigurationProps,
   ConfigurationTab,
@@ -40,23 +38,13 @@ export function ConfigMenu({
   const updateAvailable = useStoreSelector(
     (state) => !!state.updateInfo?.update_available,
   );
-  const connectionClient = useConnectionClient();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [configurationTab, setConfigurationTab] =
     useState<ConfigurationTab | null>(null);
   const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
-  const [health, setHealth] = useState<{
-    socket?: string;
-    auth_required?: boolean;
-  } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
-  const [herdrInfo, setHerdrInfo] = useState<{
-    version: string;
-    protocol: number;
-  } | null>(null);
-  const [herdrUnavailable, setHerdrUnavailable] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const preloadMenu = () => {
@@ -74,35 +62,6 @@ export function ConfigMenu({
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
-    setHealth(null);
-    setHerdrInfo(null);
-    setHerdrUnavailable(false);
-    fetch("/api/health", { credentials: "same-origin", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((info) => {
-        if (!cancelled) setHealth(info);
-      });
-    if (connectionClient.isCurrent()) {
-      const url = new URL(
-        connectionHttpPath(
-          connectionClient.connectionId,
-          "/herdr-info",
-          connectionClient.serverRuntimeGeneration,
-        ),
-        window.location.origin,
-      );
-      if (url.origin === window.location.origin)
-        fetch(url, { credentials: "same-origin", cache: "no-store" })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null)
-          .then((info) => {
-            if (cancelled || !connectionClient.isCurrent()) return;
-            if (info) setHerdrInfo(info);
-            else setHerdrUnavailable(true);
-          });
-    }
     const onDown = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node))
         setOpen(false);
@@ -117,11 +76,10 @@ export function ConfigMenu({
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey, { capture: true });
     return () => {
-      cancelled = true;
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey, { capture: true });
     };
-  }, [connectionClient, open]);
+  }, [open]);
 
   const dropdownLoaded = usePanelReady(configMenuPanel, open);
   const Dropdown = configMenuPanel.Component;
@@ -159,9 +117,6 @@ export function ConfigMenu({
               setOpen={setOpen}
               closeMenu={closeMenu}
               setConfigurationTab={setConfigurationTab}
-              health={health}
-              herdrInfo={herdrInfo}
-              herdrUnavailable={herdrUnavailable}
               connectionDetailsOpen={connectionDetailsOpen}
               setConnectionDetailsOpen={setConnectionDetailsOpen}
               loggingOut={loggingOut}

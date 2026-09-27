@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { t } from "../i18n";
 import type { SetupInfo } from "./HerdrSetupCard";
+import { Button } from "./ui/Button";
 import "./HerdrSetupCard.css";
 import "./HerdrSetupPanel.css";
 
@@ -182,8 +183,9 @@ export function HerdrSetupPanel({
       <div className="herdr-setup-footer">
         {confirming ? (
           <div className="herdr-setup-actions">
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="md"
               className="herdr-setup-primary"
               disabled={busy}
               onClick={() => void setup()}
@@ -196,26 +198,23 @@ export function HerdrSetupPanel({
                     ? t("Install & start")
                     : t("Start service")}
               {!busy ? <ArrowRight size={16} aria-hidden="true" /> : null}
-            </button>
-            <button
-              type="button"
-              className="herdr-setup-cancel"
-              disabled={busy}
-              onClick={cancel}
-            >
+            </Button>
+            <Button size="md" disabled={busy} onClick={cancel}>
               {t("Cancel")}
-            </button>
+            </Button>
           </div>
         ) : (
-          <button
+          <Button
             ref={reviewButton}
-            type="button"
+            variant="primary"
+            size="md"
+            fullWidth
             className="herdr-setup-primary"
             onClick={() => setConfirming(true)}
           >
             {missing ? t("Set up Herdr") : t("Start Herdr")}
             <ArrowRight size={16} aria-hidden="true" />
-          </button>
+          </Button>
         )}
         <p className="herdr-setup-footnote">
           {confirming

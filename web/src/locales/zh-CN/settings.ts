@@ -120,6 +120,7 @@ export default {
   "Install {integration} integration": "安装 {integration} 集成",
   Update: "更新",
   Install: "安装",
+  Uninstall: "卸载",
   "Uninstall {integration} integration": "卸载 {integration} 集成",
   "Agent integrations": "Agent 集成",
   "About agent integrations": "关于 Agent 集成",

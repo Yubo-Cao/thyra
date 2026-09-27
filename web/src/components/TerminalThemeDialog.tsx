@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ITheme } from "@xterm/xterm";
-import { Check, Copy, Moon, Pencil, Plus, Sun, Trash2 } from "lucide-react";
+import { Check, Copy, Moon, Pencil, Plus, Sun, Trash2, X } from "lucide-react";
 import type { ResolvedTheme } from "../appearance";
 import { msg, t } from "../i18n";
 import {
@@ -19,9 +19,14 @@ import {
   type TerminalThemeSelection,
   terminalColorToHex,
 } from "../terminalThemes";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
-import { ConfirmDialog } from "./ModalDialogs";
+import { cn } from "../utils";
+import { Button } from "./ui/Button";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { Dialog } from "./ui/Dialog";
+import { IconButton } from "./ui/IconButton";
+import { SegmentedControl } from "./ui/SegmentedControl";
+import { TextField } from "./ui/TextField";
+import { Token } from "./ui/Token";
 import "./TerminalThemeDialog.css";
 
 // Editor fallback palette for colors a source theme leaves unset (xterm
@@ -199,39 +204,20 @@ export function TerminalThemeDialog({
   onCustomThemesChange: (themes: CustomTerminalTheme[]) => void;
   onClose: () => void;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<TerminalThemeDraft | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<CustomTerminalTheme | null>(null);
 
   const editing = draft !== null;
-  const confirmingDelete = pendingDelete !== null;
   const canCreate = customThemes.length < MAX_CUSTOM_TERMINAL_THEMES;
   const missingDraft =
     draft?.id != null && !customThemes.some((theme) => theme.id === draft.id);
 
+  // Leaving the editor removes the focused control; park focus in the list.
   useEffect(() => {
-    if (open && !confirmingDelete) {
-      return focusDialogElement(dialogRef.current);
-    }
-  }, [open, editing, confirmingDelete]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // The delete confirmation handles its own Escape while open.
-      if (pendingDelete) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (draft) setDraft(null);
-      else onClose();
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () => {
-      window.removeEventListener("keydown", onKey, { capture: true });
-    };
-  }, [open, draft, pendingDelete, onClose]);
+    if (!editing) listRef.current?.focus({ preventScroll: true });
+  }, [editing]);
 
   useEffect(() => {
     if (!open) {
@@ -341,6 +327,10 @@ export function TerminalThemeDialog({
     buttons?.[nextIndex]?.focus();
   };
 
+  const limitReached = t("Custom theme limit reached ({limit})", {
+    limit: MAX_CUSTOM_TERMINAL_THEMES,
+  });
+
   const renderSection = (section: (typeof THEME_VARIANTS)[number]) => {
     const variant = section.value;
     const cards = cardsFor(variant);
@@ -363,22 +353,15 @@ export function TerminalThemeDialog({
             </strong>
             <span>{t(section.usedWhen)}</span>
           </div>
-          <button
-            type="button"
-            className="terminal-theme-new-button"
+          <Button
+            variant="secondary"
             disabled={!canCreate}
-            title={
-              canCreate
-                ? t(section.create)
-                : t("Custom theme limit reached ({limit})", {
-                    limit: MAX_CUSTOM_TERMINAL_THEMES,
-                  })
-            }
+            title={canCreate ? t(section.create) : limitReached}
             onClick={() => startNewTheme(variant)}
           >
             <Plus size={14} aria-hidden="true" />
             {t("New theme")}
-          </button>
+          </Button>
         </div>
         <div
           className="terminal-theme-grid"
@@ -391,10 +374,9 @@ export function TerminalThemeDialog({
             return (
               <div
                 key={card.definition.id}
-                className={`terminal-theme-card ${active ? "is-active" : ""}`}
+                className={cn("terminal-theme-card", active && "is-active")}
               >
-                <button
-                  type="button"
+                <Button
                   role="radio"
                   aria-checked={active}
                   tabIndex={active || (!hasActive && index === 0) ? 0 : -1}
@@ -410,51 +392,40 @@ export function TerminalThemeDialog({
                   <span className="terminal-theme-card-name">
                     {active ? <Check size={13} aria-hidden="true" /> : null}
                     {card.definition.name}
-                    {custom ? (
-                      <span className="app-badge">{t("Custom")}</span>
-                    ) : null}
+                    {custom ? <Token>{t("Custom")}</Token> : null}
                   </span>
-                </button>
+                </Button>
                 <span className="terminal-theme-card-actions">
-                  <button
-                    type="button"
-                    aria-label={t("Duplicate {name}", {
+                  <IconButton
+                    label={t("Duplicate {name}", {
                       name: card.definition.name,
                     })}
-                    title={
-                      canCreate
-                        ? t("Duplicate as custom theme")
-                        : t("Custom theme limit reached ({limit})", {
-                            limit: MAX_CUSTOM_TERMINAL_THEMES,
-                          })
+                    tooltip={
+                      canCreate ? t("Duplicate as custom theme") : limitReached
                     }
+                    icon={<Copy size={13} aria-hidden="true" />}
                     disabled={!canCreate}
                     onClick={() => duplicateTheme(card)}
-                  >
-                    <Copy size={13} aria-hidden="true" />
-                  </button>
+                  />
                   {custom ? (
                     <>
-                      <button
-                        type="button"
-                        aria-label={t("Edit {name}", {
+                      <IconButton
+                        label={t("Edit {name}", {
                           name: card.definition.name,
                         })}
-                        title={t("Edit theme")}
+                        tooltip={t("Edit theme")}
+                        icon={<Pencil size={13} aria-hidden="true" />}
                         onClick={() => setDraft(draftFromCustom(custom))}
-                      >
-                        <Pencil size={13} aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t("Delete {name}", {
+                      />
+                      <IconButton
+                        tone="danger"
+                        label={t("Delete {name}", {
                           name: card.definition.name,
                         })}
-                        title={t("Delete theme")}
+                        tooltip={t("Delete theme")}
+                        icon={<Trash2 size={13} aria-hidden="true" />}
                         onClick={() => setPendingDelete(custom)}
-                      >
-                        <Trash2 size={13} aria-hidden="true" />
-                      </button>
+                      />
                     </>
                   ) : null}
                 </span>
@@ -482,160 +453,157 @@ export function TerminalThemeDialog({
       </label>
     );
     return (
-      <>
-        <div className="modal-head">
-          <div>
-            <h2>{current.id ? t("Edit theme") : t("New theme")}</h2>
-            <p>{t("Pick colors; the preview updates as you go.")}</p>
+      <div className="terminal-theme-editor">
+        <div className="terminal-theme-editor-top">
+          <TextField
+            className="terminal-theme-name-field"
+            label={t("Theme name")}
+            autoFocus
+            fullWidth
+            value={current.name}
+            maxLength={MAX_TERMINAL_THEME_NAME_LENGTH}
+            onValueChange={(name) => setDraft({ ...current, name })}
+          />
+          <div className="terminal-theme-variant-field">
+            <span>{t("Suggested for")}</span>
+            <SegmentedControl
+              aria-label={t("Suggested appearance")}
+              value={current.variant}
+              onChange={(variant) => setDraft({ ...current, variant })}
+              options={THEME_VARIANTS.map((variant) => ({
+                value: variant.value,
+                ariaLabel: t(variant.label),
+                label:
+                  variant.value === "dark" ? (
+                    <Moon size={14} />
+                  ) : (
+                    <Sun size={14} />
+                  ),
+              }))}
+            />
           </div>
-          <CloseButton onClick={onClose} />
         </div>
 
-        <div className="terminal-theme-editor">
-          <div className="terminal-theme-editor-top">
-            <label className="form-field terminal-theme-name-field">
-              <span>{t("Theme name")}</span>
-              <input
-                value={current.name}
-                maxLength={MAX_TERMINAL_THEME_NAME_LENGTH}
-                onChange={(event) =>
-                  setDraft({ ...current, name: event.target.value })
-                }
-              />
-            </label>
-            <div className="terminal-theme-variant-field">
-              <span>{t("Suggested for")}</span>
-              <div
-                className="config-theme-control"
-                aria-label={t("Suggested appearance")}
-              >
-                {THEME_VARIANTS.map((variant) => (
-                  <button
-                    key={variant.value}
-                    type="button"
-                    aria-label={t(variant.label)}
-                    aria-pressed={current.variant === variant.value}
-                    className={
-                      current.variant === variant.value ? "is-active" : ""
-                    }
-                    onClick={() =>
-                      setDraft({ ...current, variant: variant.value })
-                    }
-                  >
-                    {variant.value === "dark" ? (
-                      <Moon size={14} />
-                    ) : (
-                      <Sun size={14} />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        <TerminalThemePreview colors={current.colors} />
 
-          <TerminalThemePreview colors={current.colors} />
-
-          <div className="terminal-theme-color-group">
-            <strong>{t("Base colors")}</strong>
-            <div className="terminal-theme-color-grid">
-              {TERMINAL_BASE_COLOR_KEYS.map(colorField)}
-            </div>
+        <div className="terminal-theme-color-group">
+          <strong>{t("Base colors")}</strong>
+          <div className="terminal-theme-color-grid">
+            {TERMINAL_BASE_COLOR_KEYS.map(colorField)}
           </div>
-          <div className="terminal-theme-color-group">
-            <strong>{t("ANSI colors")}</strong>
-            <div className="terminal-theme-color-grid">
-              {TERMINAL_ANSI_COLOR_KEYS.map(colorField)}
-            </div>
+        </div>
+        <div className="terminal-theme-color-group">
+          <strong>{t("ANSI colors")}</strong>
+          <div className="terminal-theme-color-grid">
+            {TERMINAL_ANSI_COLOR_KEYS.map(colorField)}
           </div>
         </div>
 
         {missingDraft ? (
-          <p role="alert">
+          <p className="terminal-theme-alert" role="alert">
             {t(
               "This theme no longer exists. Your unsaved edits are kept here until you close the editor.",
             )}
           </p>
         ) : null}
         {!current.id && !canCreate ? (
-          <p role="alert">
+          <p className="terminal-theme-alert" role="alert">
             {t(
               "Custom theme limit reached ({limit}). Delete a theme before creating another.",
               { limit: MAX_CUSTOM_TERMINAL_THEMES },
             )}
           </p>
         ) : null}
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setDraft(null)}
-          >
-            {t("Cancel")}
-          </button>
-          <button
-            type="button"
-            disabled={
-              !current.name.trim() ||
-              missingDraft ||
-              (!current.id && !canCreate)
-            }
-            onClick={saveDraft}
-          >
-            {current.id ? t("Save theme") : t("Create theme")}
-          </button>
-        </div>
-      </>
+      </div>
     );
   };
 
   return (
-    <>
-      <div
-        className="modal-backdrop"
-        onMouseDown={() => (draft ? setDraft(null) : onClose())}
-      >
-        <div
-          ref={dialogRef}
-          className="modal terminal-themes-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("Terminal themes")}
-          tabIndex={-1}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          {draft ? (
-            renderEditor(draft)
-          ) : (
-            <>
-              <div className="modal-head">
-                <div>
-                  <h2>{t("Terminal Themes")}</h2>
-                  <p>
-                    {t(
-                      "Choose a theme per appearance mode, or create your own from any preset.",
-                    )}
-                  </p>
-                </div>
-                <CloseButton onClick={onClose} />
-              </div>
-              {THEME_VARIANTS.map((variant) => renderSection(variant))}
-            </>
-          )}
+    <Dialog
+      open
+      // Escape and the backdrop leave the editor first, then close.
+      onOpenChange={(next) => {
+        if (next) return;
+        if (draft) setDraft(null);
+        else onClose();
+      }}
+      size="lg"
+      className="terminal-themes-dialog"
+      title={
+        draft
+          ? draft.id
+            ? t("Edit theme")
+            : t("New theme")
+          : t("Terminal Themes")
+      }
+      description={
+        draft
+          ? t("Pick colors; the preview updates as you go.")
+          : t(
+              "Choose a theme per appearance mode, or create your own from any preset.",
+            )
+      }
+      closeButton={!draft}
+      headerActions={
+        draft ? (
+          <IconButton
+            label={t("Close")}
+            icon={<X size={15} strokeWidth={2.2} aria-hidden="true" />}
+            tooltip={false}
+            onClick={onClose}
+          />
+        ) : null
+      }
+      footer={
+        draft ? (
+          <>
+            <Button size="md" onClick={() => setDraft(null)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              disabled={
+                !draft.name.trim() || missingDraft || (!draft.id && !canCreate)
+              }
+              onClick={saveDraft}
+            >
+              {draft.id ? t("Save theme") : t("Create theme")}
+            </Button>
+          </>
+        ) : null
+      }
+    >
+      {draft ? (
+        renderEditor(draft)
+      ) : (
+        <div ref={listRef} className="terminal-theme-sections" tabIndex={-1}>
+          {THEME_VARIANTS.map((variant) => renderSection(variant))}
         </div>
-      </div>
+      )}
       <ConfirmDialog
         open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
         title={t("Delete theme")}
         message={t("Delete {name}? This cannot be undone.", {
           name: `"${pendingDelete?.name ?? ""}"`,
         })}
         confirmLabel={t("Delete")}
-        danger
+        tone="danger"
         onConfirm={() => {
-          if (pendingDelete) deleteCustomTheme(pendingDelete);
+          if (!pendingDelete) return;
+          deleteCustomTheme(pendingDelete);
+          // The deleted card took the focus-return target with it.
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              if (!document.activeElement?.closest("[role=dialog]"))
+                listRef.current?.focus({ preventScroll: true });
+            }),
+          );
         }}
-        onClose={() => setPendingDelete(null)}
       />
-    </>
+    </Dialog>
   );
 }

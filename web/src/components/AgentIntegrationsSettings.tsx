@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Info, RefreshCw, Trash2 } from "lucide-react";
 import { msg, t } from "../i18n";
-import { AgentIcon } from "./AgentIcon";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
+import { Button } from "./ui/Button";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { IconButton } from "./ui/IconButton";
+import { Popover } from "./ui/Popover";
 import {
   connectionClientScopeKey,
   useConnectionClient,
@@ -69,21 +71,25 @@ const INTEGRATION_DESCRIPTION = msg(
 
 type IntegrationChange = "install" | "update" | "uninstall";
 
-function changeConfirmation(
+type PendingConfirmation = {
+  item: AgentIntegration;
+  action: "install" | "uninstall";
+  kind: IntegrationChange;
+  /** The row button that asked; focus moves to Refresh when it goes away. */
+  source: HTMLElement;
+};
+
+function changeQuestion(
   change: IntegrationChange,
   integration: string,
   destination: string,
 ) {
   const values = { integration, destination };
-  const question =
-    change === "uninstall"
-      ? t("Uninstall the {integration} integration on {destination}?", values)
-      : change === "update"
-        ? t("Update the {integration} integration on {destination}?", values)
-        : t("Install the {integration} integration on {destination}?", values);
-  return `${question}\n\n${t(
-    "This changes the Herdr server user's agent configuration, shared across its sessions. It does not install or uninstall the agent application. Existing agent sessions may need to be restarted for the change to take effect.",
-  )}`;
+  return change === "uninstall"
+    ? t("Uninstall the {integration} integration on {destination}?", values)
+    : change === "update"
+      ? t("Update the {integration} integration on {destination}?", values)
+      : t("Install the {integration} integration on {destination}?", values);
 }
 
 function changeCompleted(change: IntegrationChange, integration: string) {
@@ -128,6 +134,9 @@ export function AgentIntegrationsSettings({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState<PendingConfirmation | null>(
+    null,
+  );
   const mounted = useRef(false);
   const sequence = useRef(0);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -203,9 +212,10 @@ export function AgentIntegrationsSettings({
     };
   }, [load]);
 
-  const change = async (
+  const change = (
     item: AgentIntegration,
     action: "install" | "uninstall",
+    source: HTMLElement,
   ) => {
     if (
       pendingChanges.has(scope) ||
@@ -220,12 +230,11 @@ export function AgentIntegrationsSettings({
         : item.state === "outdated"
           ? "update"
           : "install";
-    if (
-      !window.confirm(changeConfirmation(kind, item.label, destination)) ||
-      !client.isCurrent()
-    )
-      return;
-    const source = document.activeElement;
+    setConfirming({ item, action, kind, source });
+  };
+
+  const apply = async ({ item, action, kind, source }: PendingConfirmation) => {
+    if (!client.isCurrent()) return;
     const operation: Promise<IntegrationChangeOutcome> = client
       .call(`integration.${action}`, { target: item.target })
       .then((result) => {
@@ -289,11 +298,11 @@ export function AgentIntegrationsSettings({
   const unavailable = (items ?? []).filter(
     (item) => !item.available && item.state === "not_installed",
   );
+  // Rows name the integration and show no agent icon beside the name.
   const renderList = (list: AgentIntegration[]) => (
     <ul className="agent-integrations-list">
       {list.map((item) => (
         <li key={item.target} data-state={item.state}>
-          <AgentIcon agent={item.target} />
           <div className="agent-integrations-copy">
             <strong>{item.label}</strong>
             <div className="agent-integrations-meta">
@@ -345,11 +354,8 @@ export function AgentIntegrationsSettings({
           </div>
           <div className="agent-integrations-actions">
             {item.state !== "current" ? (
-              <button
-                type="button"
-                className={
-                  item.state === "outdated" ? "agent-integrations-update" : ""
-                }
+              <Button
+                variant={item.state === "outdated" ? "primary" : "secondary"}
                 aria-label={
                   item.state === "outdated"
                     ? t("Update {integration} integration", {
@@ -367,26 +373,25 @@ export function AgentIntegrationsSettings({
                       })
                     : undefined
                 }
-                onClick={() => void change(item, "install")}
+                onClick={(event) =>
+                  change(item, "install", event.currentTarget)
+                }
               >
                 {item.state === "outdated" ? t("Update") : t("Install")}
-              </button>
+              </Button>
             ) : null}
             {item.state !== "not_installed" ? (
-              <button
-                type="button"
-                className="agent-integrations-icon-button agent-integrations-uninstall"
-                aria-label={t("Uninstall {integration} integration", {
+              <IconButton
+                tone="danger"
+                label={t("Uninstall {integration} integration", {
                   integration: item.label,
                 })}
-                title={t("Uninstall {integration} integration", {
-                  integration: item.label,
-                })}
+                icon={<Trash2 size={14} aria-hidden="true" />}
                 aria-disabled={disabled}
-                onClick={() => void change(item, "uninstall")}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
+                onClick={(event) =>
+                  change(item, "uninstall", event.currentTarget)
+                }
+              />
             ) : null}
           </div>
         </li>
@@ -400,38 +405,28 @@ export function AgentIntegrationsSettings({
           <strong>{destination}</strong>
           <span>{t("Agent integrations")}</span>
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="agent-integrations-icon-button"
-              aria-label={t("About agent integrations")}
-              title={t("About agent integrations")}
-            >
-              <Info size={16} aria-hidden="true" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="configuration-help-content"
-            aria-label={t("About agent integrations")}
-            collisionPadding={12}
-          >
-            {t(INTEGRATION_DESCRIPTION)}
-          </PopoverContent>
+        <Popover
+          aria-label={t("About agent integrations")}
+          className="configuration-help-content"
+          placement="bottom end"
+          trigger={
+            <IconButton
+              label={t("About agent integrations")}
+              icon={<Info size={16} aria-hidden="true" />}
+            />
+          }
+        >
+          {t(INTEGRATION_DESCRIPTION)}
         </Popover>
-        <button
+        <IconButton
           ref={refreshButton}
-          type="button"
-          className="agent-integrations-icon-button"
-          aria-label={t("Refresh integrations")}
-          title={t("Refresh integrations")}
+          label={t("Refresh integrations")}
+          icon={<RefreshCw size={16} aria-hidden="true" />}
           aria-disabled={disabled}
           onClick={() => {
             if (!pendingChanges.has(scope) && !disabled) void load();
           }}
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-        </button>
+        />
       </div>
       <div role="status" className="agent-integrations-status">
         {busy
@@ -467,6 +462,35 @@ export function AgentIntegrationsSettings({
           {renderList(unavailable)}
         </details>
       ) : null}
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+        title={
+          confirming
+            ? changeQuestion(
+                confirming.kind,
+                confirming.item.label,
+                destination,
+              )
+            : ""
+        }
+        message={t(
+          "This changes the Herdr server user's agent configuration, shared across its sessions. It does not install or uninstall the agent application. Existing agent sessions may need to be restarted for the change to take effect.",
+        )}
+        confirmLabel={
+          confirming?.kind === "uninstall"
+            ? t("Uninstall")
+            : confirming?.kind === "update"
+              ? t("Update")
+              : t("Install")
+        }
+        tone={confirming?.kind === "uninstall" ? "danger" : "default"}
+        onConfirm={() => {
+          if (confirming) void apply(confirming);
+        }}
+      />
     </div>
   );
 }
