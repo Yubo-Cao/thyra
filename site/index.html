@@ -677,9 +677,11 @@
             <p class="kicker">Ready when the next task starts</p>
             <h2>Give your agents a window.</h2>
             <p>
-              Install the standalone binary on macOS or Linux, start
-              Thyra, and open the URL it prints. Windows x64 and ARM64 archives
-              are available from GitHub Releases.
+              One command installs Thyra and its Herdr server on macOS or
+              Linux, starts both as user services, and prints the local URL.
+              On Windows, run
+              <code>irm https://github.com/Yubo-Cao/thyra/releases/latest/download/install.ps1 | iex</code>
+              in PowerShell.
             </p>
             <div class="install-actions">
               <a
@@ -713,13 +715,13 @@
               </button>
             </div>
             <pre><code data-install-command><span>$</span> curl -fsSL \
-  https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh \
+  https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh \
   | sh</code></pre>
             <div class="install-result" aria-hidden="true">
               <span></span>
               <p>
-                <strong>Thyra installed</strong
-                ><small>Run <code>thyra</code> to start</small>
+                <strong>Thyra is running</strong
+                ><small>Open <code>http://127.0.0.1:8787</code></small>
               </p>
             </div>
           </div>

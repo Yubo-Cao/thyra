@@ -17,7 +17,10 @@ import {
   herdrReleaseUrl,
   installVerifiedHerdr,
   resolveHerdrReleaseTarget,
+  VERIFIED_HERDR_PROTOCOL,
+  VERIFIED_HERDR_REPOSITORY,
   VERIFIED_HERDR_SHA256,
+  VERIFIED_HERDR_TAG,
   VERIFIED_HERDR_VERSION,
 } from "./release";
 
@@ -41,10 +44,12 @@ describe("resolveHerdrReleaseTarget", () => {
     expect(resolveHerdrReleaseTarget("darwin", "x64")).toBe("macos-x86_64");
     expect(resolveHerdrReleaseTarget("darwin", "arm64")).toBe("macos-aarch64");
     expect(resolveHerdrReleaseTarget("win32", "x64")).toBe("windows-x86_64");
+    // Windows ARM64 runs the x86_64 build under emulation.
+    expect(resolveHerdrReleaseTarget("win32", "arm64")).toBe("windows-x86_64");
   });
 
   test("rejects platforms without a verified asset", () => {
-    expect(resolveHerdrReleaseTarget("win32", "arm64")).toBeNull();
+    expect(resolveHerdrReleaseTarget("win32", "ia32")).toBeNull();
     expect(resolveHerdrReleaseTarget("freebsd", "x64")).toBeNull();
     expect(resolveHerdrReleaseTarget("linux", "ia32")).toBeNull();
   });
@@ -58,13 +63,34 @@ describe("verified release metadata", () => {
     expect(Object.keys(VERIFIED_HERDR_SHA256)).toHaveLength(5);
   });
 
-  test("builds GitHub release URLs for the verified version", () => {
+  test("pins one GitHub release by repository, tag, and version", () => {
+    expect(VERIFIED_HERDR_REPOSITORY).toMatch(/^[\w.-]+\/[\w.-]+$/);
+    expect(VERIFIED_HERDR_TAG).toStartWith(`v${VERIFIED_HERDR_VERSION}`);
+    expect(VERIFIED_HERDR_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(VERIFIED_HERDR_PROTOCOL).toBe(22);
+  });
+
+  test("builds GitHub release URLs for the pinned tag", () => {
     expect(herdrReleaseAssetName("macos-aarch64")).toBe("herdr-macos-aarch64");
     expect(herdrReleaseAssetName("windows-x86_64")).toBe(
       "herdr-windows-x86_64.zip",
     );
     expect(herdrReleaseUrl("linux-x86_64")).toBe(
-      `https://github.com/herdrdev/herdr/releases/download/v${VERIFIED_HERDR_VERSION}/herdr-linux-x86_64`,
+      `https://github.com/${VERIFIED_HERDR_REPOSITORY}/releases/download/${VERIFIED_HERDR_TAG}/herdr-linux-x86_64`,
+    );
+    expect(
+      herdrReleaseUrl("linux-aarch64", "v0.9.1-thyra.1", "Yubo-Cao/herdr"),
+    ).toBe(
+      "https://github.com/Yubo-Cao/herdr/releases/download/v0.9.1-thyra.1/herdr-linux-aarch64",
+    );
+  });
+
+  test("keys the Windows managed directory by release tag", () => {
+    expect(
+      herdrManagedBinaryPath("/home/u", "C:/AppData", "win32", "v1.2.3-x.1"),
+    ).toBe(join("C:/AppData", "thyra", "herdr", "v1.2.3-x.1", "herdr.exe"));
+    expect(herdrManagedBinaryPath("/home/u", undefined, "linux")).toBe(
+      join("/home/u", ".local", "bin", "herdr"),
     );
   });
 });
@@ -122,9 +148,7 @@ describe("installVerifiedHerdr", () => {
         writeFileSync(destinationPath, content);
       },
     });
-    expect(url).toBe(
-      `https://github.com/herdrdev/herdr/releases/download/v${VERIFIED_HERDR_VERSION}/herdr-linux-x86_64`,
-    );
+    expect(url).toBe(herdrReleaseUrl("linux-x86_64"));
     expect(result.installed).toBe(true);
     expect(await Bun.file(result.binaryPath).text()).toBe(content);
     const mode = statSync(result.binaryPath).mode;

@@ -9,7 +9,7 @@
 
 A **browser client** for [Herdr](https://herdr.dev). Control terminals, inspect
 agent sessions, and review files and diffs on desktop or mobile.
-**Requires a running Herdr server.**
+**Requires a Herdr server;** the installer sets one up.
 
 ## Screenshots
 
@@ -69,24 +69,23 @@ Click any screenshot to open the full-resolution image.
 
 ## Quick start
 
-1. Install and start [Herdr](https://herdr.dev), or let Thyra install and
-   start it later with `thyra herdr setup`.
-2. On Linux or macOS, install Thyra:
+Linux (x86-64, ARM64) and macOS (Apple Silicon, Intel):
 
-   ```bash
-   # Empty selects latest; use X.Y.Z (no v prefix) to pin a Thyra version.
-   curl -fsSL \
-     https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh \
-     | THYRA_VERSION= sh
-   ```
+```bash
+curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh | sh
+```
 
-   On Windows, download the matching x64 or ARM64 archive from the
-   [latest release](https://github.com/Yubo-Cao/thyra/releases/latest).
-3. On Linux/macOS, add `~/.local/bin` to `PATH` and run `thyra`.
-   On Windows, extract the archive and run `thyra.exe`. Open the printed URL.
+Windows 10 1809+ and 11 (x64, ARM64), in PowerShell:
 
-See [deployment](./docs/DEPLOYMENT.md) for checksums, configuration, updates,
-and services.
+```powershell
+irm https://github.com/Yubo-Cao/thyra/releases/latest/download/install.ps1 | iex
+```
+
+The installer verifies SHA-256 checksums, installs Thyra and the Herdr server build it pins into your user account without sudo or administrator rights, starts both as user services, and prints the address: `http://127.0.0.1:8787` on the same machine.
+It never replaces a Herdr you installed yourself.
+Rerun the same command to upgrade; `sh -s -- --uninstall` (or `-Uninstall` on Windows) removes it.
+For phones and other computers, publish the loopback address privately with [Tailscale Serve](./docs/TUTORIAL.md#tailscale).
+See [deployment](./docs/DEPLOYMENT.md#install-with-the-one-line-installer) for options, manual installs, services, and remote access.
 
 ## Install as a PWA
 

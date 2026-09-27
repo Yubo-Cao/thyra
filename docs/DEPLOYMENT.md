@@ -14,7 +14,8 @@ access, use the [tutorial](./TUTORIAL.md#networking).
 ### Herdr compatibility
 
 This source build supports verified legacy protocols 14–20 (Herdr 0.7.0–0.8.2)
-and **tagged Herdr 0.9.0 / protocol 22**. Protocol 21 and unknown versions are
+and **Herdr 0.9.x / protocol 22**; the installers and `thyra herdr setup` install the
+[pinned build](#managed-herdr-setup). Protocol 21 and unknown versions are
 rejected at control/binary probes. Use a compatible Thyra build or separate
 server; **do not downgrade a live server**. Published binaries follow their
 [release notes](https://github.com/Yubo-Cao/thyra/releases).
@@ -52,79 +53,115 @@ herdr --session <name> workspace close <workspace_id> --group
 See [endpoint contracts](./ARCHITECTURE.md#terminal-endpoints) and
 [creation/timeouts](./ARCHITECTURE.md#browser-navigation-and-creation).
 
-## Install a release
+## Install with the one-line installer
 
-Releases provide Linux/macOS/Windows x86-64 and ARM64 assets.
+Releases publish Linux/macOS/Windows x86-64 and ARM64 archives, the installers, and `herdr-release.json`, the Herdr build that release pins.
 Unpublished versions require a [source build](#build-a-standalone-executable).
 
-On Linux/macOS, the checksum-verifying installer writes `~/.local/bin/thyra`:
-
 ```bash
-curl -fsSL \
-  https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh \
-  | sh
+# Linux and macOS
+curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh | sh
 ```
 
-Add `~/.local/bin` to PATH, run `thyra --version`, then `thyra` and open the
-printed URL. Rerun the installer to update.
+```powershell
+# Windows 10 1809+ and 11, in PowerShell
+irm https://github.com/Yubo-Cao/thyra/releases/latest/download/install.ps1 | iex
+```
 
-On Windows, download matching `thyra-windows-<arch>.tar.xz` and `.sha256`
-files from the [latest release](https://github.com/Yubo-Cao/thyra/releases/latest),
-verify with `Get-FileHash`, extract with Windows 11's `tar.exe`, and run `thyra.exe`.
+The installers are served by GitHub over HTTPS from the latest release, so the URL is stable and always matches the newest archives; `releases/download/vX.Y.Z/install.sh` installs a fixed version.
+Each run:
 
-Installer overrides apply to the `sh` command above:
+1. Detects the platform (an x86-64 shell under Rosetta still gets the Apple Silicon build) and downloads `thyra-<platform>.tar.xz` (`.zip` on Windows) plus its `.sha256`, rejecting a mismatch before anything is installed.
+2. Downloads the Herdr build named in `herdr-release.json` (repository, tag, and per-target SHA-256) from that Herdr GitHub release and verifies it against the pin.
+   Windows ARM64 uses Herdr's x86-64 build under emulation, as Herdr's own installer does.
+3. Installs the binaries atomically, keeping `thyra.previous` and `herdr.previous`.
+4. Creates the service config if missing, runs `thyra herdr setup` (which starts Herdr only when no Herdr server answers), and runs `thyra service install`, which restarts Thyra.
+5. Waits for `/healthz` and prints the address and next steps.
 
-| Setting | Example / behavior |
-| --- | --- |
-| Pin a version | `THYRA_VERSION=X.Y.Z sh` (no `v`; empty means latest) |
-| System directory | `sudo env THYRA_INSTALL_DIR=/usr/local/bin sh` (empty rejected) |
-| Release mirror | `THYRA_RELEASE_BASE_URL` selects a compatible flat asset directory |
+| Platform | Thyra | Herdr | Services |
+| --- | --- | --- | --- |
+| Linux | `~/.local/bin/thyra` | `~/.local/bin/herdr` | systemd user units `thyra.service`, `thyra-herdr.service` |
+| macOS | `~/.local/bin/thyra` | `~/.local/bin/herdr` | LaunchAgents `dev.thyra`, `dev.thyra.herdr` |
+| Windows | `%LOCALAPPDATA%\Programs\Thyra\thyra.exe` (added to the user PATH, with a `herdr.cmd` shim) | `%APPDATA%\thyra\herdr\<tag>\herdr.exe` | Per-user scheduled tasks `dev.thyra-<key>`, `dev.thyra.herdr-<key>` |
 
-Mirrors require HTTPS except loopback testing; URLs cannot contain credentials,
-queries, or fragments. Installer and in-app updater preserve the old executable
-as `thyra.previous` for manual recovery.
+**Herdr ownership.**
+The installer records the Herdr it installed (`~/.config/thyra/installer-herdr.sha256`, or `%APPDATA%\thyra\installer-herdr.txt`).
+It never replaces or removes a Herdr it did not install, including one elsewhere on `PATH`; it keeps using that Herdr and says so.
+Pass `--replace-herdr` (`-ReplaceHerdr`) to install the pinned build anyway; the old binary is kept as `herdr.previous`.
+Thyra works with stock Herdr 0.9.x (protocol 22), but the pinned build is the [Herdr fork](https://github.com/Yubo-Cao/herdr) that adds collaboration leases, live handoff, and agent memory limits; with stock Herdr, collaboration falls back to bridge-local mode.
+Do not run `herdr update` on the pinned build: it installs stock Herdr from herdr.dev; rerun the Thyra installer instead.
+
+**Upgrades** rerun the same command.
+Thyra restarts immediately.
+A running Herdr server is never restarted, because that ends its panes: it keeps the previous build until you restart it (`systemctl --user restart thyra-herdr.service`, `launchctl kickstart -k gui/$(id -u)/dev.thyra.herdr`, or `thyra herdr uninstall` then `thyra herdr setup` on Windows).
+
+| Option (`sh -s -- ...`) | PowerShell | Environment | Behavior |
+| --- | --- | --- | --- |
+| `--version X.Y.Z` | `-Version X.Y.Z` | `THYRA_VERSION` | Install that release instead of the latest |
+| `--port N` | `-Port N` | `THYRA_PORT` | Port for the service config (default 8787) |
+| `--lan` | `-Lan` | | Bind `0.0.0.0` with a generated login token |
+| `--local` | | | Bind `127.0.0.1` (the default for new configs) |
+| `--no-service` | `-NoService` | `THYRA_NO_SERVICE=1` | Install binaries only |
+| `--no-herdr` | `-NoHerdr` | `THYRA_NO_HERDR=1` | Leave Herdr alone |
+| `--replace-herdr` | `-ReplaceHerdr` | | Replace a Herdr the installer did not install |
+| `--uninstall [--purge]` | `-Uninstall [-Purge]` | | Remove services and binaries; `--purge` also deletes Thyra's config |
+| | | `THYRA_INSTALL_DIR` | Binary directory |
+| | | `THYRA_INSTALL_BASE_URL` | Flat mirror of the Thyra release assets |
+| | | `THYRA_HERDR_BASE_URL` | Flat mirror of the pinned Herdr assets |
+
+`irm | iex` cannot pass parameters; set the environment variables first, or run `& ([scriptblock]::Create((irm <url>/install.ps1))) -Uninstall`.
+Mirrors require HTTPS except loopback testing; URLs cannot contain credentials, queries, or fragments.
+To test a build locally, serve `dist/` plus `scripts/install.sh`, `scripts/install.ps1`, and a pin written by `bun scripts/pin-herdr.ts mirror <herdr-assets-dir>` with `python3 -m http.server --bind 127.0.0.1`, and point `THYRA_INSTALL_BASE_URL` and `THYRA_HERDR_BASE_URL` at it.
+
+**Where services are unavailable** (WSL without systemd, containers, SSH sessions without a user manager), the installer installs the binaries and prints how to run `herdr server` and `thyra` yourself.
+On Linux, `sudo loginctl enable-linger "$USER"` keeps user services running after logout.
+
+**Uninstall** with `curl -fsSL .../install.sh | sh -s -- --uninstall`.
+It runs `thyra service uninstall` and `thyra herdr uninstall` (both remove only definitions Thyra generated), deletes Thyra and the Herdr it installed, and keeps `~/.config/thyra` (tokens, connection profiles, settings) unless `--purge` is given.
+Herdr's own data (`~/.config/herdr`, `%APPDATA%\herdr`) is never touched.
+
+**Windows notes.**
+Herdr's Windows build is a beta from the Herdr project.
+Thyra on Windows attaches only to local Herdr named pipes; SSH connection profiles need a Linux or macOS bridge, so for a remote or WSL Herdr, run Thyra there (for example with the Linux installer inside WSL) and open it from Windows.
+Scheduled tasks start at logon; allow Private networks only if Windows Firewall prompts and you use `-Lan`.
+
+### Install manually
+
+Download `thyra-<platform>.tar.xz` (or the Windows `.zip`) and its `.sha256` from the [latest release](https://github.com/Yubo-Cao/thyra/releases/latest), verify with `sha256sum -c`, `shasum -a 256 -c`, or `Get-FileHash`, extract, and put `thyra` on `PATH`.
+Install Herdr yourself, or let `thyra herdr setup` download the pinned build.
+Then run `thyra`, or `thyra service install` for a user service.
+
+### Remote access and security
+
+New installer configs bind `127.0.0.1`: only the same machine can connect, and loopback requests need no login.
+For phones and other computers, keep that binding and publish it privately with `tailscale serve --bg --https=443 http://127.0.0.1:8787`; the tailnet ACL becomes the access boundary ([tutorial](./TUTORIAL.md#tailscale)).
+To use Thyra from another computer over SSH, forward the port: `ssh -L 8787:127.0.0.1:8787 host`.
+`--lan` binds all interfaces and requires the login token printed at install time (stored in `~/.config/thyra/auth-token`); use it only on trusted networks, preferably with [native HTTPS](#native-https).
+Never expose Thyra directly to the public internet, and never use `tailscale funnel` for it; Thyra runs shell commands with your user's rights.
+Read [Security](../SECURITY.md) before allowing another device access.
 
 ## Managed Herdr setup
 
 ```bash
 thyra herdr setup
 thyra herdr status
+thyra herdr uninstall
 ```
 
-If absent, setup downloads **Herdr 0.9.0**, verifies build-pinned SHA-256 hashes,
-and installs to `~/.local/bin/herdr` on Unix or
-`%APPDATA%\thyra\herdr\0.9.0` on Windows. It never replaces a binary it did not
-install. If already installed, it uses the first binary on PATH or in those
-locations, leaving it in place. Unix's standard location supports `herdr update`;
-Windows uses Thyra's private versioned directory, not the official junctioned
-store, and needs a newer verified Thyra install for replacement.
+If absent, setup downloads the Herdr build pinned in [`server/src/herdr/herdr-release.json`](../server/src/herdr/herdr-release.json) (the same pin the installers use), verifies its SHA-256, and installs it to `~/.local/bin/herdr` on Unix or `%APPDATA%\thyra\herdr\<tag>` on Windows.
+It never replaces a binary it did not install.
+If a Herdr binary already exists, it uses the first one on PATH or in those locations and leaves it in place.
 
-Setup installs/starts `herdr server` as a user service: `thyra-herdr.service`
-(Linux), `dev.thyra.herdr` (macOS), or a per-user Windows scheduled task.
+Setup installs and starts `herdr server` as a user service: `thyra-herdr.service` (Linux), `dev.thyra.herdr` (macOS), or a per-user Windows scheduled task.
+It does nothing when a Herdr server already answers on the default socket.
 Definitions carry a Thyra marker; unrelated existing definitions are untouched.
-The web UI offers the same confirmed **Set up Herdr / Start Herdr** action when
-the default local server is unreachable, with visible failures/retry.
+The web UI offers the same confirmed **Set up Herdr / Start Herdr** action when the default local server is unreachable, with visible failures and retry.
 
-Only default local configuration is supported. SSH profiles/`--ssh-host`, named
-sessions, and explicit control/render socket flags or environment variables are
-refused; start Herdr yourself for those configurations.
+Only default local configuration is supported.
+SSH profiles/`--ssh-host`, named sessions, and explicit control/render socket flags or environment variables are refused; start Herdr yourself for those configurations.
 
-To stop and disable, use native tools:
-
-```bash
-systemctl --user disable --now thyra-herdr.service  # Linux
-launchctl bootout gui/$(id -u)/dev.thyra.herdr      # macOS
-# Windows: find dev.thyra.herdr-<key> in herdr-task.ps1
-schtasks /End /TN "<task-name>"
-schtasks /Delete /TN "<task-name>" /F
-```
-
-Then remove only its generated definition:
-`~/.config/systemd/user/thyra-herdr.service`,
-`~/Library/LaunchAgents/dev.thyra.herdr.plist`, or
-`%APPDATA%\thyra\herdr-task.ps1`. Linux also needs
-`systemctl --user daemon-reload`. Remove an installed binary only if unwanted
-and owned by this setup; never delete the shared `~/.local/bin` directory.
+`thyra herdr uninstall` stops and removes only the service definition that setup generated, which ends that server's panes; it keeps the Herdr binary and Herdr's data.
+Remove an installed binary only if unwanted and owned by this setup; never delete the shared `~/.local/bin` directory.
 
 ## Herdr plugin
 
@@ -467,8 +504,8 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 | macOS | `~/Library/LaunchAgents/dev.thyra.plist`, label `dev.thyra`, `KeepAlive`; logs `~/Library/Logs/thyra.stdout.log` / `thyra.stderr.log` |
 | Windows | Task `dev.thyra-<user-key>` (config-path hash), `%APPDATA%\thyra\thyra-task.ps1`; login start, normal privileges, restart on failure |
 
-**New services bind `0.0.0.0:8787`**, generate a persistent token, and print
-localhost/LAN token URLs. Config lives in `~/.config/thyra/thyra.env` or
+**`thyra service install` alone creates a config that binds `0.0.0.0:8787`**, generates a persistent token, and prints
+localhost/LAN token URLs. The [one-line installer](#install-with-the-one-line-installer) instead creates a loopback-only config first. Config lives in `~/.config/thyra/thyra.env` or
 `%APPDATA%\thyra\thyra.env`, preserved on reinstall/uninstall. Edit HOST,
 PORT, password, and Herdr settings there, then restart. For local-only installation,
 set `HOST=127.0.0.1` first. On Windows, allow Private networks only if prompted;

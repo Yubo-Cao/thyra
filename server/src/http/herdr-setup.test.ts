@@ -60,8 +60,9 @@ test("missing installations require a verified asset, existing binaries do not",
   const homeDir = mkdtempSync(join(tmpdir(), "herdr-setup-target-"));
   try {
     for (const [platform, arch, available] of [
-      ["win32", "arm64", false],
+      ["win32", "ia32", false],
       ["freebsd", "x64", false],
+      ["win32", "arm64", true],
       ["linux", "x64", true],
     ] as const) {
       const handlers = createHerdrSetupHandlers({

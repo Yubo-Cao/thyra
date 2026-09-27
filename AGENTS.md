@@ -122,6 +122,11 @@ data-loss, and platform-compatibility guidance in permanent documentation linked
 from the release notes. Leave detailed records in PRs, external artifacts, or
 Git history.
 
+Each release pins the Herdr build that its installers and `thyra herdr setup` install, in `server/src/herdr/herdr-release.json`.
+When the Herdr fork changes, publish its release first (the fork's **Thyra distribution** workflow on a `vX.Y.Z-thyra.N` tag), then run `bun scripts/pin-herdr.ts pin Yubo-Cao/herdr vX.Y.Z-thyra.N` and commit the rewritten pin.
+The Release workflow refuses a pin that is not the fork or no longer matches the fork's assets.
+Dispatch **Release** on `main` with `dry_run` to build every archive and run the installers on all six platforms without publishing.
+
 Stable releases use separate prepare and publish phases:
 
 1. Run the **Prepare Release** workflow with `X.Y.Z` or

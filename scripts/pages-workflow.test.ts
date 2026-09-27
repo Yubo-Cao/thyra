@@ -56,9 +56,9 @@ test("Pages deploys on main pushes or manual dispatch and checks installer avail
       step.uses?.startsWith("actions/deploy-pages@"),
     ),
   ).toBe(true);
-  const url = gate.match(/https:\/\/\S+\/install-thyra\.sh/)?.[0];
+  const url = gate.match(/https:\/\/\S+\/install\.sh/)?.[0];
   expect(url).toBe(
-    "https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh",
+    "https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh",
   );
   for (const path of [
     "../site/index.html",
@@ -116,5 +116,5 @@ test("Pages installer probe requires HTTP 200 over HTTPS and fails closed on cur
   expect(args[args.indexOf("--connect-timeout") + 1]).toBe("10");
   expect(args[args.indexOf("--max-time") + 1]).toBe("60");
   expect(args[args.indexOf("--write-out") + 1]).toBe("%{http_code}");
-  expect(args.at(-1)).toEndWith("/releases/latest/download/install-thyra.sh");
+  expect(args.at(-1)).toEndWith("/releases/latest/download/install.sh");
 });

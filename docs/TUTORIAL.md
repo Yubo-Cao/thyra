@@ -24,19 +24,20 @@ Herdr owns terminals; Thyra supplies the browser UI; agents remain CLIs.
 Thyra does not provide models or install/sign in to agents. Closing the
 browser leaves terminals running; host sleep, shutdown, or process exit can stop work.
 
-1. Start Herdr with a trusted project open; see [herdr.dev](https://herdr.dev).
-   For default local setups, `thyra herdr setup` can also install/start it
-   after [installing Thyra](./DEPLOYMENT.md#install-a-release).
-2. Run `thyra` on that computer and leave it running (`thyra.exe` on
-   Windows). Plugin users instead use the [startup action](./DEPLOYMENT.md#herdr-plugin)
+1. Run the [one-line installer](./DEPLOYMENT.md#install-with-the-one-line-installer)
+   on the computer that should host your terminals. It installs Herdr and Thyra,
+   starts both as user services, and prints the address. A Herdr you already
+   run is kept. Plugin users instead use the [startup action](./DEPLOYMENT.md#herdr-plugin)
    and obtain the URL from its panel/log; the plugin does not add the CLI to PATH.
-3. Open the printed URL, including any token, **on the same computer**. Select
-   a workspace and idle shell; run `pwd` (`Get-Location` in PowerShell).
+2. Open the printed URL, including any token, **on the same computer**.
+3. Open a trusted project in a Herdr workspace, select an idle shell, and run
+   `pwd` (`Get-Location` in PowerShell).
 
 **You are done when:** terminal input shows your project directory.
 
-Standalone defaults to `127.0.0.1:8787`, which **bypasses login even with a
-password**. A new user/plugin service defaults to `0.0.0.0:8787` with a token.
+Standalone and the installer's service default to `127.0.0.1:8787`, which
+**bypasses login even with a password**. A service created by
+`thyra service install` or the plugin alone defaults to `0.0.0.0:8787` with a token.
 
 ![Desktop workspace with project navigation, terminals, and changed files](./images/thyra-desktop-changes.png)
 

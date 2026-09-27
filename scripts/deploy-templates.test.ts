@@ -14,9 +14,9 @@ test("launchd template executes the installed Thyra binary with Thyra identities
     new URL("../deploy/launchd/dev.thyra.plist", import.meta.url),
   ).text();
   const installer = await Bun.file(
-    new URL("./install-thyra.sh", import.meta.url),
+    new URL("./install.sh", import.meta.url),
   ).text();
-  expect(installer).toContain('target="$install_dir/thyra"');
+  expect(installer).toContain('install_file "$binary" "$bin_dir/thyra"');
   expect(installer).toContain("THYRA_INSTALL_DIR-$HOME/.local/bin");
   expect(plist).toContain('exec "$HOME/.local/bin/thyra"');
   expect(plist).toContain("<string>dev.thyra</string>");

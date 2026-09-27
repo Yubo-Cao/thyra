@@ -3,9 +3,15 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Allows the Publish Release workflow (or a maintainer) to dispatch a run
-  # on an existing tag ref.
+  # Publish Release dispatches this on an existing tag ref. A maintainer can
+  # also dispatch it on main with dry_run to build and smoke-test every
+  # archive and installer without publishing anything.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and test only; never publish
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,6 +19,10 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  # Published releases must install the Herdr fork Thyra is built against.
+  HERDR_PIN_REPOSITORY: Yubo-Cao/herdr
 
 jobs:
   validate:
@@ -30,16 +40,31 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Verify release metadata
         shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run == true }}
         run: |
           package_version="$(bun -e 'console.log(require("./package.json").version)')"
           web_version="$(bun -e 'console.log(require("./web/package.json").version)')"
           server_version="$(bun -e 'console.log(require("./server/package.json").version)')"
 
           [[ "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$GITHUB_REF_NAME" = "v$package_version"
           test "$web_version" = "$package_version"
           test "$server_version" = "$package_version"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if [ "$DRY_RUN" != true ]; then
+            test "$GITHUB_REF_NAME" = "v$package_version"
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          fi
+      - name: Verify the pinned Herdr release
+        shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          # Downloads every pinned Herdr asset and compares its SHA-256.
+          if [ "$DRY_RUN" = true ]; then
+            bun scripts/pin-herdr.ts check
+          else
+            bun scripts/pin-herdr.ts check --repository "$HERDR_PIN_REPOSITORY"
+          fi
       - run: bun run precommit
 
   package:
@@ -76,13 +101,17 @@ jobs:
       - name: Verify release package
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$(bun -e 'console.log(require("./package.json").version)')"
           platform="${{ matrix.platform }}"
           package_dir="thyra-$platform"
           versioned_archive="thyra-v$version-$platform.tar.xz"
           latest_archive="thyra-$platform.tar.xz"
+          archives=("$versioned_archive" "$latest_archive")
+          case "$platform" in
+            windows-*) archives+=("thyra-v$version-$platform.zip" "thyra-$platform.zip") ;;
+          esac
 
-          for archive in "$versioned_archive" "$latest_archive"; do
+          for archive in "${archives[@]}"; do
             test -f "dist/$archive"
             test -f "dist/$archive.sha256"
             if command -v sha256sum >/dev/null 2>&1; then
@@ -108,7 +137,13 @@ jobs:
           grep -Fx "thyra $version $platform" "$extract_dir/$package_dir/VERSION"
           binary_name="thyra"
           case "$platform" in
-            windows-*) binary_name="thyra.exe" ;;
+            windows-*)
+              binary_name="thyra.exe"
+              zip_dir="$RUNNER_TEMP/thyra-release-zip"
+              mkdir -p "$zip_dir"
+              unzip -q "dist/thyra-$platform.zip" -d "$zip_dir"
+              cmp "$zip_dir/$package_dir/thyra.exe" "$extract_dir/$package_dir/thyra.exe"
+              ;;
           esac
           binary="$extract_dir/$package_dir/$binary_name"
           case "$platform" in
@@ -140,13 +175,124 @@ jobs:
           name: thyra-${{ matrix.platform }}
           path: |
             dist/thyra-*.tar.xz*
+            dist/thyra-*.zip*
             dist/thyra-*.update.json
           if-no-files-found: error
           retention-days: 7
 
+  # Run the one-line installers on every platform against a loopback mirror
+  # of the packaged assets. Herdr comes from the pinned GitHub release.
+  installer-smoke:
+    name: Installer ${{ matrix.platform }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: darwin-x64
+            runner: macos-15-intel
+          - platform: darwin-arm64
+            runner: macos-15
+          - platform: windows-x64
+            runner: windows-latest
+          - platform: windows-arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      THYRA_INSTALL_BASE_URL: http://127.0.0.1:8765
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: mirror
+          pattern: thyra-*
+          merge-multiple: true
+      - name: Serve the release mirror on loopback
+        shell: bash
+        run: |
+          cp scripts/install.sh scripts/install.ps1 server/src/herdr/herdr-release.json mirror/
+          python="$(command -v python3 || command -v python)"
+          "$python" -m http.server 8765 --bind 127.0.0.1 --directory mirror >"$RUNNER_TEMP/mirror.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8765/install.sh && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Install, run, upgrade, and uninstall (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL "$THYRA_INSTALL_BASE_URL/install.sh" | sh -s -- --no-service
+          bin="$HOME/.local/bin"
+          "$bin/thyra" --version
+          "$bin/herdr" --version
+          "$bin/herdr" server >"$RUNNER_TEMP/herdr.log" 2>&1 &
+          herdr_pid=$!
+          "$bin/thyra" --port 8790 >"$RUNNER_TEMP/thyra.log" 2>&1 &
+          thyra_pid=$!
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8790/healthz && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8790/healthz
+          for _ in $(seq 1 15); do
+            "$bin/thyra" herdr status | tee "$RUNNER_TEMP/status.txt"
+            grep -q "protocol 22" "$RUNNER_TEMP/status.txt" && break
+            sleep 1
+          done
+          grep -q "protocol 22" "$RUNNER_TEMP/status.txt"
+          kill "$thyra_pid" "$herdr_pid"
+          sh mirror/install.sh --no-service | tee "$RUNNER_TEMP/upgrade.txt"
+          grep -q "already current" "$RUNNER_TEMP/upgrade.txt"
+          test -f "$bin/thyra.previous"
+          sh mirror/install.sh --uninstall --purge
+          test ! -e "$bin/thyra"
+          test ! -e "$bin/herdr"
+      - name: Install with user services (Linux and macOS, informational)
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sh mirror/install.sh --port 8791
+          curl -fsS http://127.0.0.1:8791/healthz
+          "$HOME/.local/bin/thyra" herdr status
+          sh mirror/install.sh --uninstall --purge
+      - name: Install, run, and uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:THYRA_NO_SERVICE = "1"
+          Invoke-RestMethod "$env:THYRA_INSTALL_BASE_URL/install.ps1" | Invoke-Expression
+          $thyra = Join-Path $env:LOCALAPPDATA "Programs\Thyra\thyra.exe"
+          & $thyra --version
+          if ($LASTEXITCODE -ne 0) { throw "thyra --version failed" }
+          $herdr = Get-ChildItem (Join-Path $env:APPDATA "thyra\herdr") -Recurse -Filter herdr.exe | Select-Object -First 1
+          & $herdr.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "herdr --version failed" }
+          $server = Start-Process -FilePath $thyra -ArgumentList "--port", "8790" -PassThru -WindowStyle Hidden
+          $healthy = $false
+          for ($i = 0; $i -lt 30 -and -not $healthy; $i++) {
+            try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8790/healthz | Out-Null; $healthy = $true } catch { Start-Sleep 1 }
+          }
+          Stop-Process -Id $server.Id
+          if (-not $healthy) { throw "Thyra did not answer /healthz" }
+          & ([scriptblock]::Create((Get-Content mirror\install.ps1 -Raw))) -NoService -Uninstall -Purge
+          if (Test-Path $thyra) { throw "uninstall left thyra.exe behind" }
+
   publish:
     name: Publish GitHub Release
-    needs: package
+    needs: [package, installer-smoke]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -159,6 +305,8 @@ jobs:
           path: dist
           pattern: thyra-*
           merge-multiple: true
+      - name: Add installers and the Herdr pin
+        run: cp scripts/install.sh scripts/install.ps1 server/src/herdr/herdr-release.json dist/
       - name: Reject missing or unexpected release assets
         run: node scripts/check-release-assets.mjs "${GITHUB_REF_NAME#v}"
       - name: Create GitHub release
@@ -166,10 +314,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME"
-          dist/thyra-*.tar.xz
-          dist/thyra-*.tar.xz.sha256
-          dist/thyra-*.update.json
-          scripts/install-thyra.sh
+          dist/*
           --verify-tag
           --latest
           --generate-notes

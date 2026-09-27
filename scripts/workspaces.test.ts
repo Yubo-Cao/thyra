@@ -75,6 +75,7 @@ test("CI keeps the complete non-browser validation gate", () => {
     "bun install --frozen-lockfile",
     "bun run format:check",
     "bun run lint",
+    "shellcheck -s sh scripts/install.sh",
     "bun run typecheck",
     "bun run build:site",
     "bun run test:quick",
@@ -98,7 +99,9 @@ test("CI and release jobs install once from the workspace root", () => {
         step.run?.includes("bun install"),
       );
       expect(installs).toEqual(
-        name === "publish" ? [] : [{ run: "bun install --frozen-lockfile" }],
+        name === "publish" || name === "installer-smoke"
+          ? []
+          : [{ run: "bun install --frozen-lockfile" }],
       );
     }
   }

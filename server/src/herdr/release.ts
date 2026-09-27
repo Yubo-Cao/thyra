@@ -2,17 +2,21 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import pinnedRelease from "./herdr-release.json";
 
 /**
- * Thyra only installs this exact Herdr build. The SHA-256 values were
- * recorded from https://herdr.dev/latest.json when this version was verified,
- * so a replaced or tampered release asset fails verification instead of
- * installing. Bump the version and checksums together after verifying a new
- * Herdr release against Thyra's supported protocol range
+ * Thyra only installs this exact Herdr build. `herdr-release.json` is the one
+ * pin shared with the release installers, which download it as the
+ * `herdr-release.json` release asset. `bun scripts/pin-herdr.ts` records the
+ * SHA-256 values from the pinned GitHub release, so a replaced or tampered
+ * asset fails verification instead of installing. Re-pin only after verifying
+ * a new Herdr build against Thyra's supported protocol range
  * (server/src/bridge/protocol-compat.ts).
  */
-export const VERIFIED_HERDR_VERSION = "0.9.0";
-export const VERIFIED_HERDR_PROTOCOL = 22;
+export const VERIFIED_HERDR_REPOSITORY: string = pinnedRelease.repository;
+export const VERIFIED_HERDR_TAG: string = pinnedRelease.tag;
+export const VERIFIED_HERDR_VERSION: string = pinnedRelease.version;
+export const VERIFIED_HERDR_PROTOCOL: number = pinnedRelease.protocol;
 
 export type HerdrReleaseTarget =
   | "linux-x86_64"
@@ -21,18 +25,8 @@ export type HerdrReleaseTarget =
   | "macos-aarch64"
   | "windows-x86_64";
 
-export const VERIFIED_HERDR_SHA256: Record<HerdrReleaseTarget, string> = {
-  "linux-x86_64":
-    "4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f",
-  "linux-aarch64":
-    "9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e2594029115f0d2",
-  "macos-x86_64":
-    "d0c920b2a126a74809fa1491411c9a097a44786cac9c2ca51b818a995581cf16",
-  "macos-aarch64":
-    "32b53df09872628059c789a69f02a6b8e29e14ddf26711421f3463f70c1aef17",
-  "windows-x86_64":
-    "b4508c445de1c1a68c760a01735da2aba2fa214b2aafd4b07f732e49b2a64b11",
-};
+export const VERIFIED_HERDR_SHA256: Record<HerdrReleaseTarget, string> =
+  pinnedRelease.sha256;
 
 export function resolveHerdrReleaseTarget(
   platform: string,
@@ -48,6 +42,9 @@ export function resolveHerdrReleaseTarget(
           : null;
   const cpu = arch === "x64" ? "x86_64" : arch === "arm64" ? "aarch64" : null;
   if (!os || !cpu) return null;
+  // Herdr publishes no native Windows ARM64 build; like Herdr's own
+  // installer, run the x86_64 build under Windows emulation.
+  if (os === "windows") return "windows-x86_64";
   const candidate = `${os}-${cpu}` as HerdrReleaseTarget;
   return candidate in VERIFIED_HERDR_SHA256 ? candidate : null;
 }
@@ -60,9 +57,10 @@ export function herdrReleaseAssetName(target: HerdrReleaseTarget): string {
 
 export function herdrReleaseUrl(
   target: HerdrReleaseTarget,
-  version: string = VERIFIED_HERDR_VERSION,
+  tag: string = VERIFIED_HERDR_TAG,
+  repository: string = VERIFIED_HERDR_REPOSITORY,
 ): string {
-  return `https://github.com/herdrdev/herdr/releases/download/v${version}/${herdrReleaseAssetName(target)}`;
+  return `https://github.com/${repository}/releases/download/${tag}/${herdrReleaseAssetName(target)}`;
 }
 
 export function herdrInstallRoot(
@@ -89,11 +87,12 @@ export function herdrManagedBinaryPath(
   homeDir: string,
   appDataDir?: string,
   platform: string = process.platform,
-  version: string = VERIFIED_HERDR_VERSION,
+  tag: string = VERIFIED_HERDR_TAG,
 ): string {
   const base = herdrInstallRoot(homeDir, appDataDir, platform);
   if (platform !== "win32") return join(base, "herdr");
-  return join(base, version, "herdr.exe");
+  // Keyed by release tag because a rebuilt fork can reuse a Herdr version.
+  return join(base, tag, "herdr.exe");
 }
 
 export interface InstallHerdrDeps {
@@ -150,9 +149,7 @@ export async function installVerifiedHerdr(
   const download = deps.download ?? defaultDownload;
   const installRoot = herdrInstallRoot(homeDir, appDataDir, platform);
   const installDir =
-    platform === "win32"
-      ? join(installRoot, VERIFIED_HERDR_VERSION)
-      : installRoot;
+    platform === "win32" ? join(installRoot, VERIFIED_HERDR_TAG) : installRoot;
   mkdirSync(installRoot, { recursive: true });
   // Stage inside the install root so final renames stay on one filesystem.
   const staging = join(installRoot, `.staging-${process.pid}`);

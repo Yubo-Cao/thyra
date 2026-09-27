@@ -9,15 +9,25 @@ import {
 describe("Thyra release boundary", () => {
   const names = releaseAssetNames("0.7.0");
 
-  test("publishes exactly six Thyra targets and no extra assets", () => {
-    expect(names).toHaveLength(30);
+  test("publishes exactly six Thyra targets, installers, and the Herdr pin", () => {
+    expect(names).toHaveLength(41);
     expect(names).toContain("thyra-linux-x64.update.json");
     expect(names).toContain("thyra-v0.7.0-windows-arm64.tar.xz.sha256");
+    expect(names).toContain("thyra-windows-x64.zip.sha256");
+    expect(names).not.toContain("thyra-linux-x64.zip");
+    for (const installerAsset of [
+      "install.sh",
+      "install.ps1",
+      "herdr-release.json",
+    ]) {
+      expect(names).toContain(installerAsset);
+    }
     expect(() => verifyReleaseAssetNames(names, "0.7.0")).not.toThrow();
     for (const extra of [
       "thyra-freebsd-x64.tar.xz",
       "thyra-linux-x64.tar.gz",
       "install-thyra.sh",
+      "thyra-darwin-arm64.zip",
     ]) {
       expect(() => verifyReleaseAssetNames([...names, extra], "0.7.0")).toThrow(
         "unexpected",
@@ -44,7 +54,9 @@ describe("Thyra release boundary", () => {
     expect(publish).toContain(
       'node scripts/check-release-assets.mjs "${GITHUB_REF_NAME#v}"',
     );
-    expect(publish).toContain("scripts/install-thyra.sh");
+    expect(publish).toContain("scripts/install.sh");
+    expect(publish).toContain("scripts/install.ps1");
+    expect(publish).toContain("server/src/herdr/herdr-release.json");
     expect(publish).toContain("--latest");
   });
 });

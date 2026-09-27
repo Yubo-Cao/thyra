@@ -50,6 +50,10 @@ latest_archive="$root_dir/dist/thyra-$platform.tar.xz"
 versioned_checksum="$versioned_archive.sha256"
 latest_checksum="$latest_archive.sha256"
 update_manifest="$root_dir/dist/thyra-$platform.update.json"
+# Windows also gets zip archives: Expand-Archive works on every supported
+# Windows release, while xz support in the inbox tar.exe varies.
+versioned_zip="$root_dir/dist/thyra-v$version-$platform.zip"
+latest_zip="$root_dir/dist/thyra-$platform.zip"
 
 cd "$root_dir"
 bun run "$build_script"
@@ -79,7 +83,11 @@ rm -f \
   "$latest_archive" \
   "$versioned_checksum" \
   "$latest_checksum" \
-  "$update_manifest"
+  "$update_manifest" \
+  "$versioned_zip" \
+  "$latest_zip" \
+  "$versioned_zip.sha256" \
+  "$latest_zip.sha256"
 
 # Avoid macOS extended headers without passing bsdtar-only flags on Linux.
 tar_options=()
@@ -117,6 +125,21 @@ printf '%s  %s\n' \
 printf '%s\n' \
   "{\"schema\":1,\"name\":\"thyra\",\"version\":\"$version\",\"platform\":\"$platform\",\"archive\":\"$(basename "$latest_archive")\",\"sha256\":\"$archive_digest\"}" \
   > "$update_manifest"
+
+case "$platform" in
+  windows-*)
+    command -v zip >/dev/null 2>&1 || {
+      echo "zip is required to package $platform" >&2
+      exit 1
+    }
+    (cd "$root_dir/dist" && zip -q -r -X "$versioned_zip" "$package_dir_name")
+    cp "$versioned_zip" "$latest_zip"
+    zip_digest="$(digest_for "$versioned_zip")"
+    printf '%s  %s\n' "$zip_digest" "$(basename "$versioned_zip")" > "$versioned_zip.sha256"
+    printf '%s  %s\n' "$zip_digest" "$(basename "$latest_zip")" > "$latest_zip.sha256"
+    cat "$versioned_zip.sha256" "$latest_zip.sha256"
+    ;;
+esac
 
 cat "$versioned_checksum" "$latest_checksum" "$update_manifest"
 ls -lh \

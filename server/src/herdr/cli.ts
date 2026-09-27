@@ -7,7 +7,7 @@ import {
   type HerdrSetupState,
   setupHerdr,
 } from "./bootstrap";
-import { herdrServiceStatus } from "./service";
+import { herdrServiceStatus, uninstallHerdrService } from "./service";
 import { VERIFIED_HERDR_VERSION } from "./release";
 
 function herdrHelp(): string {
@@ -16,12 +16,15 @@ function herdrHelp(): string {
 Usage:
   thyra herdr setup
   thyra herdr status
+  thyra herdr uninstall
 
 Setup installs the Thyra-verified Herdr ${VERIFIED_HERDR_VERSION} release
 when no herdr binary is found, then installs and starts a user service running
 \`herdr server\` (systemd user service on Linux, launchd LaunchAgent on macOS,
 per-user Task Scheduler task on Windows). An existing herdr binary is used as
-is and never replaced. Status prints the detected state.
+is and never replaced. Status prints the detected state. Uninstall stops and
+removes only the service that setup created, which ends that server's panes;
+it keeps the Herdr binary and Herdr's own data.
 `;
 }
 
@@ -30,6 +33,7 @@ export interface HerdrCommandDeps {
   detect?: () => Promise<HerdrSetupState>;
   setup?: () => Promise<HerdrSetupResult>;
   serviceStatus?: () => { installed: boolean; active: boolean };
+  uninstallService?: () => { removed: boolean; definition: string };
   log?: (message: string) => void;
   error?: (message: string) => void;
 }
@@ -63,6 +67,20 @@ export async function runHerdrCommand(
   ) {
     log(herdrHelp());
     return 0;
+  }
+  if (action === "uninstall") {
+    try {
+      const result = (dependencies.uninstallService ?? uninstallHerdrService)();
+      log(
+        result.removed
+          ? `Removed the Thyra-managed Herdr service: ${result.definition}`
+          : `No Thyra-managed Herdr service found: ${result.definition}`,
+      );
+      return 0;
+    } catch (cause) {
+      error(`thyra herdr: ${(cause as Error).message}`);
+      return 1;
+    }
   }
   if (action !== "setup" && action !== "status") {
     error(`unknown herdr action: ${action}`);

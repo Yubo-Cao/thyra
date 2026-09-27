@@ -131,7 +131,7 @@ const copyButton = document.querySelector("[data-copy-command]");
 const copyLabel = copyButton?.querySelector("span");
 const installCommand = document.querySelector("[data-install-command]");
 const commandText =
-  "curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh | sh";
+  "curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install.sh | sh";
 
 const copyText = async (text) => {
   if (!navigator.clipboard || !window.isSecureContext) {

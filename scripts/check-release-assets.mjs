@@ -13,14 +13,32 @@ export function releaseAssetNames(version) {
     "linux-x64",
     "windows-arm64",
     "windows-x64",
-  ].flatMap((platform) => [
-    `thyra-v${version}-${platform}.tar.xz`,
-    `thyra-v${version}-${platform}.tar.xz.sha256`,
-    `thyra-${platform}.tar.xz`,
-    `thyra-${platform}.tar.xz.sha256`,
-    `thyra-${platform}.update.json`,
-  ]);
+  ]
+    .flatMap((platform) => [
+      `thyra-v${version}-${platform}.tar.xz`,
+      `thyra-v${version}-${platform}.tar.xz.sha256`,
+      `thyra-${platform}.tar.xz`,
+      `thyra-${platform}.tar.xz.sha256`,
+      `thyra-${platform}.update.json`,
+      // Windows installs from zip archives (see scripts/install.ps1).
+      ...(platform.startsWith("windows-")
+        ? [
+            `thyra-v${version}-${platform}.zip`,
+            `thyra-v${version}-${platform}.zip.sha256`,
+            `thyra-${platform}.zip`,
+            `thyra-${platform}.zip.sha256`,
+          ]
+        : []),
+    ])
+    .concat(RELEASE_INSTALLER_ASSETS);
 }
+
+/** Version-independent assets that the one-line installers download. */
+export const RELEASE_INSTALLER_ASSETS = [
+  "install.sh",
+  "install.ps1",
+  "herdr-release.json",
+];
 
 /** A release publishes exactly the expected Thyra assets and nothing else. */
 export function verifyReleaseAssetNames(names, version) {
