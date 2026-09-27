@@ -871,6 +871,20 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       ui.retryAttach();
       return;
     }
+    // Herdr renumbered the pane's terminal (live handoff) or dropped it:
+    // follow the pane rather than re-attach an id Herdr no longer knows.
+    if (
+      closed.reason === "terminal_replaced" ||
+      closed.reason === "terminal_gone"
+    ) {
+      const replacement = closed.replacement_terminal_id ?? null;
+      store.remapTerminal(client, closed.terminal_id, replacement);
+      if (!replacement) {
+        ui.setTerminalLoading(false);
+        ui.setTerminalAttachError(t("This terminal is no longer in Herdr."));
+      }
+      return;
+    }
     const now = Date.now();
     attachEvictions.current = attachEvictions.current.filter(
       (at) => now - at < TERMINAL_EVICTION_WINDOW_MS,

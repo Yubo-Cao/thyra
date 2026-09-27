@@ -40,7 +40,10 @@ import {
   type SshTunnelError,
 } from "../bridge/ssh-tunnel";
 import { dropCoalescedMessage } from "../bridge/websocket-send";
-import { createTerminalBridge } from "../bridge/terminal-bridge";
+import {
+  createTerminalBridge,
+  type PaneTerminal,
+} from "../bridge/terminal-bridge";
 import { createHerdrInfoHandler } from "../http/herdr-info";
 import { createImageUploadHandler } from "../http/image-upload";
 import {
@@ -375,6 +378,24 @@ export function createLegacyConnectionRuntime(args: {
     safeSend: args.safeSend,
     markRpcError: args.markRpcError,
   });
+  /** Every pane's current terminal; rejects while Herdr is unreachable. */
+  async function listPaneTerminals(): Promise<PaneTerminal[]> {
+    const result = await herdr.call("pane.list", {}, 5000);
+    const panes = (result as { panes?: unknown } | null)?.panes;
+    if (!Array.isArray(panes)) throw new Error("invalid pane.list result");
+    return panes.flatMap((pane): PaneTerminal[] => {
+      const record = (pane ?? {}) as {
+        pane_id?: unknown;
+        terminal_id?: unknown;
+      };
+      return typeof record.pane_id === "string" &&
+        record.pane_id.length > 0 &&
+        typeof record.terminal_id === "string" &&
+        record.terminal_id.length > 0
+        ? [{ paneId: record.pane_id, terminalId: record.terminal_id }]
+        : [];
+    });
+  }
   const terminalBridge = createTerminalBridge({
     connectionId: identity.id,
     broadcast: args.broadcast,
@@ -409,28 +430,12 @@ export function createLegacyConnectionRuntime(args: {
         )?.workspace_id ?? null
       );
     },
-    lookupPaneId: async (terminalId) => {
-      try {
-        const result = await herdr.call("pane.list", {}, 5000);
-        const panes = (result as { panes?: unknown } | null)?.panes;
-        if (!Array.isArray(panes)) return null;
-        for (const pane of panes) {
-          if (!pane || typeof pane !== "object" || Array.isArray(pane))
-            continue;
-          const record = pane as { pane_id?: unknown; terminal_id?: unknown };
-          if (
-            record.terminal_id === terminalId &&
-            typeof record.pane_id === "string" &&
-            record.pane_id.length > 0
-          ) {
-            return record.pane_id;
-          }
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    },
+    // Herdr errors surface as the attach error; "no pane found" then means
+    // Herdr really has no such terminal (e.g. renumbered by a live handoff).
+    lookupPaneId: async (terminalId) =>
+      (await listPaneTerminals()).find((pane) => pane.terminalId === terminalId)
+        ?.paneId ?? null,
+    listPaneTerminals,
     safeSend: args.safeSend,
     dropCoalesced: dropCoalescedMessage,
     clientLabel: args.clientLabel,
@@ -618,7 +623,13 @@ export function createLegacyConnectionRuntime(args: {
       args.onEvent({ event: "session.resync_required", data: {} }, identity);
       if (!eventSubscriptionRecovery.recovered({ connection: identity.id })) {
         logger.info("subscribed to Herdr events", { connection: identity.id });
+        return;
       }
+      // The subscription drops when Herdr restarts or hands off to a new
+      // server, which keeps pane ids but renumbers terminals. Move viewers
+      // to their pane's new terminal and forget cached locations.
+      topology.invalidate();
+      void terminalBridge.reconcileTerminals("event subscription recovered");
     },
     onSubscribeError: (error) =>
       eventSubscriptionRecovery.failure(sanitizeConnectionError(error), {

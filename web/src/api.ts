@@ -272,7 +272,13 @@ export interface TerminalClosedPush {
   connection_id: string;
   connection_generation?: number;
   terminal_id: string;
+  /**
+   * `terminal_replaced`: Herdr gave the pane a new terminal (live handoff);
+   * `terminal_gone`: Herdr no longer has it. Otherwise the stream just ended.
+   */
   reason?: string;
+  pane_id?: string;
+  replacement_terminal_id?: string;
 }
 
 export interface BridgeControlMsg {

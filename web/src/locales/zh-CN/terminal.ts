@@ -22,6 +22,7 @@ export default {
   "Terminal stream was taken over by another Thyra client":
     "终端流已被另一个 Thyra 客户端接管",
   "Terminal stream closed by the server": "服务器关闭了终端流",
+  "This terminal is no longer in Herdr.": "Herdr 中已没有此终端。",
   "browser clipboard API is unavailable": "浏览器剪贴板 API 不可用",
   "Clipboard read timed out": "读取剪贴板超时",
   "Clipboard image read timed out": "读取剪贴板图片超时",

@@ -90,6 +90,12 @@ connection-wide endpoint observer follows the focused Space to report popup
 identity even without pane viewers; the popup terminal uses direct attach.
 Kitty graphics are not presented.
 
+A Herdr restart or live handoff keeps pane ids but gives every pane a new terminal id, and drops every endpoint stream.
+When a stream closes under live viewers, the bridge looks its pane up in `pane.list` (retrying for about 8 seconds while Herdr is unreachable) and sends `terminal_closed` with `reason: "terminal_replaced"`, `pane_id` and `replacement_terminal_id`, or `reason: "terminal_gone"`; a takeover or dropped socket keeps the plain reason and the browser re-attaches the same id.
+The browser moves the pane to its new terminal at once, attaches it and refreshes its snapshot, and never re-attaches a replaced id.
+An attach that the endpoint refuses as an unknown terminal is resolved the same way, and for 10 minutes an attach of a retired id is answered from memory without opening an endpoint.
+When the event subscription recovers, the bridge re-resolves every terminal a viewer holds, forgets cached protocol and authorization locations, and browsers refresh.
+
 `settings.terminal_transport.get/update` persists `surface_codecs` per connection
 in `settings.json`. Changes close that runtime's endpoint displays and broadcast
 `settings.terminal_transport.updated`; viewers reattach with fresh baselines.

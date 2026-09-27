@@ -29,7 +29,11 @@ import {
   useStoreSelector,
 } from "./core";
 import { taskNotificationTargetIsCurrent } from "./notifications";
-import { refreshNow, stampPendingFocusWorkspace } from "./refresh";
+import {
+  refreshNow,
+  scheduleRefresh,
+  stampPendingFocusWorkspace,
+} from "./refresh";
 
 const navigationListeners = new Set<() => void>();
 let programmaticNavigation = 0;
@@ -267,6 +271,27 @@ export const navigationActions = {
         [terminalId]: parseEndpointAdvertisement(advertisement),
       },
     });
+  },
+
+  /**
+   * Herdr gave a pane a new terminal (live handoff) or dropped it: follow the
+   * pane to its replacement now, and re-read the whole mapping.
+   */
+  remapTerminal(
+    client: ConnectionClient,
+    terminalId: string,
+    replacement: string | null,
+  ) {
+    if (!client.isCurrent()) return;
+    if (replacement && state.panes.some((p) => p.terminal_id === terminalId))
+      set({
+        panes: state.panes.map((pane) =>
+          pane.terminal_id === terminalId
+            ? { ...pane, terminal_id: replacement }
+            : pane,
+        ),
+      });
+    scheduleRefresh();
   },
 
   terminalScrollReason(terminalId: string, mouseReporting = false) {

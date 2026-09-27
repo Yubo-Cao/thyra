@@ -926,6 +926,26 @@ describe("stabilizeRefreshPatch", () => {
     ).toBeNull();
   });
 
+  test("a replaced terminal follows its pane before the refresh lands", async () => {
+    const snapshot = partitionState();
+    const client = {
+      connectionId: "alpha",
+      generation: 10,
+      isCurrent: () => true,
+    } as ConnectionClient;
+    try {
+      __storeTesting.replaceState(snapshot);
+      store.remapTerminal(client, "other-terminal", "ignored");
+      expect(store.get().panes).toBe(snapshot.panes);
+      store.remapTerminal(client, "same-terminal", "term_new");
+      expect(store.get().panes.map((p) => [p.pane_id, p.terminal_id])).toEqual([
+        ["same-pane", "term_new"],
+      ]);
+    } finally {
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
   test("keeps the store silent when an idle refresh changes nothing", async () => {
     const originalConnection = bridge.connection;
     const snapshot = partitionState();

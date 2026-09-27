@@ -4535,3 +4535,197 @@ test("optional link lookup timeout does not block scroll or disconnect the termi
     session.close();
   }
 });
+
+describe("Herdr live handoff", () => {
+  // A live handoff keeps pane ids but gives every pane a new terminal id,
+  // and drops every endpoint connection of the old server.
+  async function handoffFixture() {
+    const disconnects: Array<() => void> = [];
+    let connections = 0;
+    const socketPath = await startSessionServer({
+      onConnection: () => {
+        connections += 1;
+      },
+      onDisconnectConnection: (disconnect) => disconnects.push(disconnect),
+    });
+    const herdr = {
+      panes: [{ paneId: "w1:p1", terminalId: "term_old" }],
+      reachable: true,
+    };
+    const messages: any[] = [];
+    const events = new EventEmitter();
+    const viewer = {} as ServerWebSocket<unknown>;
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      herdrProtocol: async () => 22,
+      lookupPaneId: async (terminalId) =>
+        herdr.panes.find((pane) => pane.terminalId === terminalId)?.paneId ??
+        null,
+      listPaneTerminals: async () => {
+        if (!herdr.reachable) throw new Error("ECONNREFUSED: herdr.sock");
+        return herdr.panes;
+      },
+      recoveryDelaysMs: [0, 5, 5],
+      safeSend(_ws, payload) {
+        const message = JSON.parse(payload);
+        messages.push(message);
+        if (message.terminal) events.emit("frame", message.terminal);
+        if (message.terminal_closed)
+          events.emit("closed", message.terminal_closed);
+        return true;
+      },
+      clientLabel: () => "test",
+      markRpcError() {},
+    });
+    const attach = async (terminalId: string) => {
+      const id = crypto.randomUUID();
+      await bridge.handleTerminalRpc(viewer, id, "terminal.attach", {
+        terminal_id: terminalId,
+        cols: 8,
+        rows: 3,
+        relay_active: false,
+      });
+      const reply = messages.find((message) => message.id === id);
+      if (reply?.error) throw new Error(reply.error.message);
+      return reply?.result;
+    };
+    const nextFrame = (terminalId: string) =>
+      new Promise<void>((resolve) => {
+        const onFrame = (frame: { terminal_id: string }) => {
+          if (frame.terminal_id !== terminalId) return;
+          events.off("frame", onFrame);
+          resolve();
+        };
+        events.on("frame", onFrame);
+      });
+    const handoff = (panes: typeof herdr.panes) => {
+      herdr.panes = panes;
+      for (const disconnect of disconnects.splice(0)) disconnect();
+    };
+    const closed = () => messages.filter((message) => message.terminal_closed);
+    return {
+      bridge,
+      herdr,
+      viewer,
+      events,
+      attach,
+      nextFrame,
+      handoff,
+      closed,
+      connections: () => connections,
+    };
+  }
+
+  test("viewers follow their pane to its new terminal and stop retrying the old id", async () => {
+    const f = await handoffFixture();
+    try {
+      const first = f.nextFrame("term_old");
+      await f.attach("term_old");
+      await first;
+
+      const replaced = once(f.events, "closed");
+      f.handoff([{ paneId: "w1:p1", terminalId: "term_new" }]);
+      expect((await replaced)[0]).toEqual({
+        terminal_id: "term_old",
+        reason: "terminal_replaced",
+        pane_id: "w1:p1",
+        replacement_terminal_id: "term_new",
+      });
+      // No plain "stream closed" that would make the viewer retry term_old.
+      expect(f.closed()).toHaveLength(1);
+      expect(f.bridge.viewedTerminals(f.viewer)).toEqual([]);
+
+      // The browser attaches the replacement and frames resume.
+      const resumed = f.nextFrame("term_new");
+      await f.attach("term_new");
+      await resumed;
+
+      // A stale retry of the old id is answered without a Herdr connection.
+      const before = f.connections();
+      await expect(f.attach("term_old")).rejects.toThrow(
+        "terminal term_old is no longer in Herdr",
+      );
+      expect(f.connections()).toBe(before);
+      expect(f.closed().at(-1).terminal_closed).toMatchObject({
+        terminal_id: "term_old",
+        replacement_terminal_id: "term_new",
+      });
+      expect(f.bridge.statusTerminals()).toEqual([
+        { terminal_id: "term_new", viewers: 1 },
+      ]);
+    } finally {
+      f.bridge.dispose();
+    }
+  });
+
+  test("a stream closed while Herdr is unreachable retries a bounded time, then the attach learns the replacement", async () => {
+    const f = await handoffFixture();
+    try {
+      const first = f.nextFrame("term_old");
+      await f.attach("term_old");
+      await first;
+
+      f.herdr.reachable = false;
+      const closed = once(f.events, "closed");
+      f.handoff([{ paneId: "w1:p1", terminalId: "term_new" }]);
+      expect((await closed)[0]).toMatchObject({
+        terminal_id: "term_old",
+        reason: "stream_closed",
+      });
+
+      // The viewer re-attaches the old id once the new server answers.
+      f.herdr.reachable = true;
+      const replaced = once(f.events, "closed");
+      await expect(f.attach("term_old")).rejects.toThrow(
+        "no pane found for terminal term_old",
+      );
+      expect((await replaced)[0]).toMatchObject({
+        reason: "terminal_replaced",
+        replacement_terminal_id: "term_new",
+      });
+      const before = f.connections();
+      await expect(f.attach("term_old")).rejects.toThrow("no longer in Herdr");
+      expect(f.connections()).toBe(before);
+    } finally {
+      f.bridge.dispose();
+    }
+  });
+
+  test("reconciliation after the event subscription recovers moves or ends every held terminal", async () => {
+    const f = await handoffFixture();
+    try {
+      f.herdr.panes = [
+        { paneId: "w1:p1", terminalId: "term_old" },
+        { paneId: "w1:p2", terminalId: "term_two" },
+      ];
+      const first = f.nextFrame("term_old");
+      await f.attach("term_old");
+      await first;
+      f.herdr.panes = [{ paneId: "w1:p1", terminalId: "term_new" }];
+      await f.bridge.reconcileTerminals("test");
+      expect(f.closed().map((message) => message.terminal_closed)).toEqual([
+        {
+          terminal_id: "term_old",
+          reason: "terminal_replaced",
+          pane_id: "w1:p1",
+          replacement_terminal_id: "term_new",
+        },
+      ]);
+      expect(f.bridge.statusTerminals()).toEqual([]);
+
+      // A pane that closed meanwhile: its viewers learn it is gone.
+      const resumed = f.nextFrame("term_new");
+      await f.attach("term_new");
+      await resumed;
+      f.herdr.panes = [{ paneId: "w1:p9", terminalId: "term_other" }];
+      await f.bridge.reconcileTerminals("test");
+      expect(f.closed().at(-1).terminal_closed).toEqual({
+        terminal_id: "term_new",
+        reason: "terminal_gone",
+        pane_id: "w1:p1",
+      });
+    } finally {
+      f.bridge.dispose();
+    }
+  });
+});

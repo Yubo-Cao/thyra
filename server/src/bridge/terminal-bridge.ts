@@ -55,6 +55,29 @@ type SharedTerminalSession = {
   lastFrameLogAt: number;
   /** Last error Herdr reported on the stream, e.g. a takeover notice. */
   lastError: string | null;
+  /** Viewers were already told this terminal is replaced or gone. */
+  retired: boolean;
+};
+
+/** A pane's terminal as Herdr lists it now. */
+export type PaneTerminal = { paneId: string; terminalId: string };
+
+/**
+ * What became of a terminal a viewer holds. A live handoff to a new Herdr
+ * server keeps pane ids but gives every pane a new terminal id.
+ */
+type TerminalFate =
+  | { kind: "live" }
+  | { kind: "replaced"; paneId: string; terminalId: string }
+  | { kind: "gone"; paneId: string | null }
+  | { kind: "unknown" };
+
+type RetiredFate = Extract<TerminalFate, { kind: "replaced" | "gone" }>;
+
+type RetiredTerminal = {
+  paneId: string | null;
+  replacement: string | null;
+  at: number;
 };
 
 /**
@@ -74,6 +97,14 @@ type ClipboardTarget = {
 const CLIPBOARD_INPUT_WINDOW_MS = 30_000;
 const CLIPBOARD_RELAY_READY_WAIT_MS = 500;
 const TERMINAL_FIRST_FRAME_WAIT_MS = 20_000;
+// How long an attach to a replaced or vanished terminal is answered from
+// memory instead of opening another endpoint connection for it.
+const RETIRED_TERMINAL_TTL_MS = 10 * 60_000;
+const RETIRED_TERMINAL_LIMIT = 512;
+// While Herdr is unreachable (a handoff in progress), a closed stream waits
+// this long in total for its pane's terminal to resolve before viewers retry.
+const TERMINAL_RECOVERY_DELAYS_MS = [0, 250, 500, 1_000, 2_000, 4_000];
+const UNKNOWN_TERMINAL_ERROR = /^no pane found for terminal /;
 const STANDARD_BASE64_RE =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
@@ -124,6 +155,13 @@ export function createTerminalBridge(args: {
   herdrProtocol: () => Promise<number>;
   /** Resolve a terminal id to its owning pane id (control-socket pane.list). */
   lookupPaneId?: (terminalId: string) => Promise<string | null>;
+  /**
+   * Every pane's current terminal (control-socket pane.list); rejects while
+   * Herdr is unreachable. Used to follow panes across a live handoff.
+   */
+  listPaneTerminals?: () => Promise<PaneTerminal[]>;
+  /** Test seam: waits between pane lookups while Herdr is unreachable. */
+  recoveryDelaysMs?: readonly number[];
   /** Popup surfaces follow this connection's focused Space, not the shell default. */
   focusedWorkspaceId?: () => Promise<string | null>;
   surfaceCodecsEnabled?: () => Promise<boolean>;
@@ -183,6 +221,9 @@ export function createTerminalBridge(args: {
     { cols: number; rows: number; surface?: { cols: number; rows: number } }
   >();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
+  // Terminals Herdr no longer has (live handoff, closed pane), so viewers that
+  // still ask for them learn the replacement instead of retrying forever.
+  const retiredTerminals = new Map<string, RetiredTerminal>();
   // The browser's terminal colors, reported to Herdr as the host theme.
   let hostTheme: EndpointHostTheme | null = null;
   // Viewers that attached with `frame_delta` get endpoint frames as row updates.
@@ -260,6 +301,229 @@ export function createTerminalBridge(args: {
 
   function isCurrent(revision: number) {
     return !disposed && lifecycleRevision === revision;
+  }
+
+  function paneOfTerminal(terminalId: string): string | null {
+    const shared = sharedTerminals.get(terminalId);
+    if (
+      shared?.thin instanceof EndpointTerminalSession &&
+      shared.thin.currentPaneId
+    )
+      return shared.thin.currentPaneId;
+    return knownPanes.get(terminalId) ?? null;
+  }
+
+  function fateFromList(
+    terminalId: string,
+    paneId: string | null,
+    panes: PaneTerminal[],
+  ): TerminalFate {
+    if (panes.some((pane) => pane.terminalId === terminalId))
+      return { kind: "live" };
+    const current = paneId
+      ? panes.find((pane) => pane.paneId === paneId)
+      : undefined;
+    return current
+      ? {
+          kind: "replaced",
+          paneId: current.paneId,
+          terminalId: current.terminalId,
+        }
+      : { kind: "gone", paneId };
+  }
+
+  async function resolveTerminalFate(
+    terminalId: string,
+    paneId: string | null,
+  ): Promise<TerminalFate> {
+    if (!args.listPaneTerminals) return { kind: "unknown" };
+    try {
+      return fateFromList(terminalId, paneId, await args.listPaneTerminals());
+    } catch {
+      return { kind: "unknown" };
+    }
+  }
+
+  function retiredFate(terminalId: string): RetiredFate | null {
+    const retired = retiredTerminals.get(terminalId);
+    if (!retired) return null;
+    if (Date.now() - retired.at > RETIRED_TERMINAL_TTL_MS) {
+      retiredTerminals.delete(terminalId);
+      return null;
+    }
+    return retired.replacement && retired.paneId
+      ? {
+          kind: "replaced",
+          paneId: retired.paneId,
+          terminalId: retired.replacement,
+        }
+      : { kind: "gone", paneId: retired.paneId };
+  }
+
+  /** Remember a replaced or vanished terminal and move its pane facts. */
+  function retireTerminal(terminalId: string, fate: RetiredFate) {
+    retiredTerminals.delete(terminalId);
+    retiredTerminals.set(terminalId, {
+      paneId: fate.paneId,
+      replacement: fate.kind === "replaced" ? fate.terminalId : null,
+      at: Date.now(),
+    });
+    while (retiredTerminals.size > RETIRED_TERMINAL_LIMIT) {
+      const oldest = retiredTerminals.keys().next().value;
+      if (oldest === undefined) break;
+      retiredTerminals.delete(oldest);
+    }
+    knownPanes.delete(terminalId);
+    const size = displaySizes.get(terminalId);
+    displaySizes.delete(terminalId);
+    if (fate.kind === "replaced") {
+      knownPanes.set(fate.terminalId, fate.paneId);
+      if (size && !displaySizes.has(fate.terminalId))
+        displaySizes.set(fate.terminalId, size);
+    }
+    logger.info(
+      fate.kind === "replaced"
+        ? "terminal replaced by Herdr"
+        : "terminal gone from Herdr",
+      {
+        connection: args.connectionId ?? "legacy-default",
+        terminal: terminalId,
+        pane: fate.paneId ?? "unknown",
+        ...(fate.kind === "replaced" ? { replacement: fate.terminalId } : {}),
+      },
+    );
+  }
+
+  /**
+   * Tell viewers their terminal was replaced (same pane, new terminal id) or
+   * is gone, so they re-resolve the pane instead of re-attaching the old id.
+   */
+  function terminalFatePayload(terminalId: string, fate: RetiredFate) {
+    return serialize({
+      terminal_closed: {
+        terminal_id: terminalId,
+        reason:
+          fate.kind === "replaced" ? "terminal_replaced" : "terminal_gone",
+        ...(fate.paneId ? { pane_id: fate.paneId } : {}),
+        ...(fate.kind === "replaced"
+          ? { replacement_terminal_id: fate.terminalId }
+          : {}),
+      },
+    });
+  }
+
+  /** Move a terminal's viewers off it, telling each what happened to it. */
+  function retireViewers(
+    terminalId: string,
+    fate: RetiredFate,
+    viewers: Iterable<ServerWebSocket<unknown>>,
+  ) {
+    const payload = terminalFatePayload(terminalId, fate);
+    for (const viewer of Array.from(viewers)) {
+      if (!terminalViewers.get(viewer)?.has(terminalId)) continue;
+      detachTerminalViewer(viewer, terminalId);
+      args.safeSend(viewer, payload, "terminal-closed");
+    }
+  }
+
+  /**
+   * Re-resolve every terminal a viewer holds against Herdr's pane list after
+   * Herdr restarted or handed off to a new server. Panes keep their ids;
+   * terminals do not, so viewers are sent to their pane's new terminal.
+   */
+  async function reconcileTerminals(reason: string) {
+    if (disposed) return;
+    const revision = lifecycleRevision;
+    // A new server may speak another protocol version.
+    resolvedProtocol = null;
+    if (!args.listPaneTerminals) return;
+    let panes: PaneTerminal[];
+    try {
+      panes = await args.listPaneTerminals();
+    } catch (error) {
+      logger.warn("terminal reconciliation failed", {
+        connection: args.connectionId ?? "legacy-default",
+        reason,
+        error: formatError(error),
+      });
+      return;
+    }
+    if (!isCurrent(revision)) return;
+    const held = new Map<string, ServerWebSocket<unknown>[]>();
+    for (const [ws, viewed] of terminalViewers)
+      for (const terminalId of viewed.keys())
+        held.set(terminalId, [...(held.get(terminalId) ?? []), ws]);
+    for (const [terminalId, viewers] of held) {
+      if (terminalId === popupState?.terminalId) continue;
+      const fate = fateFromList(terminalId, paneOfTerminal(terminalId), panes);
+      if (fate.kind !== "replaced" && fate.kind !== "gone") continue;
+      const shared = sharedTerminals.get(terminalId);
+      retireTerminal(terminalId, fate);
+      if (shared) {
+        shared.retired = true;
+        sharedTerminals.delete(terminalId);
+        shared.thin.close();
+      }
+      retireViewers(terminalId, fate, viewers);
+    }
+  }
+
+  /**
+   * A stream closed under live viewers. If Herdr replaced or dropped its
+   * terminal, say so; otherwise (a takeover, a dropped socket) viewers
+   * re-attach as before. While Herdr is unreachable, wait a bounded time.
+   */
+  async function recoverClosedStream(
+    shared: SharedTerminalSession,
+    viewers: ServerWebSocket<unknown>[],
+    paneId: string | null,
+    revision: number,
+  ) {
+    const terminalId = shared.terminalId;
+    let fate: TerminalFate = { kind: "unknown" };
+    for (const delay of args.recoveryDelaysMs ?? TERMINAL_RECOVERY_DELAYS_MS) {
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      if (!isCurrent(revision)) return;
+      fate =
+        retiredFate(terminalId) ??
+        (await resolveTerminalFate(terminalId, paneId));
+      if (!isCurrent(revision)) return;
+      if (fate.kind !== "unknown") break;
+    }
+    // Skip viewers that detached or already joined a newer stream.
+    const current = sharedTerminals.get(terminalId);
+    const waiting = viewers.filter(
+      (viewer) =>
+        terminalViewers.get(viewer)?.has(terminalId) &&
+        !current?.viewers.has(viewer),
+    );
+    if (waiting.length === 0) return;
+    if (fate.kind === "replaced" || fate.kind === "gone") {
+      if (!retiredTerminals.has(terminalId)) retireTerminal(terminalId, fate);
+      retireViewers(terminalId, fate, waiting);
+      return;
+    }
+    notifyStreamClosed(shared, waiting);
+  }
+
+  function notifyStreamClosed(
+    shared: SharedTerminalSession,
+    viewers: ServerWebSocket<unknown>[],
+  ) {
+    logger.warn("terminal stream closed with live viewers", {
+      connection: args.connectionId ?? "legacy-default",
+      terminal: shared.terminalId,
+      viewers: viewers.length,
+    });
+    const closedPayload = serialize({
+      terminal_closed: {
+        terminal_id: shared.terminalId,
+        reason: shared.lastError ?? "stream_closed",
+      },
+    });
+    for (const viewer of viewers) {
+      args.safeSend(viewer, closedPayload, "terminal-closed");
+    }
   }
 
   /** The pane a terminal belongs to, for display-owner checks. */
@@ -879,6 +1143,7 @@ export function createTerminalBridge(args: {
       firstFrameLogged: false,
       lastFrameLogAt: 0,
       lastError: null,
+      retired: false,
     };
     sharedTerminals.set(terminalId, shared);
     logger.debug("terminal stream connecting", {
@@ -1038,21 +1303,25 @@ export function createTerminalBridge(args: {
       // over, and the stream can also die with the server. Viewers only see
       // silence otherwise, so tell them to re-attach instead of leaving a
       // blank terminal behind.
-      if (isCurrent(creationRevision) && viewers.length > 0) {
-        logger.warn("terminal stream closed with live viewers", {
-          connection: args.connectionId ?? "legacy-default",
-          terminal: terminalId,
-          viewers: viewers.length,
-        });
-        const closedPayload = serialize({
-          terminal_closed: {
-            terminal_id: terminalId,
-            reason: shared.lastError ?? "stream_closed",
-          },
-        });
-        for (const viewer of viewers) {
-          args.safeSend(viewer, closedPayload, "terminal-closed");
-        }
+      if (
+        isCurrent(creationRevision) &&
+        viewers.length > 0 &&
+        !shared.retired
+      ) {
+        // An endpoint stream also dies when Herdr hands off to a new server,
+        // which renumbers every terminal: check before viewers re-attach.
+        if (
+          thin instanceof EndpointTerminalSession &&
+          shared.lastError !== "terminal_configuration_changed" &&
+          args.listPaneTerminals
+        )
+          void recoverClosedStream(
+            shared,
+            viewers,
+            thin.currentPaneId ?? knownPanes.get(terminalId) ?? null,
+            creationRevision,
+          );
+        else notifyStreamClosed(shared, viewers);
       }
     });
     const terminalReady = (
@@ -1302,6 +1571,17 @@ export function createTerminalBridge(args: {
         let cols = optionalNumber(params, "cols") ?? 100;
         let rows = optionalNumber(params, "rows") ?? 30;
         if (!terminalId) return fail("terminal_id required");
+        // Herdr replaced or dropped this terminal (live handoff, closed
+        // pane): answer from memory rather than open another endpoint.
+        const retired = retiredFate(terminalId);
+        if (retired) {
+          args.safeSend(
+            ws,
+            terminalFatePayload(terminalId, retired),
+            "terminal-closed",
+          );
+          return fail(`terminal ${terminalId} is no longer in Herdr`);
+        }
         const frameInterval =
           params.min_frame_interval_ms === undefined
             ? undefined
@@ -1492,7 +1772,34 @@ export function createTerminalBridge(args: {
           });
         } catch (e) {
           // A superseded attach must not detach its replacement's viewer.
-          if (ownsAttempt()) detachTerminalViewer(ws, terminalId, shared);
+          const owned = ownsAttempt();
+          if (owned) detachTerminalViewer(ws, terminalId, shared);
+          // The endpoint does not know this terminal: find its pane's
+          // current terminal so the viewer follows it instead of retrying.
+          if (
+            owned &&
+            e instanceof Error &&
+            UNKNOWN_TERMINAL_ERROR.test(e.message)
+          ) {
+            const fate =
+              retiredFate(terminalId) ??
+              (await resolveTerminalFate(
+                terminalId,
+                knownPanes.get(terminalId) ?? null,
+              ));
+            if (
+              isCurrent(operationRevision) &&
+              (fate.kind === "replaced" || fate.kind === "gone")
+            ) {
+              if (!retiredTerminals.has(terminalId))
+                retireTerminal(terminalId, fate);
+              args.safeSend(
+                ws,
+                terminalFatePayload(terminalId, fate),
+                "terminal-closed",
+              );
+            }
+          }
           throw e;
         }
       }
@@ -1891,6 +2198,7 @@ export function createTerminalBridge(args: {
     terminals.clear();
     knownPanes.clear();
     displaySizes.clear();
+    retiredTerminals.clear();
   }
 
   return {
@@ -1908,6 +2216,7 @@ export function createTerminalBridge(args: {
     browserClientCountChanged,
     refreshPopupObserverFocus,
     refreshSurfaceCodecs,
+    reconcileTerminals,
     dispose,
   };
 }

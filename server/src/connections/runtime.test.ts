@@ -132,7 +132,7 @@ test("runtime stop drains an in-flight completion and suppresses publication", a
   ).rejects.toMatchObject({ code: "LAST_STEP_STORE_DISPOSED" });
 });
 
-test("layout subscription ACK and reconnect request browser reconciliation", async () => {
+test("layout subscription ACK and reconnect request browser and terminal reconciliation", async () => {
   const events: unknown[] = [];
   const subscriptions: Array<{ ack: () => void; close: () => void }> = [];
   const runtime = createLegacyConnectionRuntime({
@@ -150,6 +150,11 @@ test("layout subscription ACK and reconnect request browser reconciliation", asy
   // No real sockets, settings-driven git operations, or pane processes.
   runtime.workspaceAutoSync.start = () => undefined;
   runtime.herdr.call = async () => ({ panes: [] });
+  // A reconnect can follow a live handoff that renumbered every terminal.
+  const reconciled: string[] = [];
+  runtime.terminalBridge.reconcileTerminals = async (reason) => {
+    reconciled.push(reason);
+  };
   runtime.herdr.subscribe = (types) => {
     expect(types).toContain("layout.updated");
     let ack!: () => void;
@@ -170,6 +175,7 @@ test("layout subscription ACK and reconnect request browser reconciliation", asy
     subscriptions[0]!.ack();
     await Bun.sleep(10);
     expect(events).toEqual([{ event: "session.resync_required", data: {} }]);
+    expect(reconciled).toEqual([]);
     // Subscription name is dotted; tagged event envelopes use snake_case.
     const layout = {
       event: "layout_updated",
@@ -190,6 +196,7 @@ test("layout subscription ACK and reconnect request browser reconciliation", asy
       data: {},
     });
     expect(events).toHaveLength(3);
+    expect(reconciled).toEqual(["event subscription recovered"]);
   } finally {
     await runtime.stop();
   }
