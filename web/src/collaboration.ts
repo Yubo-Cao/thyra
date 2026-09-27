@@ -81,9 +81,22 @@ export type CollaborationPaneClaim = {
   protected_until_unix_ms?: number;
 };
 
+/**
+ * The device whose viewport sizes a pane (see docs/ARCHITECTURE.md). Kept by
+ * the bridge; other devices type and preview without resizing the pane.
+ */
+export type CollaborationDisplayOwner = {
+  pane_id: string;
+  participant_id: string;
+  /** "Display on this device": sticky for the device, not just this page. */
+  pinned: boolean;
+  since_unix_ms: number;
+};
+
 export type CollaborationSnapshot = {
   participants: CollaborationParticipant[];
   pane_claims: CollaborationPaneClaim[];
+  display_owners?: CollaborationDisplayOwner[];
   lease_ttl_ms: number;
   people?: Record<string, CollaborationPerson>;
   devices?: Record<string, CollaborationDevice>;
@@ -370,13 +383,51 @@ function parseSnapshot(result: unknown): CollaborationSnapshot | null {
       : undefined;
   const people = table<CollaborationPerson>(value.people);
   const devices = table<CollaborationDevice>(value.devices);
+  const displayOwners = parseDisplayOwners(value.display_owners);
   return {
     participants: value.participants,
     pane_claims: value.pane_claims,
     lease_ttl_ms: Number(value.lease_ttl_ms ?? 45_000),
     ...(people ? { people } : {}),
     ...(devices ? { devices } : {}),
+    ...(displayOwners ? { display_owners: displayOwners } : {}),
   };
+}
+
+/** Validate a bridge `display_owners` list; null when absent or malformed. */
+export function parseDisplayOwners(
+  value: unknown,
+): CollaborationDisplayOwner[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((entry): CollaborationDisplayOwner[] => {
+    const owner = entry as Partial<CollaborationDisplayOwner> | null;
+    return owner &&
+      typeof owner.pane_id === "string" &&
+      typeof owner.participant_id === "string"
+      ? [
+          {
+            pane_id: owner.pane_id,
+            participant_id: owner.participant_id,
+            pinned: owner.pinned === true,
+            since_unix_ms: Number(owner.since_unix_ms ?? 0),
+          },
+        ]
+      : [];
+  });
+}
+
+/** Replace the display owners of the latest snapshot and republish it. */
+export function publishDisplayOwners(
+  client: ConnectionClient,
+  owners: CollaborationDisplayOwner[],
+): boolean {
+  const current = snapshots.get(collaborationScope(client));
+  if (!current) return false;
+  publishCollaborationSnapshot(client, {
+    ...current,
+    display_owners: owners,
+  });
+  return true;
 }
 
 function collaborationScope(client: ConnectionClient): string {
@@ -464,6 +515,15 @@ export function acceptCollaborationEvent(
   client: ConnectionClient,
   event: HerdrEventMsg,
 ): boolean {
+  if (
+    event.event === "collaboration.display" &&
+    event.connection_id === client.connectionId &&
+    client.isCurrent() &&
+    client.acceptsServerGeneration(event.connection_generation)
+  ) {
+    const owners = parseDisplayOwners(event.data.display_owners);
+    return owners ? publishDisplayOwners(client, owners) : false;
+  }
   if (
     event.event === "collaboration.focus" &&
     event.connection_id === client.connectionId &&

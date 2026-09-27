@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConnectionClient } from "./api";
 import {
   collaborationProfile,
+  parseDisplayOwners,
   publishCollaborationSnapshot,
+  publishDisplayOwners,
   subscribeCollaborationSnapshot,
   updateCollaborationPresence,
   type CollaborationSnapshot,
@@ -65,8 +67,14 @@ export function usePaneControl(
     if (accessRef.current.viewOnly)
       throw new Error(t("This pane is view only. Take control to send input."));
   }, []);
+  /**
+   * `view`: stop typing and resizing. `type`: take the control claim and
+   * type here while the displaying device keeps the size. `resize`: take the
+   * claim and the display, so this device's viewport sizes the pane.
+   */
   const change = useCallback(
-    async (viewOnly: boolean) => {
+    async (mode: "view" | "type" | "resize") => {
+      const viewOnly = mode === "view";
       if (!paneId || busy || !client.isCurrent()) return;
       const expectedScope = scope;
       setBusy(true);
@@ -101,6 +109,15 @@ export function usePaneControl(
             ),
           );
         if (!viewOnly) setViewingScope(null);
+        if (mode === "resize" && accessRef.current.display) {
+          const taken = await client.call("terminal.display", {
+            pane_id: paneId,
+            action: "take",
+          });
+          const owners = parseDisplayOwners(taken?.display_owners);
+          if (owners && currentScope.current === expectedScope)
+            publishDisplayOwners(client, owners);
+        }
         const latest = await client.call("collaboration.list");
         if (
           currentScope.current === expectedScope &&
@@ -119,13 +136,40 @@ export function usePaneControl(
     },
     [client, paneId, participantId, scope, busy],
   );
+  /** Pin the pane's size to this device's screen, or give the pin back. */
+  const toggleDisplayPin = useCallback(async () => {
+    if (!paneId || busy || !client.isCurrent()) return;
+    const expectedScope = scope;
+    const display = accessRef.current.display;
+    const pinned = display?.mine === true && display.pinned;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await client.call("terminal.display", {
+        pane_id: paneId,
+        action: pinned ? "release" : "pin",
+      });
+      const owners = parseDisplayOwners(result?.display_owners);
+      if (owners && currentScope.current === expectedScope)
+        publishDisplayOwners(client, owners);
+    } catch (failure) {
+      if (currentScope.current === expectedScope)
+        setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      if (currentScope.current === expectedScope) setBusy(false);
+    }
+  }, [client, paneId, scope, busy]);
   return {
     access,
     client: guardedClient,
     assertInputAllowed,
     busy,
     error,
-    takeControl: () => change(false),
-    watch: () => change(true),
+    /** Take control and size the pane for this device. */
+    takeControl: () => change("resize"),
+    /** Type here; the displaying device keeps the size. */
+    typeHere: () => change("type"),
+    watch: () => change("view"),
+    toggleDisplayPin,
   };
 }

@@ -11,12 +11,26 @@ import type { TerminalFrameParts } from "../../../shared/terminalFrame";
 //   queueing behind it. On a slow link the screen therefore skips straight to
 //   the newest state rather than replaying a backlog, and keystroke replies
 //   never wait behind seconds of stale repaints.
+// - A viewer may ask for a minimum interval between frames (a phone showing a
+//   small preview on a slow link) or pause frames entirely (a text preview).
+//   Either only thins this viewer's stream; other viewers are unaffected.
 
 export const FRAME_STREAM_MAX_INFLIGHT = 4;
 export const FRAME_STREAM_MAX_INFLIGHT_BYTES = 16 * 1024;
 // A lost acknowledgement must not freeze the viewer. Frames stay ordered on the
 // socket, so releasing the window only risks sending ahead of a slow link.
 export const FRAME_STREAM_ACK_TIMEOUT_MS = 10_000;
+export const FRAME_STREAM_MAX_MIN_INTERVAL_MS = 10_000;
+
+/** Validate a viewer's requested minimum frame interval, in milliseconds. */
+export function frameIntervalFromParams(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= FRAME_STREAM_MAX_MIN_INTERVAL_MS
+    ? value
+    : null;
+}
 
 export type TerminalFrameMeta = Record<string, unknown>;
 
@@ -40,6 +54,10 @@ export class TerminalFrameStream {
   private sent: SentFrame | null = null;
   private inflight: { seq: number; bytes: number }[] = [];
   private ackTimer: ReturnType<typeof setTimeout> | null = null;
+  private intervalTimer: ReturnType<typeof setTimeout> | null = null;
+  private minIntervalMs = 0;
+  private lastSentAt = 0;
+  private paused = false;
   private disposed = false;
 
   constructor(
@@ -58,6 +76,32 @@ export class TerminalFrameStream {
   reset(): void {
     this.sent = null;
     if (this.latest) this.dirty = true;
+  }
+
+  /**
+   * Thin this viewer's frames: at most one per `minIntervalMs` (the newest
+   * one), or none while `paused`. Resuming repaints in full, since the
+   * viewer's screen is stale.
+   */
+  configure(options: { minIntervalMs?: number; paused?: boolean }): void {
+    if (this.disposed) return;
+    if (options.minIntervalMs !== undefined) {
+      this.minIntervalMs = Math.max(
+        0,
+        Math.min(FRAME_STREAM_MAX_MIN_INTERVAL_MS, options.minIntervalMs),
+      );
+      if (this.intervalTimer) clearTimeout(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+    if (options.paused !== undefined && options.paused !== this.paused) {
+      this.paused = options.paused;
+      if (!this.paused) this.reset();
+    }
+    this.flush();
+  }
+
+  get settings(): { minIntervalMs: number; paused: boolean } {
+    return { minIntervalMs: this.minIntervalMs, paused: this.paused };
   }
 
   ack(seq: number): void {
@@ -82,6 +126,8 @@ export class TerminalFrameStream {
     this.inflight = [];
     if (this.ackTimer) clearTimeout(this.ackTimer);
     this.ackTimer = null;
+    if (this.intervalTimer) clearTimeout(this.intervalTimer);
+    this.intervalTimer = null;
   }
 
   private windowOpen(): boolean {
@@ -93,8 +139,25 @@ export class TerminalFrameStream {
   }
 
   private flush(): void {
-    if (this.disposed || !this.dirty || !this.latest || !this.windowOpen())
+    if (
+      this.disposed ||
+      this.paused ||
+      !this.dirty ||
+      !this.latest ||
+      !this.windowOpen()
+    )
       return;
+    // A full repaint (attach, resize, resync) is never held back.
+    if (this.minIntervalMs > 0 && this.sent) {
+      const wait = this.lastSentAt + this.minIntervalMs - Date.now();
+      if (wait > 0) {
+        this.intervalTimer ??= setTimeout(() => {
+          this.intervalTimer = null;
+          this.flush();
+        }, wait);
+        return;
+      }
+    }
     const { parts, meta } = this.latest;
     this.dirty = false;
     const metaKey = JSON.stringify(meta);
@@ -137,6 +200,7 @@ export class TerminalFrameStream {
     // The socket is gone; its cleanup disposes this stream.
     if (bytes === null) return;
     this.sent = { seq, parts, metaKey, width: meta.width };
+    this.lastSentAt = Date.now();
     this.inflight.push({ seq, bytes });
     if (!this.ackTimer) this.restartAckTimer();
   }

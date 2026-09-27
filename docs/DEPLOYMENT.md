@@ -31,6 +31,7 @@ Herdr 0.9.0 uses stable endpoint generation 1, distinct from protocol 22.
 | Navigation | Endpoint workspace/tab selection is browser-local across reconnects, not reload/runtime replacement. Same-tab pane focus, topology, and terminal sizes remain shared; size follows Herdr's last-interacting client. Legacy uses shared navigation. |
 | Creation | Requires a connected source terminal, except first-workspace bootstrap. Preserves `terminal.new_cwd` (`follow`, `home`, `current`, fixed path); explicit cwd wins. Shared pane focus means `follow` is not browser-isolated. |
 | Input | Pixel mouse and enhanced Kitty keyboard / modifyOtherKeys parity are unsupported; legacy keyboard-mode messages are decoded but not applied in-browser. |
+| Input from a non-displaying device | Keeping Herdr's size owner while another device [displays the pane](./ARCHITECTURE.md#display-owner-and-input-owner) needs a Herdr build advertising the `input_geometry` endpoint capability. Without it, such input makes Thyra's shell Herdr's size owner, which matters only when a native Herdr TUI views the same tab; Thyra's own resize rules apply either way. |
 
 **OSC 52 clipboard writes:** only the browser with input in the last 30 seconds
 matching the receiving endpoint session receives them, never passive viewers.

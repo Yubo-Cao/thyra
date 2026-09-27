@@ -1545,3 +1545,69 @@ test("core resize and semantic input wait for verified codecs", () => {
   ).toThrow("not been negotiated");
   client.close();
 });
+
+describe("input geometry (Herdr fork capability)", () => {
+  async function recordControls(capabilities: string[]) {
+    const seen: string[] = [];
+    let hello: { input_claims_geometry?: unknown } | null = null;
+    const socketPath = await startEndpointServer(
+      (value) => {
+        hello = value;
+      },
+      (variant, reader) => {
+        if (variant === 20) seen.push(`${reader.string()} ${reader.string()}`);
+        else if (variant === 13) seen.push(`input ${reader.string()}`);
+      },
+      true,
+      { ...WELCOME, capabilities },
+    );
+    const client = new EndpointClient(socketPath);
+    await client.connect(80, 24);
+    return { client, seen, hello: () => hello };
+  }
+
+  async function waitFor(predicate: () => boolean) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (predicate()) return;
+      await Bun.sleep(5);
+    }
+    throw new Error("timed out");
+  }
+
+  const text = [{ type: "text" as const, text: "a" }];
+
+  test("marks input that must not claim Herdr's size owner, on change only", async () => {
+    const { client, seen, hello } = await recordControls(["input_geometry"]);
+    try {
+      expect(hello()?.input_claims_geometry).toBe(true);
+      expect(client.supportsInputGeometry).toBe(true);
+      client.sendPaneInput("p1", text, false);
+      client.sendPaneInput("p1", text, false);
+      client.sendPaneInput("p1", text, true);
+      await waitFor(() => seen.length >= 5);
+      expect(seen).toEqual([
+        'endpoint.input-geometry.v1 {"claims_geometry":false}',
+        "input p1",
+        "input p1",
+        'endpoint.input-geometry.v1 {"claims_geometry":true}',
+        "input p1",
+      ]);
+    } finally {
+      client.close();
+    }
+  });
+
+  test("stock Herdr without the capability gets plain input", async () => {
+    const { client, seen } = await recordControls([]);
+    try {
+      expect(client.supportsInputGeometry).toBe(false);
+      expect(client.setInputClaimsGeometry(false)).toBe(false);
+      client.sendPaneInput("p1", text, false);
+      await waitFor(() => seen.length >= 1);
+      await Bun.sleep(20);
+      expect(seen).toEqual(["input p1"]);
+    } finally {
+      client.close();
+    }
+  });
+});

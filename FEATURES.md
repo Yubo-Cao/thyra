@@ -308,6 +308,12 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   recently active device of that person, shows a **Following … Stop** chip,
   and ends when you navigate yourself, press Escape, or they disconnect. The
   person you follow sees a quiet indicator beside their avatars.
+- **Watch on one device, type on another.**
+  The monitor button in a pane header (**Display on this device**) pins the pane's size to that device's screen, for example a tablet watching an agent; it stays pinned when the tablet sleeps or reloads.
+  On another device, **Type here** takes input control and keeps the size on the pinned device; **Resize here** takes control and sizes the pane for this device instead.
+  A device that types without displaying the pane opens the composer with voice input and the shortcut keys, and previews the pane scaled to fit at one frame per second.
+  The lines button switches that preview to the pane's last lines as text, which uses no terminal frames at all.
+  Every device that does not size the pane mirrors the displaying device's size, scaled down to fit.
 - Choose light/dark/system appearance, accents, built-in/custom terminal themes,
   and UI text size (80%–150%). Preferences stay in this browser.
 - The interface is available in English and Simplified Chinese. **Language**

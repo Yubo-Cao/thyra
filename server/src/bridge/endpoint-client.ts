@@ -75,6 +75,13 @@ const WELCOME_KIND = "endpoint.welcome.v1";
 const SNAPSHOT_KIND = "shell.snapshot.v1";
 const HEALTH_PING_KIND = "endpoint.health.ping.v1";
 const HEALTH_PONG_KIND = "endpoint.health.pong.v1";
+/**
+ * Herdr fork capability: pane input may be told not to claim Herdr's
+ * foreground client and tab size owner (`endpoint.input-geometry.v1`).
+ * Stock Herdr lacks it, and every keystroke from this shell claims them.
+ */
+export const INPUT_GEOMETRY_CAPABILITY = "input_geometry";
+const INPUT_GEOMETRY_KIND = "endpoint.input-geometry.v1";
 
 export interface EndpointWelcome {
   generation: number;
@@ -152,6 +159,8 @@ export class EndpointClient extends EventEmitter {
   >();
 
   private hostTheme: EndpointHostTheme | null = null;
+  // Matches `input_claims_geometry` in the hello.
+  private inputClaimsGeometry = true;
 
   constructor(
     private socketPath: string,
@@ -243,6 +252,8 @@ export class EndpointClient extends EventEmitter {
       surface_active: true,
       surface_delta: this.surfaceCodecsEnabled,
       surface_reuse: this.surfaceCodecsEnabled,
+      // Ignored by servers without the input_geometry capability.
+      input_claims_geometry: true,
       snapshot_codecs: ["shell.snapshot.v1"],
       surface_codecs: ["shell.surface.v1"],
       input_codecs: ["shell.input.semantic.v1"],
@@ -340,10 +351,43 @@ export class EndpointClient extends EventEmitter {
       this.sendControl(HEALTH_PING_KIND, "{}");
   }
 
-  /** Deliver classified semantic input to one pane. */
-  sendPaneInput(paneId: string, events: PaneInputEvent[]) {
+  /** Whether Herdr can keep pane input from claiming its size owner. */
+  get supportsInputGeometry(): boolean {
+    return (
+      !this.closed &&
+      this.welcome?.capabilities.includes(INPUT_GEOMETRY_CAPABILITY) === true
+    );
+  }
+
+  /**
+   * Choose whether the following pane input may make this shell Herdr's
+   * foreground client and its tab's size owner. Sent only on change, and
+   * ordered before the input on the same socket. Returns false when Herdr
+   * lacks the capability (the input then claims them as before).
+   */
+  setInputClaimsGeometry(claims: boolean): boolean {
+    if (!this.supportsInputGeometry) return false;
+    if (this.inputClaimsGeometry === claims) return true;
+    this.inputClaimsGeometry = claims;
+    this.sendControl(
+      INPUT_GEOMETRY_KIND,
+      JSON.stringify({ claims_geometry: claims }),
+    );
+    return true;
+  }
+
+  /**
+   * Deliver classified semantic input to one pane. `claimsGeometry: false`
+   * keeps it from moving Herdr's size owner to this shell where supported.
+   */
+  sendPaneInput(
+    paneId: string,
+    events: PaneInputEvent[],
+    claimsGeometry = true,
+  ) {
     if (events.length === 0) return;
     this.assertNegotiatedCodecs();
+    this.setInputClaimsGeometry(claimsGeometry);
     this.write(encodePaneInput(paneId, events));
   }
 

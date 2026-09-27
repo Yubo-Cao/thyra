@@ -1,14 +1,19 @@
 import {
+  AlignLeft,
   Columns2,
   Eye,
   EyeOff,
+  Keyboard,
   Maximize2,
   Minimize2,
+  MonitorCheck,
   MousePointer2,
   Rows2,
+  Scaling,
   SquareTerminal,
   X,
 } from "lucide-react";
+import type { TerminalPreviewMode } from "./TerminalPreview";
 import type { PointerEvent } from "react";
 import { agentStatusText } from "../../agentOrder";
 import { t } from "../../i18n";
@@ -63,6 +68,8 @@ export function TerminalPaneHeader({
   canClosePane,
   endpointAvailable,
   onClosePane,
+  previewMode,
+  onPreviewModeChange,
 }: {
   pane: Pane;
   paneName: string;
@@ -74,8 +81,15 @@ export function TerminalPaneHeader({
   canClosePane: boolean;
   endpointAvailable: boolean;
   onClosePane: () => void;
+  /** How an input-only device previews the pane. */
+  previewMode?: TerminalPreviewMode;
+  onPreviewModeChange?: (mode: TerminalPreviewMode) => void;
 }) {
   const { access } = control;
+  // Another device sizes this pane: offer typing here without resizing it.
+  const foreignDisplay = !!access.display && !access.display.mine;
+  const displayName = access.display?.name ?? t("another device");
+  const pinnedHere = access.display?.mine === true && access.display.pinned;
   const scrollReason =
     endpointAvailable && store.terminalScrollReason(pane.terminal_id);
   return (
@@ -132,6 +146,16 @@ export function TerminalPaneHeader({
             <Token tone="info" icon={<Eye size={11} />}>
               {t("Viewing")}
             </Token>
+          ) : access.inputOnly ? (
+            <Token
+              tone="accent"
+              icon={<Keyboard size={11} />}
+              title={t("You type here; {device} keeps the pane size", {
+                device: displayName,
+              })}
+            >
+              {t("Typing")}
+            </Token>
           ) : access.ownsLayout ? (
             <Token
               tone="accent"
@@ -143,7 +167,40 @@ export function TerminalPaneHeader({
               {t("Layout")}
             </Token>
           ) : null}
-          {!access.ownsLayout || access.viewOnly ? (
+          {foreignDisplay && (!access.ownsLayout || access.viewOnly) ? (
+            <Button
+              variant={access.display?.active ? "primary" : "ghost"}
+              disabled={control.busy || access.protectedUntil > Date.now()}
+              onPointerDown={preventPaneActionFocus}
+              onClick={control.typeHere}
+              title={t("Type here, keep size on {device}", {
+                device: displayName,
+              })}
+              aria-label={t("Type here, keep size on {device}", {
+                device: displayName,
+              })}
+            >
+              <Keyboard size={13} />
+              <span>{t("Type here")}</span>
+            </Button>
+          ) : null}
+          {foreignDisplay &&
+          (!access.ownsLayout || access.viewOnly || access.inputOnly) ? (
+            <Button
+              variant={
+                access.display?.active || access.inputOnly ? "ghost" : "primary"
+              }
+              disabled={control.busy || access.protectedUntil > Date.now()}
+              onPointerDown={preventPaneActionFocus}
+              onClick={control.takeControl}
+              title={t("Take control and resize here")}
+              aria-label={t("Take control and resize here")}
+            >
+              <Scaling size={13} />
+              <span>{t("Resize here")}</span>
+            </Button>
+          ) : null}
+          {!foreignDisplay && (!access.ownsLayout || access.viewOnly) ? (
             <Button
               disabled={control.busy || access.protectedUntil > Date.now()}
               onPointerDown={preventPaneActionFocus}
@@ -180,6 +237,33 @@ export function TerminalPaneHeader({
           >
             {access.viewOnly ? <EyeOff size={14} /> : <Eye size={14} />}
           </Button>
+          {access.inputOnly && onPreviewModeChange ? (
+            <IconButton
+              aria-pressed={previewMode === "text"}
+              onPointerDown={preventPaneActionFocus}
+              onClick={() =>
+                onPreviewModeChange(previewMode === "text" ? "screen" : "text")
+              }
+              label={
+                previewMode === "text"
+                  ? t("Show the screen preview")
+                  : t("Show the last lines as text")
+              }
+              icon={<AlignLeft size={14} />}
+            />
+          ) : null}
+          <IconButton
+            aria-pressed={pinnedHere}
+            disabled={control.busy || access.viewOnly}
+            onPointerDown={preventPaneActionFocus}
+            onClick={() => void control.toggleDisplayPin()}
+            label={
+              pinnedHere
+                ? t("Stop keeping this pane sized for this device")
+                : t("Display on this device: keep this pane sized for it")
+            }
+            icon={<MonitorCheck size={14} />}
+          />
         </div>
         <div className="terminal-pane-toolbar" aria-label={t("Pane actions")}>
           <TerminalVoiceButton

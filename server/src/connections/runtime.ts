@@ -14,6 +14,10 @@ import {
   createCollaborationService,
   filterCollaborationEvent,
 } from "../bridge/collaboration";
+import {
+  createDisplayOwnership,
+  type SocketIdentity,
+} from "../bridge/display-ownership";
 import { acquireOwnShellClients } from "../bridge/own-shell-clients";
 import { createPresenceFocusTracker } from "../bridge/presence-focus";
 import { hostname } from "node:os";
@@ -160,6 +164,8 @@ export function createLegacyConnectionRuntime(args: {
   onTransportExit?: (error: SshTunnelError) => void;
   /** Adds bridge-side identity to presence snapshots sent to browsers. */
   presentSnapshot?: <T>(snapshot: T, context: PresenceContext) => T;
+  /** The bridge-assigned participant and device of a browser socket. */
+  socketIdentity?: (ws: ServerWebSocket<unknown>) => SocketIdentity | null;
   /** Test seam for deterministic shutdown coverage. */
   lastStepBaselines?: LastStepBaselineStore;
   resolveLastStepWorkspaceGitRoot?: (workspaceId: string) => Promise<string>;
@@ -182,10 +188,32 @@ export function createLegacyConnectionRuntime(args: {
     tuiDevice: herdrHostLabel(config.sshHost, hostname()),
   };
   const presenceFocus = createPresenceFocusTracker();
+  // Which device sizes each pane; announced at once like focus changes.
+  const displayOwnership = createDisplayOwnership({
+    onChange: (owners) =>
+      !disposed &&
+      args.onEvent(
+        {
+          event: "collaboration.display",
+          data: { type: "collaboration_display", display_owners: owners },
+        },
+        identity,
+      ),
+  });
+  const presence = {
+    ...presenceFocus,
+    forget(participantId: unknown) {
+      presenceFocus.forget(participantId);
+      displayOwnership.forgetParticipant(participantId);
+    },
+    annotate<T>(snapshot: T): T {
+      return displayOwnership.annotate(presenceFocus.annotate(snapshot));
+    },
+  };
   const presentSnapshot = <T>(snapshot: T): T => {
-    const filtered = presenceFocus.annotate(
-      ownShellClients.filterSnapshot(snapshot),
-    );
+    const visible = ownShellClients.filterSnapshot(snapshot);
+    displayOwnership.observeParticipants(visible);
+    const filtered = presence.annotate(visible);
     return args.presentSnapshot
       ? args.presentSnapshot(filtered, presenceContext)
       : filtered;
@@ -201,7 +229,7 @@ export function createLegacyConnectionRuntime(args: {
   const collaboration = createCollaborationService({
     herdrCall: (method, params) => herdr.call(method, params),
     filterSnapshot: ownShellClients.filterSnapshot,
-    presence: presenceFocus,
+    presence,
     // Focus changes skip the snapshot throttle: ids only, sent at once.
     onFocus: (focus) =>
       args.onEvent(
@@ -397,6 +425,28 @@ export function createLegacyConnectionRuntime(args: {
     dropCoalesced: dropCoalescedMessage,
     clientLabel: args.clientLabel,
     markRpcError: args.markRpcError,
+    displayOwnership,
+    socketIdentity: args.socketIdentity,
+    readPaneText: async (paneId, lines) => {
+      // ANSI format keeps Herdr on its passive snapshot path: a plain-text
+      // read of an alternate-screen app may replay wheel input to harvest
+      // history, which would be input on the pane (see the MCP gateway).
+      const result = await herdr.call(
+        "pane.read",
+        {
+          pane_id: paneId,
+          source: "recent_unwrapped",
+          lines,
+          format: "ansi",
+        },
+        5000,
+      );
+      const read = result?.read ?? result;
+      return {
+        text: Bun.stripANSI(typeof read?.text === "string" ? read.text : ""),
+        truncated: read?.truncated === true,
+      };
+    },
     confirmRelayResize: async ({ cols, rows, paneId }) => {
       if (!paneId) return false;
       for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -623,6 +673,7 @@ export function createLegacyConnectionRuntime(args: {
     if (disposed) return Promise.resolve();
     disposed = true;
     collaborationForward.cancel();
+    displayOwnership.clear();
     stopOwnShellUpdates();
     ownShellClientsLease.release();
     backgroundStarted = false;

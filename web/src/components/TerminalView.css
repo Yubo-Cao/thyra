@@ -16,6 +16,33 @@
   touch-action: none;
 }
 
+/* Another device sizes this pane: xterm keeps its size, scaled down to fit. */
+.terminal-view.is-following .xterm {
+  width: calc(100% / var(--terminal-follow-scale, 1));
+  height: calc(100% / var(--terminal-follow-scale, 1));
+  transform: scale(var(--terminal-follow-scale, 1));
+  transform-origin: 0 0;
+}
+/* The text preview replaces the (paused) terminal without unmounting it. */
+.terminal-view[data-preview="text"] {
+  visibility: hidden;
+}
+.terminal-text-preview {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+  font-family: var(--font-mono);
+  font-size: var(--ui-font-size-sm);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .terminal-view .xterm {
   height: 100%;
   padding: 4px 0 4px 4px;

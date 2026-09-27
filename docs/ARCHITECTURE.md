@@ -108,6 +108,8 @@ A missing base makes the browser send `terminal.frame_ack { resync: true }` and
 the bridge answers with a full frame. Attach and resize also restart from a
 full frame, and a 10 s acknowledgement timeout releases the window. Viewers
 that do not opt in, popups, and legacy streams keep base64 `bytes` repaints.
+A viewer may thin only its own stream: `min_frame_interval_ms` (0–10000, on `terminal.attach` or `terminal.stream`) sends at most the newest frame per interval, and `terminal.stream { paused: true }` sends none until it is resumed with a full frame.
+Full repaints (attach, resize, resync) are never held back, and other viewers of the same terminal keep their rate.
 The browser writes only changed rows into xterm while its viewport is unchanged.
 
 The browser reports its terminal colors with `terminal.host_theme`
@@ -432,6 +434,30 @@ shared among editors. Non-owners preserve an existing shared terminal's
 dimensions on attachment. Pane viewing mode blocks local keyboard, IME, paste,
 composer, focus, and resize commands while allowing explicit history scrolling;
 it is a browser-local preference, not an authorization boundary.
+
+### Display owner and input owner
+
+Who sizes a pane (its **display owner**) is separate from who types into it (the holder of its claim, the **input owner**).
+`terminal.display { pane_id, action }` records the display owner in the bridge: `pin` ("Display on this device") binds it to the calling device, so other tabs and reloads of that device keep it and it outlives the device going idle; `take` ("Resize here") binds it to the calling page until that participant leaves or its lease expires; `release` (owning device only) removes it.
+Records are per connection runtime, live in bridge memory, and are announced at once as `collaboration.display` events and as `display_owners` on every presence snapshot, carrying pane, participant, pinned flag, and time, never device keys.
+
+While a pane has a display owner, the bridge enforces it for every other device regardless of what the page asks:
+
+- `terminal.resize` and `terminal.relay_resize` are skipped (`skipped: true`), and `terminal.focus` is skipped because focusing makes Thyra's shell Herdr's size owner.
+- `terminal.attach` behaves as `preserve_size`; a stream opened for such a follower starts at the display owner's last size, not the follower's.
+- Followers always receive the whole surface at the shared size; after the owner resizes, every follower's viewport moves with it.
+- Their input tells Herdr not to claim size ownership (below).
+
+Panes without a display owner keep the claim-based browser rules above.
+In the browser, a device that may not size the pane mirrors the shared size and scales xterm down to fit.
+The claim holder of a pane another device displays is input-only: it opens the composer, previews at one frame per second (`min_frame_interval_ms: 1000`), or pauses frames and polls `terminal.preview_text` (last 60 lines, every 1.5 s while visible) for a text preview; the bridge reads it with Herdr `pane.read` in ANSI format and strips ANSI, like the MCP pane read, so the page never picks read parameters that could replay input.
+"Type here, keep size on {device}" claims the pane without touching the display; "Take control and resize here" also takes it.
+
+Herdr decides which of its clients sizes a tab: pane input, focus, and navigation from a shell make it Herdr's foreground client and the tab's geometry controller.
+Thyra's bridge shares one endpoint shell per terminal among all browsers, so this matters only when a native Herdr TUI views the same tab.
+Herdr builds advertising the `input_geometry` endpoint capability accept `input_claims_geometry` in the hello and an `endpoint.input-geometry.v1` control (`{"claims_geometry": bool}`), ordered with pane input on the same socket.
+The bridge sends the control only when the value changes: `false` before input from a device that may not size the pane, `true` before the display owner's.
+Older Herdr ignores both, and such input moves Herdr's size owner to Thyra's shell as before.
 
 The bridge first forwards `collaboration.*` calls to the Herdr control socket.
 Herdr versions without that API return an unknown-method response, which selects

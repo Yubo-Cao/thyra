@@ -28,6 +28,7 @@ import { applyTerminalTheme } from "../../terminalThemes";
 import { installTerminalKeyboard } from "./terminalKeyboard";
 import { installTerminalGestures } from "./terminalGestures";
 import {
+  applyTerminalFollowScale,
   detachTerminal,
   focusTerminalEndpoint,
   openTerminalSession,
@@ -88,6 +89,13 @@ export function useTerminalBindings(
     if (container.clientWidth === 0 || container.clientHeight === 0) {
       return null;
     }
+    // Another device sizes the pane: keep xterm at its size and scale it
+    // to fit. There is no size of ours to send.
+    if (refs.followShared.current) {
+      applyTerminalFollowScale(term, container, true);
+      return null;
+    }
+    applyTerminalFollowScale(term, container, false);
     try {
       fit.fit();
     } catch {
@@ -339,6 +347,9 @@ export function useTerminalAttach(
         rows,
         // Receive endpoint frames as acknowledged row updates.
         frame_delta: true,
+        ...(refs.frameInterval.current > 0
+          ? { min_frame_interval_ms: refs.frameInterval.current }
+          : {}),
         ...(surfaceSize
           ? { surface_cols: surfaceSize.cols, surface_rows: surfaceSize.rows }
           : {}),
@@ -373,6 +384,18 @@ export function useTerminalAttach(
           // the sync's send guard; push the settled size now (deduped).
           const settledSize = fitVisibleTerminal();
           if (settledSize) refs.resizeSync.current?.sendNow(settledSize);
+          // A text preview takes no frames, so none can be awaited.
+          if (refs.framesPaused.current) {
+            attachWatchdog.cancel(attachAttempt);
+            ui.setTerminalLoading(false);
+            void client
+              .call("terminal.stream", {
+                terminal_id: terminalId,
+                paused: true,
+              })
+              .catch(() => {});
+            return;
+          }
           const watchdogMs = terminalAttachWatchdogMs(
             performance.now() - attachStartedAt,
           );

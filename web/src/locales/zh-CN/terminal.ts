@@ -60,6 +60,20 @@ export default {
   "Take layout control for 15 seconds; collaborators can still type":
     "接管布局控制 15 秒；协作者仍可输入",
   "Take control": "接管控制",
+  Typing: "输入中",
+  "You type here; {device} keeps the pane size":
+    "你在此输入；{device} 保持窗格尺寸",
+  "Type here": "在此输入",
+  "Type here, keep size on {device}": "在此输入，保持 {device} 的尺寸",
+  "Resize here": "按此设备调整",
+  "Take control and resize here": "接管控制并按此设备调整尺寸",
+  "another device": "另一台设备",
+  "Show the screen preview": "显示屏幕预览",
+  "Show the last lines as text": "以文本显示最后几行",
+  "Stop keeping this pane sized for this device": "不再按此设备保持窗格尺寸",
+  "Display on this device: keep this pane sized for it":
+    "在此设备显示：按此设备保持窗格尺寸",
+  "Last lines of the pane": "窗格的最后几行",
   "Stop viewing and take control": "退出只读并接管控制",
   "View only: stop sending input and resizing this pane":
     "只读：停止向此窗格发送输入和调整其大小",

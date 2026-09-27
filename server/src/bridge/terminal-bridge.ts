@@ -22,7 +22,15 @@ import {
 } from "./endpoint-client";
 import type { Popup, SurfaceBaseline } from "./endpoint-surface";
 import { frameToAnsi, frameToAnsiParts } from "./frame-to-ansi";
-import { TerminalFrameStream } from "./terminal-frame-stream";
+import {
+  TerminalFrameStream,
+  frameIntervalFromParams,
+} from "./terminal-frame-stream";
+import {
+  type DisplayOwnership,
+  type SocketIdentity,
+  validDisplayPaneId,
+} from "./display-ownership";
 import { isTerminalClipboardPayload } from "./terminal-clipboard";
 import { optionalNumber, optionalString } from "../utils/rpc-params";
 
@@ -48,6 +56,13 @@ type SharedTerminalSession = {
   /** Last error Herdr reported on the stream, e.g. a takeover notice. */
   lastError: string | null;
 };
+
+/**
+ * A browser's viewport of one terminal. A follower does not size the shared
+ * stream (it is not the pane's display owner, or asked to preserve the size)
+ * and always receives frames at the shared size.
+ */
+type TerminalViewport = { cols: number; rows: number; follow?: boolean };
 
 type ClipboardTarget = {
   ws: ServerWebSocket<unknown>;
@@ -143,12 +158,29 @@ export function createTerminalBridge(args: {
     rows: number;
     paneId: string | null;
   }) => Promise<boolean>;
+  /** Display owners: which device's viewport sizes each pane. */
+  displayOwnership?: DisplayOwnership;
+  /** The bridge-assigned participant and device of a browser socket. */
+  socketIdentity?: (ws: ServerWebSocket<unknown>) => SocketIdentity | null;
+  /** A pane's last lines as plain text, read without sending it input. */
+  readPaneText?: (
+    paneId: string,
+    lines: number,
+  ) => Promise<{ text: string; truncated: boolean }>;
 }) {
   const logger = args.logger ?? silentLogger;
   const terminals = new Map<ServerWebSocket<unknown>, TerminalSession>();
   const terminalViewers = new Map<
     ServerWebSocket<unknown>,
-    Map<string, { cols: number; rows: number }>
+    Map<string, TerminalViewport>
+  >();
+  // Pane of each terminal, for display-owner checks before a stream exists.
+  const knownPanes = new Map<string, string>();
+  // The last size a sizing viewer gave each terminal, so a stream opened for
+  // a follower starts at the displaying device's size, not the follower's.
+  const displaySizes = new Map<
+    string,
+    { cols: number; rows: number; surface?: { cols: number; rows: number } }
   >();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
   // The browser's terminal colors, reported to Herdr as the host theme.
@@ -228,6 +260,88 @@ export function createTerminalBridge(args: {
 
   function isCurrent(revision: number) {
     return !disposed && lifecycleRevision === revision;
+  }
+
+  /** The pane a terminal belongs to, for display-owner checks. */
+  async function paneIdOf(terminalId: string): Promise<string | null> {
+    const shared = sharedTerminals.get(terminalId);
+    if (
+      shared?.thin instanceof EndpointTerminalSession &&
+      shared.thin.currentPaneId
+    )
+      return shared.thin.currentPaneId;
+    const known = knownPanes.get(terminalId);
+    if (known) return known;
+    const paneId = (await args.lookupPaneId?.(terminalId)) ?? null;
+    if (paneId) knownPanes.set(terminalId, paneId);
+    return paneId;
+  }
+
+  /**
+   * Whether this browser may size a terminal: set its size by attaching or
+   * resizing, move pane focus, or let its typing claim Herdr's size owner.
+   * While the pane has a display owner, only that device may.
+   */
+  async function maySize(
+    ws: ServerWebSocket<unknown>,
+    terminalId: string,
+  ): Promise<boolean> {
+    const display = args.displayOwnership;
+    if (!display?.active()) return true;
+    return display.authorize(
+      await paneIdOf(terminalId),
+      args.socketIdentity?.(ws) ?? null,
+    );
+  }
+
+  /** Make a viewer follow the stream's shared size. */
+  function followShared(
+    viewer: ServerWebSocket<unknown>,
+    shared: SharedTerminalSession,
+  ) {
+    const viewed = terminalViewers.get(viewer);
+    const viewport = viewed?.get(shared.terminalId);
+    if (!viewed || !viewport) return;
+    if (
+      viewport.follow &&
+      viewport.cols === shared.cols &&
+      viewport.rows === shared.rows
+    )
+      return;
+    viewed.set(shared.terminalId, {
+      cols: shared.cols,
+      rows: shared.rows,
+      follow: true,
+    });
+    frameStreams.get(viewer)?.get(shared.terminalId)?.reset();
+    args.dropCoalesced?.(viewer, terminalCoalesceKey(shared.terminalId));
+  }
+
+  /**
+   * After `sizer` set a stream's size, keep every other viewer that may not
+   * size it (followers and, while the pane has a display owner, every other
+   * device) at the new size, so each receives the whole surface.
+   */
+  function syncFollowers(
+    shared: SharedTerminalSession,
+    sizer: ServerWebSocket<unknown>,
+  ) {
+    const display = args.displayOwnership;
+    const paneId =
+      shared.thin instanceof EndpointTerminalSession
+        ? shared.thin.currentPaneId
+        : (knownPanes.get(shared.terminalId) ?? null);
+    for (const viewer of shared.viewers) {
+      if (viewer === sizer) continue;
+      const viewport = terminalViewers.get(viewer)?.get(shared.terminalId);
+      if (!viewport) continue;
+      if (
+        viewport.follow ||
+        (display?.active() &&
+          !display.permits(paneId, args.socketIdentity?.(viewer) ?? null))
+      )
+        followShared(viewer, shared);
+    }
   }
 
   function formatBytes(bytes: number): string {
@@ -1134,21 +1248,79 @@ export function createTerminalBridge(args: {
         });
       }
 
+      if (method === "terminal.display") {
+        // Pin a pane to this device's screen, take the display here, or give
+        // it back. The owner's viewport alone sizes the pane.
+        const display = args.displayOwnership;
+        const who = args.socketIdentity?.(ws) ?? null;
+        if (!display || !who)
+          return fail("display ownership is unavailable on this connection");
+        const paneId = validDisplayPaneId(params.pane_id);
+        if (!paneId) return fail("pane_id required");
+        const action = params.action;
+        if (action === "pin" || action === "take")
+          display.claim(paneId, who, action === "pin");
+        else if (action === "release") display.release(paneId, who);
+        else return fail("action must be pin, take, or release");
+        logger.debug("pane display owner", {
+          connection: args.connectionId ?? "legacy-default",
+          client: args.clientLabel(ws),
+          pane: paneId,
+          action,
+        });
+        return reply({ display_owners: display.list() });
+      }
+
+      if (method === "terminal.preview_text") {
+        // Text preview for a device typing into a pane it does not display.
+        if (!args.readPaneText)
+          return fail("text preview is unavailable on this connection");
+        const paneId = validDisplayPaneId(params.pane_id);
+        if (!paneId) return fail("pane_id required");
+        const lines = params.lines === undefined ? 60 : params.lines;
+        if (
+          typeof lines !== "number" ||
+          !Number.isInteger(lines) ||
+          lines < 1 ||
+          lines > 200
+        )
+          return fail("lines must be an integer from 1 to 200");
+        const result = await args.readPaneText(paneId, lines);
+        if (!isCurrent(operationRevision))
+          return fail("terminal bridge disposed");
+        return reply(result);
+      }
+
       if (method === "terminal.attach") {
         const terminalId = optionalString(params, "terminal_id") ?? "";
         let cols = optionalNumber(params, "cols") ?? 100;
         let rows = optionalNumber(params, "rows") ?? 30;
         if (!terminalId) return fail("terminal_id required");
+        const frameInterval =
+          params.min_frame_interval_ms === undefined
+            ? undefined
+            : frameIntervalFromParams(params.min_frame_interval_ms);
+        if (frameInterval === null)
+          return fail(
+            "min_frame_interval_ms must be an integer from 0 to 10000",
+          );
+        // While the pane has a display owner, other devices join at its size
+        // whatever they ask for; so does a viewer asking to preserve it.
+        const sizes = await maySize(ws, terminalId);
+        if (!requestIsCurrent()) return fail(CONNECTION_CHANGED_DURING_REQUEST);
+        const preserveSize = params.preserve_size === true || !sizes;
         // A Thyra viewer must not resize a stream owned by another viewer
         // merely by joining it with a differently sized browser window.
         const currentShared = sharedTerminals.get(terminalId);
-        if (
-          params.preserve_size === true &&
-          currentShared &&
-          !currentShared.thin.isClosed
-        ) {
+        const remembered = sizes ? undefined : displaySizes.get(terminalId);
+        if (preserveSize && currentShared && !currentShared.thin.isClosed) {
           cols = currentShared.cols;
           rows = currentShared.rows;
+        } else if (remembered) {
+          // No stream yet: open it at the display owner's last size rather
+          // than this follower's, which would resize the pane for everyone.
+          cols = remembered.cols;
+          rows = remembered.rows;
         }
         let surfaceSize: { cols: number; rows: number } | undefined;
         if (
@@ -1172,10 +1344,10 @@ export function createTerminalBridge(args: {
             );
           surfaceSize = { cols: surfaceCols, rows: surfaceRows };
         }
-        const relaySize =
-          params.preserve_size === true
-            ? null
-            : relaySizeFromParams(params, { cols, rows });
+        if (remembered) surfaceSize = remembered.surface;
+        const relaySize = preserveSize
+          ? null
+          : relaySizeFromParams(params, { cols, rows });
         const relayRevision = relaySize ? ++clipboardRelayRevision : null;
 
         const existingShared = sharedTerminals.get(terminalId);
@@ -1186,10 +1358,14 @@ export function createTerminalBridge(args: {
           sharedMode === "reused" &&
           !existingShared?.connecting &&
           !viewed.has(terminalId) &&
-          (params.preserve_size === true ||
+          (preserveSize ||
             (existingShared?.cols === cols && existingShared.rows === rows));
         terminals.set(ws, { terminalId, cols, rows });
-        viewed.set(terminalId, { cols, rows });
+        viewed.set(terminalId, {
+          cols,
+          rows,
+          ...(preserveSize ? { follow: true } : {}),
+        });
         terminalViewers.set(ws, viewed);
         const streams = frameStreams.get(ws) ?? new Map();
         const existingStream = streams.get(terminalId);
@@ -1207,6 +1383,10 @@ export function createTerminalBridge(args: {
                   : null;
               }),
             );
+          if (frameInterval !== undefined)
+            streams
+              .get(terminalId)
+              ?.configure({ minIntervalMs: frameInterval });
           frameStreams.set(ws, streams);
         } else if (existingStream) {
           existingStream.dispose();
@@ -1244,9 +1424,19 @@ export function createTerminalBridge(args: {
           validate();
           // Recheck after connection readiness: another viewer may have created
           // or resized this stream while our attach awaited protocol discovery.
-          if (params.preserve_size === true) {
+          if (
+            shared.thin instanceof EndpointTerminalSession &&
+            shared.thin.currentPaneId
+          )
+            knownPanes.set(terminalId, shared.thin.currentPaneId);
+          if (preserveSize) {
             cols = shared.cols;
             rows = shared.rows;
+            terminalViewers
+              .get(ws)
+              ?.set(terminalId, { cols, rows, follow: true });
+          } else {
+            displaySizes.set(terminalId, { cols, rows, surface: surfaceSize });
           }
           if (
             shared.cols !== cols ||
@@ -1261,6 +1451,7 @@ export function createTerminalBridge(args: {
             // held under backpressure is now the wrong size for all of them.
             for (const viewer of shared.viewers)
               args.dropCoalesced?.(viewer, terminalCoalesceKey(terminalId));
+            syncFollowers(shared, ws);
             logger.debug(
               refreshReusedTerminal ? "terminal refreshed" : "terminal resized",
               {
@@ -1317,6 +1508,12 @@ export function createTerminalBridge(args: {
           typeof params.pane_id === "string" && params.pane_id
             ? params.pane_id
             : null;
+        const display = args.displayOwnership;
+        if (
+          display?.active() &&
+          !display.authorize(paneId, args.socketIdentity?.(ws) ?? null)
+        )
+          return reply({ ok: true, confirmed: false, skipped: true });
         clipboardRelayRevision += 1;
         const confirmed = await resizeClipboardRelayAndConfirm(
           cols,
@@ -1362,6 +1559,9 @@ export function createTerminalBridge(args: {
         // Legacy streams already have their own per-terminal cursor.
         if (!(thin instanceof EndpointTerminalSession))
           return reply({ ok: true });
+        // Focus would make this device Herdr's size owner for the tab.
+        if (!(await maySize(ws, requestedTerminalId)))
+          return reply({ ok: true, skipped: true });
         const intent = {};
         const token = attachmentTokens.get(ws)?.get(requestedTerminalId);
         focusIntents.set(ws, intent);
@@ -1459,6 +1659,29 @@ export function createTerminalBridge(args: {
         else if (typeof params.seq === "number") stream.ack(params.seq);
         return reply({ ok: true });
       }
+      if (method === "terminal.stream") {
+        // Thin this browser's frames, e.g. a phone previewing a pane that
+        // another device displays. Other viewers keep their full rate.
+        const stream = requestedTerminalId
+          ? frameStreams.get(ws)?.get(requestedTerminalId)
+          : undefined;
+        const interval =
+          params.min_frame_interval_ms === undefined
+            ? undefined
+            : frameIntervalFromParams(params.min_frame_interval_ms);
+        if (interval === null)
+          return fail(
+            "min_frame_interval_ms must be an integer from 0 to 10000",
+          );
+        if (params.paused !== undefined && typeof params.paused !== "boolean")
+          return fail("paused must be a boolean");
+        if (!stream) return reply({ ok: false });
+        stream.configure({
+          minIntervalMs: interval,
+          paused: params.paused as boolean | undefined,
+        });
+        return reply({ ok: true, ...stream.settings });
+      }
       if (method === "terminal.input") {
         if (!thin || thin.isClosed || !shared || !requestedTerminalId) {
           return fail(NO_TERMINAL_ATTACHED_MESSAGE);
@@ -1469,6 +1692,9 @@ export function createTerminalBridge(args: {
         }
         const input = Buffer.from(b64, "base64");
         if (input.length === 0) return fail("terminal input required");
+        // Typing from a device that does not display the pane must not make
+        // Herdr size the tab for this bridge (Herdr with input_geometry).
+        const claimsGeometry = await maySize(ws, requestedTerminalId);
         const validateAttachment = await waitForOwnedTerminal(
           ws,
           requestedTerminalId,
@@ -1483,21 +1709,41 @@ export function createTerminalBridge(args: {
           inputAt: Date.now(),
           session: shared,
         };
-        thin.input(input);
+        if (thin instanceof EndpointTerminalSession)
+          thin.input(input, claimsGeometry);
+        else thin.input(input);
         return reply({ ok: true });
       }
       if (method === "terminal.resize") {
-        if (!thin || !shared) return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+        if (!thin || !shared || !requestedTerminalId)
+          return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         const cols = optionalNumber(params, "cols") ?? 100;
         const rows = optionalNumber(params, "rows") ?? 30;
+        const sizes = await maySize(ws, requestedTerminalId);
+        if (
+          sharedTerminals.get(requestedTerminalId) !== shared ||
+          thin.isClosed ||
+          !terminalViewers.get(ws)?.has(requestedTerminalId)
+        )
+          return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+        if (!sizes) {
+          // Another device displays this pane: keep its size and send this
+          // viewer the whole surface at that size instead.
+          followShared(ws, shared);
+          return reply({ ok: true, skipped: true, reason: "display_owner" });
+        }
         const relaySize = relaySizeFromParams(params, { cols, rows });
         thin.resize(cols, rows);
-        terminalViewers.get(ws)!.set(requestedTerminalId!, { cols, rows });
-        frameStreams.get(ws)?.get(requestedTerminalId!)?.reset();
+        terminalViewers.get(ws)!.set(requestedTerminalId, { cols, rows });
+        frameStreams.get(ws)?.get(requestedTerminalId)?.reset();
         shared.cols = cols;
         shared.rows = rows;
+        // The tab surface hint from attach is stale now; the endpoint session
+        // derives it from the pane ratio.
+        displaySizes.set(requestedTerminalId, { cols, rows });
         // Anything held for this terminal was rendered for the previous size.
-        args.dropCoalesced?.(ws, terminalCoalesceKey(requestedTerminalId!));
+        args.dropCoalesced?.(ws, terminalCoalesceKey(requestedTerminalId));
+        syncFollowers(shared, ws);
         if (relaySize) {
           clipboardRelayRevision += 1;
           syncClipboardRelaySize(relaySize.cols, relaySize.rows);
@@ -1526,6 +1772,7 @@ export function createTerminalBridge(args: {
           // reach this branch; they keep the legacy scroll routing below.
           if (!shared || !requestedTerminalId)
             return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+          const claimsGeometry = await maySize(ws, requestedTerminalId);
           const validateAttachment = await waitForOwnedTerminal(
             ws,
             requestedTerminalId,
@@ -1535,7 +1782,10 @@ export function createTerminalBridge(args: {
           validateAttachment();
           // Herdr chooses application input versus shell scrollback from the
           // actual PTY modes. pane.scroll always means history and bypasses nano.
-          thin.input(Buffer.from(direction === "up" ? "\x1b[5~" : "\x1b[6~"));
+          thin.input(
+            Buffer.from(direction === "up" ? "\x1b[5~" : "\x1b[6~"),
+            claimsGeometry,
+          );
           return reply({ ok: true });
         }
         // Explicit half-page shortcuts use pane.scroll on endpoints, while
@@ -1546,7 +1796,12 @@ export function createTerminalBridge(args: {
             thin instanceof EndpointTerminalSession)
             ? "page-key"
             : "wheel";
-        thin.scroll(direction, lines, column, row, source);
+        if (thin instanceof EndpointTerminalSession && requestedTerminalId) {
+          // Wheel input reaches mouse-aware apps as pane input.
+          const claimsGeometry = await maySize(ws, requestedTerminalId);
+          if (thin.isClosed) return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+          thin.scroll(direction, lines, column, row, source, claimsGeometry);
+        } else thin.scroll(direction, lines, column, row, source);
         return reply({ ok: true });
       }
       return fail(`unknown terminal method: ${method}`);
@@ -1628,6 +1883,8 @@ export function createTerminalBridge(args: {
     focusIntents.clear();
     focusChains.clear();
     terminals.clear();
+    knownPanes.clear();
+    displaySizes.clear();
   }
 
   return {

@@ -66,13 +66,21 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "terminal.detach": read,
   "terminal.watch_popup": read,
   "terminal.frame_ack": read,
+  // Thins only this browser's own frame stream.
+  "terminal.stream": read,
+  // A pane's last lines as text, read through Herdr's passive snapshot path.
+  "terminal.preview_text": read,
   "terminal.scroll": read,
   "terminal.link.resolve": read,
+  // The bridge ignores focus, resize, and relay resize from devices other
+  // than a pane's display owner (see terminal.display).
   "terminal.focus": write,
   "terminal.input": write,
   "terminal.resize": write,
   "terminal.relay_resize": write,
   "terminal.host_theme": write,
+  // Pin a pane's size to this device, take it here, or release it.
+  "terminal.display": write,
 
   // Presence and pane control. The bridge assigns participant ids.
   "collaboration.list": read,

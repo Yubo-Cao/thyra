@@ -643,6 +643,15 @@ function runtimeFactoryForProfile(
         clientLabel,
         markRpcError,
         presentSnapshot: clientIdentity.annotateSnapshot,
+        socketIdentity: (ws) => {
+          const participantId = participantIds.get(ws);
+          return participantId
+            ? {
+                participantId,
+                deviceKey: clientIdentity.deviceKeyOf(ws) ?? clientLabel(ws),
+              }
+            : null;
+        },
         onTaskEvent: (event) => {
           mcp.recordTaskEvent(identity.id, event);
           const connections = connectionProfiles.list();

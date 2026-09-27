@@ -162,6 +162,21 @@ describe("authorizeRpc", () => {
     expect(authorizeRpc(method).allowed).toBe(false);
   });
 
+  test("classes display ownership: sizing and pinning write, previews read", () => {
+    for (const method of [
+      "terminal.display",
+      "terminal.resize",
+      "terminal.relay_resize",
+      "terminal.focus",
+      "terminal.input",
+    ])
+      expect(RPC_POLICY[method]?.class).toBe("write");
+    expect(RPC_POLICY["terminal.stream"]).toEqual({ class: "read" });
+    expect(RPC_POLICY["terminal.preview_text"]).toEqual({ class: "read" });
+    // Browsers never choose pane.read parameters themselves.
+    expect(RPC_POLICY["pane.read"]).toBeUndefined();
+  });
+
   test("allows listed methods for the owner", () => {
     for (const method of Object.keys(RPC_POLICY)) {
       expect(authorizeRpc(method).allowed).toBe(true);

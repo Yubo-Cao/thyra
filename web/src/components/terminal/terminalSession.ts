@@ -251,7 +251,51 @@ function createTerminalRefs(initial: {
     attachEvictions: box<number[]>([]),
     attachWatchdog: new TerminalAttachFrameWatchdog(),
     attachTimeouts: box(0),
+    // Another device sizes this pane: mirror its size, scaled to fit.
+    followShared: box(false),
+    // This viewer's frame stream: minimum interval, and paused for a text
+    // preview. Sent with each attach and on change.
+    frameInterval: box(0),
+    framesPaused: box(false),
   };
+}
+
+/**
+ * While following another device's size, keep xterm at the frame size and
+ * scale it down (never up) to fit the container; otherwise undo the scale.
+ */
+export function applyTerminalFollowScale(
+  term: Terminal,
+  container: HTMLElement,
+  follow: boolean,
+) {
+  if (!follow) {
+    if (!container.classList.contains("is-following")) return;
+    container.classList.remove("is-following");
+    container.style.removeProperty("--terminal-follow-scale");
+    return;
+  }
+  const element = term.element;
+  const screen = element?.querySelector<HTMLElement>(".xterm-screen");
+  let scale = 1;
+  if (element && screen && screen.offsetWidth > 0 && screen.offsetHeight > 0) {
+    const style = getComputedStyle(element);
+    const px = (value: string) => Number.parseFloat(value) || 0;
+    const width =
+      screen.offsetWidth + px(style.paddingLeft) + px(style.paddingRight);
+    const height =
+      screen.offsetHeight + px(style.paddingTop) + px(style.paddingBottom);
+    scale = Math.min(
+      1,
+      container.clientWidth / width,
+      container.clientHeight / height,
+    );
+  }
+  container.classList.add("is-following");
+  container.style.setProperty(
+    "--terminal-follow-scale",
+    String(Math.max(0.1, Math.round(scale * 1000) / 1000)),
+  );
 }
 
 /** Mutable state a terminal view and its xterm session share across renders. */
@@ -724,6 +768,16 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     attachTimeouts.current = 0;
     ui.setTerminalLoading(false);
     ui.setTerminalAttachError("");
+    // Mirror the displaying device's size; the bridge sends the whole surface.
+    if (
+      refs.followShared.current &&
+      frame.width > 0 &&
+      frame.height > 0 &&
+      (frame.width !== term.cols || frame.height !== term.rows)
+    ) {
+      term.resize(frame.width, frame.height);
+      applyTerminalFollowScale(term, container, true);
+    }
     if (typeof frame.mouse_reporting === "boolean") {
       term.options.macOptionClickForcesSelection = true;
       presentation.update(

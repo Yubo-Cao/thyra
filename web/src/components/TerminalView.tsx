@@ -13,9 +13,17 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { TerminalPaneHeader } from "./terminal/TerminalPaneHeader";
+import {
+  INPUT_ONLY_FRAME_INTERVAL_MS,
+  loadTerminalPreviewMode,
+  saveTerminalPreviewMode,
+  TerminalTextPreview,
+  type TerminalPreviewMode,
+} from "./terminal/TerminalPreview";
 import "@xterm/xterm/css/xterm.css";
 import { bridge } from "../api";
 import {
@@ -384,22 +392,69 @@ export function TerminalView({
       closeTerminalInput(false);
     }
   }, [closeTerminalInput, control.access.viewOnly, refs, termInstance]);
-  useEffect(() => {
-    if (!control.access.ownsLayout || !termInstance || !pane?.terminal_id)
-      return;
+  // A device that may not size the pane mirrors the displaying device's size,
+  // scaled to fit. Gaining the right to size it (taking control, pinning the
+  // display here) sizes the pane for this viewport at once.
+  const { canResize, inputOnly } = control.access;
+  const couldResize = useRef(canResize);
+  useLayoutEffect(() => {
+    refs.followShared.current = !canResize;
+    const gained = canResize && !couldResize.current;
+    couldResize.current = canResize;
+    if (!termInstance) return;
+    const size = sessionBindings.fitVisibleTerminal();
+    if (!gained || !size || !pane?.terminal_id) return;
     void connectionClient
       .call("terminal.resize", {
         terminal_id: pane.terminal_id,
-        cols: termInstance.cols,
-        rows: termInstance.rows,
+        cols: size.cols,
+        rows: size.rows,
       })
       .catch(() => {});
   }, [
-    control.access.ownsLayout,
+    canResize,
     connectionClient,
     termInstance,
     pane?.terminal_id,
+    refs,
+    sessionBindings,
   ]);
+  // Input-only devices preview at a reduced frame rate, or take no frames
+  // while showing the text preview. Other devices' streams are unaffected.
+  const [previewMode, setPreviewMode] = useState<TerminalPreviewMode>(
+    loadTerminalPreviewMode,
+  );
+  const [inputEpoch, setInputEpoch] = useState(0);
+  const frameInterval = inputOnly ? INPUT_ONLY_FRAME_INTERVAL_MS : 0;
+  const framesPaused = inputOnly && previewMode === "text";
+  useEffect(() => {
+    const changed =
+      refs.frameInterval.current !== frameInterval ||
+      refs.framesPaused.current !== framesPaused;
+    refs.frameInterval.current = frameInterval;
+    refs.framesPaused.current = framesPaused;
+    const terminalId = refs.attachedTerminal.current;
+    if (!changed || !terminalId) return;
+    void connectionClient
+      .call("terminal.stream", {
+        terminal_id: terminalId,
+        min_frame_interval_ms: frameInterval,
+        paused: framesPaused,
+      })
+      .catch(() => {});
+  }, [connectionClient, frameInterval, framesPaused, refs]);
+  const wasInputOnly = useRef(inputOnly);
+  useEffect(() => {
+    // Typing here while another device displays the pane: the composer (with
+    // voice and modifier keys) is the input surface.
+    if (inputOnly && !wasInputOnly.current && isActivePane)
+      setComposerOpen(true);
+    wasInputOnly.current = inputOnly;
+  }, [inputOnly, isActivePane, setComposerOpen]);
+  const changePreviewMode = useCallback((mode: TerminalPreviewMode) => {
+    saveTerminalPreviewMode(mode);
+    setPreviewMode(mode);
+  }, []);
   const [agentHistoryOpen, setAgentHistoryOpen] = useOpenState(
     controlledAgentHistoryOpen,
     onAgentHistoryOpenChange,
@@ -473,12 +528,22 @@ export function TerminalView({
     setAgentHistoryOpen,
   ]);
 
-  const shortcuts = terminalShortcutActions(
+  const baseShortcuts = terminalShortcutActions(
     sessionBindings,
     modifiers,
     pane?.terminal_id,
     control.access.viewOnly,
   );
+  // The text preview refreshes soon after a key is sent.
+  const shortcuts = framesPaused
+    ? {
+        ...baseShortcuts,
+        run: (shortcut: Parameters<typeof baseShortcuts.run>[0]) => {
+          baseShortcuts.run(shortcut);
+          setInputEpoch((value) => value + 1);
+        },
+      }
+    : baseShortcuts;
   const openPathInInspector = useCallback(
     (path: string) => {
       if (!connectionClient.isCurrent()) return;
@@ -519,6 +584,7 @@ export function TerminalView({
     if (!targetPaneId) throw new Error(t("No active pane"));
     const request = terminalComposerRequest(targetPaneId, text, submit);
     await connectionClient.call(request.method, request.params);
+    if (framesPaused) setInputEpoch((value) => value + 1);
   };
   const voiceTypingDisabledReason = control.access.viewOnly
     ? t("This pane is view only")
@@ -649,9 +715,23 @@ export function TerminalView({
           canClosePane={canClosePane}
           endpointAvailable={!!s.endpointAvailability[pane.terminal_id]}
           onClosePane={() => setClosePaneRequested(true)}
+          previewMode={previewMode}
+          onPreviewModeChange={changePreviewMode}
         />
         <div className="terminal-main">
-          <div ref={setContainer} className="terminal-view" />
+          {/* The follow scale edits classList, so React owns only this attribute. */}
+          <div
+            ref={setContainer}
+            className="terminal-view"
+            data-preview={framesPaused ? "text" : undefined}
+          />
+          {framesPaused ? (
+            <TerminalTextPreview
+              client={connectionClient}
+              paneId={pane.pane_id}
+              inputEpoch={inputEpoch}
+            />
+          ) : null}
           {!selecting &&
           ((!composerOpen && isActivePane) || voiceTyping.active) ? (
             <div

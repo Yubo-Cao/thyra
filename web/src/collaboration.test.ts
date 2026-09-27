@@ -222,3 +222,52 @@ describe("collaboration focus events", () => {
     });
   });
 });
+
+describe("display owner events", () => {
+  test("patch the snapshot's display owners and ignore malformed entries", () => {
+    const client: ConnectionClient = {
+      connectionId: "display-test",
+      generation: 1,
+      serverRuntimeGeneration: 4,
+      call: async () => null,
+      isCurrent: () => true,
+      acceptsServerGeneration: (value) => value === 4,
+    };
+    let latest: CollaborationSnapshot | null = null;
+    const unsubscribe = subscribeCollaborationSnapshot(client, (snapshot) => {
+      latest = snapshot;
+    });
+    const displayEvent = (owners: unknown, generation = 4) => ({
+      connection_id: "display-test",
+      connection_generation: generation,
+      event: "collaboration.display",
+      data: { type: "collaboration_display", display_owners: owners },
+    });
+    const owner = {
+      pane_id: "w1:p1",
+      participant_id: "web-ipad",
+      pinned: true,
+      since_unix_ms: 5,
+    };
+    expect(acceptCollaborationEvent(client, displayEvent([owner]))).toBe(false);
+    acceptCollaborationEvent(client, {
+      connection_id: "display-test",
+      connection_generation: 4,
+      event: "collaboration_updated",
+      data: {
+        snapshot: { participants: [], pane_claims: [], lease_ttl_ms: 45_000 },
+      },
+    });
+    const current = () => latest as CollaborationSnapshot | null;
+    expect(current()?.display_owners).toBeUndefined();
+    expect(
+      acceptCollaborationEvent(client, displayEvent([owner, { pane_id: 3 }])),
+    ).toBe(true);
+    expect(current()?.display_owners).toEqual([owner]);
+    // A stale runtime generation cannot change it.
+    expect(acceptCollaborationEvent(client, displayEvent([], 3))).toBe(false);
+    expect(acceptCollaborationEvent(client, displayEvent([]))).toBe(true);
+    expect(current()?.display_owners).toEqual([]);
+    unsubscribe();
+  });
+});

@@ -5,6 +5,7 @@ import { EventEmitter, once } from "node:events";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
+import { createDisplayOwnership } from "./display-ownership";
 import { createTerminalBridge } from "./terminal-bridge";
 import { silentLogger } from "../utils/logger";
 import {
@@ -102,6 +103,231 @@ test("a view-only join preserves the existing stream size and still receives a f
     bridge.dispose();
   }
 });
+describe("display owner enforcement", () => {
+  async function setup() {
+    const tracker = {
+      appConnects: 0,
+      appCloses: 0,
+      appSizes: [] as string[],
+      events: [] as string[],
+    };
+    const socketPath = await startThinServer({ tracker });
+    const ipad = {} as ServerWebSocket<unknown>;
+    const phone = {} as ServerWebSocket<unknown>;
+    const messages = new Map<ServerWebSocket<unknown>, string[]>([
+      [ipad, []],
+      [phone, []],
+    ]);
+    const display = createDisplayOwnership();
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
+      displayOwnership: display,
+      socketIdentity: (ws) =>
+        ws === ipad
+          ? { participantId: "web-ipad", deviceKey: "device:ipad" }
+          : { participantId: "web-phone", deviceKey: "device:phone" },
+      safeSend: (ws, payload) => {
+        messages.get(ws)!.push(payload);
+        return true;
+      },
+      clientLabel: () => "test",
+      markRpcError: () => {},
+    });
+    const call = async (
+      ws: ServerWebSocket<unknown>,
+      method: string,
+      params: Record<string, unknown>,
+    ) => {
+      const inbox = messages.get(ws)!;
+      const start = inbox.length;
+      await bridge.handleTerminalRpc(ws, method, method, params);
+      const reply = inbox
+        .slice(start)
+        .map((line) => JSON.parse(line))
+        .find((line) => line.id === method);
+      if (reply?.error) throw new Error(reply.error.message);
+      return reply?.result;
+    };
+    const frameWidth = async (ws: ServerWebSocket<unknown>) => {
+      const inbox = messages.get(ws)!;
+      inbox.length = 0;
+      return (await waitForTerminalFrame(inbox)).width;
+    };
+    return { bridge, display, tracker, ipad, phone, call, frameWidth };
+  }
+
+  test("only the display owner sizes a pane; other devices follow its size", async () => {
+    const { bridge, tracker, ipad, phone, call, frameWidth } = await setup();
+    try {
+      await call(ipad, "terminal.attach", {
+        terminal_id: "t1",
+        cols: 120,
+        rows: 40,
+        relay_active: false,
+      });
+      expect(
+        (await call(ipad, "terminal.display", { pane_id: "p1", action: "pin" }))
+          .display_owners,
+      ).toEqual([
+        expect.objectContaining({
+          pane_id: "p1",
+          participant_id: "web-ipad",
+          pinned: true,
+        }),
+      ]);
+
+      // The phone joins without preserve_size and still gets the iPad size.
+      const attach = call(phone, "terminal.attach", {
+        terminal_id: "t1",
+        cols: 45,
+        rows: 30,
+        relay_active: false,
+      });
+      expect(await frameWidth(phone)).toBe(120);
+      await attach;
+      tracker.events.length = 0;
+      expect(
+        await call(phone, "terminal.resize", {
+          terminal_id: "t1",
+          cols: 45,
+          rows: 30,
+        }),
+      ).toEqual({ ok: true, skipped: true, reason: "display_owner" });
+      await call(phone, "terminal.relay_resize", {
+        pane_id: "p1",
+        cols: 45,
+        rows: 30,
+      });
+      await Bun.sleep(20);
+      expect(tracker.events).not.toContain("resize");
+
+      // "Take control and resize here" moves the display to the phone.
+      await call(phone, "terminal.display", { pane_id: "p1", action: "take" });
+      await call(phone, "terminal.resize", {
+        terminal_id: "t1",
+        cols: 45,
+        rows: 30,
+      });
+      expect(await frameWidth(ipad)).toBe(45);
+      expect(
+        await call(ipad, "terminal.resize", {
+          terminal_id: "t1",
+          cols: 120,
+          rows: 40,
+        }),
+      ).toMatchObject({ skipped: true });
+
+      // Pinning again returns the size to the iPad; the phone follows.
+      await call(ipad, "terminal.display", { pane_id: "p1", action: "pin" });
+      await call(ipad, "terminal.resize", {
+        terminal_id: "t1",
+        cols: 120,
+        rows: 40,
+      });
+      expect(await frameWidth(phone)).toBe(120);
+      await call(ipad, "terminal.display", {
+        pane_id: "p1",
+        action: "release",
+      });
+      expect(
+        await call(phone, "terminal.resize", {
+          terminal_id: "t1",
+          cols: 45,
+          rows: 30,
+        }),
+      ).toEqual({ ok: true });
+    } finally {
+      bridge.dispose();
+    }
+  });
+
+  test("a follower opening a new stream uses the display owner's last size", async () => {
+    const { bridge, ipad, phone, call, frameWidth } = await setup();
+    try {
+      await call(ipad, "terminal.attach", {
+        terminal_id: "t1",
+        cols: 120,
+        rows: 40,
+        relay_active: false,
+      });
+      await call(ipad, "terminal.display", { pane_id: "p1", action: "pin" });
+      await call(ipad, "terminal.detach", { terminal_id: "t1" });
+      expect(bridge.statusTerminals()).toEqual([]);
+      const attach = call(phone, "terminal.attach", {
+        terminal_id: "t1",
+        cols: 45,
+        rows: 30,
+        relay_active: false,
+      });
+      expect(await frameWidth(phone)).toBe(120);
+      await attach;
+    } finally {
+      bridge.dispose();
+    }
+  });
+
+  test("text previews read a bounded number of lines through the bridge", async () => {
+    const reads: [string, number][] = [];
+    const replies: string[] = [];
+    const ws = {} as ServerWebSocket<unknown>;
+    const bridge = createTerminalBridge({
+      clientSocketPath: "/unused.sock",
+      herdrProtocol: async () => 22,
+      readPaneText: async (paneId, lines) => {
+        reads.push([paneId, lines]);
+        return { text: "last lines", truncated: false };
+      },
+      safeSend: (_ws, payload) => {
+        replies.push(payload);
+        return true;
+      },
+      clientLabel: () => "test",
+      markRpcError: () => {},
+    });
+    try {
+      await bridge.handleTerminalRpc(ws, "a", "terminal.preview_text", {
+        pane_id: "p1",
+      });
+      await bridge.handleTerminalRpc(ws, "b", "terminal.preview_text", {
+        pane_id: "p1",
+        lines: 500,
+      });
+      expect(reads).toEqual([["p1", 60]]);
+      expect(replies.map((line) => JSON.parse(line))).toEqual([
+        { id: "a", result: { text: "last lines", truncated: false } },
+        {
+          id: "b",
+          error: { message: "lines must be an integer from 1 to 200" },
+        },
+      ]);
+    } finally {
+      bridge.dispose();
+    }
+  });
+
+  test("display requests are validated", async () => {
+    const { bridge, phone, call } = await setup();
+    try {
+      await expect(
+        call(phone, "terminal.display", { pane_id: "", action: "pin" }),
+      ).rejects.toThrow("pane_id required");
+      await expect(
+        call(phone, "terminal.display", { pane_id: "p1", action: "steal" }),
+      ).rejects.toThrow("action must be");
+      await expect(
+        call(phone, "terminal.stream", {
+          terminal_id: "t1",
+          min_frame_interval_ms: 60_000,
+        }),
+      ).rejects.toThrow("min_frame_interval_ms");
+    } finally {
+      bridge.dispose();
+    }
+  });
+});
+
 const serverConnections = new Set<net.Socket>();
 
 afterEach(async () => {
@@ -167,6 +393,8 @@ async function startThinServer(
     let isAppSocket = false;
     let socketCols = 100;
     let socketRows = 30;
+    // A client may close while a frame to it is still being written.
+    socket.on("error", () => {});
     socket.on("close", () => {
       serverConnections.delete(socket);
       if (appSocket === socket) appSocket = null;

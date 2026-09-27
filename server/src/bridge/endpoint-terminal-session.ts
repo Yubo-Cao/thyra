@@ -128,6 +128,11 @@ export class EndpointTerminalSession extends EventEmitter {
     return this.client.negotiation;
   }
 
+  /** Whether input can be kept from claiming Herdr's size owner. */
+  get supportsInputGeometry() {
+    return this.client.supportsInputGeometry;
+  }
+
   connect(
     cols: number,
     rows: number,
@@ -540,7 +545,11 @@ export class EndpointTerminalSession extends EventEmitter {
     this.client.resize(next.cols, next.rows);
   }
 
-  input(data: Buffer) {
+  /**
+   * `claimsGeometry: false` marks input typed on a device that does not
+   * display this pane, so Herdr keeps its size owner (where supported).
+   */
+  input(data: Buffer, claimsGeometry = true) {
     this.linkFrame = null;
     if (!this.paneId || this.closed) return;
     // Typing or application input supersedes a queued history gesture.
@@ -581,13 +590,13 @@ export class EndpointTerminalSession extends EventEmitter {
       }
       return inside;
     });
-    this.client.sendPaneInput(this.paneId, events);
+    this.client.sendPaneInput(this.paneId, events, claimsGeometry);
     if (this.escFlushTimer) clearTimeout(this.escFlushTimer);
     this.escFlushTimer = setTimeout(() => {
       this.escFlushTimer = null;
       if (!this.paneId || this.closed) return;
       const flushed = this.classifier.flush();
-      this.client.sendPaneInput(this.paneId, flushed);
+      this.client.sendPaneInput(this.paneId, flushed, claimsGeometry);
     }, ESC_FLUSH_MS);
   }
 
@@ -597,6 +606,7 @@ export class EndpointTerminalSession extends EventEmitter {
     column?: number | null,
     row?: number | null,
     source: "wheel" | "page-key" = "wheel",
+    claimsGeometry = true,
   ) {
     if (!this.paneId || !Number.isFinite(lines) || lines <= 0) return;
     lines = Math.max(1, Math.min(65535, Math.floor(lines)));
@@ -616,17 +626,21 @@ export class EndpointTerminalSession extends EventEmitter {
       )
         return;
       this.linkFrame = null;
-      this.client.sendPaneInput(this.paneId, [
-        {
-          type: "mouse",
-          kind:
-            direction === "up" ? MOUSE_KIND.ScrollUp : MOUSE_KIND.ScrollDown,
-          column: column!,
-          row: row!,
-          modifiers: 0,
-          lines,
-        },
-      ]);
+      this.client.sendPaneInput(
+        this.paneId,
+        [
+          {
+            type: "mouse",
+            kind:
+              direction === "up" ? MOUSE_KIND.ScrollUp : MOUSE_KIND.ScrollDown,
+            column: column!,
+            row: row!,
+            modifiers: 0,
+            lines,
+          },
+        ],
+        claimsGeometry,
+      );
       return;
     }
     this.client.assertMethod("pane.scroll");
