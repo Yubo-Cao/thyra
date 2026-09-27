@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+
+// Every test here spawns PowerShell, which is slow to start on shared CI runners.
+setDefaultTimeout(30_000);
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -115,7 +118,7 @@ describe.skipIf(!pwsh)("install.ps1 helpers", () => {
           .code,
       ).not.toBe(0);
     }
-  }, 30_000);
+  });
 
   test("reads the Windows entry of the rendered Herdr pin", () => {
     const root = mkdtempSync(join(tmpdir(), "thyra-ps1-"));
