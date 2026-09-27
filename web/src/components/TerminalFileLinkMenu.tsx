@@ -6,9 +6,8 @@ import {
 } from "../filesystemPaths";
 import { t } from "../i18n";
 import { useStoreSelector } from "../store";
-import { ActionsMenu } from "./ActionsMenu";
 import { requestFilePreview } from "./fileExplorerResources";
-import "./ContextMenu.css";
+import { ContextMenu } from "./ui/ContextMenu";
 
 export type TerminalFileLinkMenuState = {
   x: number;
@@ -61,36 +60,36 @@ export function TerminalFileLinkMenu({
     };
   }, [client, state]);
   return (
-    <ActionsMenu
-      x={state.x}
-      y={state.y}
+    <ContextMenu
+      position={{ x: state.x, y: state.y }}
       header={{ title: state.path }}
+      aria-label={t("File actions")}
       onClose={onClose}
-      groups={[
+      items={[
         {
-          label: t("File actions"),
+          id: "file-actions",
+          title: t("File actions"),
           items: [
             {
-              key: "preview",
+              id: "preview",
               label: directory ? t("Preview directory") : t("Preview file"),
-              action: () => onPreview(state.path),
+              onAction: () => onPreview(state.path),
             },
             ...(directory && !alreadyOpen
               ? [
                   {
-                    key: "workspace",
+                    id: "workspace",
                     label: t("Open directory as workspace..."),
-                    action: () => onWorkspace(directory),
+                    onAction: () => onWorkspace(directory),
                   },
                 ]
               : []),
             ...(checking
               ? [
                   {
-                    key: "checking",
+                    id: "checking",
                     label: t("Checking directory..."),
                     disabled: true,
-                    action: () => {},
                   },
                 ]
               : []),

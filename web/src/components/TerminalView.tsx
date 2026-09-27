@@ -150,7 +150,9 @@ import {
   annotationComposerPanel,
   createWorkspaceDialog,
   terminalComposerPanel,
+  terminalConfirmDialog,
   terminalFileLinkMenuPanel,
+  terminalMessageDialog,
 } from "./lazyPanels";
 import { LazyBoundary, LazyPendingStatus, Latched } from "./LazyBoundary";
 import { directoryPreviewName } from "../filesystemPaths";
@@ -185,7 +187,6 @@ import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
 import { applyTerminalTheme } from "../terminalThemes";
 import { noteTerminalOutput } from "../startupGate";
 import { paneHasAgentHistory } from "./agentSession";
-import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
 import {
   TerminalVoiceButton,
   TerminalVoicePanel,
@@ -203,6 +204,8 @@ const TerminalComposer = terminalComposerPanel.Component;
 const AnnotationComposerPopover = annotationComposerPanel.Component;
 const TerminalFileLinkMenu = terminalFileLinkMenuPanel.Component;
 const CreateWorkspaceDialog = createWorkspaceDialog.Component;
+const ConfirmDialog = terminalConfirmDialog.Component;
+const Dialog = terminalMessageDialog.Component;
 
 function focusTerminalEndpoint(
   client: ConnectionClient,
@@ -863,7 +866,9 @@ export function TerminalView({
     const onKey = (e: KeyboardEvent) => {
       if (
         e.defaultPrevented ||
-        document.querySelector(".modal-backdrop, .command-popover")
+        document.querySelector(
+          ".modal-backdrop, .ui-dialog-backdrop, .command-popover",
+        )
       )
         return;
       const isHistoryShortcut = shortcutMatches(e, "terminal.history");
@@ -3356,6 +3361,32 @@ export function TerminalView({
     ...mobileShortcuts.map((row) => row.length),
   );
 
+  const uploadErrorDialog = (
+    <Latched open={!!uploadError}>
+      <Dialog
+        open={!!uploadError}
+        onOpenChange={(open) => {
+          if (!open) setUploadError("");
+        }}
+        title={t("Upload Failed")}
+        size="sm"
+        role="alertdialog"
+        footer={
+          <Button
+            variant="primary"
+            size="md"
+            autoFocus
+            onClick={() => setUploadError("")}
+          >
+            {t("OK")}
+          </Button>
+        }
+      >
+        {uploadError}
+      </Dialog>
+    </Latched>
+  );
+
   if (!pane) {
     return (
       <>
@@ -3370,9 +3401,12 @@ export function TerminalView({
             {s.error ? (
               <div className="terminal-empty-stack" role="alert">
                 <span>{s.error}</span>
-                <button type="button" onClick={() => void store.refresh()}>
+                <Button
+                  variant="secondary"
+                  onClick={() => void store.refresh()}
+                >
                   {t("Retry")}
-                </button>
+                </Button>
               </div>
             ) : s.navigationLoading ? (
               // Stay blank for the grace window rather than falling through to
@@ -3394,12 +3428,7 @@ export function TerminalView({
             )}
           </HerdrSetupCard>
         </div>
-        <MessageDialog
-          open={!!uploadError}
-          title={t("Upload Failed")}
-          message={uploadError}
-          onClose={() => setUploadError("")}
-        />
+        {uploadErrorDialog}
       </>
     );
   }
@@ -3414,6 +3443,16 @@ export function TerminalView({
       pane.pane_id,
     ]).length,
   );
+
+  // Selection actions sit below the lowest handle, or above the highest one
+  // when there is no room; handles stay inside the viewport.
+  const touchHandleYs = touchHandles.map((handle) => handle.y);
+  const touchActionsTop = () =>
+    Math.max(...touchHandleYs) + 80 < window.innerHeight
+      ? Math.max(...touchHandleYs) + 28
+      : Math.max(8, Math.min(...touchHandleYs) - 76);
+  const clampHandle = (value: number, size: number) =>
+    Math.max(22, Math.min(value, size - 22));
 
   return (
     <>
@@ -3443,8 +3482,9 @@ export function TerminalView({
       !reviewSelection.composing &&
       touchHandles.length === 0
         ? createPortal(
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="md"
               className="terminal-annotation-action"
               style={{ left: reviewSelection.x, top: reviewSelection.y }}
               onMouseDown={(event) => event.preventDefault()}
@@ -3462,7 +3502,7 @@ export function TerminalView({
               }
             >
               {t("Add comment")}
-            </button>,
+            </Button>,
             document.body,
           )
         : null}
@@ -3471,22 +3511,12 @@ export function TerminalView({
             <div className="terminal-touch-selection-ui">
               <div
                 className="terminal-touch-selection-actions"
-                style={{
-                  top:
-                    Math.max(...touchHandles.map((handle) => handle.y)) + 80 <
-                    window.innerHeight
-                      ? Math.max(...touchHandles.map((handle) => handle.y)) + 28
-                      : Math.max(
-                          8,
-                          Math.min(...touchHandles.map((handle) => handle.y)) -
-                            76,
-                        ),
-                }}
+                style={{ top: touchActionsTop() }}
                 role="group"
                 aria-label={t("Selected terminal output")}
               >
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => {
                     const text = termRef.current
@@ -3503,9 +3533,9 @@ export function TerminalView({
                   }}
                 >
                   {t("Copy")}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="secondary"
                   disabled={!reviewSelection}
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => {
@@ -3516,19 +3546,19 @@ export function TerminalView({
                   }}
                 >
                   {t("Add comment")}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     touchSelectionRef.current?.reset();
                     setReviewSelection(null);
                   }}
                 >
                   {t("Done")}
-                </button>
+                </Button>
                 {touchLink ? (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={(event) => {
                       if (!touchLink.current()) {
@@ -3557,7 +3587,7 @@ export function TerminalView({
                     {touchLink.kind === "url"
                       ? t("Open link")
                       : t("File actions")}
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               {touchHandles.map((handle) => (
@@ -3567,14 +3597,8 @@ export function TerminalView({
                   className="terminal-selection-handle"
                   aria-label={handle.label}
                   style={{
-                    left: Math.max(
-                      22,
-                      Math.min(handle.x, window.innerWidth - 22),
-                    ),
-                    top: Math.max(
-                      22,
-                      Math.min(handle.y, window.innerHeight - 22),
-                    ),
+                    left: clampHandle(handle.x, window.innerWidth),
+                    top: clampHandle(handle.y, window.innerHeight),
                   }}
                   onPointerDown={(event) => {
                     event.preventDefault();
@@ -3626,17 +3650,12 @@ export function TerminalView({
                       x1="22"
                       y1="22"
                       x2={
-                        22 +
-                        handle.x -
-                        Math.max(22, Math.min(handle.x, window.innerWidth - 22))
+                        22 + handle.x - clampHandle(handle.x, window.innerWidth)
                       }
                       y2={
                         22 +
                         handle.markerY -
-                        Math.max(
-                          22,
-                          Math.min(handle.y, window.innerHeight - 22),
-                        )
+                        clampHandle(handle.y, window.innerHeight)
                       }
                     />
                   </svg>
@@ -3789,7 +3808,6 @@ export function TerminalView({
             ) : null}
             <Button
               icon
-              className={control.access.viewOnly ? "is-active" : ""}
               aria-pressed={control.access.viewOnly}
               onPointerDown={preventPaneActionFocus}
               onClick={
@@ -3857,6 +3875,7 @@ export function TerminalView({
                 tone="danger"
                 disabled={control.access.viewOnly}
                 label={t("Close pane")}
+                onPointerEnter={() => void terminalConfirmDialog.preload()}
                 onPointerDown={preventPaneActionFocus}
                 onClick={() => setClosePaneRequested(true)}
                 icon={<X size={14} />}
@@ -3883,10 +3902,10 @@ export function TerminalView({
                 disabledReason={voiceTypingDisabledReason}
               />
               {!composerOpen && isActivePane ? (
-                <button
-                  type="button"
-                  aria-label={t("Open device keyboard")}
-                  title={t("Open device keyboard")}
+                <IconButton
+                  variant="secondary"
+                  label={t("Open device keyboard")}
+                  icon={<Keyboard size={20} />}
                   aria-pressed={inputActive}
                   disabled={
                     s.status !== "connected" ||
@@ -3909,9 +3928,7 @@ export function TerminalView({
                     if (term.textarea) term.textarea.readOnly = false;
                     term.focus();
                   }}
-                >
-                  <Keyboard size={20} />
-                </button>
+                />
               ) : null}
             </div>
           ) : null}
@@ -3935,8 +3952,9 @@ export function TerminalView({
                 }
                 const option = mobileTerminalShortcutOption(shortcut.action);
                 return (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    className="terminal-mobile-key"
                     disabled={!!mobileShortcutReason(shortcut)}
                     title={
                       mobileShortcutReason(shortcut) ??
@@ -3951,7 +3969,7 @@ export function TerminalView({
                     key={shortcut.id}
                   >
                     {shortcut.label}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -3964,20 +3982,18 @@ export function TerminalView({
             }`}
             aria-label={t("Terminal shortcuts")}
           >
-            <button
-              type="button"
+            <IconButton
               className="terminal-mobile-keys-toggle"
-              aria-label={
+              label={
                 mobileKeysOpen
                   ? t("Hide terminal shortcuts")
                   : t("Show terminal shortcuts")
               }
+              icon={<Grid2X2 size={17} />}
               aria-expanded={mobileKeysOpen}
               onPointerDown={preventShortcutFocus}
               onClick={() => setMobileKeysOpen((value) => !value)}
-            >
-              <Grid2X2 size={17} />
-            </button>
+            />
             <div className="terminal-mobile-keys-panel">
               <div
                 className="terminal-mobile-keys-grid"
@@ -4006,8 +4022,9 @@ export function TerminalView({
                         shortcut.action,
                       );
                       return (
-                        <button
-                          type="button"
+                        <Button
+                          variant="secondary"
+                          className="terminal-mobile-key"
                           disabled={!!mobileShortcutReason(shortcut)}
                           title={
                             mobileShortcutReason(shortcut) ??
@@ -4022,7 +4039,7 @@ export function TerminalView({
                           key={shortcut.id}
                         >
                           {shortcut.label}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -4067,28 +4084,25 @@ export function TerminalView({
           </div>
         ) : null}
       </div>
-      <ConfirmDialog
-        open={closePaneRequested}
-        title={t("Close Pane")}
-        message={`${t("Close this terminal pane?")}${composerDraftWarning}`}
-        confirmLabel={t("Close")}
-        danger
-        onClose={() => setClosePaneRequested(false)}
-        onConfirm={() => {
-          clearTerminalComposerDrafts(
-            s.activeConnectionId,
-            s.connectionGeneration,
-            [pane.pane_id],
-          );
-          store.closePane(pane.pane_id);
-        }}
-      />
-      <MessageDialog
-        open={!!uploadError}
-        title={t("Upload Failed")}
-        message={uploadError}
-        onClose={() => setUploadError("")}
-      />
+      <Latched open={closePaneRequested}>
+        <ConfirmDialog
+          open={closePaneRequested}
+          onOpenChange={setClosePaneRequested}
+          title={t("Close Pane")}
+          message={`${t("Close this terminal pane?")}${composerDraftWarning}`}
+          confirmLabel={t("Close")}
+          tone="danger"
+          onConfirm={() => {
+            clearTerminalComposerDrafts(
+              s.activeConnectionId,
+              s.connectionGeneration,
+              [pane.pane_id],
+            );
+            store.closePane(pane.pane_id);
+          }}
+        />
+      </Latched>
+      {uploadErrorDialog}
     </>
   );
 }

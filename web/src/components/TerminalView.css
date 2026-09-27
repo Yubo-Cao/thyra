@@ -127,29 +127,24 @@
     pointer-events: none;
   }
 
+  .terminal-mobile-keys-toggle {
+    --button-height: 36px;
+    --button-bg: color-mix(in srgb, var(--panel) 68%, transparent);
+    --button-bg-pressed: var(--accent-soft);
+    --button-fg: var(--text-strong);
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+
+  .terminal-mobile-keys.is-open .terminal-mobile-keys-toggle {
+    --button-bg: var(--accent-soft);
+  }
+
   .terminal-mobile-keys-toggle,
   .terminal-mobile-keys-panel {
-    border: 0;
-    background: color-mix(in srgb, var(--panel) 68%, transparent);
     box-shadow: var(--shadow-lg);
     -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
-  }
-
-  .terminal-mobile-keys-toggle {
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    color: var(--text-strong);
-    pointer-events: auto;
-    touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
   }
 
   .terminal-mobile-key-spacer {
@@ -158,14 +153,9 @@
     pointer-events: none;
   }
 
-  .terminal-mobile-keys-toggle:active,
-  .terminal-mobile-keys.is-open .terminal-mobile-keys-toggle {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-
   .terminal-mobile-keys-panel {
     padding: 3px;
+    background: color-mix(in srgb, var(--panel) 68%, transparent);
     opacity: 0;
     pointer-events: none;
     transform: translateX(10px) scale(0.9);
@@ -216,61 +206,47 @@
     gap: 2px;
   }
 
-  .terminal-mobile-keys-panel button[data-latch="once"],
-  .terminal-mobile-side-shortcuts button[data-latch="once"] {
-    background: var(--accent-soft);
-    color: var(--accent);
-  }
-
-  .terminal-mobile-keys-panel button[data-latch="locked"],
-  .terminal-mobile-side-shortcuts button[data-latch="locked"] {
-    background: var(--accent-active);
-    color: var(--text);
-    text-decoration: underline;
-  }
-
   .terminal-mobile-keys.is-open .terminal-mobile-keys-panel {
     opacity: 1;
     pointer-events: auto;
     transform: translateX(0) scale(1);
   }
 
-  .terminal-mobile-keys-panel button {
-    width: 100%;
+  /* Shortcut keys (grid and side stack): monospace labels that ellipsize. */
+  .terminal-mobile-key {
+    --button-bg-hover: color-mix(
+      in srgb,
+      var(--accent-soft) 55%,
+      var(--panel-2)
+    );
+    --button-bg-pressed: var(--accent-soft);
+    --button-fg: var(--text-strong);
     min-width: 0;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 2px;
-    border: 0;
-    background: color-mix(in srgb, var(--panel-2) 76%, transparent);
-    color: var(--text-strong);
     overflow: hidden;
-    font:
-      700 clamp(9.5px, 2.8vw, 11px) / 1 ui-monospace,
-      SFMono-Regular,
-      Menlo,
-      Consolas,
-      monospace;
+    font: 700 11px / 1 var(--mono-font);
     letter-spacing: 0;
     text-overflow: ellipsis;
-    white-space: nowrap;
     touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
     -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
   }
 
-  .terminal-mobile-keys-panel button:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
-    background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel-2));
+  .terminal-mobile-keys-panel .terminal-mobile-key {
+    --button-height: 28px;
+    --button-bg: color-mix(in srgb, var(--panel-2) 76%, transparent);
+    width: 100%;
+    padding: 0 2px;
+    font-size: clamp(9.5px, 2.8vw, 11px);
   }
 
-  .terminal-mobile-keys-panel button:active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+  .terminal-mobile-key[data-latch="once"] {
+    --button-bg: var(--accent-soft);
+    --button-fg: var(--accent);
+  }
+
+  .terminal-mobile-key[data-latch="locked"] {
+    --button-bg: var(--accent-active);
+    --button-fg: var(--text);
+    text-decoration: underline;
   }
 
   .terminal-mobile-side-shortcuts {
@@ -292,59 +268,15 @@
     pointer-events: none;
   }
 
-  .terminal-mobile-side-shortcuts button {
+  .terminal-mobile-side-shortcuts .terminal-mobile-key {
+    --button-height: 32px;
+    --button-bg: color-mix(in srgb, var(--panel) 70%, transparent);
     width: 42px;
-    height: 32px;
     padding: 0 4px;
-    overflow: hidden;
-    border: 0;
-    background: color-mix(in srgb, var(--panel) 70%, transparent);
+    font-size: 10px;
     box-shadow: var(--shadow-lg);
-    color: var(--text-strong);
-    font:
-      700 10px / 1 ui-monospace,
-      SFMono-Regular,
-      Menlo,
-      Consolas,
-      monospace;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
     -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
-  }
-
-  .terminal-mobile-side-shortcuts button:active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-}
-
-/* Keep mobile styling in sync with the saved layout and URL override. */
-:where(html[data-layout="mobile"]) {
-  @media (hover: none) and (pointer: coarse) and (forced-colors: none) {
-    .terminal-mobile-keys:not(.is-open)
-      .terminal-mobile-keys-toggle:hover:not(:disabled):not(:active) {
-      border-color: color-mix(in srgb, var(--border) 72%, transparent);
-      background: color-mix(in srgb, var(--panel) 68%, transparent);
-      box-shadow: var(--shadow-lg);
-    }
-
-    .terminal-mobile-keys-panel button:hover:not(:disabled):not(:active) {
-      border-color: color-mix(in srgb, var(--border) 72%, var(--text) 28%);
-      background: color-mix(in srgb, var(--panel-2) 76%, transparent);
-      box-shadow: none;
-    }
-
-    .terminal-mobile-side-shortcuts button:hover:not(:disabled):not(:active) {
-      border-color: color-mix(in srgb, var(--border) 72%, var(--text) 28%);
-      background: color-mix(in srgb, var(--panel) 70%, transparent);
-      box-shadow: var(--shadow-lg);
-    }
   }
 }
 
@@ -354,9 +286,6 @@
     border-right: none;
     border-bottom: none;
     border-left: none;
-  }
-
-  .pane-layout-cell .terminal-view {
   }
 
   .terminal-pane-toolbar {
@@ -372,15 +301,11 @@
   .terminal-shell:has(.terminal-composer) .terminal-view .xterm {
     padding-bottom: 6px;
   }
-
-  .terminal-empty {
-  }
 }
 
 .terminal-annotation-action {
   position: fixed;
   z-index: 1190;
-  min-height: 36px;
   box-shadow: var(--shadow-lg);
 }
 
@@ -393,27 +318,19 @@
   gap: 8px;
 }
 
-.terminal-mobile-input-actions button,
-.terminal-touch-selection-actions button {
-  min-width: max(44px, calc(44px / var(--ui-scale, 1)));
-  min-height: max(44px, calc(44px / var(--ui-scale, 1)));
-  color: var(--text-strong);
-  background: var(--panel);
-  border: 0;
+/* Floating touch controls: 44px targets over the terminal. */
+.terminal-mobile-input-actions .button,
+.terminal-touch-selection-actions .button {
+  --button-height: max(44px, calc(44px / var(--ui-scale, 1)));
+  --button-bg: var(--panel);
+  --button-fg: var(--text-strong);
+  min-width: var(--button-height);
+  box-shadow: var(--shadow-lg);
   touch-action: manipulation;
 }
 
-.terminal-mobile-input-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  box-shadow: var(--shadow-lg);
-}
-
-.terminal-mobile-input-actions button[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.terminal-mobile-input-actions .button[aria-pressed="true"] {
+  --button-bg: var(--accent-soft);
 }
 
 :where(html[data-layout="mobile"]) .terminal-mobile-input-actions {
@@ -450,10 +367,10 @@
   pointer-events: none;
 }
 
-.terminal-touch-selection-actions button {
+.terminal-touch-selection-actions .button {
+  padding-inline: 10px;
   font-size: calc(13px * var(--ui-scale, 1));
   pointer-events: auto;
-  box-shadow: var(--shadow-lg);
 }
 
 .terminal-selection-handle {
@@ -538,10 +455,6 @@
   --chip-bg: color-mix(in srgb, var(--text) 13%, transparent);
   color: var(--text);
   outline: none;
-}
-.terminal-pane-head .button.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 @container workspace-stage (max-width: 720px) {
   .pane-control .button > span {

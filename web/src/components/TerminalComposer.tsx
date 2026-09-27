@@ -15,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   type MobileTerminalShortcut,
   mobileTerminalShortcutOption,
@@ -40,7 +39,10 @@ import {
 } from "../terminalComposer";
 import { msg, t } from "../i18n";
 import { useVoiceDictation } from "../voice/useVoiceDictation";
-import { MessageDialog } from "./ModalDialogs";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { IconButton } from "./ui/IconButton";
+import { TextArea } from "./ui/TextArea";
 import "./TerminalComposer.css";
 import {
   type DictationSpan,
@@ -368,8 +370,9 @@ export function TerminalComposer({
                   }
                   const option = mobileTerminalShortcutOption(shortcut.action);
                   return (
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      className="terminal-mobile-key"
                       aria-label={t("Send {key}", {
                         key: option ? t(option.label) : shortcut.label,
                       })}
@@ -383,16 +386,17 @@ export function TerminalComposer({
                       key={shortcut.id}
                     >
                       {shortcut.label}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
             ))}
           </div>
         ) : null}
-        <textarea
+        <TextArea
           ref={textareaRef}
-          className="terminal-composer-input"
+          fullWidth
+          textareaClassName="terminal-composer-input"
           value={text}
           rows={1}
           placeholder={t("Compose input for the terminal…")}
@@ -452,28 +456,26 @@ export function TerminalComposer({
           }}
         />
         <div className="terminal-composer-actions">
-          <button
-            type="button"
-            className="terminal-composer-close"
-            title={t("Close composer")}
-            aria-label={t("Close composer")}
+          <IconButton
+            size="md"
+            label={t("Close composer")}
+            icon={<X size={15} />}
             onPointerDown={keepTextareaFocus}
             onClick={onClose}
-          >
-            <X size={15} />
-          </button>
+          />
           {hasShortcuts ? (
-            <button
-              type="button"
-              className={`terminal-composer-shortcuts-toggle ${
-                shortcutsOpen ? "is-open" : ""
-              }`}
-              title={shortcutsOpen ? t("Hide shortcuts") : t("Show shortcuts")}
-              aria-label={
+            <IconButton
+              size="md"
+              className="terminal-composer-shortcuts-toggle"
+              label={
                 shortcutsOpen
                   ? t("Hide terminal shortcuts")
                   : t("Show terminal shortcuts")
               }
+              tooltip={
+                shortcutsOpen ? t("Hide shortcuts") : t("Show shortcuts")
+              }
+              icon={<Keyboard size={15} />}
               aria-expanded={shortcutsOpen}
               onPointerDown={keepTextareaFocus}
               onClick={() => {
@@ -484,33 +486,26 @@ export function TerminalComposer({
                 );
                 setShortcutsOpen(open);
               }}
-            >
-              <Keyboard size={15} />
-            </button>
+            />
           ) : null}
-          <button
-            type="button"
-            className="terminal-composer-attach"
-            title={t("Add an image")}
-            aria-label={t("Add an image")}
+          <IconButton
+            size="md"
+            label={t("Add an image")}
+            icon={<ImagePlus size={15} />}
             disabled={busy}
             onPointerDown={keepTextareaFocus}
             onClick={() => fileInputRef.current?.click()}
-          >
-            <ImagePlus size={15} />
-          </button>
-          <button
-            type="button"
-            className={`terminal-composer-voice ${voice.active ? "is-active" : ""} ${
+          />
+          <IconButton
+            size="md"
+            className={`terminal-composer-voice ${
               voice.state.phase === "speaking" ? "is-speaking" : ""
             }`}
             style={{ "--voice-level": voice.state.level } as CSSProperties}
-            title={
+            label={
               voice.active ? t("Stop voice input") : t("Start voice input")
             }
-            aria-label={
-              voice.active ? t("Stop voice input") : t("Start voice input")
-            }
+            icon={voice.active ? <MicOff size={15} /> : <Mic size={15} />}
             aria-pressed={voice.active}
             disabled={
               voice.state.phase === "stopping" ||
@@ -518,21 +513,16 @@ export function TerminalComposer({
             }
             onPointerDown={keepTextareaFocus}
             onClick={voice.toggle}
-          >
-            {voice.active ? <MicOff size={15} /> : <Mic size={15} />}
-          </button>
-          <button
-            type="button"
-            className="terminal-composer-help"
-            title={t("About Input Composer")}
-            aria-label={t("About Input Composer")}
+          />
+          <IconButton
+            size="md"
+            label={t("About Input Composer")}
+            icon={<CircleHelp size={15} />}
             aria-haspopup="dialog"
             aria-expanded={helpOpen}
             onPointerDown={keepTextareaFocus}
             onClick={() => setHelpOpen(true)}
-          >
-            <CircleHelp size={15} />
-          </button>
+          />
           <span className="terminal-composer-hint">
             {uploadCount > 0
               ? t("Uploading image…")
@@ -550,9 +540,9 @@ export function TerminalComposer({
                           ? t("Listening…")
                           : ""}
           </span>
-          <button
-            type="button"
-            className="terminal-composer-submit"
+          <Button
+            variant="secondary"
+            size="md"
             title={t("Insert into the terminal without executing")}
             aria-label={t("Insert draft into the terminal")}
             disabled={submitDisabled}
@@ -561,10 +551,10 @@ export function TerminalComposer({
           >
             <CornerDownRight size={14} />
             {t("Insert")}
-          </button>
-          <button
-            type="button"
-            className="terminal-composer-submit is-primary"
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
             title={shortcutTitle(
               t("Insert into the terminal and send Enter"),
               "composer.send",
@@ -576,20 +566,27 @@ export function TerminalComposer({
           >
             <CornerDownLeft size={14} />
             {t("Send")}
-          </button>
+          </Button>
         </div>
       </div>
-      {helpOpen && typeof document !== "undefined"
-        ? createPortal(
-            <MessageDialog
-              open
-              title={t("About Input Composer")}
-              message={t(TERMINAL_COMPOSER_HELP)}
-              onClose={() => setHelpOpen(false)}
-            />,
-            document.body,
-          )
-        : null}
+      <Dialog
+        open={helpOpen}
+        onOpenChange={setHelpOpen}
+        title={t("About Input Composer")}
+        size="sm"
+        footer={
+          <Button
+            variant="primary"
+            size="md"
+            autoFocus
+            onClick={() => setHelpOpen(false)}
+          >
+            {t("OK")}
+          </Button>
+        }
+      >
+        {t(TERMINAL_COMPOSER_HELP)}
+      </Dialog>
     </>
   );
 }

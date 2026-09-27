@@ -23,3 +23,11 @@ export const terminalFileLinkMenuPanel = lazyPanel(
       (module) => module.TerminalFileLinkMenu,
     ),
 );
+// Terminal dialogs load their overlay wrappers with the first one opened,
+// not with the terminal's first output.
+export const terminalConfirmDialog = lazyPanel("terminal-confirm-dialog", () =>
+  import("./ui/ConfirmDialog").then((module) => module.ConfirmDialog),
+);
+export const terminalMessageDialog = lazyPanel("terminal-dialog", () =>
+  import("./ui/Dialog").then((module) => module.Dialog),
+);

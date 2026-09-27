@@ -25,6 +25,7 @@ import { useVoiceDictation } from "../voice/useVoiceDictation";
 import { voiceCleanupMode } from "../voice/voicePreferences";
 import "./TerminalVoiceTyping.css";
 import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 
 export type TerminalVoiceTyping = ReturnType<typeof useTerminalVoiceTyping>;
 
@@ -150,7 +151,7 @@ export function useTerminalVoiceTyping({
     } | null = null;
     const blocked = () =>
       document.querySelector(
-        ".modal-backdrop, .command-popover, .context-menu",
+        ".modal-backdrop, .ui-dialog-backdrop, .command-popover, .context-menu, .ui-menu-popover",
       );
     const release = () => {
       const press = held;
@@ -314,17 +315,14 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
         <span className="terminal-voice-status" aria-live="polite">
           {statusLabel(voice)}
         </span>
-        <button
-          type="button"
-          className="terminal-voice-cancel"
-          title={t("Discard this dictation")}
-          aria-label={t("Discard this dictation")}
+        <IconButton
+          size="md"
+          label={t("Discard this dictation")}
+          icon={<X size={15} />}
           disabled={voice.inserting}
           onPointerDown={keepTerminalFocus}
           onClick={voice.cancel}
-        >
-          <X size={15} />
-        </button>
+        />
       </div>
       <div
         ref={transcriptRef}
@@ -341,8 +339,9 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
             shortcut: shortcutLabel("voice.pushToTalk"),
           })}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="md"
           title={t("Type into the terminal without pressing Enter")}
           disabled={committing}
           onPointerDown={keepTerminalFocus}
@@ -350,10 +349,10 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
         >
           <CornerDownRight size={14} />
           {t("Insert")}
-        </button>
-        <button
-          type="button"
-          className="is-primary"
+        </Button>
+        <Button
+          variant="primary"
+          size="md"
           title={t("Type into the terminal and press Enter")}
           disabled={committing}
           onPointerDown={keepTerminalFocus}
@@ -361,7 +360,7 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
         >
           <CornerDownLeft size={14} />
           {t("Send")}
-        </button>
+        </Button>
       </div>
     </div>
   );

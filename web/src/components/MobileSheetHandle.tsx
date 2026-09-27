@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
+import { Button } from "./ui/Button";
 import "./MobileSheetHandle.css";
 
 export function MobileSheetHandle({
@@ -297,15 +298,15 @@ export function MobileSheetHandle({
   }, []);
 
   return (
-    <button
+    <Button
       ref={button}
-      type="button"
+      fullWidth
       className="mobile-sheet-handle"
       aria-label={label}
       aria-expanded={expanded}
       onClick={() => activate.current()}
     >
       <span />
-    </button>
+    </Button>
   );
 }

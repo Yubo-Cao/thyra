@@ -21,22 +21,14 @@
   }
 
   .terminal-composer-input {
-    width: 100%;
     min-height: 38px;
     max-height: 32dvh;
     resize: none;
     padding: 8px 10px;
-    border: 0;
-    background: var(--panel-2);
-    color: var(--text-strong);
+    /* 16px keeps iOS Safari from zooming in on focus. */
     font-size: 16px;
     line-height: 1.4;
     overscroll-behavior: contain;
-  }
-
-  .terminal-composer-input:focus {
-    outline: none;
-    border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
   }
 
   .terminal-composer-actions {
@@ -56,67 +48,29 @@
     white-space: nowrap;
   }
 
-  .terminal-composer-actions button {
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border: 0;
-    background: color-mix(in srgb, var(--panel-2) 76%, transparent);
-    color: var(--text-strong);
-    font-size: 12px;
-    font-weight: 600;
+  .terminal-composer-actions .button {
+    flex: 0 0 auto;
     touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
     -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
   }
 
-  .terminal-composer-actions button:disabled {
-    opacity: 0.45;
-  }
-
-  .terminal-composer-close,
-  .terminal-composer-shortcuts-toggle,
-  .terminal-composer-attach,
-  .terminal-composer-voice,
-  .terminal-composer-help {
-    width: 30px;
-    padding: 0;
-    flex: 0 0 auto;
-  }
-
-  .terminal-composer-submit {
-    padding: 0 10px;
-    flex: 0 0 auto;
-  }
-
-  .terminal-composer-submit.is-primary,
-  .terminal-composer-shortcuts-toggle.is-open {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+  .terminal-composer-shortcuts-toggle[aria-expanded="true"] {
+    --button-bg: var(--accent-soft);
+    --button-fg: var(--accent);
   }
 
   /* The fill rises with the post-noise-suppression input level. */
-  .terminal-composer-voice.is-active {
+  .terminal-composer-voice[aria-pressed="true"] {
     background: linear-gradient(
       to top,
       var(--accent-soft) calc(var(--voice-level, 0) * 100%),
       transparent 0
     );
-    color: var(--accent);
   }
 
   .terminal-composer-voice.is-speaking {
     color: var(--text-strong);
     box-shadow: inset 0 -2px 0 var(--accent);
-  }
-
-  .terminal-composer-actions button:active:not(:disabled) {
-    border-color: var(--accent);
-    background: var(--accent-soft);
   }
 
   .terminal-composer-shortcuts {
@@ -146,48 +100,11 @@
     pointer-events: none;
   }
 
-  .terminal-composer-shortcuts button {
+  .terminal-composer-shortcuts .terminal-mobile-key {
+    --button-height: 28px;
+    --button-bg: color-mix(in srgb, var(--panel-2) 76%, transparent);
     width: 100%;
     max-width: 48px;
-    min-width: 0;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     padding: 0 4px;
-    border: 0;
-    background: color-mix(in srgb, var(--panel-2) 76%, transparent);
-    color: var(--text-strong);
-    overflow: hidden;
-    font:
-      700 11px / 1 ui-monospace,
-      SFMono-Regular,
-      Menlo,
-      Consolas,
-      monospace;
-    letter-spacing: 0;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .terminal-composer-shortcuts button:active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-}
-
-/* Keep mobile styling in sync with the saved layout and URL override. */
-:where(html[data-layout="mobile"]) {
-  @media (hover: none) and (pointer: coarse) and (forced-colors: none) {
-    .terminal-composer-shortcuts button:hover:not(:disabled):not(:active) {
-      border-color: color-mix(in srgb, var(--border) 72%, var(--text) 28%);
-      background: color-mix(in srgb, var(--panel-2) 76%, transparent);
-      box-shadow: none;
-    }
   }
 }
