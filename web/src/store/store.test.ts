@@ -12,6 +12,7 @@ import {
   type ServerSessionState,
   type State,
 } from "./core";
+import { runGitFileActionBatch } from "./gitFiles";
 import { __storeTesting, store } from "./index";
 import {
   TaskCompletionTracker,
@@ -277,7 +278,7 @@ describe("Git folder actions", () => {
       });
       try {
         __storeTesting.replaceState(partitionState());
-        const result = await store.runGitFileActionBatch(
+        const result = await runGitFileActionBatch(
           "same-workspace",
           gitAction,
           entries,

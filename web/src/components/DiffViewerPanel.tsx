@@ -33,6 +33,11 @@ import {
   useGitDiffSummaryState,
 } from "../inspectorQueries";
 import { store } from "../store";
+import {
+  runGitFileAction,
+  runGitFileActionBatch,
+  runGitRepoAction,
+} from "../store/gitFiles";
 import { getLocale, t } from "../i18n";
 import { copyTextFromUserGesture } from "../terminalClipboard";
 import { bumpFileExplorerRefresh } from "../fileExplorerRefresh";
@@ -799,14 +804,10 @@ export const DiffViewerPanel = forwardRef<
     if (!targets.length) return;
     const execute = async () => {
       if (menu.directory && targets.length > 1) {
-        await store.runGitFileActionBatch(
-          actionWorkspaceId,
-          item.action,
-          targets,
-        );
+        await runGitFileActionBatch(actionWorkspaceId, item.action, targets);
         // A failed batch can still have changed earlier files.
       } else {
-        const result = await store.runGitFileAction(
+        const result = await runGitFileAction(
           actionWorkspaceId,
           item.action,
           targets[0],
@@ -831,7 +832,7 @@ export const DiffViewerPanel = forwardRef<
     const actionWorkspaceId = workspace?.workspace_id;
     if (!actionWorkspaceId) return;
     const execute = async () => {
-      const result = await store.runGitRepoAction(
+      const result = await runGitRepoAction(
         actionWorkspaceId,
         item.action,
         workingCounts,
