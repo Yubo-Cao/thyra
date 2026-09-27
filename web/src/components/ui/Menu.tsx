@@ -62,6 +62,9 @@ export type MenuProps = {
   /** Control the open state; omit both for an uncontrolled menu. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Focus target when the menu mounts already open, e.g. a lazily loaded
+   *  menu whose first open came from ArrowDown/ArrowUp on a stand-in trigger. */
+  defaultFocus?: MenuFocusTarget;
 };
 
 /**
@@ -80,10 +83,11 @@ export function Menu({
   onAction,
   open: controlledOpen,
   onOpenChange,
+  defaultFocus = "menu",
 }: MenuProps) {
   const triggerRef = useRef<HTMLElement | null>(null);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
-  const [focusTarget, setFocusTarget] = useState<MenuFocusTarget>("menu");
+  const [focusTarget, setFocusTarget] = useState<MenuFocusTarget>(defaultFocus);
   const open = controlledOpen ?? uncontrolledOpen;
   const mounted = useOpenedOnce(open);
   const setOpen = (next: boolean) => {

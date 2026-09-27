@@ -98,6 +98,15 @@
     font-size: var(--ui-font-size);
     line-height: 1.45;
   }
+  /* bodyClassName="ui-dialog-stack": fields and notes stacked at one gap. */
+  .ui-dialog .ui-dialog-stack {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+  }
+  .ui-dialog .ui-dialog-stack > p {
+    margin: 0;
+  }
   .ui-dialog .modal__header + .ui-dialog-body,
   .ui-dialog .modal__header + .ui-dialog-form > .ui-dialog-body {
     margin-top: 0;

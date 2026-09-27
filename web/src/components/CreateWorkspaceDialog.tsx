@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { t } from "../i18n";
 import { luckyWorkspaceName } from "../luckyName";
 import { store, useEndpointCreationReason } from "../store";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { TextField } from "./ui/TextField";
+
+/** Focus the name field with its suggestion selected when the dialog opens. */
+function focusAndSelect(input: HTMLInputElement | null) {
+  input?.focus();
+  input?.select();
+}
 
 export function CreateWorkspaceDialog({
   open,
@@ -19,83 +26,67 @@ export function CreateWorkspaceDialog({
   const createReason = useEndpointCreationReason("workspace.create");
   const [label, setLabel] = useState("");
   const [cwd, setCwd] = useState("");
-  const labelRef = useRef<HTMLInputElement>(null);
-  const onCloseRef = useRef(onClose);
+  // Reset the fields while rendering the open, so the name field mounts
+  // with its suggestion already in place to be selected.
+  const session = open ? `${initialName ?? ""}\n${initialCwd ?? ""}` : null;
+  const [openedSession, setOpenedSession] = useState<string | null>(null);
+  if (session !== openedSession) {
+    setOpenedSession(session);
+    if (open) {
+      setLabel(initialName?.trim() || luckyWorkspaceName());
+      setCwd(initialCwd?.trim() ?? "");
+    }
+  }
 
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    setLabel(initialName?.trim() || luckyWorkspaceName());
-    setCwd(initialCwd?.trim() ?? "");
-    const cancelFocus = focusDialogElement(labelRef.current, { select: true });
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open, initialName, initialCwd]);
-
-  if (!open) return null;
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = () => {
     if (createReason) return;
     store.createWorkspace(label.trim() || undefined, cwd.trim() || undefined);
     onClose();
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <form
-        className="modal compact-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Create workspace")}
-        onSubmit={submit}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="modal-head">
-          <h2>{t("Create Workspace")}</h2>
-          <CloseButton onClick={onClose} />
-        </div>
-
-        <label className="form-field">
-          <span>{t("Name")}</span>
-          <input
-            ref={labelRef}
-            value={label}
-            onChange={(e) => setLabel(e.currentTarget.value)}
-            placeholder={t("Optional")}
-          />
-        </label>
-
-        <label className="form-field">
-          <span>CWD</span>
-          <input
-            value={cwd}
-            onChange={(e) => setCwd(e.currentTarget.value)}
-            placeholder={t("Optional path")}
-          />
-        </label>
-
-        {createReason ? <p role="status">{createReason}</p> : null}
-        <div className="modal-actions">
-          <button type="button" className="ghost" onClick={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t("Create Workspace")}
+      size="sm"
+      onSubmit={submit}
+      bodyClassName="ui-dialog-stack"
+      footer={
+        <>
+          <Button size="md" onClick={onClose}>
             {t("Cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            size="md"
+            variant="primary"
             type="submit"
             disabled={!!createReason}
             title={createReason ?? undefined}
           >
             {t("Create")}
-          </button>
-        </div>
-      </form>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      <TextField
+        ref={focusAndSelect}
+        label={t("Name")}
+        fullWidth
+        value={label}
+        onValueChange={setLabel}
+        placeholder={t("Optional")}
+      />
+      <TextField
+        label="CWD"
+        fullWidth
+        value={cwd}
+        onValueChange={setCwd}
+        placeholder={t("Optional path")}
+      />
+      {createReason ? <p role="status">{createReason}</p> : null}
+    </Dialog>
   );
 }

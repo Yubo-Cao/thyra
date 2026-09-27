@@ -4,8 +4,10 @@ import { store } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import type { ExistingWorktree, WorktreeList } from "../types";
 import { resolveWorktreeOpenSource } from "../worktree";
-import { CloseButton } from "./CloseButton";
-import { focusDialogElement } from "./dialogFocus";
+import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
+import { TextField } from "./ui/TextField";
+import { Token } from "./ui/Token";
 import "./WorktreeOpenDialog.css";
 
 function worktreeTitle(worktree: ExistingWorktree) {
@@ -45,16 +47,12 @@ export function WorktreeOpenDialog({
   const connectionClient = useConnectionClient();
   const [manualTarget, setManualTarget] = useState("");
   const [query, setQuery] = useState("");
+  const manualTargetRef = useRef<HTMLInputElement>(null);
   const [listState, setListState] = useState<WorktreeListState | null>(null);
   const [actionError, setActionError] = useState<{
     workspaceId: string;
     message: string;
   } | null>(null);
-  const onCloseRef = useRef(onClose);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const manualTargetRef = useRef<HTMLInputElement>(null);
-
-  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open || !workspaceId) return;
@@ -85,13 +83,8 @@ export function WorktreeOpenDialog({
       },
     );
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
     return () => {
       cancelled = true;
-      window.removeEventListener("keydown", onKey);
     };
   }, [connectionClient, open, workspaceId]);
 
@@ -108,14 +101,13 @@ export function WorktreeOpenDialog({
     currentListState?.error ||
     "";
 
+  // Search takes focus when worktrees load; otherwise the manual field does.
+  const focusManual = !loading && !list?.worktrees.length;
   useEffect(() => {
-    if (!open || !workspaceId || loading) return;
-    // Prefer the search field when there are known worktrees; otherwise
-    // focus the manual branch/path input so the dialog is ready to type into.
-    return focusDialogElement(searchRef.current ?? manualTargetRef.current);
-  }, [open, workspaceId, loading, list?.worktrees.length]);
+    if (open && focusManual) manualTargetRef.current?.focus();
+  }, [open, focusManual]);
 
-  if (!open || !workspaceId) return null;
+  if (!workspaceId) return null;
 
   const actionSource = resolveWorktreeOpenSource(
     list,
@@ -152,8 +144,7 @@ export function WorktreeOpenDialog({
         .some((value) => String(value).toLowerCase().includes(normalizedQuery));
     })
     .sort(sortWorktrees);
-  const openManual = (e: React.FormEvent) => {
-    e.preventDefault();
+  const openManual = () => {
     const value = manualTarget.trim();
     if (!value) return;
     if (openTarget(value)) onClose();
@@ -169,106 +160,101 @@ export function WorktreeOpenDialog({
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <form
-        className="modal worktree-open-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Open Worktree")}
-        onSubmit={openManual}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="modal-head">
-          <h2>{t("Open Worktree")}</h2>
-          <CloseButton onClick={onClose} />
-        </div>
-
-        {list ? (
-          <div className="modal-meta">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t("Open Worktree")}
+      description={
+        list ? (
+          <span className="worktree-open-source">
             <span>{list.source.repo_name}</span>
             <code>{list.source.repo_root}</code>
-          </div>
-        ) : null}
-
-        {loading ? (
-          <p className="modal-body-text">{t("Loading worktrees...")}</p>
-        ) : null}
-        {error ? <p className="modal-error">{error}</p> : null}
-
-        {list?.worktrees.length ? (
-          <label className="form-field worktree-search-field">
-            <span>{t("Search")}</span>
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.currentTarget.value)}
-              placeholder={t("Branch name or checkout path")}
-            />
-          </label>
-        ) : null}
-
-        {worktrees.length ? (
-          <div className="worktree-list" role="list">
-            {worktrees.map((worktree) => (
-              <button
-                key={worktree.path}
-                type="button"
-                className="worktree-option"
-                onClick={() => openWorktree(worktree)}
-              >
-                <span className="worktree-option-main">
-                  <span className="worktree-option-title">
-                    {worktreeTitle(worktree)}
-                  </span>
-                  <span className="worktree-option-path">{worktree.path}</span>
-                </span>
-                <span className="worktree-option-tags">
-                  {worktree.is_linked_worktree ? (
-                    <span className="badge">{t("worktree")}</span>
-                  ) : (
-                    <span className="badge">{t("main")}</span>
-                  )}
-                  {worktree.is_prunable ? (
-                    <span className="badge">{t("prunable")}</span>
-                  ) : null}
-                  <span className="badge">
-                    {worktree.open_workspace_id ? t("Focus") : t("Open")}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : !loading && !error ? (
-          <p className="modal-body-text">
-            {list?.worktrees.length
-              ? t("No matching worktrees.")
-              : t("No worktrees found.")}
-          </p>
-        ) : null}
-
-        <label className="form-field">
-          <span>{t("Branch or absolute path")}</span>
-          <input
-            ref={manualTargetRef}
-            value={manualTarget}
-            onChange={(e) => setManualTarget(e.currentTarget.value)}
-            placeholder={t("feature/my-branch or /repo/worktree")}
-            disabled={!actionSource}
-          />
-        </label>
-
-        <div className="modal-actions">
-          <button type="button" className="ghost" onClick={onClose}>
+          </span>
+        ) : undefined
+      }
+      size="lg"
+      onSubmit={openManual}
+      bodyClassName="ui-dialog-stack"
+      footer={
+        <>
+          <Button size="md" onClick={onClose}>
             {t("Cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            size="md"
+            variant="primary"
             type="submit"
             disabled={!manualTarget.trim() || !actionSource}
           >
             {t("Open")}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      {loading ? <p>{t("Loading worktrees...")}</p> : null}
+      {error ? <p className="worktree-open-error">{error}</p> : null}
+
+      {list?.worktrees.length ? (
+        <TextField
+          autoFocus
+          label={t("Search")}
+          fullWidth
+          value={query}
+          onValueChange={setQuery}
+          placeholder={t("Branch name or checkout path")}
+        />
+      ) : null}
+
+      {worktrees.length ? (
+        <div className="worktree-list" role="list">
+          {worktrees.map((worktree) => (
+            <Button
+              key={worktree.path}
+              variant="secondary"
+              fullWidth
+              className="worktree-option"
+              onClick={() => openWorktree(worktree)}
+            >
+              <span className="worktree-option-main">
+                <span className="worktree-option-title">
+                  {worktreeTitle(worktree)}
+                </span>
+                <span className="worktree-option-path">{worktree.path}</span>
+              </span>
+              <span className="worktree-option-tags">
+                <Token>
+                  {worktree.is_linked_worktree ? t("worktree") : t("main")}
+                </Token>
+                {worktree.is_prunable ? (
+                  <Token tone="warning">{t("prunable")}</Token>
+                ) : null}
+                <Token tone="accent">
+                  {worktree.open_workspace_id ? t("Focus") : t("Open")}
+                </Token>
+              </span>
+            </Button>
+          ))}
         </div>
-      </form>
-    </div>
+      ) : !loading && !error ? (
+        <p>
+          {list?.worktrees.length
+            ? t("No matching worktrees.")
+            : t("No worktrees found.")}
+        </p>
+      ) : null}
+
+      <TextField
+        ref={manualTargetRef}
+        autoFocus={focusManual}
+        label={t("Branch or absolute path")}
+        fullWidth
+        value={manualTarget}
+        onValueChange={setManualTarget}
+        placeholder={t("feature/my-branch or /repo/worktree")}
+        disabled={!actionSource}
+      />
+    </Dialog>
   );
 }

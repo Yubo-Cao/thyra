@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { FolderOpen, GitBranch, RefreshCw, Settings } from "lucide-react";
 import { t } from "../i18n";
 import { luckyWorktreeBranchName } from "../luckyName";
@@ -24,12 +23,16 @@ import {
   type WorktreeHookInfo,
   type WorktreeLifecycleRow,
 } from "../worktreeLifecycle";
-import { CloseButton } from "./CloseButton";
-import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
+import { Button } from "./ui/Button";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { Dialog } from "./ui/Dialog";
+import { IconButton } from "./ui/IconButton";
+import { Spinner } from "./ui/Spinner";
+import { Switch } from "./ui/Switch";
+import { TextField } from "./ui/TextField";
 import { WorktreeHooksDialog } from "./WorktreeHooksDialog";
 import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
 import { WorktreeLifecycleRow as WorktreeLifecycleRowItem } from "./WorktreeLifecycleRow";
-import { focusDialogElement } from "./dialogFocus";
 import "./WorktreeLifecycleDialog.css";
 
 type LifecycleOperation = {
@@ -79,6 +82,12 @@ function removalWorkspaceHint(
   };
 }
 
+/** Focus the branch field with its suggestion selected when the prompt opens. */
+function focusAndSelect(input: HTMLInputElement | null) {
+  input?.focus();
+  input?.select();
+}
+
 export function WorktreeLifecycleDialog({
   open,
   workspaceId,
@@ -123,7 +132,6 @@ export function WorktreeLifecycleDialog({
   } | null>(null);
   const operationRunningRef = useRef(false);
   const operationIdRef = useRef(0);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(
     async (showLoading: boolean, force = false) => {
@@ -242,23 +250,6 @@ export function WorktreeLifecycleDialog({
       : null;
   const repositoryLoading =
     loading || (!!open && !!repositoryWorkspaceId && !list);
-
-  useEffect(() => {
-    if (!open) return;
-    if (newWorktreeOpen || openWorktreeOpen || hooksOpen || removeRow) return;
-    const cancelFocus = focusDialogElement(dialogRef.current);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () => {
-      cancelFocus();
-      window.removeEventListener("keydown", onKey, { capture: true });
-    };
-  }, [hooksOpen, newWorktreeOpen, onClose, open, openWorktreeOpen, removeRow]);
 
   const rows = useMemo(
     () => (list ? buildWorktreeLifecycleRows(list, workspaces) : []),
@@ -439,228 +430,217 @@ export function WorktreeLifecycleDialog({
     });
   };
 
-  return createPortal(
-    <>
-      <div className="modal-backdrop" onMouseDown={onClose}>
-        <div
-          ref={dialogRef}
-          className="modal worktree-lifecycle-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("Worktree lifecycle")}
-          tabIndex={-1}
-          onMouseDown={(event) => event.stopPropagation()}
+  const repoName =
+    list?.source.repo_name ??
+    selectedWorkspace?.worktree?.repo_name ??
+    t("Repository");
+  const repoRoot =
+    list?.source.repo_root ?? selectedWorkspace?.worktree?.repo_root ?? "";
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t("Worktree Lifecycle")}
+      description={
+        <span className="lifecycle-source">
+          <span>{repoName}</span>
+          <code title={list?.source.repo_root}>{repoRoot}</code>
+        </span>
+      }
+      headerActions={
+        <IconButton
+          label={t("Refresh lifecycle status")}
+          tooltip={t("Refresh")}
+          icon={
+            <RefreshCw
+              size={15}
+              className={repositoryLoading ? "is-spinning" : undefined}
+            />
+          }
+          disabled={repositoryLoading || operationRunning}
+          onClick={() => void load(true, true)}
+        />
+      }
+      size="lg"
+      className="worktree-lifecycle-dialog"
+      bodyClassName="worktree-lifecycle-body"
+    >
+      <div className="lifecycle-toolbar">
+        <Button
+          variant="secondary"
+          title={
+            actionSourceWorkspaceId
+              ? t("Create a linked worktree")
+              : t(
+                  "Open this repository's main checkout before creating a worktree",
+                )
+          }
+          disabled={!actionSourceWorkspaceId || operationRunning}
+          onClick={() => {
+            setNewWorktreeBranch(luckyWorktreeBranchName());
+            setNewWorktreeOpen(true);
+          }}
         >
-          <div className="modal-head lifecycle-head">
-            <div>
-              <span className="lifecycle-kicker">
-                {t("Repository operations")}
-              </span>
-              <h2>{t("Worktree Lifecycle")}</h2>
-              <p>
-                {list?.source.repo_name ??
-                  selectedWorkspace?.worktree?.repo_name ??
-                  t("Repository")}
-                <code title={list?.source.repo_root}>
-                  {list?.source.repo_root ??
-                    selectedWorkspace?.worktree?.repo_root ??
-                    ""}
-                </code>
-              </p>
-            </div>
-            <div className="lifecycle-head-actions">
-              <button
-                type="button"
-                className="ghost lifecycle-icon-button"
-                aria-label={t("Refresh lifecycle status")}
-                title={t("Refresh")}
-                disabled={repositoryLoading || operationRunning}
-                onClick={() => void load(true, true)}
-              >
-                <RefreshCw
-                  size={16}
-                  className={repositoryLoading ? "is-spinning" : ""}
-                />
-              </button>
-              <CloseButton onClick={onClose} />
-            </div>
-          </div>
-
-          <div className="lifecycle-toolbar">
-            <button
-              type="button"
-              title={
-                actionSourceWorkspaceId
-                  ? t("Create a linked worktree")
-                  : t(
-                      "Open this repository's main checkout before creating a worktree",
-                    )
-              }
-              disabled={!actionSourceWorkspaceId || operationRunning}
-              onClick={() => {
-                setNewWorktreeBranch(luckyWorktreeBranchName());
-                setNewWorktreeOpen(true);
-              }}
-            >
-              <GitBranch size={15} />
-              {t("New worktree")}
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              title={t("Open an existing checkout")}
-              disabled={!repositoryWorkspaceId || operationRunning}
-              onClick={() => setOpenWorktreeOpen(true)}
-            >
-              <FolderOpen size={15} />
-              {t("Open existing")}
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              disabled={!repositoryWorkspaceId}
-              onClick={() => setHooksOpen(true)}
-            >
-              <Settings size={15} />
-              {t("Hook details")}
-            </button>
-          </div>
-
-          {operation ? (
-            <div
-              className={`lifecycle-operation is-${operation.status}`}
-              role={operation.status === "failed" ? "alert" : "status"}
-            >
-              {operation.status === "running" ? (
-                <span className="hook-loading-mark" />
-              ) : (
-                <span className="lifecycle-operation-mark" />
-              )}
-              <div>
-                <strong>{operation.label}</strong>
-                <span>
-                  {operation.detail ??
-                    (operation.status === "running"
-                      ? t("Waiting for Herdr and repository hooks.")
-                      : operation.status === "succeeded"
-                        ? t("Repository state refreshed.")
-                        : t("Operation failed."))}
-                </span>
-              </div>
-            </div>
-          ) : null}
-
-          {repositoryLoading && !list ? (
-            <div className="lifecycle-loading" role="status">
-              <span className="hook-loading-mark" />
-              <span>{t("Loading repository lifecycle...")}</span>
-            </div>
-          ) : error && !list ? (
-            <div className="lifecycle-empty is-error">
-              <strong>{t("Repository lifecycle unavailable")}</strong>
-              <span>{error}</span>
-              <button type="button" onClick={() => void load(true, true)}>
-                {t("Retry")}
-              </button>
-            </div>
-          ) : (
-            <div className="lifecycle-content">
-              <div
-                className="lifecycle-overview"
-                aria-label={t("Repository summary")}
-              >
-                <div>
-                  <strong>{rows.length}</strong>
-                  <span>{t("Checkouts")}</span>
-                </div>
-                <div>
-                  <strong>{openCount}</strong>
-                  <span>{t("Open")}</span>
-                </div>
-                <div>
-                  <strong>{changedCount}</strong>
-                  <span>{t("With changes")}</span>
-                </div>
-              </div>
-
-              <section className="lifecycle-policy">
-                <div className="lifecycle-policy-main">
-                  <span className="lifecycle-policy-icon">
-                    <Settings size={16} />
-                  </span>
-                  <div>
-                    <strong>{t("Repository hooks")}</strong>
-                    <span>
-                      {hooks?.error
-                        ? hooks.error
-                        : hooks?.paseo_path
-                          ? t("{count} configured in paseo.json", {
-                              count: configuredHooks,
-                            })
-                          : t("No paseo.json worktree hooks found")}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label={t("Enable worktree hooks for this repository")}
-                  aria-checked={hooks?.enabled ?? true}
-                  className={`settings-switch ${hooks?.enabled ? "is-on" : ""}`}
-                  disabled={!hooks?.key || operationRunning}
-                  onClick={() => setHooksEnabled(!(hooks?.enabled ?? true))}
-                >
-                  <span />
-                </button>
-              </section>
-
-              {error ? <p className="modal-error">{error}</p> : null}
-              <div className="lifecycle-list" role="list">
-                {rows.map((row) => {
-                  const workspaceIdForRow = row.workspace?.workspace_id;
-                  const syncInfo = workspaceIdForRow
-                    ? autoSync[workspaceIdForRow]
-                    : undefined;
-                  const rowKey = row.worktree.path;
-                  return (
-                    <WorktreeLifecycleRowItem
-                      key={rowKey}
-                      row={row}
-                      syncInfo={syncInfo}
-                      operationRunning={operationRunning}
-                      rowBusy={
-                        operation?.status === "running" &&
-                        operation.key === rowKey
-                      }
-                      runOperation={(key, label, action) => {
-                        void runOperation(key, label, action);
-                      }}
-                      onFocus={(targetWorkspaceId) => {
-                        void store.focusWorkspace(targetWorkspaceId);
-                        onClose();
-                      }}
-                      onOpen={(targetRow) => openWorktree(targetRow)}
-                      onOpenResource={openWorktreeResource}
-                      onRemove={setRemoveRow}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+          <GitBranch size={15} />
+          {t("New worktree")}
+        </Button>
+        <Button
+          title={t("Open an existing checkout")}
+          disabled={!repositoryWorkspaceId || operationRunning}
+          onClick={() => setOpenWorktreeOpen(true)}
+        >
+          <FolderOpen size={15} />
+          {t("Open existing")}
+        </Button>
+        <Button
+          disabled={!repositoryWorkspaceId}
+          onClick={() => setHooksOpen(true)}
+        >
+          <Settings size={15} />
+          {t("Hook details")}
+        </Button>
       </div>
 
-      <TextInputDialog
+      {operation ? (
+        <div
+          className={`lifecycle-operation is-${operation.status}`}
+          role={operation.status === "failed" ? "alert" : "status"}
+        >
+          {operation.status === "running" ? (
+            <Spinner size="sm" tone="accent" />
+          ) : (
+            <span className="lifecycle-operation-mark" />
+          )}
+          <div>
+            <strong>{operation.label}</strong>
+            <span>
+              {operation.detail ??
+                (operation.status === "running"
+                  ? t("Waiting for Herdr and repository hooks.")
+                  : operation.status === "succeeded"
+                    ? t("Repository state refreshed.")
+                    : t("Operation failed."))}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {repositoryLoading && !list ? (
+        <div className="lifecycle-loading" role="status">
+          <Spinner size="sm" />
+          <span>{t("Loading repository lifecycle...")}</span>
+        </div>
+      ) : error && !list ? (
+        <div className="lifecycle-empty is-error">
+          <strong>{t("Repository lifecycle unavailable")}</strong>
+          <span>{error}</span>
+          <Button variant="secondary" onClick={() => void load(true, true)}>
+            {t("Retry")}
+          </Button>
+        </div>
+      ) : (
+        <div>
+          <div
+            className="lifecycle-overview"
+            aria-label={t("Repository summary")}
+          >
+            <div>
+              <strong>{rows.length}</strong>
+              <span>{t("Checkouts")}</span>
+            </div>
+            <div>
+              <strong>{openCount}</strong>
+              <span>{t("Open")}</span>
+            </div>
+            <div>
+              <strong>{changedCount}</strong>
+              <span>{t("With changes")}</span>
+            </div>
+          </div>
+
+          <Switch
+            className="lifecycle-policy"
+            labelPosition="start"
+            aria-label={t("Enable worktree hooks for this repository")}
+            description={
+              hooks?.error
+                ? hooks.error
+                : hooks?.paseo_path
+                  ? t("{count} configured in paseo.json", {
+                      count: configuredHooks,
+                    })
+                  : t("No paseo.json worktree hooks found")
+            }
+            checked={hooks?.enabled ?? true}
+            disabled={!hooks?.key || operationRunning}
+            onChange={setHooksEnabled}
+          >
+            {t("Repository hooks")}
+          </Switch>
+
+          {error ? <p className="lifecycle-error">{error}</p> : null}
+          <div className="lifecycle-list" role="list">
+            {rows.map((row) => {
+              const workspaceIdForRow = row.workspace?.workspace_id;
+              const syncInfo = workspaceIdForRow
+                ? autoSync[workspaceIdForRow]
+                : undefined;
+              const rowKey = row.worktree.path;
+              return (
+                <WorktreeLifecycleRowItem
+                  key={rowKey}
+                  row={row}
+                  syncInfo={syncInfo}
+                  operationRunning={operationRunning}
+                  rowBusy={
+                    operation?.status === "running" && operation.key === rowKey
+                  }
+                  runOperation={(key, label, action) => {
+                    void runOperation(key, label, action);
+                  }}
+                  onFocus={(targetWorkspaceId) => {
+                    void store.focusWorkspace(targetWorkspaceId);
+                    onClose();
+                  }}
+                  onOpen={(targetRow) => openWorktree(targetRow)}
+                  onOpenResource={openWorktreeResource}
+                  onRemove={setRemoveRow}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <Dialog
         open={newWorktreeOpen}
+        onOpenChange={setNewWorktreeOpen}
         title={t("New Worktree")}
-        label={t("Branch")}
-        initialValue={newWorktreeBranch}
-        placeholder={t("Branch name")}
-        submitLabel={t("Create")}
-        onClose={() => setNewWorktreeOpen(false)}
-        onSubmit={createWorktree}
-      />
+        size="sm"
+        onSubmit={() => createWorktree(newWorktreeBranch)}
+        footer={
+          <>
+            <Button size="md" onClick={() => setNewWorktreeOpen(false)}>
+              {t("Cancel")}
+            </Button>
+            <Button size="md" variant="primary" type="submit">
+              {t("Create")}
+            </Button>
+          </>
+        }
+      >
+        <TextField
+          ref={focusAndSelect}
+          label={t("Branch")}
+          fullWidth
+          value={newWorktreeBranch}
+          onValueChange={setNewWorktreeBranch}
+          placeholder={t("Branch name")}
+        />
+      </Dialog>
       <WorktreeOpenDialog
         open={openWorktreeOpen}
         workspaceId={repositoryWorkspaceId ?? null}
@@ -671,16 +651,11 @@ export function WorktreeLifecycleDialog({
           void store.refresh().then(() => load(false, true));
         }}
       />
-      <WorktreeHooksDialog
-        open={hooksOpen}
-        workspaceId={repositoryWorkspaceId ?? undefined}
-        onClose={() => {
-          setHooksOpen(false);
-          void load(false, true);
-        }}
-      />
       <ConfirmDialog
         open={!!removeRow}
+        onOpenChange={(next) => {
+          if (!next) setRemoveRow(null);
+        }}
         title={t("Remove Worktree")}
         message={
           removeRow
@@ -696,8 +671,7 @@ export function WorktreeLifecycleDialog({
             : t("Remove this worktree?")
         }
         confirmLabel={t("Remove")}
-        danger
-        onClose={() => setRemoveRow(null)}
+        tone="danger"
         onConfirm={() => {
           const row = removeRow;
           setRemoveRow(null);
@@ -707,7 +681,14 @@ export function WorktreeLifecycleDialog({
           );
         }}
       />
-    </>,
-    document.body,
+      <WorktreeHooksDialog
+        open={hooksOpen}
+        workspaceId={repositoryWorkspaceId ?? undefined}
+        onClose={() => {
+          setHooksOpen(false);
+          void load(false, true);
+        }}
+      />
+    </Dialog>
   );
 }
