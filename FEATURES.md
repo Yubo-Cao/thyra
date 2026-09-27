@@ -64,6 +64,7 @@ The browser only chooses an agent, never the command text.
 - Scroll by wheel, trackpad, touch, or explicit half-page history shortcuts.
   Full page keys route to terminal apps or Herdr history; unavailable endpoint
   history controls explain missing support.
+- Viewers and share-link guests browse a read-only copy of the last 1000 lines instead, so their scrolling never moves anyone else's view; scrolling back to the bottom, Escape, or **Back to live** returns to live output.
 - Pane apps see the browser's terminal colors: OSC 10/11/4 queries and
   color-scheme reports (`?996n`, mode 2031) follow the page's terminal theme,
   so Codex and Claude Code (`/theme` auto) render for a light page. Codex

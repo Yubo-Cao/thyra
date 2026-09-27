@@ -144,6 +144,45 @@ test("one live gate blocks keys, IME, paste/composer and resizing while preservi
   ).rejects.toThrow("view only");
 });
 
+test("read-only viewers browse history locally instead of moving Herdr's shared position", async () => {
+  const calls: string[] = [];
+  const local: Record<string, unknown>[] = [];
+  const base: ConnectionClient = {
+    connectionId: "local",
+    generation: 1,
+    serverRuntimeGeneration: 1,
+    isCurrent: () => true,
+    acceptsServerGeneration: () => true,
+    call: async (method) => {
+      calls.push(method);
+      return { ok: true };
+    },
+  };
+  const client = paneControlClient(
+    base,
+    () => ({
+      viewOnly: true,
+      readOnly: true,
+      ownsLayout: false,
+      canResize: false,
+      ownerName: null,
+      protectedUntil: 0,
+      display: null,
+      inputOnly: false,
+    }),
+    () => (params) => local.push(params),
+  );
+  expect(
+    await client.call("terminal.scroll", {
+      terminal_id: "t1",
+      direction: "up",
+      lines: 3,
+    }),
+  ).toEqual({ ok: true, local: true });
+  expect(local).toEqual([{ terminal_id: "t1", direction: "up", lines: 3 }]);
+  expect(calls).toEqual([]);
+});
+
 const participant = (
   id: string,
   device: string,

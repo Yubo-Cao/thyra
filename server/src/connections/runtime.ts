@@ -442,6 +442,19 @@ export function createLegacyConnectionRuntime(args: {
     markRpcError: args.markRpcError,
     displayOwnership,
     socketIdentity: args.socketIdentity,
+    readPaneHistory: async (paneId, lines) => {
+      // ANSI keeps Herdr on its passive snapshot path (see readPaneText).
+      const result = await herdr.call(
+        "pane.read",
+        { pane_id: paneId, source: "recent", lines, format: "ansi" },
+        5000,
+      );
+      const read = result?.read ?? result;
+      return {
+        text: typeof read?.text === "string" ? read.text : "",
+        truncated: read?.truncated === true,
+      };
+    },
     readPaneText: async (paneId, lines) => {
       // ANSI format keeps Herdr on its passive snapshot path: a plain-text
       // read of an alternate-screen app may replay wheel input to harvest

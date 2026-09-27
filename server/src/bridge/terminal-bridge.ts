@@ -97,6 +97,8 @@ type ClipboardTarget = {
 const CLIPBOARD_INPUT_WINDOW_MS = 30_000;
 const CLIPBOARD_RELAY_READY_WAIT_MS = 500;
 const TERMINAL_FIRST_FRAME_WAIT_MS = 20_000;
+// Herdr's pane.read returns at most 1000 lines.
+const TERMINAL_HISTORY_MAX_LINES = 1000;
 // How long an attach to a replaced or vanished terminal is answered from
 // memory instead of opening another endpoint connection for it.
 const RETIRED_TERMINAL_TTL_MS = 10 * 60_000;
@@ -200,6 +202,11 @@ export function createTerminalBridge(args: {
   displayOwnership?: DisplayOwnership;
   /** The bridge-assigned participant and device of a browser socket. */
   socketIdentity?: (ws: ServerWebSocket<unknown>) => SocketIdentity | null;
+  /** A pane's scrollback as ANSI text, read without sending it input. */
+  readPaneHistory?: (
+    paneId: string,
+    lines: number,
+  ) => Promise<{ text: string; truncated: boolean }>;
   /** A pane's last lines as plain text, read without sending it input. */
   readPaneText?: (
     paneId: string,
@@ -1561,6 +1568,32 @@ export function createTerminalBridge(args: {
         )
           return fail("lines must be an integer from 1 to 200");
         const result = await args.readPaneText(paneId, lines);
+        if (!isCurrent(operationRevision))
+          return fail("terminal bridge disposed");
+        return reply(result);
+      }
+
+      if (method === "terminal.history") {
+        // Scrollback for a viewer to browse locally: Herdr's scroll position
+        // is shared by everyone watching the pane, so viewers never move it.
+        if (!args.readPaneHistory)
+          return fail("terminal history is unavailable on this connection");
+        const paneId = validDisplayPaneId(params.pane_id);
+        if (!paneId) return fail("pane_id required");
+        const lines =
+          params.lines === undefined
+            ? TERMINAL_HISTORY_MAX_LINES
+            : params.lines;
+        if (
+          typeof lines !== "number" ||
+          !Number.isInteger(lines) ||
+          lines < 1 ||
+          lines > TERMINAL_HISTORY_MAX_LINES
+        )
+          return fail(
+            `lines must be an integer from 1 to ${TERMINAL_HISTORY_MAX_LINES}`,
+          );
+        const result = await args.readPaneHistory(paneId, lines);
         if (!isCurrent(operationRevision))
           return fail("terminal bridge disposed");
         return reply(result);

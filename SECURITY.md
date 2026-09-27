@@ -63,7 +63,7 @@ Instance **admins** (and direct local use) may do everything, including host-wid
 
 | Workspace role | May |
 | --- | --- |
-| viewer | list and watch its terminals, scroll history, read its files, Git state and agent history |
+| viewer | list and watch its terminals, browse their history, read its files, Git state and agent history |
 | editor | also type (single writer, below), change layout, edit files, run Git actions, use voice input |
 | owner | also rename, close and share the workspace, and take control of a pane at any time |
 
@@ -76,7 +76,8 @@ Grants name a connection and a Herdr workspace id; Herdr keeps ids across restar
 **Single writer.** Only the holder of a pane's claim may send it input, resize it or move its terminal focus; the same person's other pages may type too.
 Typing into an unclaimed pane claims it with 15 seconds of protection.
 An editor takes control with **Take control** once the protection ends; owners and admins may take it at any time.
-Viewers and guests never write; they, and editors while another person holds the pane, scroll only Herdr's history (Herdr keeps one history position per pane, so everyone watching the pane sees the scroll).
+Viewers and guests never write, and never move Herdr's history position: Herdr keeps one per pane, shared by everyone watching it, so their pages read the scrollback (`terminal.history`, a passive snapshot) and browse a local copy, and the bridge refuses their `terminal.scroll`.
+Editors while another person holds the pane scroll only Herdr's history (everyone watching the pane sees that scroll).
 
 ### Browser request checks
 

@@ -1,0 +1,29 @@
+/* A read-only viewer's local copy of the scrollback, over the live terminal. */
+.terminal-history {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  background: var(--terminal-bg);
+}
+
+.terminal-history-view:focus {
+  outline: none;
+}
+
+.terminal-history-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+}
+
+.terminal-history-live {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  gap: 6px;
+}

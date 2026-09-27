@@ -307,6 +307,48 @@ describe("display owner enforcement", () => {
     }
   });
 
+  test("history reads a pane's scrollback without scrolling Herdr", async () => {
+    const reads: [string, number][] = [];
+    const replies: string[] = [];
+    const ws = {} as ServerWebSocket<unknown>;
+    const bridge = createTerminalBridge({
+      clientSocketPath: "/unused.sock",
+      herdrProtocol: async () => 22,
+      readPaneHistory: async (paneId, lines) => {
+        reads.push([paneId, lines]);
+        return { text: "\x1b[1mold\x1b[0m\r\nnew\r\n", truncated: true };
+      },
+      safeSend: (_ws, payload) => {
+        replies.push(payload);
+        return true;
+      },
+      clientLabel: () => "test",
+      markRpcError: () => {},
+    });
+    try {
+      await bridge.handleTerminalRpc(ws, "a", "terminal.history", {
+        pane_id: "p1",
+      });
+      await bridge.handleTerminalRpc(ws, "b", "terminal.history", {
+        pane_id: "p1",
+        lines: 5000,
+      });
+      expect(reads).toEqual([["p1", 1000]]);
+      expect(replies.map((line) => JSON.parse(line))).toEqual([
+        {
+          id: "a",
+          result: { text: "\x1b[1mold\x1b[0m\r\nnew\r\n", truncated: true },
+        },
+        {
+          id: "b",
+          error: { message: "lines must be an integer from 1 to 1000" },
+        },
+      ]);
+    } finally {
+      bridge.dispose();
+    }
+  });
+
   test("display requests are validated", async () => {
     const { bridge, phone, call } = await setup();
     try {

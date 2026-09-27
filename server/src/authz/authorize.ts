@@ -299,7 +299,8 @@ export async function authorize(
 
   if (method === "terminal.scroll") {
     // Only a writer may scroll into the application (page keys, wheel
-    // reporting); everyone else scrolls Herdr's history.
+    // reporting); other editors scroll Herdr's history. Viewers never reach
+    // here: the shared history position is not theirs to move.
     const writer =
       workspaceRoleAtLeast(roleFloor(), "editor") && !heldByOther();
     if (!writer) params = { ...params, source: "history" };

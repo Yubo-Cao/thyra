@@ -189,8 +189,13 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
     scope: "host",
     deniedResult: { popup: null },
   },
-  // Viewers and non-holders scroll history only (never input to the app).
-  "terminal.scroll": read(r.terminal),
+  // Herdr keeps one history position per pane, shared by everyone watching
+  // it, so viewers never move it: they read history with terminal.history
+  // and browse it locally. Editors that do not hold the pane scroll Herdr's
+  // history only (never input to the app).
+  "terminal.scroll": write(r.terminal),
+  // A pane's scrollback as ANSI text, read through Herdr's passive snapshot.
+  "terminal.history": read(r.pane),
   "terminal.link.resolve": read(r.terminal),
   // The terminal bridge also ignores focus, resize, and relay resize from
   // devices other than a pane's display owner (see terminal.display).

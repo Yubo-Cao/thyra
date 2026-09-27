@@ -95,13 +95,14 @@ const RPC_MATRIX: Record<string, string> = {
   "terminal.display": "admin owner editor",
   "terminal.focus": "admin owner editor",
   "terminal.frame_ack": "admin owner editor viewer outsider guest guest-pane",
+  "terminal.history": "admin owner editor viewer guest guest-pane",
   "terminal.host_theme": "admin",
   "terminal.input": "admin owner editor",
   "terminal.link.resolve": "admin owner editor viewer guest guest-pane",
   "terminal.preview_text": "admin owner editor viewer guest guest-pane",
   "terminal.relay_resize": "admin owner editor",
   "terminal.resize": "admin owner editor",
-  "terminal.scroll": "admin owner editor viewer guest guest-pane",
+  "terminal.scroll": "admin owner editor",
   "terminal.stream": "admin owner editor viewer outsider guest guest-pane",
   "terminal.watch_popup": "admin",
   "workspace.close": "admin owner",
@@ -310,13 +311,17 @@ describe("authorize", () => {
     );
   });
 
-  test("viewers and non-holders scroll history only", async () => {
+  test("viewers never move the shared history; non-holders scroll history only", async () => {
     const scroll = { terminal_id: "t1", direction: "up", source: "page-key" };
-    const viewer = await request("viewer", "terminal.scroll", scroll);
-    expect(viewer).toMatchObject({
-      allowed: true,
-      params: { source: "history" },
-    });
+    // Herdr keeps one history position per pane: a viewer reads history
+    // with terminal.history and browses it locally instead.
+    expect((await request("viewer", "terminal.scroll", scroll)).allowed).toBe(
+      false,
+    );
+    expect(
+      (await request("viewer", "terminal.history", { pane_id: "w1:p1" }))
+        .allowed,
+    ).toBe(true);
     const claimed = testDeps({
       claims: { "w1:p1": { participantId: "web-other" } },
     });
@@ -393,14 +398,20 @@ describe("share-link guests", () => {
     expect(
       (await request("guest", "tab.list", { workspace_id: "w2" })).allowed,
     ).toBe(false);
-    // Scrolling reads Herdr's history, never the application.
+    // Guests read history without moving anyone's view.
     expect(
-      await request("guest", "terminal.scroll", {
-        terminal_id: "t1",
-        direction: "up",
-        source: "wheel",
-      }),
-    ).toMatchObject({ allowed: true, params: { source: "history" } });
+      (
+        await request("guest", "terminal.scroll", {
+          terminal_id: "t1",
+          direction: "up",
+          source: "wheel",
+        })
+      ).allowed,
+    ).toBe(false);
+    expect(
+      (await request("guest", "terminal.history", { pane_id: "w1:p1" }))
+        .allowed,
+    ).toBe(true);
   });
 
   test("a pane link admits only its pane and the tab holding it", async () => {
@@ -417,6 +428,7 @@ describe("share-link guests", () => {
     expect(await pane("terminal.preview_text", { pane_id: "w1:p2" })).toBe(
       false,
     );
+    expect(await pane("terminal.history", { pane_id: "w1:p2" })).toBe(false);
     // Another tab, and workspace-wide reads.
     expect(await pane("pane.layout", { tab_id: "w1:t9" })).toBe(false);
     expect(await pane("file.read", { workspace_id: "w1", path: "a" })).toBe(

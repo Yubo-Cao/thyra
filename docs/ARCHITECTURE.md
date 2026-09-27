@@ -157,6 +157,9 @@ requests and invalidates clipboard ownership.
 - Full PageUp/PageDown sends semantic input for Herdr to route by PTY mode;
   explicit half-page history uses `pane.scroll`, even in mouse-aware apps.
   Legacy attachments retain PageKey/Wheel routing.
+- Herdr keeps one history position per pane, shared by every viewer, so a read-only viewer (workspace viewer or share-link guest) never sends `terminal.scroll` (the bridge refuses it).
+  Its first scroll up reads the last 1000 lines with `terminal.history` (`pane.read`, `recent`, ANSI: Herdr's passive snapshot, never input) into a second, input-less xterm over the live one, at the live terminal's size, font and colors.
+  Scrolling back to the bottom, Escape, End, or **Back to live** closes it; the live stream never stops.
 - Mouse cells are zero-based and pane-local. Only an in-pane press owns a drag;
   subsequent positions clamp to edges. Reporting changes/closure cancel ownership.
 - History scrolling coalesces wheel intent while awaiting RPC and viewport

@@ -132,6 +132,13 @@ export function paneControlState(
 export function paneControlClient(
   client: ConnectionClient,
   read: () => PaneControlState,
+  /**
+   * Where a read-only viewer's history scrolling goes: Herdr keeps one
+   * history position per pane, shared by everyone watching it, so viewers
+   * browse a local copy instead of moving it.
+   */
+  localScroll: () => ((params: Record<string, unknown>) => void) | null = () =>
+    null,
 ): ConnectionClient {
   return {
     connectionId: client.connectionId,
@@ -161,6 +168,10 @@ export function paneControlClient(
           method === "terminal.focus")
       ) {
         return { ok: true, skipped: true };
+      }
+      if (access.readOnly && method === "terminal.scroll") {
+        localScroll()?.(params ?? {});
+        return { ok: true, local: true };
       }
       if (access.viewOnly && method === "terminal.scroll") {
         return client.call(method, { ...params, source: "history" }, timeout);

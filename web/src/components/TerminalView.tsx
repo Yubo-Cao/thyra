@@ -1,3 +1,4 @@
+import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
 import { shortcutMatches } from "../shortcutPreferences";
@@ -100,6 +101,10 @@ export type { TerminalWorkspaceFileRequest };
 // the terminal chunk down to what first output and input need.
 const TerminalComposer = terminalComposerPanel.Component;
 const TerminalFileLinkMenu = terminalFileLinkMenuPanel.Component;
+// Only read-only viewers open it, so the app shell never prefetches it.
+const TerminalHistory = lazyPanel("terminal-history", () =>
+  import("./terminal/TerminalHistory").then((module) => module.TerminalHistory),
+).Component;
 const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 const ConfirmDialog = terminalConfirmDialog.Component;
 const Dialog = terminalMessageDialog.Component;
@@ -238,6 +243,20 @@ export function TerminalView({
   >([]);
   const [mobileKeysOpen, setMobileKeysOpen] = useState(false);
   const [closePaneRequested, setClosePaneRequested] = useState(false);
+  // A read-only viewer's history scroll opens a local copy of the scrollback
+  // (lines above the bottom to start at) instead of moving Herdr's view.
+  const [historyLines, setHistoryLines] = useState<number | null>(null);
+  useEffect(() => {
+    const localScroll = control.localScroll;
+    localScroll.current = (params) => {
+      if (params.direction !== "up") return;
+      const lines = typeof params.lines === "number" ? params.lines : 3;
+      setHistoryLines((open) => open ?? lines);
+    };
+    return () => {
+      localScroll.current = null;
+    };
+  }, [control.localScroll]);
   // Mirrors refs.term as state so the attach effect re-runs when the xterm
   // instance is recreated: the session's disposal resets the attach state,
   // and without an instance change in the deps the attach effect would not
@@ -739,6 +758,21 @@ export function TerminalView({
             >
               {zoomBadge}%
             </Button>
+          ) : null}
+          {historyLines !== null && refs.term.current ? (
+            <LazyBoundary fallback={<LazyPendingStatus />}>
+              <TerminalHistory
+                client={connectionClient}
+                paneId={pane.pane_id}
+                live={refs.term.current}
+                follow={refs.followShared.current}
+                lines={historyLines}
+                onClose={() => {
+                  setHistoryLines(null);
+                  focusTerminalSoon();
+                }}
+              />
+            </LazyBoundary>
           ) : null}
           {framesPaused ? (
             <TerminalTextPreview

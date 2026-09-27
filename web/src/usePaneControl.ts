@@ -74,8 +74,17 @@ export function usePaneControl(
   );
   const accessRef = useRef(access);
   accessRef.current = access;
+  // Set by the terminal view: opens local history for a read-only viewer.
+  const localScroll = useRef<
+    ((params: Record<string, unknown>) => void) | null
+  >(null);
   const guardedClient = useMemo(
-    () => paneControlClient(client, () => accessRef.current),
+    () =>
+      paneControlClient(
+        client,
+        () => accessRef.current,
+        () => localScroll.current,
+      ),
     [client],
   );
   const assertInputAllowed = useCallback(() => {
@@ -178,6 +187,7 @@ export function usePaneControl(
   return {
     access,
     client: guardedClient,
+    localScroll,
     assertInputAllowed,
     busy,
     error,
