@@ -1,0 +1,109 @@
+/* Avatar and AvatarGroup: square person avatars and their hover spring. */
+@layer thyra {
+  .ui-avatar {
+    position: relative;
+    width: var(--avatar-size, var(--ui-control-height));
+    height: var(--avatar-size, var(--ui-control-height));
+    display: inline-flex;
+    flex: 0 0 auto;
+    overflow: hidden;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--text) 12%, var(--panel));
+    color: color-mix(
+      in srgb,
+      var(--participant-color, var(--text)) 60%,
+      var(--text-strong)
+    );
+    font-size: calc(var(--avatar-size, var(--ui-control-height)) * 0.42);
+    font-weight: 600;
+    line-height: 1;
+  }
+  .ui-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .ui-avatar-group {
+    /* Later avatars tuck `--avatar-tuck` under their predecessor, after a
+       `--avatar-gap` of the real surface: no ring color to match. */
+    --avatar-size: var(--ui-token-height);
+    --avatar-tuck: 4px;
+    --avatar-gap: 1px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    color: var(--muted);
+    font-size: var(--ui-font-size-xs);
+  }
+  .ui-avatar-group[data-size="md"] {
+    --avatar-size: var(--ui-control-height);
+    --avatar-tuck: 6px;
+    --avatar-gap: 2px;
+  }
+  .ui-avatar-group-item {
+    position: relative;
+    display: inline-flex;
+    justify-content: flex-end;
+    width: var(--avatar-size);
+    height: var(--avatar-size);
+    overflow: hidden;
+    transform: translateY(var(--avatar-shift, 0px))
+      scale(var(--avatar-scale, 1));
+    /* The return springs past rest; the lift below eases straight in. */
+    transition: transform 320ms cubic-bezier(0.34, 3.85, 0.64, 1);
+  }
+  .ui-avatar-group[data-hover] .ui-avatar-group-item {
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* A focused control lifts its group from the first avatar, as
+     avatarLift(index, 0) in avatarGroupModel.ts. */
+  :focus-visible .ui-avatar-group-item {
+    --avatar-shift: calc(-4px * pow(0.45, var(--avatar-index)));
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ui-avatar-group-item + .ui-avatar-group-item {
+    width: calc(var(--avatar-size) - var(--avatar-tuck));
+    margin-inline-start: var(--avatar-gap);
+  }
+  /* Center initials in the visible part of a tucked avatar. */
+  .ui-avatar-group-item
+    + .ui-avatar-group-item:not([data-active])
+    .ui-avatar
+    > span {
+    translate: calc(var(--avatar-tuck) / 2);
+  }
+  .ui-avatar-group-item[data-active] {
+    z-index: 1;
+    overflow: visible;
+  }
+  /* Drawn above the (positioned) profile picture. */
+  .ui-avatar-group-item[data-controller]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+  .ui-avatar-group-item[data-more] {
+    width: auto;
+    min-width: var(--avatar-size);
+    justify-content: center;
+    align-items: center;
+    padding-inline: 2px;
+    background: color-mix(in srgb, var(--text) 9%, transparent);
+  }
+  .ui-avatar-group-control {
+    margin-inline-start: 2px;
+    color: var(--accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-avatar-group-item {
+      transform: none;
+      transition: none;
+    }
+  }
+}

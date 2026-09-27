@@ -117,6 +117,7 @@ The overlay chunk renders React Aria components with HeroUI's class names instea
 | `Tooltip` | `content` (ReactNode), one ref-forwarding child, `placement`. Hover after a shared delay or keyboard focus, never touch. For rich tooltips; plain text on buttons goes through `IconButton`/`data-tooltip`. |
 | `SegmentedControl` | `value`, `options`, `onChange(value)`, `aria-label`, `stretch`. |
 | `Token` | `tone` (`neutral`, `accent`, `info`, `success`, `warning`, `danger`), `code`, `icon`, `as="button"` for pressable tokens. |
+| `Avatar`, `AvatarGroup` | `Avatar`: `name`, `color`, `src` (initials until the picture loads; a failed picture keeps them). `AvatarGroup`: `people` (`key`, `name`, `color`, `avatarUrl`, `controller`), `max` (default 3, then a "+N" chip), `size` (`sm` = `--ui-token-height` for rows and tabs, `md` = `--ui-control-height`), `label` (accessible name and tooltip; omit inside a labelled control). Square avatars tuck behind a 1-2px gap of the real surface; hover springs neighbours up, focus-visible on a containing control does the same, touch and reduced motion do not. |
 | `Kbd`, `Spinner` | `<Kbd>Ctrl+K</Kbd>`; `<Spinner size tone label>` (`label` makes it a status). |
 | `Switch` | `checked`, `onChange(checked)`, children label or `aria-label`, `description`, `disabled`, `labelPosition="start"` for settings rows. |
 | `Checkbox` | `checked`, `onChange(checked)`, `indeterminate`, `invalid`, `description`. |

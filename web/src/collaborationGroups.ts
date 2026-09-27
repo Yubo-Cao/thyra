@@ -121,16 +121,6 @@ export function collaboratorLabel(collaborator: Collaborator) {
   return devices ? `${collaborator.name} · ${devices}` : collaborator.name;
 }
 
-export function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => Array.from(part)[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
 export type PanePresencePerson = {
   key: string;
   name: string;
@@ -266,7 +256,22 @@ export function panePresenceLabel(presence: PanePresence) {
       }),
     );
   }
-  return lines.join("\n");
+  return lines.join("; ");
+}
+
+/**
+ * One avatar per person, the controller first and marked; a controller who
+ * also views is listed once.
+ */
+export function presencePeople(presence: PanePresence) {
+  const { controller, viewers } = presence;
+  const people = controller
+    ? [controller, ...viewers.filter((viewer) => viewer.key !== controller.key)]
+    : viewers;
+  return people.map((person) => ({
+    ...person,
+    controller: person.key === controller?.key,
+  }));
 }
 
 /** A stable key: rows re-render only when their presence changes. */
@@ -277,7 +282,10 @@ export function panePresenceSignature(presence: PanePresence) {
       ? [
           presence.controller.key,
           presence.controller.name,
+          presence.controller.color,
+          presence.controller.avatarUrl ?? "",
           presence.controller.devices,
+          presence.controller.isSelf,
         ]
       : null,
     presence.viewers.map((viewer) => [

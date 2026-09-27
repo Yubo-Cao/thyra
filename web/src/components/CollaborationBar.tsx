@@ -1,5 +1,7 @@
 import "./CollaborationBar.css";
-import { Check, Pencil, Users, X } from "lucide-react";
+import { Check, Pencil, X } from "lucide-react";
+import { AvatarGroup } from "./ui/AvatarGroup";
+import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import { Popover } from "./ui/Popover";
@@ -28,10 +30,8 @@ import { t } from "../i18n";
 import { shallowEqual, store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import { usePresenceSelf } from "../usePanePresence";
-import { PersonAvatar } from "./PersonAvatar";
 
 const HEARTBEAT_MS = 12_000;
-const MAX_AVATARS = 3;
 
 function matchDescription(
   match: CollaborationIdentityMatch | undefined,
@@ -53,28 +53,57 @@ function matchDescription(
   return t("Recognized by this browser");
 }
 
-function CollaboratorList({ people }: { people: Collaborator[] }) {
+function CollaboratorList({
+  people,
+  onFocusPane,
+}: {
+  people: Collaborator[];
+  onFocusPane: (paneId: string) => void;
+}) {
   return (
     <ul className="collaboration-people">
-      {people.map((person) => (
-        <li key={person.key} className="collaboration-person">
-          <PersonAvatar
-            name={person.name}
-            color={person.color}
-            avatarUrl={person.avatarUrl}
-          />
-          <span className="collaboration-person-text">
-            <span className="collaboration-person-name">
-              {person.isSelf
-                ? t("{name} (you)", { name: person.name })
-                : person.name}
+      {people.map((person) => {
+        const paneId = person.isSelf
+          ? undefined
+          : person.participants.find((participant) => participant.pane_id)
+              ?.pane_id;
+        const content = (
+          <>
+            <Avatar
+              name={person.name}
+              color={person.color}
+              src={person.avatarUrl}
+            />
+            <span className="collaboration-person-text">
+              <span className="collaboration-person-name">
+                {person.isSelf
+                  ? t("{name} (you)", { name: person.name })
+                  : person.typing
+                    ? t("{name} · typing", { name: person.name })
+                    : person.name}
+              </span>
+              <span className="collaboration-person-devices">
+                {deviceSummary(person.devices)}
+              </span>
             </span>
-            <span className="collaboration-person-devices">
-              {deviceSummary(person.devices)}
-            </span>
-          </span>
-        </li>
-      ))}
+          </>
+        );
+        return (
+          <li key={person.key}>
+            {paneId ? (
+              <Button
+                fullWidth
+                className="collaboration-person"
+                onClick={() => onFocusPane(paneId)}
+              >
+                {content}
+              </Button>
+            ) : (
+              <span className="collaboration-person">{content}</span>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -95,7 +124,7 @@ export function CollaborationBar() {
   const self = usePresenceSelf();
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(null);
   const [identity, setIdentity] = useState(collaborationSelfIdentity);
-  const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState(() => collaborationProfile().displayName);
   const profile = collaborationProfile();
   const latestSession = useRef(session);
@@ -112,8 +141,8 @@ export function CollaborationBar() {
   }, []);
 
   useEffect(() => {
-    if (!editing) setName(profile.displayName);
-  }, [editing, profile.displayName]);
+    if (!open) setName(profile.displayName);
+  }, [open, profile.displayName]);
 
   useEffect(
     () => subscribeCollaborationSnapshot(client, setSnapshot),
@@ -183,128 +212,79 @@ export function CollaborationBar() {
       ];
   const submitName = (event: FormEvent) => {
     event.preventDefault();
-    setEditing(false);
+    setOpen(false);
     void saveCollaborationDisplayName(name).then(() => {
       setName(collaborationProfile().displayName);
       refreshRef.current();
     });
   };
 
+  const names = people
+    .map((person) =>
+      person.isSelf
+        ? t("{name} (you)", { name: collaboratorLabel(person) })
+        : collaboratorLabel(person),
+    )
+    .join("; ");
+
   return (
     <div className="collaboration-bar">
-      <div
-        className="collaboration-roster"
+      <Popover
+        trigger={
+          <Button
+            className="collaboration-trigger"
+            aria-label={t("Live collaborators: {people}", { people: names })}
+            data-tooltip={names}
+          >
+            <AvatarGroup people={people} />
+          </Button>
+        }
         aria-label={t("Live collaborators")}
+        open={open}
+        onOpenChange={setOpen}
+        className="collaboration-popover"
       >
-        <Users size={14} aria-hidden="true" />
-        <span
-          className="collaboration-count"
-          title={t("{count} people", { count: people.length })}
-        >
-          {people.length}
-        </span>
-        <div className="collaboration-avatars">
-          {people.slice(0, MAX_AVATARS).map((person) => {
-            const label = collaboratorLabel(person);
-            const focusPaneId = person.participants.find(
-              (participant) => participant.pane_id,
-            )?.pane_id;
-            const avatarButton = (
-              <IconButton
-                className={`collaboration-avatar activity-${person.activity} ${person.isSelf ? "is-self" : ""} ${person.typing ? "is-typing" : ""}`}
-                tooltip={
-                  person.typing ? t("{name} · typing", { name: label }) : label
-                }
-                label={
-                  person.isSelf ? t("{name} (you)", { name: label }) : label
-                }
-                icon={
-                  <PersonAvatar
-                    name={person.name}
-                    color={person.color}
-                    avatarUrl={person.avatarUrl}
-                  />
-                }
-                onClick={() => {
-                  if (!person.isSelf && focusPaneId)
-                    void store.focusPane(focusPaneId);
-                }}
-              />
-            );
-            return person.isSelf ? (
-              <Popover
-                key={person.key}
-                trigger={avatarButton}
-                aria-label={t("Your collaboration profile")}
-                open={editing}
-                onOpenChange={setEditing}
-                className="collaboration-popover"
-              >
-                <div className="collaboration-profile">
-                  <form className="collaboration-editor" onSubmit={submitName}>
-                    <Pencil size={13} aria-hidden="true" />
-                    <TextField
-                      className="collaboration-name-field"
-                      autoFocus
-                      value={name}
-                      maxLength={80}
-                      placeholder={t("Display name")}
-                      aria-label={t("Your collaboration display name")}
-                      onValueChange={setName}
-                    />
-                    <IconButton
-                      type="submit"
-                      label={t("Save display name")}
-                      icon={<Check size={14} aria-hidden="true" />}
-                    />
-                    <IconButton
-                      label={t("Cancel")}
-                      icon={<X size={14} aria-hidden="true" />}
-                      onClick={() => setEditing(false)}
-                    />
-                  </form>
-                  <p className="collaboration-note">
-                    {matchDescription(identity?.match, identity?.login)}
-                  </p>
-                  <p className="collaboration-note">
-                    {identity?.match === "tailscale"
-                      ? t(
-                          "Your name is kept by this Thyra server for all your devices.",
-                        )
-                      : t(
-                          "Your name is kept by this Thyra server for this device.",
-                        )}
-                  </p>
-                  <CollaboratorList people={people} />
-                </div>
-              </Popover>
-            ) : (
-              <span className="collaboration-peer" key={person.key}>
-                {avatarButton}
-              </span>
-            );
-          })}
-          {people.length > MAX_AVATARS ? (
-            <Popover
-              trigger={
-                <Button
-                  className="collaboration-overflow"
-                  aria-label={t("{count} collaborators", {
-                    count: people.length,
-                  })}
-                >
-                  +{people.length - MAX_AVATARS}
-                </Button>
-              }
-              aria-label={t("Live collaborators")}
-              className="collaboration-popover"
-            >
-              <CollaboratorList people={people} />
-            </Popover>
-          ) : null}
+        <div className="collaboration-profile">
+          <form className="collaboration-editor" onSubmit={submitName}>
+            <Pencil size={13} aria-hidden="true" />
+            <TextField
+              className="collaboration-name-field"
+              value={name}
+              maxLength={80}
+              placeholder={t("Display name")}
+              aria-label={t("Your collaboration display name")}
+              onValueChange={setName}
+            />
+            <IconButton
+              type="submit"
+              label={t("Save display name")}
+              icon={<Check size={14} aria-hidden="true" />}
+            />
+            <IconButton
+              label={t("Cancel")}
+              icon={<X size={14} aria-hidden="true" />}
+              onClick={() => setOpen(false)}
+            />
+          </form>
+          <p className="collaboration-note">
+            {matchDescription(identity?.match, identity?.login)}
+          </p>
+          <p className="collaboration-note">
+            {identity?.match === "tailscale"
+              ? t(
+                  "Your name is kept by this Thyra server for all your devices.",
+                )
+              : t("Your name is kept by this Thyra server for this device.")}
+          </p>
+          <CollaboratorList
+            people={people}
+            onFocusPane={(paneId) => {
+              setOpen(false);
+              void store.focusPane(paneId);
+            }}
+          />
         </div>
-        <span className="collaboration-live">{t("Live")}</span>
-      </div>
+      </Popover>
     </div>
   );
 }

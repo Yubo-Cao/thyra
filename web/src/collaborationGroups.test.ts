@@ -9,6 +9,7 @@ import {
   panePresence,
   panePresenceLabel,
   panePresenceSignature,
+  presencePeople,
 } from "./collaborationGroups";
 
 function participant(
@@ -187,7 +188,7 @@ describe("pane presence", () => {
       "Herdr TUI",
     ]);
     expect(panePresenceLabel(presence)).toBe(
-      "Viewing: You (liveopt), Herdr TUI (liveopt)\nControlling: You (liveopt)",
+      "Viewing: You (liveopt), Herdr TUI (liveopt); Controlling: You (liveopt)",
     );
   });
 
@@ -201,6 +202,24 @@ describe("pane presence", () => {
     ]);
     expect(tab.viewers[0].devices).toEqual(["iphone", "liveopt"]);
     expect(panePresence(snapshot, ["p2"], self, 20_000).controller).toBeNull();
+  });
+
+  test("a tab shows one avatar per person, its controller first and marked", () => {
+    const people = presencePeople(
+      panePresence(snapshot, ["p1", "p2", "p3"], self, 1_000),
+    );
+    // Yubo views p1 from the phone app and controls p2 from liveopt: one
+    // avatar, first, marked; Alice's hidden page on p3 adds no second one.
+    expect(people.map(({ name, controller }) => [name, controller])).toEqual([
+      ["Yubo", true],
+      ["Alice", false],
+      ["Herdr TUI", false],
+    ]);
+    const viewersOnly = presencePeople(
+      panePresence(snapshot, ["p1"], self, 1_000),
+    );
+    expect(viewersOnly.some((person) => person.controller)).toBe(false);
+    expect(presencePeople(panePresence(snapshot, [], self, 1_000))).toEqual([]);
   });
 
   test("signatures change only when the visible presence changes", () => {

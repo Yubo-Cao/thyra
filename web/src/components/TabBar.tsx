@@ -13,6 +13,7 @@ import { PanelRight, Plus, X } from "lucide-react";
 import type { Tab } from "../types";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
+import { PanePresence } from "./PanePresence";
 import {
   clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
@@ -309,6 +310,11 @@ export function TabBar({
                 >
                   <span className="tabbar-name">{name}</span>
                 </TabLongPressTarget>
+                <PanePresence
+                  paneIds={s.panes
+                    .filter((pane) => pane.tab_id === tab.tab_id)
+                    .map((pane) => pane.pane_id)}
+                />
                 <IconButton
                   className="tabbar-close"
                   tone="danger"

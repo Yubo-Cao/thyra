@@ -1,52 +1,27 @@
-import "./PanePresence.css";
-import { Keyboard } from "lucide-react";
-import { panePresenceLabel } from "../collaborationGroups";
+import { panePresenceLabel, presencePeople } from "../collaborationGroups";
 import { usePanePresence } from "../usePanePresence";
-import { PersonAvatar } from "./PersonAvatar";
-
-const MAX_AVATARS = 3;
+import { AvatarGroup } from "./ui/AvatarGroup";
 
 /**
- * Stacked avatars of the people looking at a pane (or a tab's panes); the
- * person holding layout control comes first with an accent ring and a
+ * Avatars of the people looking at a pane (or every pane of a tab); the
+ * person holding layout control comes first with an accent frame and a
  * keyboard badge. One avatar per person, however many tabs or devices.
  */
-export function PanePresence({ paneIds }: { paneIds: readonly string[] }) {
+export function PanePresence({
+  paneIds,
+  className,
+}: {
+  paneIds: readonly string[];
+  className?: string;
+}) {
   const presence = usePanePresence(paneIds);
-  const { controller } = presence;
-  if (!controller && presence.viewers.length === 0) return null;
-  const people = controller
-    ? [controller, ...presence.viewers.filter((v) => v.key !== controller.key)]
-    : presence.viewers;
-  const label = panePresenceLabel(presence);
+  const people = presencePeople(presence);
+  if (people.length === 0) return null;
   return (
-    <span
-      className="pane-presence"
-      role="img"
-      aria-label={label}
-      data-tooltip={label}
-    >
-      {people.slice(0, MAX_AVATARS).map((person) => (
-        <PersonAvatar
-          key={person.key}
-          className={`pane-presence-avatar${person.key === controller?.key ? " is-controller" : ""}`}
-          name={person.name}
-          color={person.color}
-          avatarUrl={person.avatarUrl}
-        />
-      ))}
-      {people.length > MAX_AVATARS ? (
-        <span className="pane-presence-more">
-          +{people.length - MAX_AVATARS}
-        </span>
-      ) : null}
-      {controller ? (
-        <Keyboard
-          className="pane-presence-control"
-          size={11}
-          aria-hidden="true"
-        />
-      ) : null}
-    </span>
+    <AvatarGroup
+      className={className}
+      people={people}
+      label={panePresenceLabel(presence)}
+    />
   );
 }

@@ -163,15 +163,12 @@ export default {
 
   // Collaboration bar
   "Live collaborators": "实时协作者",
+  "Live collaborators: {people}": "实时协作者：{people}",
   "{name} · typing": "{name} · 正在输入",
   "{name} · viewing a pane": "{name} · 正在查看窗格",
   "{name} (you)": "{name}（你）",
-  "{count} collaborators": "{count} 位协作者",
-  Live: "实时",
   "Your collaboration display name": "你的协作显示名称",
-  "Your collaboration profile": "你的协作资料",
   "Display name": "显示名称",
-  "{count} people": "{count} 人",
   "Recognized through Tailscale as {login}": "已通过 Tailscale 识别为 {login}",
   "Recognized through Tailscale": "已通过 Tailscale 识别",
   "Recognized by this device's tailnet address":

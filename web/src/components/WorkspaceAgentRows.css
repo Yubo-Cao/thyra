@@ -215,7 +215,7 @@
     white-space: nowrap;
   }
 
-  .mobile-tab-sheet-focus .pane-presence {
+  .mobile-tab-sheet-focus .ui-avatar-group {
     margin-inline-start: auto;
   }
 }

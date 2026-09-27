@@ -16,7 +16,6 @@
     "@heroui/styles": "^3.2.6",
     "@lobehub/icons-static-svg": "^1.91.0",
     "@pierre/diffs": "^1.4.3",
-    "@radix-ui/react-avatar": "1.2.6",
     "@radix-ui/react-popover": "^1.1.17",
     "@react-aria/ssr": "^3.10.1",
     "@react-aria/utils": "^3.34.1",

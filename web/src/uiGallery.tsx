@@ -21,6 +21,10 @@ import "./styles/base.css";
 import "./styles/vendor.css";
 import "./styles/ui.css";
 import "./styles/heroui.css";
+import {
+  AvatarGroup,
+  type AvatarGroupPerson,
+} from "./components/ui/AvatarGroup";
 import { Button } from "./components/ui/Button";
 import { Checkbox } from "./components/ui/Checkbox";
 import { CloseButton } from "./components/ui/CloseButton";
@@ -107,6 +111,29 @@ const workspaceMenu: MenuEntry[] = [
       { id: "close", label: "Close workspace" },
     ],
   },
+];
+
+const portrait = (color: string) =>
+  `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="${color}"/><circle cx="4" cy="3.2" r="1.6" fill="#fff"/><rect x="1.5" y="5.4" width="5" height="3" fill="#fff"/></svg>`,
+  )}`;
+
+const people: AvatarGroupPerson[] = [
+  {
+    key: "y",
+    name: "Yubo Cao",
+    avatarUrl: portrait("#2f81f7"),
+    controller: true,
+  },
+  { key: "a", name: "Alice Park", color: "#cf222e" },
+  {
+    key: "b",
+    name: "Bea",
+    color: "#1a7f37",
+    avatarUrl: "https://invalid.test/x.png",
+  },
+  { key: "c", name: "Carl Diaz", color: "#8250df" },
+  { key: "d", name: "Dana Ito", avatarUrl: portrait("#bf8700") },
 ];
 
 function Gallery() {
@@ -246,6 +273,17 @@ function Gallery() {
             { value: "agents", label: "Agents" },
           ]}
         />
+      </Section>
+
+      <Section title="AvatarGroup">
+        <Row>
+          <AvatarGroup
+            people={people.slice(1, 3)}
+            label="Viewing: Alice, Bea"
+          />
+          <AvatarGroup people={people} label="Viewing: 5 people" />
+          <AvatarGroup size="md" people={people.slice(1)} max={4} />
+        </Row>
       </Section>
 
       <Section title="Switch, Checkbox">
