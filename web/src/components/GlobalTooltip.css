@@ -29,7 +29,7 @@
 .global-tooltip::after {
   content: "";
   position: absolute;
-  left: 50%;
+  left: calc(50% + var(--tooltip-arrow-shift, 0px));
   width: 8px;
   height: 8px;
   border-right: 1px solid color-mix(in srgb, var(--border) 78%, transparent);

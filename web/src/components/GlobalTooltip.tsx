@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./GlobalTooltip.css";
 
 type TooltipPlacement = "top" | "bottom";
@@ -12,8 +12,7 @@ type TooltipState = {
 
 const TOOLTIP_DELAY_MS = 260;
 const VIEWPORT_PADDING = 12;
-const MAX_TOOLTIP_WIDTH = 360;
-const MIN_TOOLTIP_WIDTH = 44;
+const ARROW_EDGE_INSET = 10;
 
 // Components in components/ui (IconButton) set data-tooltip, which needs no
 // title juggling; plain elements may still use a title attribute.
@@ -39,40 +38,56 @@ function matchesFocusVisible(target: HTMLElement) {
   }
 }
 
-function estimatedTooltipWidth(text: string) {
-  return Math.min(
-    MAX_TOOLTIP_WIDTH,
-    Math.max(MIN_TOOLTIP_WIDTH, text.length * 7 + 22),
-  );
-}
-
-function tooltipPosition(element: HTMLElement, text: string) {
+// Anchor the tooltip centered on the element; the rendered size is clamped
+// to the viewport after layout (see clampToViewport).
+function tooltipPosition(element: HTMLElement) {
   const rect = element.getBoundingClientRect();
   const scale =
     Number.parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"),
     ) || 1;
-  const center = rect.left + rect.width / 2;
-  const halfWidth = Math.min(
-    (estimatedTooltipWidth(text) * scale) / 2,
-    Math.max(0, (window.innerWidth - VIEWPORT_PADDING * 2) / 2),
-  );
-  const left = Math.min(
-    Math.max(center, VIEWPORT_PADDING + halfWidth),
-    window.innerWidth - VIEWPORT_PADDING - halfWidth,
-  );
   const placement: TooltipPlacement = rect.top > 52 ? "top" : "bottom";
   return {
-    left: left / scale,
+    left: (rect.left + rect.width / 2) / scale,
     top: (placement === "top" ? rect.top - 9 : rect.bottom + 9) / scale,
     placement,
   };
+}
+
+/**
+ * Shift a rendered tooltip horizontally so it stays inside the viewport,
+ * keeping the arrow on the anchor. Measures the real box, so any script and
+ * font width works; one read and one write, before paint.
+ */
+function clampToViewport(tooltip: HTMLElement, left: number) {
+  tooltip.style.left = `${left}px`;
+  tooltip.style.removeProperty("--tooltip-arrow-shift");
+  const rect = tooltip.getBoundingClientRect();
+  // Client rects and style px differ under the root CSS zoom (UI scale).
+  const ratio = tooltip.offsetWidth > 0 ? rect.width / tooltip.offsetWidth : 1;
+  let shift = 0;
+  const maxRight = window.innerWidth - VIEWPORT_PADDING;
+  if (rect.right > maxRight) shift = maxRight - rect.right;
+  if (rect.left + shift < VIEWPORT_PADDING)
+    shift = VIEWPORT_PADDING - rect.left;
+  if (shift === 0) return;
+  const styleShift = shift / ratio;
+  const arrowLimit = Math.max(0, tooltip.offsetWidth / 2 - ARROW_EDGE_INSET);
+  const arrowShift = Math.max(-arrowLimit, Math.min(arrowLimit, -styleShift));
+  tooltip.style.left = `${left + styleShift}px`;
+  tooltip.style.setProperty("--tooltip-arrow-shift", `${arrowShift}px`);
 }
 
 export function GlobalTooltip() {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const activeElementRef = useRef<HTMLElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (tooltip && tooltipRef.current)
+      clampToViewport(tooltipRef.current, tooltip.left);
+  }, [tooltip]);
 
   useEffect(() => {
     const clearTimer = () => {
@@ -114,10 +129,7 @@ export function GlobalTooltip() {
       }
       timerRef.current = window.setTimeout(() => {
         if (activeElementRef.current !== element) return;
-        setTooltip({
-          text,
-          ...tooltipPosition(element, text),
-        });
+        setTooltip({ text, ...tooltipPosition(element) });
       }, TOOLTIP_DELAY_MS);
     };
 
@@ -174,6 +186,7 @@ export function GlobalTooltip() {
 
   return (
     <div
+      ref={tooltipRef}
       className={`global-tooltip global-tooltip-${tooltip.placement}`}
       style={{ left: tooltip.left, top: tooltip.top }}
       role="tooltip"
