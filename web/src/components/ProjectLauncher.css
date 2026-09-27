@@ -212,14 +212,20 @@
 }
 
 .project-launcher-agent code {
-  margin-left: auto;
   min-width: 0;
   overflow: hidden;
   font-family: var(--mono-font);
-  font-size: var(--ui-font-size-xs);
-  font-weight: 400;
-  opacity: 0.8;
+  font-size: var(--ui-font-size);
+  font-weight: 600;
   text-overflow: ellipsis;
+}
+
+/* An open workspace whose name matches the folder: a quiet marker only. */
+.project-launcher-open {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
 }
 
 .project-launcher-agent .agent-icon {

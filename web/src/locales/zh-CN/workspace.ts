@@ -351,6 +351,7 @@ export default {
   "No subfolders.": "没有子文件夹。",
   "Only the first 500 folders are shown.": "仅显示前 500 个文件夹。",
   "Start {agent} in {folder}": "在 {folder} 中启动 {agent}",
+  "Open in workspace {name}": "已在工作区 {name} 中打开",
   "Opens a new tab in workspace {name}.": "将在工作区 {name} 中打开新标签页。",
   "Opens a new workspace in this folder.": "将在此文件夹中打开新工作区。",
   "Tab opened, but the agent did not start": "标签页已打开，但 Agent 未能启动",

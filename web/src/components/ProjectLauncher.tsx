@@ -227,6 +227,7 @@ export function ProjectLauncher({
               agent: agent.label,
               folder: basename(path) || path,
             })}
+            title={agent.label}
             onClick={() => void launch(path, agent)}
           >
             {busy === `launch:${agent.id}` ? (
@@ -234,7 +235,6 @@ export function ProjectLauncher({
             ) : (
               <AgentIcon agent={agent.id} />
             )}
-            <span>{agent.label}</span>
             <code>{agent.command}</code>
           </Button>
         ))}
@@ -271,8 +271,19 @@ export function ProjectLauncher({
             </span>
             {folder.missing ? (
               <Token tone="warning">{t("Missing")}</Token>
-            ) : folder.workspace ? (
+            ) : folder.workspace && folder.workspace.label !== name ? (
               <Token>{folder.workspace.label}</Token>
+            ) : folder.workspace ? (
+              <span
+                className="project-launcher-open"
+                role="img"
+                aria-label={t("Open in workspace {name}", {
+                  name: folder.workspace.label,
+                })}
+                title={t("Open in workspace {name}", {
+                  name: folder.workspace.label,
+                })}
+              />
             ) : null}
           </button>
           {isPin && editingPins ? (
