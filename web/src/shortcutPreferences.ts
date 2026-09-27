@@ -196,18 +196,18 @@ export function initializeShortcutPreferences() {
   });
 }
 function save(preferences: ShortcutPreferences) {
-  let error = "";
-  try {
-    thyraLocalStorage.setItem(
-      SHORTCUT_STORAGE_KEY,
-      JSON.stringify(preferences),
-    );
-  } catch {
-    error = t(
-      "Browser storage is unavailable. Changes apply only until this page reloads; export a preset to keep them.",
-    );
-  }
-  publish(preferences, error);
+  const saved = thyraLocalStorage.setItem(
+    SHORTCUT_STORAGE_KEY,
+    JSON.stringify(preferences),
+  );
+  publish(
+    preferences,
+    saved
+      ? ""
+      : t(
+          "Browser storage is unavailable. Changes apply only until this page reloads; export a preset to keep them.",
+        ),
+  );
 }
 export function getShortcutSnapshot() {
   initializeShortcutPreferences();

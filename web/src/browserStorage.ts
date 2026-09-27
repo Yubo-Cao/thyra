@@ -41,33 +41,78 @@ export function thyraStorageEventKey(
     : undefined;
 }
 
-function browserStorage(kind: "localStorage" | "sessionStorage"): Storage {
-  const get = () => thyraStorage(globalThis[kind]);
+/**
+ * Thyra's browser storage. Writes fail soft: Safari private mode, a full
+ * quota, or disabled storage make them return false instead of throwing, so
+ * a lost preference never breaks the interface.
+ */
+export interface ThyraStorage {
+  readonly length: number;
+  key(index: number): string | null;
+  getItem(key: string): string | null;
+  /** False when the browser refused the write. */
+  setItem(key: string, value: string): boolean;
+  /** False when the browser refused the removal. */
+  removeItem(key: string): boolean;
+  /** False when the browser refused to clear. */
+  clear(): boolean;
+}
+
+/** Wrap a storage getter so that every access fails soft; warns once. */
+export function failSoftStorage(
+  get: () => Storage,
+  label: string,
+  warn: (message: string) => void = console.warn,
+): ThyraStorage {
+  let warned = false;
+  const attempt = <T>(action: () => T, fallback: T): T => {
+    try {
+      return action();
+    } catch (error) {
+      if (!warned) {
+        warned = true;
+        const reason = error instanceof Error ? error.name : String(error);
+        warn(`${label} is unavailable (${reason}); changes will not persist.`);
+      }
+      return fallback;
+    }
+  };
   return {
     get length() {
-      return get().length;
+      return attempt(() => get().length, 0);
     },
     key(index) {
-      return get().key(index);
+      return attempt(() => get().key(index), null);
     },
     getItem(key) {
-      try {
-        return get().getItem(key);
-      } catch {
-        return null;
-      }
+      return attempt(() => get().getItem(key), null);
     },
     setItem(key, value) {
-      get().setItem(key, value);
+      return attempt(() => {
+        get().setItem(key, value);
+        return true;
+      }, false);
     },
     removeItem(key) {
-      get().removeItem(key);
+      return attempt(() => {
+        get().removeItem(key);
+        return true;
+      }, false);
     },
     clear() {
-      get().clear();
+      return attempt(() => {
+        get().clear();
+        return true;
+      }, false);
     },
   };
 }
 
-export const thyraLocalStorage = browserStorage("localStorage");
-export const thyraSessionStorage = browserStorage("sessionStorage");
+export const thyraLocalStorage = failSoftStorage(
+  () => thyraStorage(globalThis.localStorage),
+  "localStorage",
+);
+export const thyraSessionStorage = failSoftStorage(
+  () => thyraStorage(globalThis.sessionStorage),
+  "sessionStorage",
+);

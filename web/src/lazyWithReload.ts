@@ -16,7 +16,8 @@ export async function importWithReload<T>(
     return module;
   } catch (error) {
     if (thyraSessionStorage.getItem(reloadKey)) throw error;
-    thyraSessionStorage.setItem(reloadKey, "1");
+    // Without a stored guard every reload would fail the same way and loop.
+    if (!thyraSessionStorage.setItem(reloadKey, "1")) throw error;
     window.location.reload();
     // Keep the lazy boundary suspended while the page unloads.
     return new Promise<T>(() => {});

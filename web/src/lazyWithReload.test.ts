@@ -56,6 +56,17 @@ test("reloads once when the import fails, then throws on a retry", async () => {
   expect(reloadCount).toBe(1);
 });
 
+test("throws instead of reloading when the reload guard cannot be stored", async () => {
+  const error = new Error("chunk 404");
+  (globalThis.sessionStorage as Storage).setItem = () => {
+    throw new DOMException("quota", "QuotaExceededError");
+  };
+  await expect(
+    importWithReload(COMPONENT_KEY, () => Promise.reject(error)),
+  ).rejects.toBe(error);
+  expect(reloadCount).toBe(0);
+});
+
 test("a successful terminal import does not reset a failing diff's reload guard", async () => {
   const error = new Error("diff chunk 404");
   const failure = () => Promise.reject(error);
