@@ -43,8 +43,10 @@
    * xterm's DOM renderer derives a fractional correction from integer
    * offsetWidth measurements. With SF Mono that correction accumulates across
    * the row and pushes the final cells past xterm's clipped row viewport.
+   * Cells snap to device pixels (terminalRenderer.ts), which sets the exact
+   * correction from the font's canvas width instead.
    */
-  letter-spacing: 0 !important;
+  letter-spacing: var(--terminal-letter-spacing, 0) !important;
 }
 
 .terminal-view .xterm:not(.allow-transparency) .xterm-viewport {

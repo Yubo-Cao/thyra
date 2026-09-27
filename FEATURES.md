@@ -69,7 +69,8 @@ The browser only chooses an agent, never the command text.
   drawing and Powerline glyphs and programming ligatures in the bundled
   Maple Mono NF CN (Nerd Font icons, CJK at exactly two cells); they fall back
   to the DOM renderer otherwise. The font is sliced by unicode-range, so a page
-  downloads only the chunks for characters it shows.
+  downloads only the chunks for characters it shows. The first output appears
+  in a fallback font; the GPU renderer and the font follow without resizing it.
 - Mouse-aware apps receive pane-local clicks/drags/wheels. Select browser text
   with Option-drag (macOS) or Shift-drag (elsewhere); ordinary output needs no
   modifier. Releasing a selection copies it, as in Herdr. Selection freezes

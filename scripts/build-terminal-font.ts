@@ -5,11 +5,17 @@
 // browser then downloads only the chunks for characters on screen. OpenType
 // features are kept so programming ligatures still shape within a chunk.
 //
+// The rules are written as two stylesheets: a small core one (ASCII,
+// Latin-1 and Powerline chunks) that the terminal adds after its first
+// output, and the rest (CJK, Nerd Font icons, ...) that follows when idle.
+//
 // Usage (cn-font-split is a one-off tool, not a project dependency):
 //   mkdir /tmp/cfs && cd /tmp/cfs && bun add cn-font-split@7.4.3
 //   (cd node_modules/cn-font-split && node ./dist/cli.js i default)
 //   CN_FONT_SPLIT=/tmp/cfs/node_modules/cn-font-split/dist/auto.mjs \
 //     bun scripts/build-terminal-font.ts /usr/share/fonts/maple-mono-nf-cn
+// To only re-split the existing stylesheets (no font tooling needed):
+//   bun scripts/build-terminal-font.ts --split
 
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,10 +28,18 @@ const FACES = [
   ["700", "700", "normal", "MapleMono-NF-CN-Bold.ttf"],
   ["400-italic", "400", "italic", "MapleMono-NF-CN-Italic.ttf"],
 ] as const;
+// Chunks the first screen of a shell or TUI needs: ASCII, Latin-1, Powerline.
+const CORE_RANGES = [
+  [0x20, 0x7e],
+  [0xa0, 0xff],
+  [0xe0a0, 0xe0d7],
+] as const;
 
 const sourceDir = process.argv[2];
 if (!sourceDir) {
-  console.error("usage: bun scripts/build-terminal-font.ts <maple-font-dir>");
+  console.error(
+    "usage: bun scripts/build-terminal-font.ts <maple-font-dir> | --split",
+  );
   process.exit(1);
 }
 // Served as-is from /assets, where content-hashed names are cached immutably.
@@ -35,57 +49,95 @@ const manifestPath = resolve(
   import.meta.dir,
   "../web/src/terminalFontStylesheet.ts",
 );
-const { fontSplit } = await import(
-  process.env.CN_FONT_SPLIT ?? "cn-font-split"
-);
+const stylesheets = () =>
+  readdirSync(outRoot).filter((name) => /^fonts-.*\.css$/.test(name));
 
-rmSync(outRoot, { recursive: true, force: true });
-const css: string[] = [];
-for (const [folder, weight, style, file] of FACES) {
-  const outDir = join(outRoot, folder);
-  await fontSplit({
-    input: new Uint8Array(readFileSync(join(sourceDir, file))),
-    outDir,
-    css: {
-      fontFamily: FAMILY,
-      fontWeight: weight,
-      fontStyle: style,
-      fontDisplay: "swap",
-      compress: true,
-    },
-    fontFeature: true,
-    languageAreas: true,
-    autoSubset: true,
-    renameOutputFont: "[hash:10].[ext]",
-    testHtml: false,
-    reporter: false,
-    silent: true,
+/** Whether an @font-face rule covers any code point of CORE_RANGES. */
+function isCoreFace(rule: string): boolean {
+  const ranges = rule.match(/unicode-range:([^;}]*)/)?.[1] ?? "";
+  return ranges.split(",").some((range) => {
+    const [start, end = start] = range.trim().slice(2).split("-");
+    const [low, high] = [parseInt(start!, 16), parseInt(end!, 16)];
+    return CORE_RANGES.some(([from, to]) => low <= to && high >= from);
   });
-  const result = readFileSync(join(outDir, "result.css"), "utf8");
-  // Point each chunk URL at its face folder so one stylesheet serves all.
-  css.push(
-    result
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/src:local\([^)]*\),/g, "src:")
-      .replace(
-        /url\("?\.?\/?([^")]+\.woff2)"?\)/g,
-        `url("${URL_ROOT}/${folder}/$1")`,
-      )
-      .trim(),
-  );
-  rmSync(join(outDir, "result.css"));
-  for (const name of readdirSync(outDir))
-    if (!name.endsWith(".woff2")) rmSync(join(outDir, name), { force: true });
 }
-const stylesheet = `${css.join("\n")}\n`;
-const hash = createHash("sha256").update(stylesheet).digest("hex").slice(0, 10);
-writeFileSync(join(outRoot, `fonts-${hash}.css`), stylesheet);
+
+function writeStylesheet(prefix: string, rules: string[]): string {
+  const content = `${rules.join("")}\n`;
+  const hash = createHash("sha256").update(content).digest("hex").slice(0, 10);
+  const name = `${prefix}-${hash}.css`;
+  writeFileSync(join(outRoot, name), content);
+  return `${URL_ROOT}/${name}`;
+}
+
+async function sliceFont(): Promise<string> {
+  const { fontSplit } = await import(
+    process.env.CN_FONT_SPLIT ?? "cn-font-split"
+  );
+  rmSync(outRoot, { recursive: true, force: true });
+  const css: string[] = [];
+  for (const [folder, weight, style, file] of FACES) {
+    const outDir = join(outRoot, folder);
+    await fontSplit({
+      input: new Uint8Array(readFileSync(join(sourceDir!, file))),
+      outDir,
+      css: {
+        fontFamily: FAMILY,
+        fontWeight: weight,
+        fontStyle: style,
+        fontDisplay: "swap",
+        compress: true,
+      },
+      fontFeature: true,
+      languageAreas: true,
+      autoSubset: true,
+      renameOutputFont: "[hash:10].[ext]",
+      testHtml: false,
+      reporter: false,
+      silent: true,
+    });
+    const result = readFileSync(join(outDir, "result.css"), "utf8");
+    // Point each chunk URL at its face folder so one stylesheet serves all.
+    css.push(
+      result
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/src:local\([^)]*\),/g, "src:")
+        .replace(
+          /url\("?\.?\/?([^")]+\.woff2)"?\)/g,
+          `url("${URL_ROOT}/${folder}/$1")`,
+        )
+        .trim(),
+    );
+    rmSync(join(outDir, "result.css"));
+    for (const name of readdirSync(outDir))
+      if (!name.endsWith(".woff2")) rmSync(join(outDir, name), { force: true });
+  }
+  return css.join("\n");
+}
+
+const css =
+  sourceDir === "--split"
+    ? stylesheets()
+        .map((name) => readFileSync(join(outRoot, name), "utf8"))
+        .join("\n")
+    : await sliceFont();
+for (const name of stylesheets()) rmSync(join(outRoot, name));
+const rules = css.match(/@font-face\{[^}]*\}/g) ?? [];
+const core = writeStylesheet("fonts-core", rules.filter(isCoreFace));
+const rest = writeStylesheet(
+  "fonts",
+  rules.filter((rule) => !isCoreFace(rule)),
+);
 writeFileSync(
   manifestPath,
   `// Generated by scripts/build-terminal-font.ts; do not edit by hand.
 // Maple Mono NF CN (OFL-1.1, LICENSES/MAPLE-MONO.txt), sliced by unicode-range.
+// ASCII, Latin-1 and Powerline chunks.
+export const TERMINAL_FONT_CORE_STYLESHEET =
+  "${core}";
+// Every other chunk (CJK, Nerd Font icons, ...).
 export const TERMINAL_FONT_STYLESHEET =
-  "${URL_ROOT}/fonts-${hash}.css";
+  "${rest}";
 `,
 );
-console.log(`wrote ${outRoot} (${hash})`);
+console.log(`wrote ${core} and ${rest}`);

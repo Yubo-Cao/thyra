@@ -136,6 +136,9 @@ Root CSS zoom scales the UI. Terminals cancel it and scale xterm fonts directly,
 keeping cell measurements, IME, selection, and mouse input in viewport CSS pixels.
 Popover positioning likewise cancels zoom and reapplies it to content.
 
+The first output renders with xterm's DOM renderer in a fallback font; the WebGL renderer and the bundled font load after it (`terminalRenderer.ts`).
+Neither may change `cols`/`rows`, which would reflow a full-screen app: cell widths snap to device pixels as the WebGL renderer's do, the fit uses that grid whichever renderer is active, and the bundled font's cell size is fixed before it downloads (its nominal metrics, or the size this browser measured on an earlier load).
+
 Input waits for readiness and revalidates attachment/session/runtime leases;
 it is never replayed into a replacement terminal. Disconnect rejects pending
 requests and invalidates clipboard ownership.

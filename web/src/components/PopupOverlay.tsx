@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
 import { bridge } from "../api";
 import { t } from "../i18n";
 import { store, useStoreSelector, type PopupInfo } from "../store";
@@ -14,7 +13,7 @@ import { thyraLocalStorage } from "../browserStorage";
 import { isMobileLayout } from "../layoutPreferences";
 import { terminalPushMatches } from "../terminalConnection";
 import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
-import { attachTerminalRenderer } from "../terminalRenderer";
+import { attachTerminalRenderer, TerminalFit } from "../terminalRenderer";
 import { CloseButton } from "./ui/CloseButton";
 import "./PopupOverlay.css";
 
@@ -71,7 +70,7 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
   const connectionClient = useConnectionClient();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
+  const fitRef = useRef<TerminalFit | null>(null);
   const attachedTerminalIdRef = useRef<string | null>(null);
   // How many runs of the attach effect are live. React re-runs an effect
   // (mount, cleanup, mount) without anything having really gone away, and the
@@ -122,7 +121,7 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
       macOptionIsMeta: true,
       scrollback: 2000,
     });
-    const fit = new FitAddon();
+    const fit = new TerminalFit();
     term.loadAddon(fit);
     term.open(container);
     const detachRenderer = attachTerminalRenderer(term);

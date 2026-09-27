@@ -22,7 +22,6 @@ const REACT_PACKAGES = new Set(["react", "react-dom", "scheduler"]);
 // lazy chunk because it is optional.
 const XTERM_PACKAGES = new Set([
   "@xterm/xterm",
-  "@xterm/addon-fit",
   "@xterm/addon-unicode-graphemes",
   "@xterm/addon-clipboard",
 ]);

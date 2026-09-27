@@ -12,7 +12,6 @@ import {
   ClipboardAddon,
   type ClipboardSelectionType,
 } from "@xterm/addon-clipboard";
-import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import type { IBufferRange, ITheme } from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
@@ -105,7 +104,7 @@ import {
   tapTerminalModifier,
   terminalModifiersActive,
 } from "../terminalModifiers";
-import { attachTerminalRenderer } from "../terminalRenderer";
+import { attachTerminalRenderer, TerminalFit } from "../terminalRenderer";
 import {
   terminalFocusBlockedByOverlay,
   terminalPointerShouldBlurInput,
@@ -514,7 +513,7 @@ export function TerminalView({
   const uiScaleRef = useRef(uiScale);
   const fontFamilyRef = useRef(fontFamily);
   fontFamilyRef.current = fontFamily;
-  const fitRef = useRef<FitAddon | null>(null);
+  const fitRef = useRef<TerminalFit | null>(null);
   const attachedRef = useRef<string | null>(null);
   const attachingRef = useRef<string | null>(null);
   const desiredTerminalRef = useRef<string | null>(null);
@@ -1092,7 +1091,7 @@ export function TerminalView({
       linkRevisionRef.current++;
       if (pointerHovers) term.refresh(0, term.rows - 1);
     };
-    const fit = new FitAddon();
+    const fit = new TerminalFit();
     const clipboardProvider = createTerminalClipboardProvider({
       onWriteStart() {
         if (terminalEffectDisposed || !connectionClient.isCurrent()) return;

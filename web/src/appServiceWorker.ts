@@ -54,12 +54,16 @@ export function registerAppServiceWorker(): void {
       .register(NOTIFICATION_WORKER, { updateViaCache: "none" })
       .then(() => serviceWorker.ready)
       .then((registration) => {
-        registration.active?.postMessage({
-          type: PRIME_CACHE_MESSAGE,
-          urls: loadedAssetUrls(
-            performance.getEntriesByType("resource"),
-            window.location.origin,
-          ),
+        const prime = (entries: readonly { name: string }[]) =>
+          registration.active?.postMessage({
+            type: PRIME_CACHE_MESSAGE,
+            urls: loadedAssetUrls(entries, window.location.origin),
+          });
+        prime(performance.getEntriesByType("resource"));
+        // Downloads started before the worker took control (the terminal
+        // font, the WebGL renderer) finish outside it; prime those too.
+        new PerformanceObserver((list) => prime(list.getEntries())).observe({
+          type: "resource",
         });
       })
       .catch(() => {
