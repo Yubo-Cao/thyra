@@ -56,6 +56,7 @@ import { CloseButton } from "./ui/CloseButton";
 import { IconButton } from "./ui/IconButton";
 import { Token } from "./ui/Token";
 import { SegmentedControl } from "./ui/SegmentedControl";
+import { useDocumentTheme } from "./documentTheme";
 import "./FilePreviewContent.css";
 
 const FileEditor = lazyWithReload("file-editor", () =>
@@ -108,8 +109,6 @@ export type FilePreviewSelectionMeta = {
   userInitiated?: boolean;
 };
 
-type AppTheme = "dark" | "light";
-
 const PDF_INLINE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
 
 function isMarkdownPath(path: string) {
@@ -129,27 +128,6 @@ function isMermaidPath(path: string) {
 
 function isPdfPath(path: string) {
   return path.toLowerCase().endsWith(".pdf");
-}
-
-function currentDocumentTheme(): AppTheme {
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
-}
-
-function useDocumentTheme() {
-  const [theme, setTheme] = useState<AppTheme>(() => currentDocumentTheme());
-
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setTheme(currentDocumentTheme()),
-    );
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return theme;
 }
 
 export function FilePreviewContent({

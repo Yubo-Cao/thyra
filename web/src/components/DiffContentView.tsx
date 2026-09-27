@@ -48,10 +48,10 @@ import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import { SearchField } from "./ui/SearchField";
 import { SegmentedControl } from "./ui/SegmentedControl";
+import { useDocumentTheme } from "./documentTheme";
 import "./DiffContentView.css";
 
 type DiffViewMode = "split" | "unified";
-type AppTheme = "dark" | "light";
 type PierreDiffOptions = NonNullable<
   ComponentProps<typeof FileDiff>["options"]
 >;
@@ -220,27 +220,6 @@ function loadMobileDiffWrap() {
 
 function loadDesktopDiffWrap() {
   return thyraLocalStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
-}
-
-function currentDocumentTheme(): AppTheme {
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
-}
-
-function useDocumentTheme() {
-  const [theme, setTheme] = useState<AppTheme>(() => currentDocumentTheme());
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setTheme(currentDocumentTheme());
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return theme;
 }
 
 function diffEntryKey(entry: GitDiffEntry) {

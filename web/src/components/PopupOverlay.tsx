@@ -14,31 +14,11 @@ import { isMobileLayout } from "../layoutPreferences";
 import { terminalPushMatches } from "../terminalConnection";
 import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
 import { attachTerminalRenderer, TerminalFit } from "../terminalRenderer";
+import { b64toText, bytesToB64 } from "../utils";
 import { CloseButton } from "./ui/CloseButton";
 import "./PopupOverlay.css";
 
 const RESIZE_DEBOUNCE_MS = 150;
-
-function b64toBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-function b64toText(b64: string): string | null {
-  try {
-    return new TextDecoder().decode(b64toBytes(b64));
-  } catch {
-    return null;
-  }
-}
-
-function bytesToB64(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s);
-}
 
 /** Rough CSS sizing from Herdr's cells-or-percent popup size config. A cell
  * approximation, not the server's own resolved geometry: the popup's real

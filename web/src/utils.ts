@@ -39,3 +39,28 @@ export function basename(path?: string): string {
   const i = trimmed.lastIndexOf("/");
   return i === -1 ? trimmed : trimmed.slice(i + 1) || trimmed;
 }
+
+/** Whether keys typed at `target` edit text (inputs, contenteditable). */
+export function isEditableElement(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
+/** Decodes base64 UTF-8 text; null when it is not valid base64. */
+export function b64toText(b64: string): string | null {
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+export function bytesToB64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
