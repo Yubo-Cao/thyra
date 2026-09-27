@@ -21,14 +21,25 @@ export function paneControlState(
     (item) => item.pane_id === paneId && item.expires_at_unix_ms > now,
   );
   const ownsLayout = claim?.participant_id === participantId;
+  const owner = claim
+    ? snapshot?.participants.find(
+        (item) => item.participant_id === claim.participant_id,
+      )
+    : undefined;
+  // Name the device too: the owner may be this person on another device.
+  const ownerDevice = owner?.device_id
+    ? snapshot?.devices?.[owner.device_id]?.name
+    : undefined;
   return {
     viewOnly,
     ownsLayout,
     canResize: !viewOnly && (!claim || ownsLayout),
     ownerName: claim
-      ? (snapshot?.participants.find(
-          (item) => item.participant_id === claim.participant_id,
-        )?.display_name ?? t("Another collaborator"))
+      ? owner
+        ? ownerDevice
+          ? `${owner.display_name} (${ownerDevice})`
+          : owner.display_name
+        : t("Another collaborator")
       : null,
     protectedUntil:
       claim && !ownsLayout ? (claim.protected_until_unix_ms ?? 0) : 0,

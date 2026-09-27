@@ -386,11 +386,13 @@ pages suppress duplicate local notifications. See [delivery limits](./DEPLOYMENT
 
 ## Browser collaboration and terminal ownership
 
-Each browser page receives an ephemeral participant ID; only its display name
-and color are shared through browser storage. This keeps tabs, windows, and
-separate browser sessions distinct while allowing one participant session to
-hold claims on several panes. Presence reports include the active workspace,
-tab, and pane.
+Each browser page receives an ephemeral participant ID, which keeps tabs, windows, and separate browser sessions distinct for pane claims while allowing one participant session to hold claims on several panes.
+Presence reports include the active workspace, tab, and pane.
+Who a participant is (person and device) is decided by the bridge, not the page; see [collaborator identity](#collaborator-identity).
+
+Browsers group presence by person and list each person's devices ("Yubo · iphone, liveopt"); every tab or browser context of one device collapses into that device.
+Sidebar pane rows and the phone tab sheet show one avatar per person looking at the pane (this page excluded, hidden pages ignored, real Herdr TUI clients included) and mark the holder of the pane's layout claim with an accent ring and keyboard badge.
+These are derived in the browser from the presence snapshot, which the bridge already forwards at most once per second, so they add no traffic.
 
 Pane claims are exclusive per pane, not per Herdr session. The bridge shares one
 render stream for a terminal among all watching browsers. `Take control` claims
@@ -409,6 +411,30 @@ observe mode and does not evict it until the user chooses **Take control**.
 Herdr lists every client-socket shell as a `tui:<client id>` participant, including the bridge's own endpoint shells (terminal sessions and the popup observer).
 Herdr does not tell a shell its id, so the bridge brackets each of its handshakes with `collaboration.list` calls and records the new `tui:` id; a window claims ids only when there are no more of them than its concurrent bridge handshakes, so a real client attaching at the same moment stays visible.
 Recorded ids are shared by every profile using the same client socket, reset when the endpoint boot ID changes, and removed from forwarded events and collaboration RPC results, so browsers see only other browsers and real Herdr clients.
+
+### Collaborator identity
+
+The bridge resolves every WebSocket to a device and a person when it upgrades and when the page calls `bridge.identity`:
+
+- **Client address.** The socket peer, unless the peer is a trusted reverse proxy (`THYRA_TRUSTED_PROXIES`, loopback by default).
+  From a trusted proxy, `X-Forwarded-For` is read from the right, skipping trusted hops, so a client cannot choose its address; `X-Real-IP` is used only without `X-Forwarded-For`.
+  Forwarded headers from any other peer are ignored. The address is used only for identity, never for authentication.
+- **Tailscale (preferred).** A tailnet address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) belongs to one node, so `whois` through the tailscaled LocalAPI socket or the `tailscale` CLI names the device (node StableID and MagicDNS name) and, for user-owned nodes, the person (login, display name, profile picture).
+  Lookups are cached per address for five minutes (30 seconds for misses), time out after 1.5 seconds, and fail soft.
+  Without `whois`, a tailnet address still identifies one device, but no person.
+- **Fallback.** A random `thyra_device` cookie (HttpOnly, `SameSite=Lax`, 400 days, `Secure` over HTTPS or behind an HTTPS proxy) is issued with the first page or WebSocket handshake and identifies one browser context.
+  Contexts that cannot share cookies, such as an iOS home screen app and Safari, are matched to one device only when a new cookie context reports the same OS, screen size, and time zone (and no conflicting model, OS version, or language) as exactly one device seen from the same client address in the last 12 hours.
+  This is a likely, not certain, match; the same address alone never merges devices, because home and office NATs share one public address among many devices.
+  Without Tailscale the person is the device.
+  Hints are the User-Agent, User-Agent Client Hints where offered, screen size, time zone, language, and display mode; there is no canvas, audio, or font fingerprinting.
+
+The bridge replaces the name and color of each `collaboration.update` it forwards to Herdr with the resolved profile: a custom name stored on the server for the person (or device), else the Tailscale display name, else the page's device-based default.
+Browser-stored names from earlier versions are migrated once on connect.
+Presence snapshots sent to browsers gain opaque `person_id`/`device_id` fields and one `people` and one `devices` table; they never contain client addresses, cookie values, or other people's logins, and a page learns its own login only from `bridge.identity`.
+Herdr TUI participants are labelled `Herdr TUI` on the Herdr host.
+`bridge.status` reports distinct `devices` beside browser `clients`; **Pause other browsers** still pauses every other browser connection, including other tabs on this device.
+
+Identity state lives in `~/.config/thyra/identities.json` (`THYRA_IDENTITY_PATH` overrides), mode `0600`: device records with keyed hashes of client addresses, custom profiles, and the key for opaque ids.
 
 ## SSH transport
 

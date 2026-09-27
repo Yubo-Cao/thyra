@@ -84,7 +84,7 @@ export function publishDataFile(
 }
 
 export function defaultDataFile(
-  name: "auth-token" | "settings.json" | "connections.json",
+  name: "auth-token" | "settings.json" | "connections.json" | "identities.json",
   homeDir = homedir(),
   platform: string = process.platform,
   appDataDir = process.env.APPDATA,

@@ -214,4 +214,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .mobile-tab-sheet-focus .pane-presence {
+    margin-inline-start: auto;
+  }
 }

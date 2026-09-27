@@ -8,6 +8,7 @@ import {
   useEndpointCreationReason,
 } from "../store";
 import { AgentStatusIcon } from "./AgentStatusIcon";
+import { PanePresence } from "./PanePresence";
 import { summarizeTabAgents } from "./agentSession";
 import { requestCloseTab, tabName } from "./TabBar";
 import { Button } from "./ui/Button";
@@ -133,6 +134,11 @@ export function MobileTabSheet({
                   </span>
                 ) : null}
                 <span className="mobile-tab-sheet-name">{name}</span>
+                <PanePresence
+                  paneIds={s.panes
+                    .filter((pane) => pane.tab_id === tab.tab_id)
+                    .map((pane) => pane.pane_id)}
+                />
               </Button>
               <IconButton
                 label={t("Close {name}", { name })}

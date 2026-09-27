@@ -20,6 +20,7 @@ import {
   type AgentStateKind,
 } from "./agentSession";
 import { AgentStatusIcon } from "./AgentStatusIcon";
+import { PanePresence } from "./PanePresence";
 import { TREE_DEPTH_INDENT } from "./treeIndent";
 import { ContextMenu } from "./ui/ContextMenu";
 import { Token, type TokenTone } from "./ui/Token";
@@ -270,6 +271,7 @@ export function AgentRow({
               {agentStatusText(pane.agent_status)}
             </Token>
           ) : null}
+          <PanePresence paneIds={[pane.pane_id]} />
           {showPaneId ? (
             <Token code className="agent-row-id" title={pane.pane_id}>
               {shortId(pane.pane_id)}

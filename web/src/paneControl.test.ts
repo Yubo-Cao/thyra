@@ -52,6 +52,18 @@ test("layout ownership is pane-specific, expires, and does not grant input in vi
     canResize: true,
   });
 });
+test("names the owner's device so another device of the same person is clear", () => {
+  const annotated: CollaborationSnapshot = {
+    ...snapshot,
+    participants: [
+      { ...snapshot.participants[0], person_id: "p-a", device_id: "d-phone" },
+    ],
+    devices: { "d-phone": { name: "iPhone" } },
+  };
+  expect(paneControlState(annotated, "p1", "bob", false, 200).ownerName).toBe(
+    "Alice (iPhone)",
+  );
+});
 test("one live gate blocks keys, IME, paste/composer and resizing while preserving history", async () => {
   const calls: [string, Record<string, unknown> | undefined][] = [];
   const base: ConnectionClient = {

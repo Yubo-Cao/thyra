@@ -127,7 +127,7 @@ export default {
   "Connection operation failed": "连接操作失败",
 
   // Pane control
-  "{platform} user": "{platform} 用户",
+  "{device} user": "{device} 用户",
   "Thyra user": "Thyra 用户",
   "invalid collaboration snapshot": "协作状态快照无效",
   "Another collaborator": "另一位协作者",

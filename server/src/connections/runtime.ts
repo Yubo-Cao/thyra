@@ -15,6 +15,11 @@ import {
   filterCollaborationEvent,
 } from "../bridge/collaboration";
 import { acquireOwnShellClients } from "../bridge/own-shell-clients";
+import { hostname } from "node:os";
+import {
+  herdrHostLabel,
+  type PresenceContext,
+} from "../identity/identity-service";
 import { assertSupportedHerdrProtocol } from "../bridge/protocol-compat";
 import { createSettingsRpcHandler } from "../bridge/settings-rpc";
 import {
@@ -152,6 +157,8 @@ export function createLegacyConnectionRuntime(args: {
   onTaskEvent?: (event: TaskEvent) => void;
   onError?: (error: unknown, identity: ConnectionIdentity) => void;
   onTransportExit?: (error: SshTunnelError) => void;
+  /** Adds bridge-side identity to presence snapshots sent to browsers. */
+  presentSnapshot?: <T>(snapshot: T, context: PresenceContext) => T;
   /** Test seam for deterministic shutdown coverage. */
   lastStepBaselines?: LastStepBaselineStore;
   resolveLastStepWorkspaceGitRoot?: (workspaceId: string) => Promise<string>;
@@ -170,16 +177,22 @@ export function createLegacyConnectionRuntime(args: {
     logger.child("presence"),
   );
   const ownShellClients = ownShellClientsLease.clients;
+  const presenceContext: PresenceContext = {
+    tuiDevice: herdrHostLabel(config.sshHost, hostname()),
+  };
+  const presentSnapshot = <T>(snapshot: T): T => {
+    const filtered = ownShellClients.filterSnapshot(snapshot);
+    return args.presentSnapshot
+      ? args.presentSnapshot(filtered, presenceContext)
+      : filtered;
+  };
   // Herdr republishes the whole presence snapshot on every keystroke (typing
   // timestamps). Forward at most one per interval, always the newest, so
   // typing on a slow link does not also download a snapshot per key.
   const collaborationForward = createTrailingThrottle(
     COLLABORATION_FORWARD_INTERVAL_MS,
     (event: unknown) =>
-      args.onEvent(
-        filterCollaborationEvent(event, ownShellClients.filterSnapshot),
-        identity,
-      ),
+      args.onEvent(filterCollaborationEvent(event, presentSnapshot), identity),
   );
   const collaboration = createCollaborationService({
     herdrCall: (method, params) => herdr.call(method, params),
@@ -628,6 +641,7 @@ export function createLegacyConnectionRuntime(args: {
 
   return {
     identity,
+    presenceContext,
     socketPath,
     clientSocketPath,
     sshHost,

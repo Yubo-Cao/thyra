@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   acceptCollaborationEvent,
   collaborationProfileForSession,
+  isLegacyDefaultName,
   participantIsTyping,
   shouldTakeOverPaneFromMouse,
   subscribeCollaborationSnapshot,
@@ -61,6 +62,16 @@ describe("collaboration client sessions", () => {
     );
     expect(fallback.displayName).toBe("Thyra user");
     expect(fallback.color).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+describe("legacy profile migration", () => {
+  test("only custom names move to the bridge; generated defaults do not", () => {
+    expect(isLegacyDefaultName("Linux x86_64 user", "Linux x86_64")).toBe(true);
+    expect(isLegacyDefaultName("iPhone \u7528\u6237", "iPhone")).toBe(true);
+    expect(isLegacyDefaultName("Thyra user", "")).toBe(true);
+    expect(isLegacyDefaultName(" Yubo ", "iPhone")).toBe(false);
+    expect(isLegacyDefaultName("MacIntel user", "iPhone")).toBe(false);
   });
 });
 

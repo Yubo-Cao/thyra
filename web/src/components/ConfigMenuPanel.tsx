@@ -32,6 +32,7 @@ import type {
   ConfigurationTab,
 } from "./ConfigurationDialog";
 import { ConfigurationLoadingDialog } from "./ConfigurationLoadingDialog";
+import { browserCountLabel } from "./browserTransport";
 import { HerdrSetupCard } from "./HerdrSetupCard";
 import { MobileSheetHandle } from "./MobileSheetHandle";
 import "./ConfigMenu.css";
@@ -140,11 +141,7 @@ export function ConfigMenuDropdown({
               ? t("Paused")
               : t(CONNECTION_STATUS_LABELS[s.status] ?? s.status)}
             {typeof clientCount === "number"
-              ? ` · ${
-                  clientCount === 1
-                    ? t("{count} client", { count: clientCount })
-                    : t("{count} clients", { count: clientCount })
-                }`
+              ? ` · ${browserCountLabel(clientCount, s.bridgeStatus?.devices)}`
               : ""}
           </span>
         </div>

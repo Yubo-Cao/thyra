@@ -101,6 +101,8 @@ import {
   WORKTREE_REMOVE_TIMEOUT_MS,
 } from "./worktree/remove";
 import { voiceCleanupFromEnv } from "./voice/cleanup";
+import { createIdentityServiceFromEnv } from "./identity/from-env";
+import type { ClientContext } from "./identity/identity-service";
 
 const APP_VERSION = packageJson.version;
 const serviceCommandResult = runServiceCommand(process.argv.slice(2));
@@ -149,6 +151,11 @@ const {
 });
 
 type RpcRequest = ConnectionRpcRequest;
+
+const clientIdentity = createIdentityServiceFromEnv<ServerWebSocket<unknown>>({
+  secureCookies: Boolean(config.tls),
+  logger: logger.child("identity"),
+});
 
 const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   appVersion: APP_VERSION,
@@ -459,6 +466,7 @@ function runtimeFactoryForProfile(
         },
         clientLabel,
         markRpcError,
+        presentSnapshot: clientIdentity.annotateSnapshot,
         onTaskEvent: (event) => {
           const connections = connectionProfiles.list();
           webPush.notify(
@@ -537,6 +545,15 @@ const connectionProfiles = new ConnectionProfileService({
   createRuntime: runtimeFactoryForProfile,
 });
 
+/** Browser sockets grouped by device (tabs and merged contexts count once). */
+function countDevices(sockets: Iterable<ServerWebSocket<unknown>>): number {
+  const devices = new Set<string>();
+  for (const socket of sockets) {
+    devices.add(clientIdentity.deviceKeyOf(socket) ?? clientLabel(socket));
+  }
+  return devices.size;
+}
+
 function notifyBrowserClientCount() {
   connectionManager.forEachCurrentRuntime((runtime) => {
     runtime.terminalBridge.browserClientCountChanged(clients.size);
@@ -557,6 +574,7 @@ const webSocketCleanup = new WebSocketCleanupTracker<
     viewedTerminals,
   };
   clients.delete(ws);
+  clientIdentity.detach(ws);
   notifyBrowserClientCount();
   return snapshot;
 });
@@ -713,12 +731,25 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     sendReply({ id, result: { ok: true } }, "bridge-ping");
     return;
   }
+  if (method === "bridge.identity" || method === "bridge.identity_profile") {
+    try {
+      const result =
+        method === "bridge.identity"
+          ? await clientIdentity.hello(ws, params ?? {})
+          : await clientIdentity.updateProfile(ws, params ?? {});
+      sendReply({ id, result }, method);
+    } catch (error) {
+      sendError(`${method}-error`, error);
+    }
+    return;
+  }
   if (method === "bridge.status") {
     sendReply(
       {
         id,
         result: {
           clients: clients.size,
+          devices: countDevices(clients),
           terminals:
             connectionManager
               .defaultReadyRuntime()
@@ -778,6 +809,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "bridge.pause_others") {
     const targets = Array.from(clients).filter((client) => client !== ws);
     let pausedClients = 0;
+    const pausedDevices = new Set<string>();
     for (const client of targets) {
       const ok = safeSend(
         client,
@@ -790,7 +822,12 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         }),
         "pause-other-client",
       );
-      if (ok) pausedClients += 1;
+      if (ok) {
+        pausedClients += 1;
+        pausedDevices.add(
+          clientIdentity.deviceKeyOf(client) ?? clientLabel(client),
+        );
+      }
     }
     sendReply(
       {
@@ -798,7 +835,9 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         result: {
           ok: true,
           paused_clients: pausedClients,
+          paused_devices: pausedDevices.size,
           clients: clients.size,
+          devices: countDevices(clients),
         },
       },
       "bridge-pause-others",
@@ -1015,7 +1054,17 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method.startsWith("collaboration.")) {
     try {
-      const result = await collaboration.call(method, params ?? {});
+      // The bridge, not the page, decides the presented name and color.
+      const callParams =
+        method === "collaboration.update"
+          ? await clientIdentity.presenceParams(ws, params ?? {})
+          : (params ?? {});
+      if (method === "collaboration.leave")
+        clientIdentity.forgetParticipant(callParams.participant_id);
+      const result = clientIdentity.annotateResult(
+        await collaboration.call(method, callParams),
+        connection.presenceContext,
+      );
       sendReply({ id, result }, method);
     } catch (e) {
       sendError(`${method}-error`, e);
@@ -1341,7 +1390,7 @@ async function handleConnectionHttpRequest(
 function main() {
   const server = bindListenerBeforeConnectionStart({
     bindListener: () =>
-      Bun.serve<{ sessionToken: string | null }>({
+      Bun.serve<{ sessionToken: string | null; client?: ClientContext }>({
         port: config.port,
         hostname: config.host,
         tls: config.tls,
@@ -1401,8 +1450,21 @@ function main() {
           }
 
           if (url.pathname === "/ws") {
+            const upgrade = clientIdentity.upgradeContext(
+              req,
+              server.requestIP(req)?.address,
+            );
             if (
-              server.upgrade(req, { data: { sessionToken: sessionToken(req) } })
+              server.upgrade(req, {
+                // Bun rejects an empty headers object.
+                ...(upgrade.headers["set-cookie"]
+                  ? { headers: upgrade.headers }
+                  : {}),
+                data: {
+                  sessionToken: sessionToken(req),
+                  client: upgrade.context,
+                },
+              })
             )
               return undefined;
             return new Response("websocket upgrade failed", { status: 400 });
@@ -1469,13 +1531,18 @@ function main() {
             return handleConnectionHttpRequest(connectionRoute, url, req);
           }
           // Everything else: serve the built frontend (embedded or on-disk).
-          return serveStatic(req, config.publicDir);
+          return clientIdentity.withPageCookie(
+            req,
+            server.requestIP(req)?.address,
+            await serveStatic(req, config.publicDir),
+          );
         },
         websocket: {
           perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
           open(ws) {
             clients.add(ws);
             clientSessions.set(ws, ws.data.sessionToken);
+            clientIdentity.attach(ws, ws.data.client);
             const label = assignClientId(ws);
             logger.debug("client connected", {
               client: label,

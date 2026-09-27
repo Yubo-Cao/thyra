@@ -75,8 +75,6 @@ export default {
   "Show more menu options": "显示更多菜单选项",
   "Version {version}": "版本 {version}",
   Paused: "已暂停",
-  "{count} client": "{count} 个客户端",
-  "{count} clients": "{count} 个客户端",
   Configuration: "设置",
   "Appearance, behavior, connections, and agent integrations":
     "外观、行为、连接和 Agent 集成",
@@ -171,12 +169,33 @@ export default {
   "{count} collaborators": "{count} 位协作者",
   Live: "实时",
   "Your collaboration display name": "你的协作显示名称",
+  "Your collaboration profile": "你的协作资料",
+  "Display name": "显示名称",
+  "{count} people": "{count} 人",
+  "Recognized through Tailscale as {login}": "已通过 Tailscale 识别为 {login}",
+  "Recognized through Tailscale": "已通过 Tailscale 识别",
+  "Recognized by this device's tailnet address":
+    "已通过此设备的 tailnet 地址识别",
+  "Matched to this device by its model, screen and time zone (likely, not certain)":
+    "已根据型号、屏幕和时区匹配到此设备（可能，但不确定）",
+  "Recognized by this browser": "已通过此浏览器识别",
+  "Your name is kept by this Thyra server for all your devices.":
+    "你的名称由此 Thyra 服务器保存，并用于你的所有设备。",
+  "Your name is kept by this Thyra server for this device.":
+    "你的名称由此 Thyra 服务器为此设备保存。",
+  "Herdr TUI": "Herdr TUI",
+  Browser: "浏览器",
+  "Viewing: {people}": "正在查看：{people}",
+  "Controlling: {person}": "正在控制：{person}",
   "Save display name": "保存显示名称",
   Cancel: "取消",
 
   // Connection switcher and manager
   "{count} browser": "{count} 个浏览器",
   "{count} browsers": "{count} 个浏览器",
+  "{count} browsers on 1 device": "1 台设备上的 {count} 个浏览器",
+  "{count} browsers on {devices} devices":
+    "{devices} 台设备上的 {count} 个浏览器",
   "Workspace, tab and pane selection stays in this browser. Topology and sizes are shared.":
     "工作区、标签页和窗格的选择仅保留在此浏览器中。拓扑和尺寸是共享的。",
   "Legacy navigation follows shared Herdr focus and can move other clients.":

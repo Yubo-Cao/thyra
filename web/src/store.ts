@@ -148,6 +148,8 @@ export interface UpdateInfo {
 
 export interface BridgeStatus {
   clients: number;
+  /** Distinct devices among `clients` (tabs of one device count once). */
+  devices?: number;
   terminals: Array<{
     terminal_id: string;
     viewers: number;
@@ -1363,6 +1365,7 @@ async function refreshBridgeStatus() {
     }
     const nextBridgeStatus: BridgeStatus = {
       clients: Number(r?.clients ?? 0),
+      ...(typeof r?.devices === "number" ? { devices: r.devices } : {}),
       terminals: Array.isArray(r?.terminals) ? r.terminals : [],
     };
     if (!jsonDeepEqual(state.bridgeStatus, nextBridgeStatus)) {

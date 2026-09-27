@@ -1,4 +1,4 @@
-import type { ConnectionClient, HerdrEventMsg } from "./api";
+import { bridge, type ConnectionClient, type HerdrEventMsg } from "./api";
 import { thyraLocalStorage } from "./browserStorage";
 import { t } from "./i18n";
 import type { State } from "./store";
@@ -17,6 +17,42 @@ export type CollaborationParticipant = {
   typing_expires_at_unix_ms?: number;
   updated_at_unix_ms: number;
   expires_at_unix_ms: number;
+  /** Opaque bridge-assigned ids; keys of the snapshot's people/devices. */
+  person_id?: string;
+  device_id?: string;
+};
+
+/** How the bridge recognized a device (see docs/ARCHITECTURE.md). */
+export type CollaborationIdentityMatch =
+  | "tailscale"
+  | "tailnet-address"
+  | "cookie"
+  | "device-hints";
+
+export type CollaborationPerson = {
+  display_name: string;
+  color: string;
+  avatar_url?: string;
+};
+
+export type CollaborationDevice = {
+  name: string;
+  os?: string;
+  match?: CollaborationIdentityMatch;
+};
+
+/** This browser's identity as resolved by the bridge (`bridge.identity`). */
+export type CollaborationSelfIdentity = {
+  person_id: string;
+  device_id: string;
+  display_name: string | null;
+  custom_name: boolean;
+  color: string;
+  device_name: string;
+  match: CollaborationIdentityMatch;
+  os?: string;
+  avatar_url?: string;
+  login?: string;
 };
 
 export type CollaborationPaneClaim = {
@@ -32,6 +68,8 @@ export type CollaborationSnapshot = {
   participants: CollaborationParticipant[];
   pane_claims: CollaborationPaneClaim[];
   lease_ttl_ms: number;
+  people?: Record<string, CollaborationPerson>;
+  devices?: Record<string, CollaborationDevice>;
 };
 
 export type CollaborationProfile = {
@@ -51,6 +89,12 @@ const COLORS = [
 ];
 let cachedProfile: CollaborationProfile | null = null;
 let clientSessionId: string | null = null;
+let selfIdentity: CollaborationSelfIdentity | null = null;
+const identityListeners = new Set<
+  (identity: CollaborationSelfIdentity | null) => void
+>();
+let identityStarted = false;
+let identityRequestSeq = 0;
 const snapshots = new Map<string, CollaborationSnapshot>();
 const snapshotListeners = new Set<
   (scope: string, snapshot: CollaborationSnapshot) => void
@@ -70,9 +114,15 @@ function randomId() {
   }
 }
 
-function defaultName() {
-  const platform = navigator.platform?.trim();
-  return platform ? t("{platform} user", { platform }) : t("Thyra user");
+function defaultName(device = navigator.platform?.trim()) {
+  return device ? t("{device} user", { device }) : t("Thyra user");
+}
+
+/** Names the browser generated before profiles moved to the bridge. */
+export function isLegacyDefaultName(name: string, platform: string) {
+  const defaults = ["Thyra user", "Thyra \u7528\u6237"];
+  if (platform) defaults.push(`${platform} user`, `${platform} \u7528\u6237`);
+  return defaults.includes(name.trim());
 }
 
 export function collaborationProfileForSession(
@@ -107,44 +157,180 @@ export function collaborationProfileForSession(
   };
 }
 
-export function collaborationProfile(): CollaborationProfile {
-  if (cachedProfile) return cachedProfile;
-  clientSessionId ??= `web-${randomId()}`;
-  let stored: unknown = null;
+function readStoredProfile(): unknown {
   try {
-    stored = JSON.parse(thyraLocalStorage.getItem(PROFILE_KEY) ?? "null");
+    return JSON.parse(thyraLocalStorage.getItem(PROFILE_KEY) ?? "null");
   } catch {
     // A restricted storage context still gets an in-memory identity.
+    return null;
   }
-  // The display profile is shared by tabs, while participant_id deliberately
-  // identifies this page lifetime. Persisting participant_id in localStorage
+}
+
+export function collaborationProfile(): CollaborationProfile {
+  // participant_id deliberately identifies this page lifetime. Persisting it
   // made every tab/window impersonate the same collaborator and bypass pane
-  // ownership checks intended for independent client sessions.
-  cachedProfile = collaborationProfileForSession(
+  // ownership checks intended for independent client sessions. People and
+  // devices are recognized by the bridge instead (bridge.identity).
+  clientSessionId ??= `web-${randomId()}`;
+  if (selfIdentity) {
+    return {
+      participantId: clientSessionId,
+      displayName:
+        selfIdentity.display_name ??
+        defaultName(selfIdentity.device_name || undefined),
+      color: selfIdentity.color,
+    };
+  }
+  cachedProfile ??= collaborationProfileForSession(
     clientSessionId,
-    stored,
+    readStoredProfile(),
     defaultName(),
   );
-  saveCollaborationProfile(cachedProfile);
   return cachedProfile;
 }
 
-export function saveCollaborationProfile(profile: CollaborationProfile) {
-  cachedProfile = {
-    ...profile,
-    displayName: profile.displayName.trim().slice(0, 80) || t("Thyra user"),
+export function collaborationSelfIdentity() {
+  return selfIdentity;
+}
+
+export function subscribeCollaborationIdentity(
+  listener: (identity: CollaborationSelfIdentity | null) => void,
+) {
+  identityListeners.add(listener);
+  return () => {
+    identityListeners.delete(listener);
   };
-  try {
-    thyraLocalStorage.setItem(
-      PROFILE_KEY,
-      JSON.stringify({
-        displayName: cachedProfile.displayName,
-        color: cachedProfile.color,
-      }),
-    );
-  } catch {
-    // Keep the identity in memory when storage is unavailable.
+}
+
+function parseSelfIdentity(value: unknown): CollaborationSelfIdentity | null {
+  const identity = value as Partial<CollaborationSelfIdentity> | null;
+  if (
+    !identity ||
+    typeof identity !== "object" ||
+    typeof identity.person_id !== "string" ||
+    typeof identity.device_id !== "string" ||
+    typeof identity.color !== "string"
+  ) {
+    return null;
   }
+  return {
+    ...(identity as CollaborationSelfIdentity),
+    display_name:
+      typeof identity.display_name === "string" ? identity.display_name : null,
+    device_name:
+      typeof identity.device_name === "string" ? identity.device_name : "",
+  };
+}
+
+function applySelfIdentity(value: unknown) {
+  const identity = parseSelfIdentity(value);
+  if (!identity) return false;
+  selfIdentity = identity;
+  identityListeners.forEach((listener) => listener(identity));
+  return true;
+}
+
+type NavigatorUAData = {
+  platform?: string;
+  getHighEntropyValues?: (
+    hints: string[],
+  ) => Promise<{ platform?: string; platformVersion?: string; model?: string }>;
+};
+
+/**
+ * Coarse hints that let the bridge recognize one device across browser
+ * contexts that cannot share cookies. No canvas, audio or font probing.
+ */
+export async function collectDeviceHints(): Promise<Record<string, unknown>> {
+  const hints: Record<string, unknown> = {};
+  try {
+    hints.screen = {
+      width: screen.width,
+      height: screen.height,
+      dpr: window.devicePixelRatio,
+    };
+    hints.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    hints.language = navigator.language;
+    hints.touch_points = navigator.maxTouchPoints;
+    hints.standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (navigator as { standalone?: boolean }).standalone === true;
+    const uaData = (navigator as { userAgentData?: NavigatorUAData })
+      .userAgentData;
+    if (uaData?.platform) hints.platform = uaData.platform;
+    const details = await uaData
+      ?.getHighEntropyValues?.(["platformVersion", "model"])
+      .catch(() => null);
+    if (details?.platformVersion)
+      hints.platform_version = details.platformVersion;
+    if (details?.model) hints.model = details.model;
+  } catch {
+    // Hints only refine the match; the request still identifies the device.
+  }
+  return hints;
+}
+
+async function requestSelfIdentity() {
+  const seq = ++identityRequestSeq;
+  const stored = readStoredProfile() as {
+    displayName?: unknown;
+    color?: unknown;
+  } | null;
+  const legacyName =
+    typeof stored?.displayName === "string" &&
+    stored.displayName.trim() &&
+    !isLegacyDefaultName(stored.displayName, navigator.platform?.trim() ?? "")
+      ? stored.displayName.trim().slice(0, 80)
+      : null;
+  try {
+    const result = await bridge.call("bridge.identity", {
+      hints: await collectDeviceHints(),
+      ...(legacyName
+        ? {
+            legacy_profile: {
+              display_name: legacyName,
+              ...(typeof stored?.color === "string"
+                ? { color: stored.color }
+                : {}),
+            },
+          }
+        : {}),
+    });
+    if (seq !== identityRequestSeq) return;
+    // The bridge now owns the profile; the browser copy was migrated once.
+    if (applySelfIdentity(result?.identity) && stored) {
+      try {
+        thyraLocalStorage.removeItem(PROFILE_KEY);
+      } catch {}
+    }
+  } catch {
+    // Keep the browser-local profile until the next connection.
+  }
+}
+
+/** Ask the bridge who this browser is, now and after every reconnect. */
+export function startCollaborationIdentity() {
+  if (identityStarted) return;
+  identityStarted = true;
+  bridge.onHello(() => void requestSelfIdentity());
+  if (bridge.hello && bridge.status === "connected") void requestSelfIdentity();
+}
+
+/** Store a custom display name for this person (all their devices). */
+export async function saveCollaborationDisplayName(displayName: string) {
+  const name = displayName.trim().slice(0, 80);
+  try {
+    const result = await bridge.call("bridge.identity_profile", {
+      display_name: name,
+    });
+    if (applySelfIdentity(result?.identity)) return;
+  } catch {
+    // Fall back to this page until the bridge is reachable again.
+  }
+  cachedProfile = {
+    ...collaborationProfile(),
+    displayName: name || defaultName(),
+  };
 }
 
 function parseSnapshot(result: unknown): CollaborationSnapshot | null {
@@ -155,10 +341,18 @@ function parseSnapshot(result: unknown): CollaborationSnapshot | null {
   if (!Array.isArray(value.participants) || !Array.isArray(value.pane_claims)) {
     return null;
   }
+  const table = <T>(input: unknown) =>
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as Record<string, T>)
+      : undefined;
+  const people = table<CollaborationPerson>(value.people);
+  const devices = table<CollaborationDevice>(value.devices);
   return {
     participants: value.participants,
     pane_claims: value.pane_claims,
     lease_ttl_ms: Number(value.lease_ttl_ms ?? 45_000),
+    ...(people ? { people } : {}),
+    ...(devices ? { devices } : {}),
   };
 }
 

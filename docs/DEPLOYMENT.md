@@ -234,6 +234,10 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_DISABLE_UPDATE_CHECK=1` | Disable update checks |
 | `THYRA_RESTART_SUPERVISOR=0\|1` | Override external supervisor detection |
 | `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
+| `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded client address is believed; see [collaborator identity](#collaborator-identity) |
+| `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
+| `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
+| `THYRA_IDENTITY_PATH` | Collaborator identity file (default `~/.config/thyra/identities.json`) |
 
 Update mirrors need platform archives, `.sha256` files, and
 `thyra-<platform>.update.json` with `name: "thyra"`. Missing or invalid manifests
@@ -281,6 +285,25 @@ thyra --host 0.0.0.0 --port 8443 \
   HTTPS before Home Screen installation; remove temporary CA profiles after tests.
 - Protect keys and keep them out of Git. Issuance/renewal is external; restart
   after replacement. Services need absolute paths in their environment file.
+
+## Collaborator identity
+
+Thyra recognizes the same device, and with Tailscale the same person, across tabs, browsers, and the home screen app, so the collaborator list shows "Yubo · iphone, liveopt" instead of one entry per tab.
+Custom display names are stored on the server per person (or per device without Tailscale), so every device of that person shares one name.
+See [collaborator identity](./ARCHITECTURE.md#collaborator-identity) for the rules.
+
+- **Tailscale.** When a browser connects from a tailnet address, Thyra asks tailscaled who that node and its user are, through `/var/run/tailscale/tailscaled.sock` on Linux or the `tailscale` CLI elsewhere.
+  Nothing needs configuring when Thyra is reached through `tailscale serve` or a local reverse proxy on the same machine.
+  Set `THYRA_TAILSCALE_IDENTITY=off` to disable lookups, or point `THYRA_TAILSCALE_SOCKET`/`THYRA_TAILSCALE_CLI` at a non-default tailscaled.
+- **Without Tailscale.** Thyra sets a random, HttpOnly `thyra_device` cookie and matches browser contexts that cannot share it (such as Safari and its home screen app) by coarse device hints from the same network address.
+  Two identical phones behind one NAT stay separate; the match is best-effort, not an authentication factor.
+- **Reverse proxies.** Forwarded client addresses (`X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Proto`) are believed only from `THYRA_TRUSTED_PROXIES`, which defaults to loopback, so a local Caddy, nginx, or `tailscale serve` works as is.
+  List other proxies as comma-separated addresses or CIDR ranges (`THYRA_TRUSTED_PROXIES=loopback,10.0.0.5`), or set `none` to ignore forwarded headers entirely.
+  Never list addresses that untrusted clients can connect from: they could then claim any address, including another device's tailnet address.
+  The proxy must set or append the address it received the request from to `X-Forwarded-For` (Caddy, nginx's `$proxy_add_x_forwarded_for`, and `tailscale serve` do); Thyra reads the chain from the right, so a client-supplied prefix is ignored.
+
+Browsers see device names, avatars, and opaque ids, never client addresses.
+The identity file holds device records with keyed address hashes and custom names; deleting it resets names and device matches.
 
 ## Web Push notifications
 

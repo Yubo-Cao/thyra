@@ -29,14 +29,52 @@
 .collaboration-live {
   color: var(--success-text);
 }
+.collaboration-profile {
+  display: grid;
+  gap: 6px;
+  width: min(300px, calc(100vw - 32px));
+}
 .collaboration-editor {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 .collaboration-name-field {
-  width: 170px;
+  flex: 1 1 auto;
   min-width: 0;
+}
+.collaboration-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--ui-font-size-xs);
+}
+.collaboration-people {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 4px 0 0;
+  border-top: 1px solid var(--shell-border);
+  list-style: none;
+}
+.collaboration-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ui-row-height);
+}
+.collaboration-person-text {
+  display: grid;
+  min-width: 0;
+}
+.collaboration-person-name,
+.collaboration-person-devices {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collaboration-person-devices {
+  color: var(--muted);
+  font-size: var(--ui-font-size-xs);
 }
 @media (max-width: 768px) {
   .collaboration-live,

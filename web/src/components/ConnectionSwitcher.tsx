@@ -102,17 +102,10 @@ function useBrowserTransport() {
     state.connectionPaused,
     state.status,
     state.bridgeStatus?.clients,
+    state.bridgeStatus?.devices,
   );
-  const { label, clientCount } = presentation;
-  const statusLabel = `${label}${
-    typeof clientCount === "number"
-      ? ` · ${
-          clientCount === 1
-            ? t("{count} browser", { count: clientCount })
-            : t("{count} browsers", { count: clientCount })
-        }`
-      : ""
-  }`;
+  const { label, countLabel } = presentation;
+  const statusLabel = countLabel ? `${label} · ${countLabel}` : label;
   const browserLocal = state.navigationMode === "browser-local";
   return {
     ...presentation,
