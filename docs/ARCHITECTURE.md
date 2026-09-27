@@ -397,6 +397,12 @@ Browsers group presence by person and list each person's devices ("Yubo · iphon
 Sidebar pane rows and the phone tab sheet show one avatar per person looking at the pane (this page excluded, hidden pages ignored, real Herdr TUI clients included) and mark the holder of the pane's layout claim with an accent ring and keyboard badge.
 These are derived in the browser from the presence snapshot, which the bridge already forwards at most once per second, so they add no traffic.
 
+Focus changes skip that throttle: when a page's workspace, tab, pane, visibility, or follow target changes, the bridge sends a `collaboration.focus` event with only those ids at once, and browsers patch their latest snapshot.
+The bridge also keeps what Herdr's API does not carry: `following` (the presence key a page follows, stripped before the call reaches Herdr) and `active_at_unix_ms` (last focus change, typing, or return to the page), and overlays both, with the latest forwarded focus, on every snapshot it sends, so a throttled snapshot never moves anyone back.
+A person's focus is that of their visible page with the latest `active_at_unix_ms`; the collaboration popover shows it ("Viewing: workspace › tab › pane") with Jump and Follow.
+Following moves this page to that focus whenever it changes and ends when the user navigates (any `store` focus action outside `navigateProgrammatically`), presses Escape, switches connection, or the person has had no live page for three seconds.
+A closed socket leaves its participants at once instead of waiting for the 45-second lease, unless the page already reconnected on another socket.
+
 Pane claims are exclusive per pane, not per Herdr session. The bridge shares one
 render stream for a terminal among all watching browsers. `Take control` claims
 layout ownership with a 15-second takeover protection; keyboard input remains

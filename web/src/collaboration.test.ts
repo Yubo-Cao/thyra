@@ -8,6 +8,7 @@ import {
   subscribeCollaborationSnapshot,
 } from "./collaboration";
 import type { ConnectionClient } from "./api";
+import type { CollaborationSnapshot } from "./collaboration";
 
 describe("collaboration client sessions", () => {
   test("shares presentation without conflating independent client sessions", () => {
@@ -145,5 +146,79 @@ describe("collaboration interaction signals", () => {
     expect(rejected).toBe(false);
     expect(seen).toHaveLength(2);
     expect(seen[0]).toBeNull();
+  });
+});
+
+describe("collaboration focus events", () => {
+  test("move one participant at once without a full snapshot", () => {
+    const client: ConnectionClient = {
+      connectionId: "focus-test",
+      generation: 1,
+      serverRuntimeGeneration: 3,
+      call: async () => null,
+      isCurrent: () => true,
+      acceptsServerGeneration: (value) => value === 3,
+    };
+    const seen: (CollaborationSnapshot | null)[] = [];
+    const unsubscribe = subscribeCollaborationSnapshot(client, (snapshot) =>
+      seen.push(snapshot),
+    );
+    const focusEvent = (participantId: string) => ({
+      connection_id: "focus-test",
+      connection_generation: 3,
+      event: "collaboration.focus",
+      data: {
+        type: "collaboration_focus",
+        focus: {
+          participant_id: participantId,
+          workspace_id: "w2",
+          tab_id: "w2:t1",
+          pane_id: "w2:p3",
+          activity: "active",
+          following: "person-b",
+          active_at_unix_ms: 9_000,
+        },
+      },
+    });
+    // Without a snapshot there is nothing to move yet.
+    expect(acceptCollaborationEvent(client, focusEvent("web-a"))).toBe(false);
+    acceptCollaborationEvent(client, {
+      connection_id: "focus-test",
+      connection_generation: 3,
+      event: "collaboration_updated",
+      data: {
+        snapshot: {
+          participants: [
+            {
+              participant_id: "web-a",
+              display_name: "Alice",
+              color: "#0969da",
+              role: "editor",
+              activity: "active",
+              surface: "web",
+              workspace_id: "w1",
+              tab_id: "w1:t1",
+              pane_id: "w1:p1",
+              updated_at_unix_ms: 1_000,
+              expires_at_unix_ms: 46_000,
+            },
+          ],
+          pane_claims: [],
+          lease_ttl_ms: 45_000,
+        },
+      },
+    });
+    expect(acceptCollaborationEvent(client, focusEvent("web-a"))).toBe(true);
+    expect(acceptCollaborationEvent(client, focusEvent("web-z"))).toBe(false);
+    unsubscribe();
+
+    expect(seen[seen.length - 1]?.participants[0]).toMatchObject({
+      workspace_id: "w2",
+      tab_id: "w2:t1",
+      pane_id: "w2:p3",
+      following: "person-b",
+      active_at_unix_ms: 9_000,
+      display_name: "Alice",
+    });
   });
 });

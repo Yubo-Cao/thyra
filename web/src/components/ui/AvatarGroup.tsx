@@ -15,6 +15,8 @@ export type AvatarGroupPerson = {
   avatarUrl?: string;
   /** Holds control: accent frame, plus a keyboard badge after the group. */
   controller?: boolean;
+  /** This page follows them: a heavier accent frame. */
+  followed?: boolean;
 };
 
 /**
@@ -74,6 +76,7 @@ export function AvatarGroup({
           key={person.key}
           {...item(index)}
           data-controller={person.controller || undefined}
+          data-followed={person.followed || undefined}
         >
           <Avatar
             name={person.name}

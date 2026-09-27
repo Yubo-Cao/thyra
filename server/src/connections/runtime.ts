@@ -15,6 +15,7 @@ import {
   filterCollaborationEvent,
 } from "../bridge/collaboration";
 import { acquireOwnShellClients } from "../bridge/own-shell-clients";
+import { createPresenceFocusTracker } from "../bridge/presence-focus";
 import { hostname } from "node:os";
 import {
   herdrHostLabel,
@@ -180,8 +181,11 @@ export function createLegacyConnectionRuntime(args: {
   const presenceContext: PresenceContext = {
     tuiDevice: herdrHostLabel(config.sshHost, hostname()),
   };
+  const presenceFocus = createPresenceFocusTracker();
   const presentSnapshot = <T>(snapshot: T): T => {
-    const filtered = ownShellClients.filterSnapshot(snapshot);
+    const filtered = presenceFocus.annotate(
+      ownShellClients.filterSnapshot(snapshot),
+    );
     return args.presentSnapshot
       ? args.presentSnapshot(filtered, presenceContext)
       : filtered;
@@ -197,6 +201,16 @@ export function createLegacyConnectionRuntime(args: {
   const collaboration = createCollaborationService({
     herdrCall: (method, params) => herdr.call(method, params),
     filterSnapshot: ownShellClients.filterSnapshot,
+    presence: presenceFocus,
+    // Focus changes skip the snapshot throttle: ids only, sent at once.
+    onFocus: (focus) =>
+      args.onEvent(
+        {
+          event: "collaboration.focus",
+          data: { type: "collaboration_focus", focus },
+        },
+        identity,
+      ),
     onSnapshot: (snapshot) =>
       collaborationForward.push({
         event: "collaboration.updated",

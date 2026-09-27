@@ -1,4 +1,5 @@
 import { optionalNumber, optionalString } from "../utils/rpc-params";
+import type { PresenceFocus, PresenceFocusTracker } from "./presence-focus";
 
 type Participant = {
   participant_id: string;
@@ -59,6 +60,10 @@ export function createCollaborationService(args: {
   }) => void;
   /** Applied to snapshots returned by the Herdr collaboration API. */
   filterSnapshot?: <T>(snapshot: T) => T;
+  /** Bridge-side focus, activity and follow state of browser participants. */
+  presence?: PresenceFocusTracker;
+  /** A participant's focus changed; announce it without waiting. */
+  onFocus?: (focus: PresenceFocus) => void;
   now?: () => number;
 }) {
   const participants = new Map<string, Participant>();
@@ -227,7 +232,34 @@ export function createCollaborationService(args: {
     throw new Error(`unknown collaboration method: ${method}`);
   };
 
-  async function call(method: string, params: Record<string, unknown> = {}) {
+  const presentResult = (result: unknown) => {
+    const presence = args.presence;
+    return presence
+      ? filterResultSnapshot(result, (snapshot) => presence.annotate(snapshot))
+      : result;
+  };
+
+  async function call(
+    method: string,
+    params: Record<string, unknown> = {},
+  ): Promise<any> {
+    if (method === "collaboration.leave")
+      args.presence?.forget(params.participant_id);
+    if (method !== "collaboration.update" || !args.presence)
+      return presentResult(await forward(method, params));
+    const { herdrParams, commit } = args.presence.prepare(params);
+    // Announce before Herdr answers: followers wait for exactly this.
+    const { changed, rollback } = commit();
+    if (changed) args.onFocus?.(changed);
+    try {
+      return presentResult(await forward(method, herdrParams));
+    } catch (error) {
+      rollback();
+      throw error;
+    }
+  }
+
+  async function forward(method: string, params: Record<string, unknown>) {
     if (useFallback) return fallbackCall(method, params);
     try {
       const result = await args.herdrCall(method, params);

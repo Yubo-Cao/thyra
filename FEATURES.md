@@ -302,6 +302,12 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   input-required/completed alerts. **Background push** works without an active
   page; **Active page only** does not. Delivery is best-effort.
   [Web Push setup and revocation](docs/DEPLOYMENT.md#web-push-notifications).
+- The collaborator popover shows where each person is looking ("Viewing:
+  workspace › tab › pane") with **Jump** and **Follow**; clicking an avatar on
+  a pane row or tab also offers **Follow**. Following moves your view with the most
+  recently active device of that person, shows a **Following … Stop** chip,
+  and ends when you navigate yourself, press Escape, or they disconnect. The
+  person you follow sees a quiet indicator beside their avatars.
 - Choose light/dark/system appearance, accents, built-in/custom terminal themes,
   and UI text size (80%–150%). Preferences stay in this browser.
 - The interface is available in English and Simplified Chinese. **Language**

@@ -1,0 +1,7 @@
+/* Pane and tab avatars open a Follow menu; the wrapper adds no box. */
+.pane-presence {
+  display: contents;
+}
+.pane-presence > .ui-avatar-group {
+  cursor: pointer;
+}

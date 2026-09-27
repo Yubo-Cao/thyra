@@ -33,7 +33,7 @@ export type Collaborator = {
 
 const ACTIVITY_RANK = { active: 0, idle: 1, away: 2 } as const;
 
-function deviceName(
+export function deviceName(
   snapshot: CollaborationSnapshot,
   participant: CollaborationParticipant,
 ) {
