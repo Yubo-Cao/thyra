@@ -12,6 +12,7 @@ import {
   endpointMethodReason,
   parseEndpointAdvertisement,
 } from "../endpointAvailability";
+import { t } from "../i18n";
 import type { TaskNotificationTarget } from "../taskNotifications";
 import { provisionalTabLayout, tabLayoutFor } from "../tabLayout";
 import { terminalRelayViewportForTab } from "../terminalResize";
@@ -87,6 +88,12 @@ export function endpointCreationReason(
   method: "tab.create" | "workspace.create",
   workspaceId = snapshot.browserNavigation.workspaceId,
 ): string | null {
+  // Viewers (and share-link guests) create nothing; the bridge refuses it.
+  if (
+    snapshot.workspaces.find((item) => item.workspace_id === workspaceId)
+      ?.access === "viewer"
+  )
+    return t("View only");
   if (snapshot.navigationMode === "shared") return null;
   // Empty bootstrap deliberately uses the validated control API, not an endpoint.
   if (method === "workspace.create" && snapshot.workspaces.length === 0)

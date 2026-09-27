@@ -227,21 +227,24 @@ export function TerminalPaneHeader({
               <span>{t("Take control")}</span>
             </Button>
           ) : null}
-          <Button
-            icon
-            aria-pressed={access.viewOnly}
-            onPointerDown={preventPaneActionFocus}
-            onClick={access.viewOnly ? control.takeControl : control.watch}
-            disabled={control.busy || access.readOnly}
-            title={
-              access.viewOnly
-                ? t("Stop viewing and take control")
-                : t("View only: stop sending input and resizing this pane")
-            }
-            aria-label={access.viewOnly ? t("Stop viewing") : t("View only")}
-          >
-            {access.viewOnly ? <EyeOff size={14} /> : <Eye size={14} />}
-          </Button>
+          {/* Viewers (and share-link guests) only watch: no pane controls. */}
+          {access.readOnly ? null : (
+            <Button
+              icon
+              aria-pressed={access.viewOnly}
+              onPointerDown={preventPaneActionFocus}
+              onClick={access.viewOnly ? control.takeControl : control.watch}
+              disabled={control.busy}
+              title={
+                access.viewOnly
+                  ? t("Stop viewing and take control")
+                  : t("View only: stop sending input and resizing this pane")
+              }
+              aria-label={access.viewOnly ? t("Stop viewing") : t("View only")}
+            >
+              {access.viewOnly ? <EyeOff size={14} /> : <Eye size={14} />}
+            </Button>
+          )}
           {access.inputOnly && onPreviewModeChange ? (
             <IconButton
               aria-pressed={previewMode === "text"}
@@ -257,20 +260,26 @@ export function TerminalPaneHeader({
               icon={<AlignLeft size={14} />}
             />
           ) : null}
-          <IconButton
-            aria-pressed={pinnedHere}
-            disabled={control.busy || access.viewOnly}
-            onPointerDown={preventPaneActionFocus}
-            onClick={() => void control.toggleDisplayPin()}
-            label={
-              pinnedHere
-                ? t("Stop keeping this pane sized for this device")
-                : t("Display on this device: keep this pane sized for it")
-            }
-            icon={<MonitorCheck size={14} />}
-          />
+          {access.readOnly ? null : (
+            <IconButton
+              aria-pressed={pinnedHere}
+              disabled={control.busy || access.viewOnly}
+              onPointerDown={preventPaneActionFocus}
+              onClick={() => void control.toggleDisplayPin()}
+              label={
+                pinnedHere
+                  ? t("Stop keeping this pane sized for this device")
+                  : t("Display on this device: keep this pane sized for it")
+              }
+              icon={<MonitorCheck size={14} />}
+            />
+          )}
         </div>
-        <div className="terminal-pane-toolbar" aria-label={t("Pane actions")}>
+        <div
+          className="terminal-pane-toolbar"
+          aria-label={t("Pane actions")}
+          style={access.readOnly ? { display: "none" } : undefined}
+        >
           <TerminalVoiceButton
             voice={voiceTyping}
             className="terminal-pane-action"

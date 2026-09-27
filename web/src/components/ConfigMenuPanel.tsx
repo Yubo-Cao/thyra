@@ -20,7 +20,7 @@ import { type ConnectionClient, logoutBrowserSession } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { msg, t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
-import { useInstanceAdmin } from "../principal";
+import { useGuest, useInstanceAdmin } from "../principal";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutLabel, useShortcutPreferences } from "../shortcutPreferences";
 import { store, useStoreSelector } from "../store";
@@ -105,6 +105,7 @@ export function ConfigMenuDropdown({
     useMenuServerInfo(connectionClient);
   const layout = useLayoutPreferences();
   const admin = useInstanceAdmin();
+  const guest = useGuest();
   useShortcutPreferences();
   const updateAvailable = !!s.updateInfo?.update_available;
   const canInstallUpdate = updateAvailable && s.updateInfo?.can_auto_update;
@@ -341,7 +342,10 @@ export function ConfigMenuDropdown({
                           ["Integrations", msg("Integrations"), Plug],
                         ] as const)
                       : []),
-                    ["Account", msg("Account"), UserRound],
+                    // Share-link guests have no account.
+                    ...(guest
+                      ? []
+                      : ([["Account", msg("Account"), UserRound]] as const)),
                   ] as const
                 ).map(([name, label, Icon]) => (
                   <ConfigMenuItem

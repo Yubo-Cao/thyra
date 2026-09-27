@@ -1167,31 +1167,39 @@ export const DiffViewerPanel = forwardRef<
                       : []),
                   ],
                 },
-                {
-                  id: "git",
-                  title: "Git",
-                  items: buildGitFileMenuItems(
-                    contextMenu.entries,
-                    contextMenu.directory,
-                  ).map((item) => ({
-                    id: `file:${item.action}`,
-                    label: item.label,
-                    danger: item.danger,
-                    onAction: () => runGitFileMenuAction(item, contextMenu),
-                  })),
-                },
-                {
-                  id: "repository",
-                  title: t("Repository"),
-                  items: buildGitRepoMenuItems(workingCounts).map((item) => ({
-                    id: `repo:${item.action}`,
-                    label: item.label,
-                    danger: item.danger,
-                    disabled: item.count === 0,
-                    description: String(item.count),
-                    onAction: () => runGitRepoMenuAction(item),
-                  })),
-                },
+                // Viewers (and share-link guests) run no Git actions.
+                ...(workspace?.access === "viewer"
+                  ? []
+                  : [
+                      {
+                        id: "git",
+                        title: "Git",
+                        items: buildGitFileMenuItems(
+                          contextMenu.entries,
+                          contextMenu.directory,
+                        ).map((item) => ({
+                          id: `file:${item.action}`,
+                          label: item.label,
+                          danger: item.danger,
+                          onAction: () =>
+                            runGitFileMenuAction(item, contextMenu),
+                        })),
+                      },
+                      {
+                        id: "repository",
+                        title: t("Repository"),
+                        items: buildGitRepoMenuItems(workingCounts).map(
+                          (item) => ({
+                            id: `repo:${item.action}`,
+                            label: item.label,
+                            danger: item.danger,
+                            disabled: item.count === 0,
+                            description: String(item.count),
+                            onAction: () => runGitRepoMenuAction(item),
+                          }),
+                        ),
+                      },
+                    ]),
               ]
             : []
         }

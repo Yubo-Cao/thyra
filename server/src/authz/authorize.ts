@@ -28,11 +28,15 @@ export type AuthzDeps = {
     connectionId: string,
     workspaceId: string,
   ): WorkspaceRole | null;
-  /** Workspace (and pane, for terminals) of an id not scoped by its prefix. */
+  /**
+   * Workspace (and pane, for terminals; tab, for panes and terminals) of an
+   * id. Tab and pane ids scoped by their workspace prefix need no lookup
+   * unless a link narrowed to one pane asks for the pane's tab.
+   */
   locate(
     connectionId: string,
     target: { tab?: string; pane?: string; terminal?: string },
-  ): Promise<{ workspace: string; pane?: string } | null>;
+  ): Promise<{ workspace: string; pane?: string; tab?: string } | null>;
   /** The live claim on a pane. */
   claimOf(connectionId: string, paneId: string): PaneClaim | null;
   /** The principal key that owns a presence participant. */
@@ -82,7 +86,35 @@ type Resolved = {
   roles: (WorkspaceRole | null)[];
   workspaces: string[];
   pane?: string;
+  /** Every pane (including terminals' panes) and tab the target names. */
+  panes?: string[];
+  tabs?: string[];
 };
+
+/** The one pane a guest's share link is narrowed to, if any. */
+export function scopedPane(principal: Principal): string | null {
+  return principal.kind === "guest" ? principal.link.paneId : null;
+}
+
+/**
+ * Whether a resolved target stays inside a link's pane: it must name the
+ * pane (directly or through its terminal) or the tab holding it, and
+ * nothing else. Workspace-wide targets (files, Git) are outside.
+ */
+async function withinPane(
+  connectionId: string,
+  resolved: Resolved,
+  pane: string,
+  deps: AuthzDeps,
+): Promise<boolean> {
+  const panes = resolved.panes ?? [];
+  const tabs = resolved.tabs ?? [];
+  if (panes.length === 0 && tabs.length === 0) return false;
+  if (!panes.every((id) => id === pane)) return false;
+  if (tabs.length === 0) return true;
+  const tab = (await deps.locate(connectionId, { pane }))?.tab;
+  return !!tab && tabs.every((id) => id === tab);
+}
 
 /**
  * Resolve every id in a target to a workspace and the caller's role there.
@@ -96,6 +128,8 @@ export async function resolveTarget(
 ): Promise<Resolved | string> {
   const workspaces = new Set<string>();
   let pane = target.pane;
+  const panes = new Set<string>(target.pane ? [target.pane] : []);
+  const tabs = target.tab ? [target.tab] : [];
   if (target.workspace) workspaces.add(target.workspace);
   for (const [kind, value] of [
     ["tab", target.tab],
@@ -118,6 +152,8 @@ export async function resolveTarget(
     if (!located) return `unknown terminal ${target.terminal}`;
     workspaces.add(located.workspace);
     pane ??= located.pane;
+    // A terminal the bridge cannot place in a pane is outside any pane.
+    panes.add(located.pane ?? `?${target.terminal}`);
   }
   const list = [...workspaces];
   return {
@@ -126,6 +162,8 @@ export async function resolveTarget(
       deps.roleOn(principal, connectionId, workspace),
     ),
     ...(pane ? { pane } : {}),
+    panes: [...panes],
+    tabs,
   };
 }
 
@@ -139,6 +177,11 @@ export async function authorizeTarget(args: {
   target: RpcTarget;
   minimum: WorkspaceRole;
   deps: AuthzDeps;
+  /**
+   * Apply a guest link's pane narrowing (default). Lists pass false: they
+   * name only the workspace and are filtered instead.
+   */
+  narrow?: boolean;
 }): Promise<{ ok: true; resolved: Resolved } | { ok: false; message: string }> {
   const admin = isInstanceAdmin(args.principal);
   if (args.target.host && !admin)
@@ -178,6 +221,9 @@ export async function authorizeTarget(args: {
           ? "you do not have access to this workspace"
           : `this needs the ${args.minimum} role on the workspace`,
     };
+  const pane = args.narrow === false ? null : scopedPane(args.principal);
+  if (pane && !(await withinPane(args.connectionId, resolved, pane, args.deps)))
+    return { ok: false, message: "this share link shows one pane only" };
   return { ok: true, resolved };
 }
 
@@ -196,6 +242,10 @@ export async function authorize(
       ? deny(`${method} needs an instance admin`)
       : { allowed: true, entry, params, stub: { result: entry.deniedResult } };
 
+  // Share-link guests call only the session methods marked for them.
+  if (principal.kind === "guest" && entry.scope === "session" && !entry.guest)
+    return deny(`${method} is not available through a share link`);
+
   if (entry.scope === "session" || entry.scope === "host")
     return { allowed: true, entry, params };
 
@@ -208,6 +258,7 @@ export async function authorize(
         target: { workspace },
         minimum: "viewer",
         deps,
+        narrow: false,
       });
       if (!decision.ok) return deny(`${method}: ${decision.message}`);
     }

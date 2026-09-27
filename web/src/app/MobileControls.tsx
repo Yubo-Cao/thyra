@@ -65,13 +65,16 @@ export function useMobileControls(
   useEffect(() => {
     setOpenComposerScopeKey(null);
   }, [composerScopeKey]);
-  const composerDraftKey = activePane?.terminal_id
-    ? terminalComposerDraftKey(
-        activeConnectionId,
-        connectionGeneration,
-        activePane.pane_id,
-      )
-    : null;
+  // Viewers (and share-link guests) watch only: no composer, no launcher.
+  const readOnly = focusedWorkspace?.access === "viewer";
+  const composerDraftKey =
+    activePane?.terminal_id && !readOnly
+      ? terminalComposerDraftKey(
+          activeConnectionId,
+          connectionGeneration,
+          activePane.pane_id,
+        )
+      : null;
   const setComposerOpen = useCallback(
     (open: boolean) => {
       setOpenComposerScopeKey(open ? composerScopeKey : null);
@@ -79,6 +82,7 @@ export function useMobileControls(
     [composerScopeKey],
   );
   return {
+    readOnly,
     collapsed,
     setCollapsed,
     tabSheetOpen,
@@ -240,6 +244,7 @@ export function MobileTerminalControls({
           aria-hidden={collapsed}
         >
           <IconButton
+            className="mobile-launcher"
             title={t("Launch agent")}
             label={t("Launch agent in a folder")}
             icon={<FolderOpen size={16} aria-hidden="true" />}

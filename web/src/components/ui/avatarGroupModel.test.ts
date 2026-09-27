@@ -31,5 +31,6 @@ describe("avatar group", () => {
     expect(initials("  ada  lovelace byron ")).toBe("AL");
     expect(initials("张三")).toBe("张");
     expect(initials("")).toBe("");
+    expect(initials("Guest · demo")).toBe("GD");
   });
 });

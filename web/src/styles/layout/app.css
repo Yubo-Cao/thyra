@@ -94,6 +94,18 @@
   border-left: 0;
 }
 
+/* Viewers of the focused workspace, including share-link guests, watch
+   only: hide what would change it (the bridge refuses it anyway). */
+.app.read-only
+:is(
+  .tabbar-add,
+  .tabbar-close,
+  .mobile-launcher,
+  .workspace-tree-panel .panel-actions
+) {
+  display: none;
+}
+
 /* Zen mode leaves only the terminal on screen. The topbar keeps a thin edge
    so the connection switcher, command menu, and settings stay reachable with
    the pointer without leaving Zen; the exit button lives at the left of the

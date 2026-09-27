@@ -14,17 +14,40 @@ function paneId(params: Record<string, unknown>): string {
   return value;
 }
 
+/**
+ * Where a share-link guest may be seen: its link's workspace (and pane).
+ * Its presence never names another location and never shows typing.
+ */
+export type PresenceLimit = { workspace: string; pane: string | null };
+
+function limitedLocation(
+  params: Record<string, unknown>,
+  limit: PresenceLimit,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...params, typing: false };
+  if (
+    next.workspace_id !== limit.workspace ||
+    (limit.pane && next.pane_id !== limit.pane)
+  ) {
+    if (next.workspace_id !== limit.workspace) delete next.workspace_id;
+    delete next.tab_id;
+    delete next.pane_id;
+  }
+  return next;
+}
+
 export function collaborationParams(
   method: string,
   params: Record<string, unknown>,
   participantId: string,
+  limit?: PresenceLimit | null,
 ): Record<string, unknown> {
   switch (method) {
     case "collaboration.list":
       return {};
     case "collaboration.update":
       return {
-        ...params,
+        ...(limit ? limitedLocation(params, limit) : params),
         participant_id: participantId,
         role: WEB_PARTICIPANT_ROLE,
       };

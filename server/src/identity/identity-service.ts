@@ -39,8 +39,11 @@ export type ClientContext = {
   deviceId: string;
   address: string | null;
   userAgent: string;
-  /** The logged-in account: it is the person, whatever the device. */
-  account?: { key: string; displayName: string };
+  /**
+   * The logged-in account: it is the person, whatever the device.
+   * `fixedName` (share-link guests) ignores names saved for the device.
+   */
+  account?: { key: string; displayName: string; fixedName?: boolean };
 };
 
 export type IdentityMatch =
@@ -237,9 +240,9 @@ export function createIdentityService<Socket extends object>(args: {
       const profile = args.store.profile(key);
       return profile ? [profile] : [];
     });
-    const customName = profiles.find(
-      (profile) => profile.displayName,
-    )?.displayName;
+    const customName = context.account?.fixedName
+      ? undefined
+      : profiles.find((profile) => profile.displayName)?.displayName;
     const color =
       profiles.find((profile) => profile.color)?.color ?? colorFor(personKey);
     const os = tailscale?.os ?? session.hints.os;

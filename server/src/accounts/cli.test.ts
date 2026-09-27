@@ -53,6 +53,62 @@ test("user add creates an admin with a Tailscale link and prints a one-time link
   expect(out.at(-2)?.trim()).toMatch(/^http:\/\/localhost:8833\/enroll#/);
 });
 
+test("share create prints the link once; list and revoke manage it", async () => {
+  const { run, out, err, store } = harness();
+  expect(
+    await run(
+      "share",
+      "create",
+      "ssh-box/w2",
+      "--pane",
+      "w2:p3",
+      "--expires",
+      "7d",
+      "--max-uses",
+      "3",
+      "--label",
+      "review",
+      "--base-url",
+      "https://thyra.example.com",
+    ),
+  ).toBe(0);
+  const url = out.find((line) => line.includes("/s/"))!.trim();
+  const match = url.match(
+    /^https:\/\/thyra\.example\.com\/s\/([\w-]+)#([\w-]{43})$/,
+  );
+  expect(match).not.toBeNull();
+  const [, id, secret] = match!;
+  expect(out.join("\n")).toContain("pane w2:p3 only");
+  out.length = 0;
+  expect(await run("share", "list", "ssh-box/w2")).toBe(0);
+  expect(out.join("\n")).toContain(
+    `${id}\tssh-box/w2\tw2:p3\tactive\tuses=0/3`,
+  );
+  expect(out.join("\n")).not.toContain(secret!);
+  expect(await run("share", "revoke", id!)).toBe(0);
+  expect(store.listAudit(1)[0]).toMatchObject({
+    actor: "cli",
+    action: "share.revoke",
+  });
+  // A pane of another workspace, bad durations and unknown links fail.
+  expect(await run("share", "create", "w1", "--pane", "w2:p1")).toBe(1);
+  expect(await run("share", "create", "w1", "--expires", "soon")).toBe(1);
+  expect(await run("share", "revoke", "nolinkhere")).toBe(1);
+  expect(err.join("\n")).toContain("is not in workspace w1");
+  // THYRA_PUBLIC_ORIGIN (the public listener) is the default base.
+  const lines: string[] = [];
+  await runAccountsCommand(["share", "create", "w1"], {
+    store: () => store,
+    env: {
+      THYRA_CONFIG_PATH: "/nonexistent/thyra.env",
+      THYRA_PUBLIC_ORIGIN: "https://public.example",
+    },
+    log: (line) => lines.push(line),
+    error: () => undefined,
+  });
+  expect(lines.join("\n")).toContain("https://public.example/s/");
+});
+
 test("grants, roles, sessions and removal", async () => {
   const { run, out, err, store } = harness();
   await run("user", "add", "ann");

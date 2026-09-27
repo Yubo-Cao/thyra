@@ -136,6 +136,7 @@ and pull requests.
 Thyra controls terminals and modifies real files. Keep the default loopback
 binding; read [SECURITY.md](./SECURITY.md) before allowing another device access.
 Tailnet users log in automatically as admins, everyone else with a passkey, and workspaces are shared as viewer, editor or owner ([accounts and login](./docs/DEPLOYMENT.md#accounts-and-login)).
+Guests without an account can watch one workspace or pane through an expiring, revocable read-only link ([read-only share links](./docs/DEPLOYMENT.md#read-only-share-links)).
 
 ## License
 

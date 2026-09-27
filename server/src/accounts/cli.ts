@@ -5,7 +5,13 @@ import { dataRoot } from "../config/data-paths";
 import { browserUrlFor } from "../config/server-config";
 import { parsePublicBaseUrls } from "../http/request-access";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
+import { workspaceOfScopedId } from "../authz/authorize";
 import { defaultDatabasePath, openAccountDatabase } from "./database";
+import {
+  createShareLinkStore,
+  parseShareDuration,
+  shareLinkPath,
+} from "./share-links";
 import {
   type AccountStore,
   createAccountStore,
@@ -15,9 +21,10 @@ import {
 } from "./store";
 
 /**
- * `thyra user`, `thyra session` and `thyra grant`: account administration on
- * the host. They write the account database directly; a running server
- * notices within a second (closing affected browser connections).
+ * `thyra user`, `thyra session`, `thyra grant` and `thyra share`: account
+ * and share-link administration on the host. They write the account
+ * database directly; a running server notices within a second (closing
+ * affected browser connections).
  */
 
 export function accountsHelp(): string {
@@ -34,6 +41,9 @@ Usage:
   thyra session revoke <session-id> | thyra session revoke --user <name>
   thyra grant <user> <workspace> <owner|editor|viewer|none>
   thyra grant list <workspace>
+  thyra share create <workspace> [--pane <id>] [--expires 24h] [--max-uses N] [--label <text>] [--base-url <url>]
+  thyra share list [<workspace>]
+  thyra share revoke <link-id>
 
 \`user add\` creates an account (\`--admin\`, alias \`--owner\`, makes it an
 instance admin) and prints a one-time passkey enrollment link, valid for 24
@@ -45,8 +55,23 @@ http://localhost:$PORT). Passkeys need HTTPS or localhost.
 \`--tailscale <login>\` links the account to a Tailscale login, so that user's
 tailnet devices log in to it through a trusted proxy.
 
+\`share create\` prints an anonymous, read-only link (once: only a digest of its
+secret is stored). Anyone with it can watch the workspace, or only \`--pane\`,
+and scroll history, but never type. \`--expires\` takes 30m, 1h, 24h (default)
+or 7d, up to 30d. Links point at THYRA_PUBLIC_ORIGIN when set, else like
+enrollment links. \`share revoke\` ends the link and disconnects its guests.
+
 A workspace is \`w1\` on the default connection or \`<connection-id>/w1\`.
 `;
+}
+
+/** Where share links point: --base-url, the public listener, else as enrollment. */
+export function shareBaseUrl(baseUrl: string | undefined, env: Env): string {
+  if (!baseUrl) {
+    const publicOrigin = parsePublicBaseUrls(env.THYRA_PUBLIC_ORIGIN).origins;
+    if (publicOrigin.length === 1) return publicOrigin[0]!;
+  }
+  return enrollmentBaseUrl(baseUrl, env);
 }
 
 type Env = Record<string, string | undefined>;
@@ -122,7 +147,13 @@ export async function runAccountsCommand(
   deps: AccountsCommandDeps = {},
 ): Promise<number | null> {
   const group = argv[0];
-  if (group !== "user" && group !== "session" && group !== "grant") return null;
+  if (
+    group !== "user" &&
+    group !== "session" &&
+    group !== "grant" &&
+    group !== "share"
+  )
+    return null;
   const log = deps.log ?? console.log;
   const error = deps.error ?? console.error;
   const action = argv[1];
@@ -305,6 +336,87 @@ export async function runAccountsCommand(
         if (!store.revokeSession(positionals[0]!, { actor: "cli" }))
           throw new Error(`no session ${positionals[0]}`);
         log(`Revoked session ${positionals[0]}.`);
+        return 0;
+      }
+    }
+    if (group === "share") {
+      const shares = createShareLinkStore(store);
+      const label = (ref: { connectionId: string; workspaceId: string }) =>
+        ref.connectionId === LEGACY_DEFAULT_CONNECTION_ID
+          ? ref.workspaceId
+          : `${ref.connectionId}/${ref.workspaceId}`;
+      if (action === "create") {
+        const { values, positionals } = parseArgs({
+          args: argv.slice(2),
+          options: {
+            pane: { type: "string" },
+            expires: { type: "string" },
+            "max-uses": { type: "string" },
+            label: { type: "string" },
+            "base-url": { type: "string" },
+          },
+          strict: true,
+          allowPositionals: true,
+        });
+        if (positionals.length !== 1)
+          throw new Error("share create needs one <workspace>");
+        const ref = parseWorkspaceRef(positionals[0]!);
+        const pane = values.pane?.trim() || null;
+        if (pane && workspaceOfScopedId(pane) !== ref.workspaceId)
+          throw new Error(
+            `pane ${JSON.stringify(pane)} is not in workspace ${ref.workspaceId} (pane ids look like ${ref.workspaceId}:p1)`,
+          );
+        const ttlMs = values.expires
+          ? parseShareDuration(values.expires)
+          : undefined;
+        if (ttlMs === null)
+          throw new Error("--expires takes a duration such as 1h, 24h or 7d");
+        const maxUses =
+          values["max-uses"] === undefined ? null : Number(values["max-uses"]);
+        const base = shareBaseUrl(values["base-url"], env);
+        const { link, secret } = shares.createLink({
+          ...ref,
+          paneId: pane,
+          label: values.label ?? null,
+          ...(ttlMs !== undefined ? { ttlMs } : {}),
+          maxUses,
+          actor: "cli",
+        });
+        log(
+          `Read-only link to ${label(ref)}${link.paneId ? ` (pane ${link.paneId} only)` : ""}, expires ${time(link.expiresAt)}${link.maxUses ? `, ${link.maxUses} use(s)` : ""}:`,
+        );
+        log(`  ${base}${shareLinkPath(link.id, secret)}`);
+        log(
+          `Shown once. Anyone with it can watch and scroll, never type. Revoke with \`thyra share revoke ${link.id}\`.`,
+        );
+        return 0;
+      }
+      if (action === "list") {
+        const ref = argv[2] ? parseWorkspaceRef(argv[2]) : null;
+        const links = shares.listLinks(ref ?? {});
+        if (links.length === 0) log("No share links.");
+        for (const link of links)
+          log(
+            [
+              link.id,
+              label(link),
+              link.paneId ?? "-",
+              shares.stateOf(link),
+              `uses=${link.uses}/${link.maxUses ?? "-"}`,
+              `guests=${link.guests}`,
+              `expires=${time(link.expiresAt)}`,
+              JSON.stringify(link.label ?? ""),
+            ].join("\t"),
+          );
+        return 0;
+      }
+      if (action === "revoke") {
+        const id = argv[2];
+        const revoked = id ? shares.revokeLink(id, { actor: "cli" }) : null;
+        if (!revoked) throw new Error(`no share link ${id ?? ""}`);
+        log(
+          `Revoked link ${id}; ${revoked.ended.length} guest session(s) ended (open pages close within a second).`,
+        );
         return 0;
       }
     }

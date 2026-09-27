@@ -167,24 +167,29 @@ export function TabBar({
                   label: t("Focus tab"),
                   onAction: () => store.focusTab(menuTab.tab_id),
                 },
-                {
-                  id: "rename",
-                  label: t("Rename tab..."),
-                  onAction: () => setPendingRenameTab(menuTab),
-                },
-                {
-                  id: "create",
-                  label: t("Create tab"),
-                  description: createReason ?? undefined,
-                  disabled: !!createReason,
-                  onAction: () => store.createTab(focusedWs.workspace_id),
-                },
-                {
-                  id: "close",
-                  label: t("Close tab"),
-                  danger: true,
-                  onAction: () => setPendingCloseTabId(menuTab.tab_id),
-                },
+                // Viewers (and share-link guests) only look.
+                ...(focusedWs.access === "viewer"
+                  ? []
+                  : [
+                      {
+                        id: "rename",
+                        label: t("Rename tab..."),
+                        onAction: () => setPendingRenameTab(menuTab),
+                      },
+                      {
+                        id: "create",
+                        label: t("Create tab"),
+                        description: createReason ?? undefined,
+                        disabled: !!createReason,
+                        onAction: () => store.createTab(focusedWs.workspace_id),
+                      },
+                      {
+                        id: "close",
+                        label: t("Close tab"),
+                        danger: true,
+                        onAction: () => setPendingCloseTabId(menuTab.tab_id),
+                      },
+                    ]),
               ]
             : []
         }

@@ -23,8 +23,11 @@ test("topology loads lazily, reloads when stale, and throttles misses", async ()
   expect(await topology.locate({ terminal: "t1" })).toEqual({
     workspace: "w1",
     pane: "w1:p1",
+    tab: "w1:t1",
   });
   expect(await topology.locate({ tab: "w1:t1" })).toEqual({ workspace: "w1" });
+  // Pane-scoped share links ask which tab holds a pane, without waiting.
+  expect(topology.peek({ pane: "w1:p1" })?.tab).toBe("w1:t1");
   expect(calls).toBe(1);
   // A pane moved: the next lookup after a structural event reloads.
   panes = [

@@ -332,8 +332,11 @@ separate for desktop/mobile. Jump from a diff to its file preview.
 access logs in with a passkey, except tailnet users recognized by Tailscale behind
 a local proxy, who get admin accounts. Workspace owners share a workspace from its
 context menu (**Share workspace…**) as viewer, editor, or owner; viewers watch and
-scroll, and one writer at a time types into a pane (**Take control**). Editing a
-terminal is shell access on the host; read [Security](./SECURITY.md) before sharing.
+scroll, and one writer at a time types into a pane (**Take control**). The same
+dialog's **Links** create anonymous read-only links to the workspace or one pane
+(copied once, 1 hour to 7 days, optional use limit, revocable); guests see a
+**Read-only** badge and never type. Editing a terminal is shell access on the
+host; read [Security](./SECURITY.md) before sharing.
 
 ![Configuration dialog on the Appearance tab: theme, accent, text size, terminal font, language, and layout](docs/images/thyra-desktop-settings.png)
 

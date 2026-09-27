@@ -34,11 +34,13 @@ import { t } from "../i18n";
 import { store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import { usePresenceSelf } from "../usePanePresence";
+import { usePrincipal } from "../principal";
 import {
   FollowChip,
   FollowersIndicator,
   PersonFocusActions,
 } from "./CollaborationFollow";
+import { GuestBadge, GuestNote } from "./GuestBadge";
 
 const HEARTBEAT_MS = 12_000;
 
@@ -119,6 +121,8 @@ export function CollaborationBar() {
   const profile = collaborationProfile();
   const refreshRef = useRef<() => void>(() => {});
   const following = useFollowTarget();
+  // Share-link guests have a fixed name ("Guest") and a read-only notice.
+  const share = usePrincipal()?.share;
   useFollowController(client, self);
 
   useEffect(() => {
@@ -233,69 +237,80 @@ export function CollaborationBar() {
     .join("; ");
 
   return (
-    <div className="collaboration-bar">
-      <Popover
-        trigger={
-          <Button
-            className="collaboration-trigger"
-            aria-label={t("Live collaborators: {people}", { people: names })}
-            data-tooltip={names}
-          >
-            <AvatarGroup
-              people={people.map((person) => ({
-                ...person,
-                followed: person.key === following?.key,
-              }))}
+    <>
+      {share ? <GuestBadge share={share} /> : null}
+      <div className="collaboration-bar">
+        <Popover
+          trigger={
+            <Button
+              className="collaboration-trigger"
+              aria-label={t("Live collaborators: {people}", { people: names })}
+              data-tooltip={names}
+            >
+              <AvatarGroup
+                people={people.map((person) => ({
+                  ...person,
+                  followed: person.key === following?.key,
+                }))}
+              />
+            </Button>
+          }
+          aria-label={t("Live collaborators")}
+          open={open}
+          onOpenChange={setOpen}
+          className="collaboration-popover"
+        >
+          <div className="collaboration-profile">
+            {share ? (
+              <GuestNote share={share} />
+            ) : (
+              <>
+                <form className="collaboration-editor" onSubmit={submitName}>
+                  <Pencil size={13} aria-hidden="true" />
+                  <TextField
+                    className="collaboration-name-field"
+                    value={name}
+                    maxLength={80}
+                    placeholder={t("Display name")}
+                    aria-label={t("Your collaboration display name")}
+                    onValueChange={setName}
+                  />
+                  <IconButton
+                    type="submit"
+                    label={t("Save display name")}
+                    icon={<Check size={14} aria-hidden="true" />}
+                  />
+                  <IconButton
+                    label={t("Cancel")}
+                    icon={<X size={14} aria-hidden="true" />}
+                    onClick={() => setOpen(false)}
+                  />
+                </form>
+                <p className="collaboration-note">
+                  {matchDescription(identity?.match, identity?.login)}
+                </p>
+                <p className="collaboration-note">
+                  {identity?.match === "tailscale"
+                    ? t(
+                        "Your name is kept by this Thyra server for all your devices.",
+                      )
+                    : t(
+                        "Your name is kept by this Thyra server for this device.",
+                      )}
+                </p>
+              </>
+            )}
+            <CollaboratorList
+              people={people}
+              snapshot={snapshot}
+              self={self}
+              onDone={() => setOpen(false)}
             />
-          </Button>
-        }
-        aria-label={t("Live collaborators")}
-        open={open}
-        onOpenChange={setOpen}
-        className="collaboration-popover"
-      >
-        <div className="collaboration-profile">
-          <form className="collaboration-editor" onSubmit={submitName}>
-            <Pencil size={13} aria-hidden="true" />
-            <TextField
-              className="collaboration-name-field"
-              value={name}
-              maxLength={80}
-              placeholder={t("Display name")}
-              aria-label={t("Your collaboration display name")}
-              onValueChange={setName}
-            />
-            <IconButton
-              type="submit"
-              label={t("Save display name")}
-              icon={<Check size={14} aria-hidden="true" />}
-            />
-            <IconButton
-              label={t("Cancel")}
-              icon={<X size={14} aria-hidden="true" />}
-              onClick={() => setOpen(false)}
-            />
-          </form>
-          <p className="collaboration-note">
-            {matchDescription(identity?.match, identity?.login)}
-          </p>
-          <p className="collaboration-note">
-            {identity?.match === "tailscale"
-              ? t(
-                  "Your name is kept by this Thyra server for all your devices.",
-                )
-              : t("Your name is kept by this Thyra server for this device.")}
-          </p>
-          <CollaboratorList
-            people={people}
-            snapshot={snapshot}
-            self={self}
-            onDone={() => setOpen(false)}
-          />
-        </div>
-      </Popover>
-      <FollowersIndicator snapshot={snapshot} self={self} />
-      <FollowChip snapshot={snapshot} self={self} />
-    </div>
+          </div>
+        </Popover>
+        <FollowersIndicator snapshot={snapshot} self={self} />
+        <FollowChip snapshot={snapshot} self={self} />
+      </div>
+    </>
   );
 }

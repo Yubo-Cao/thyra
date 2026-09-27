@@ -144,7 +144,9 @@ export default function App() {
     <div
       className={`app ${shell.sidebarHidden && !mobile ? "sidebar-hidden" : ""} ${
         zenMode && !mobile ? "zen" : ""
-      } ${mobileControls.collapsed ? "mobile-controls-collapsed" : ""}`}
+      } ${mobileControls.collapsed ? "mobile-controls-collapsed" : ""} ${
+        mobileControls.readOnly ? "read-only" : ""
+      }`}
     >
       <TopBar
         resourceUiKey={resourceUiKey}

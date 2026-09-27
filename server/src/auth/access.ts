@@ -33,6 +33,13 @@ export function createAccessControl(store: AccountStore) {
     workspaceId: string,
   ): WorkspaceRole | null {
     if (isInstanceAdmin(principal)) return "owner";
+    // A share link's guest views its one workspace (narrowed further to a
+    // pane by `authorizeTarget` and the filters).
+    if (principal.kind === "guest")
+      return principal.link.connectionId === connectionId &&
+        principal.link.workspaceId === workspaceId
+        ? principal.link.role
+        : null;
     if (principal.kind !== "user") return null;
     return (
       grantsOf(principal.user.id).get(grantKey(connectionId, workspaceId)) ??
@@ -42,6 +49,10 @@ export function createAccessControl(store: AccountStore) {
 
   function connectionsOf(principal: Principal): Set<string> {
     const connections = new Set<string>();
+    if (principal.kind === "guest") {
+      connections.add(principal.link.connectionId);
+      return connections;
+    }
     if (principal.kind !== "user") return connections;
     for (const key of grantsOf(principal.user.id).keys())
       connections.add(key.split("\u0000")[0]!);
@@ -80,6 +91,8 @@ export function createAccessControl(store: AccountStore) {
       workspaceId: string,
     ): boolean {
       if (!owner || owner === "local") return true;
+      // Guests never subscribe; fail closed for any other owner kind.
+      if (!owner.startsWith("user:")) return false;
       const userId = owner.startsWith("user:") ? owner.slice(5) : null;
       const user = userId ? store.getUser(userId) : null;
       if (!user || user.disabled) return false;

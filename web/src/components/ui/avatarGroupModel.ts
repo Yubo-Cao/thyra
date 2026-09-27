@@ -21,11 +21,14 @@ export function avatarSlots<T>(items: readonly T[], max: number) {
   };
 }
 
-/** "Yubo Cao" -> "YC"; at most two letters. */
+/**
+ * "Yubo Cao" -> "YC"; at most two letters. Words without a letter or digit
+ * (the dot in "Guest · demo") are skipped.
+ */
 export function initials(name: string) {
   return name
     .split(/\s+/)
-    .filter(Boolean)
+    .filter((part) => /[\p{L}\p{N}]/u.test(part))
     .map((part) => Array.from(part)[0])
     .slice(0, 2)
     .join("")

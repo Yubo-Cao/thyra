@@ -7,6 +7,7 @@ import {
   filterEvent,
   filterListResult,
   filterPresenceSnapshot,
+  narrowLayoutResult,
 } from "./filters";
 
 const roles: Record<string, WorkspaceRole> = { w1: "viewer", w3: "editor" };
@@ -209,5 +210,121 @@ describe("result filters", () => {
         },
       ],
     });
+  });
+});
+
+describe("pane-scoped share links", () => {
+  const guestRole = (workspace: string) =>
+    workspace === "w1" ? ("viewer" as const) : null;
+  const scope = { pane: "w1:p2", tab: "w1:t1" };
+  const layout = {
+    workspace_id: "w1",
+    tab_id: "w1:t1",
+    zoomed: false,
+    area: { x: 0, y: 0, width: 120, height: 40 },
+    focused_pane_id: "w1:p1",
+    panes: [
+      { pane_id: "w1:p1", focused: true, rect: { x: 0, y: 0, width: 60 } },
+      { pane_id: "w1:p2", focused: false, rect: { x: 60, y: 0, width: 60 } },
+    ],
+    splits: [{ direction: "right" }],
+  };
+
+  test("lists keep the pane, its tab and the workspace", () => {
+    const result = {
+      workspaces: [
+        { workspace_id: "w1", active_tab_id: "w1:t2" },
+        { workspace_id: "w2" },
+      ],
+      tabs: [
+        { tab_id: "w1:t1", workspace_id: "w1" },
+        { tab_id: "w1:t2", workspace_id: "w1" },
+      ],
+      panes: [
+        { pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1" },
+        { pane_id: "w1:p2", tab_id: "w1:t1", workspace_id: "w1" },
+        { pane_id: "w1:p3", tab_id: "w1:t2", workspace_id: "w1" },
+      ],
+      agents: [{ pane_id: "w1:p1" }, { pane_id: "w1:p2", agent: "codex" }],
+    };
+    expect(filterListResult(result, guestRole, scope)).toEqual({
+      workspaces: [
+        { workspace_id: "w1", active_tab_id: "w1:t1", access: "viewer" },
+      ],
+      tabs: [{ tab_id: "w1:t1", workspace_id: "w1" }],
+      panes: [{ pane_id: "w1:p2", tab_id: "w1:t1", workspace_id: "w1" }],
+      agents: [{ pane_id: "w1:p2", agent: "codex" }],
+    });
+  });
+
+  test("layouts shrink to the one pane, filling the tab", () => {
+    expect(narrowLayoutResult({ layout }, scope)).toEqual({
+      layout: {
+        ...layout,
+        focused_pane_id: "w1:p2",
+        panes: [{ pane_id: "w1:p2", focused: true, rect: layout.area }],
+        splits: [],
+      },
+    });
+    expect(
+      narrowLayoutResult({ layout }, { pane: "w1:p9", tab: "w1:t1" }),
+    ).toEqual({ layout: null });
+  });
+
+  test("presence, claims and display owners outside the pane are hidden", () => {
+    const snapshot = {
+      participants: [
+        { participant_id: "a", workspace_id: "w1", pane_id: "w1:p2" },
+        { participant_id: "b", workspace_id: "w1", pane_id: "w1:p1" },
+        { participant_id: "c", workspace_id: "w1" },
+      ],
+      pane_claims: [
+        { pane_id: "w1:p1", participant_id: "b" },
+        { pane_id: "w1:p2", participant_id: "a" },
+      ],
+      display_owners: [{ pane_id: "w1:p1" }, { pane_id: "w1:p2" }],
+    };
+    expect(filterPresenceSnapshot(snapshot, guestRole, scope)).toEqual({
+      participants: [snapshot.participants[0], snapshot.participants[2]],
+      pane_claims: [snapshot.pane_claims[1]],
+      display_owners: [{ pane_id: "w1:p2" }],
+    });
+  });
+
+  test("events pass for the pane, resync on reshaping, drop elsewhere", () => {
+    const pass = (event: unknown) => filterEvent(event, guestRole, scope);
+    const own = {
+      event: "pane.agent_status_changed",
+      data: { pane_id: "w1:p2", workspace_id: "w1", status: "working" },
+    };
+    expect(pass(own)).toEqual({ event: own });
+    expect(
+      pass({
+        event: "pane.agent_status_changed",
+        data: { pane_id: "w1:p1", workspace_id: "w1" },
+      }),
+    ).toBeNull();
+    expect(
+      pass({ event: "tab.renamed", data: { tab_id: "w1:t2", label: "x" } }),
+    ).toBeNull();
+    const renamed = { event: "tab.renamed", data: { tab_id: "w1:t1" } };
+    expect(pass(renamed)).toEqual({ event: renamed });
+    expect(pass({ event: "layout.changed", data: { layout } })).toEqual({
+      resync: true,
+    });
+    expect(
+      pass({
+        event: "pane.moved",
+        data: { pane: { pane_id: "w1:p2", tab_id: "w1:t3" } },
+      }),
+    ).toEqual({ resync: true });
+    const workspaceWide = {
+      event: "workspace.renamed",
+      data: { workspace_id: "w1", label: "demo" },
+    };
+    expect(pass(workspaceWide)).toEqual({ event: workspaceWide });
+    expect(
+      pass({ event: "workspace.renamed", data: { workspace_id: "w2" } }),
+    ).toBeNull();
   });
 });

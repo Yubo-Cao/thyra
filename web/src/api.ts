@@ -158,8 +158,9 @@ export function parseConnectionSummary(
 
 /** Who the bridge authenticated this page as. */
 export interface BridgePrincipal {
-  kind: "local" | "user";
-  role: "admin" | "member";
+  /** `guest`: an anonymous visitor who opened a read-only share link. */
+  kind: "local" | "user" | "guest";
+  role: "admin" | "member" | "guest";
   user: {
     id: string;
     name: string;
@@ -167,6 +168,15 @@ export interface BridgePrincipal {
     role: "admin" | "member";
   } | null;
   session_id?: string;
+  /** What a guest's share link shows, and until when. */
+  share?: {
+    connection_id: string;
+    workspace_id: string;
+    pane_id: string | null;
+    label: string | null;
+    shared_by: string | null;
+    expires_at: number;
+  };
 }
 
 export interface BridgeHello {

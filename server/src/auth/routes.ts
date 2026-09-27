@@ -13,13 +13,16 @@ import {
 import type { RequestAccess } from "../http/request-access";
 import { HTML_SECURITY_HEADERS } from "../http/security-headers";
 import { type Logger, silentLogger } from "../utils/logger";
+import type { ShareLinkStore } from "../accounts/share-links";
 import {
   AUTH_SCRIPT,
   type PageLocale,
   pageLocale,
   renderEnrollPage,
   renderLoginPage,
+  renderShareEndedPage,
 } from "./pages";
+import type { ShareRoutes } from "./share-routes";
 import { PasskeyError, type PasskeyService, passkeyOrigin } from "./passkeys";
 import {
   type Authenticator,
@@ -78,7 +81,8 @@ function sessionView(
 
 function actorOf(principal: Principal | null): string | null {
   if (!principal) return null;
-  return principal.kind === "local" ? "local" : principal.user.id;
+  if (principal.kind === "local") return "local";
+  return principal.kind === "user" ? principal.user.id : principal.key;
 }
 
 export type AuthRoutes = ReturnType<typeof createAuthRoutes>;
@@ -95,6 +99,11 @@ export function createAuthRoutes(args: {
   onChange: () => void;
   /** A session ended by logout or revocation. */
   onSessionEnded: (idHash: string) => void;
+  /** Share links: guest sessions, and the routes that manage links. */
+  shares?: ShareLinkStore;
+  shareRoutes?: ShareRoutes;
+  /** Guest sessions that ended (the guest left). */
+  onGuestsEnded?: (idHashes: string[]) => void;
   logger?: Logger;
 }) {
   const logger = args.logger ?? silentLogger;
@@ -234,10 +243,25 @@ export function createAuthRoutes(args: {
     access: RequestAccess,
     principal: Principal | null,
   ): Promise<Response | null> {
+    if (route.startsWith("share."))
+      return args.shareRoutes
+        ? args.shareRoutes.handle(route, req, url, access, principal)
+        : null;
     try {
       switch (route) {
-        case "login.page":
+        case "login.page": {
+          // A guest whose link ended lands here: explain, and drop the
+          // stale guest cookie.
+          if (!principal && args.authenticator.guestToken(req)) {
+            const ended = htmlPage(req, renderShareEndedPage);
+            ended.headers.append(
+              "set-cookie",
+              args.authenticator.guestCookie("", access, 0),
+            );
+            return ended;
+          }
           return htmlPage(req, renderLoginPage);
+        }
         case "enroll.page":
           return htmlPage(req, renderEnrollPage);
         case "login.script":
@@ -319,6 +343,25 @@ export function createAuthRoutes(args: {
             req.headers.get("sec-fetch-site") === "cross-site"
           )
             return error("forbidden", 403);
+          // A guest leaves its shared view; an account session in the same
+          // browser is untouched. A guest cookie whose link already ended
+          // stays so the login page can say so.
+          const guestToken = args.authenticator.guestToken(req);
+          if (guestToken) {
+            const guest = args.shares?.resolveGuest(guestToken);
+            if (!guest)
+              return new Response(null, { status: 204, headers: NO_STORE });
+            args.shares!.endGuest(guest.session.idHash);
+            args.onGuestsEnded?.([guest.session.idHash]);
+            args.onChange();
+            return new Response(null, {
+              status: 204,
+              headers: {
+                ...NO_STORE,
+                "set-cookie": args.authenticator.guestCookie("", access, 0),
+              },
+            });
+          }
           const token = args.authenticator.sessionToken(req);
           const resolved = token ? args.store.resolveSession(token) : null;
           if (resolved) {

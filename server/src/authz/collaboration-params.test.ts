@@ -17,6 +17,33 @@ function setup() {
   return { alice: as("web-alice"), mallory: as("web-mallory") };
 }
 
+describe("share-link guests' presence", () => {
+  test("never names a place outside the link and never types", () => {
+    const limit = { workspace: "w1", pane: "w1:p2" };
+    const update = (params: Record<string, unknown>) =>
+      collaborationParams("collaboration.update", params, "web-guest", limit);
+    expect(
+      update({
+        workspace_id: "w1",
+        tab_id: "w1:t1",
+        pane_id: "w1:p2",
+        typing: true,
+      }),
+    ).toMatchObject({
+      workspace_id: "w1",
+      tab_id: "w1:t1",
+      pane_id: "w1:p2",
+      typing: false,
+    });
+    const elsewhere = update({ workspace_id: "w1", pane_id: "w1:p1" });
+    expect(elsewhere).toMatchObject({ workspace_id: "w1" });
+    expect(elsewhere).not.toHaveProperty("pane_id");
+    const outside = update({ workspace_id: "w2", tab_id: "w2:t1" });
+    expect(outside).not.toHaveProperty("workspace_id");
+    expect(outside).not.toHaveProperty("tab_id");
+  });
+});
+
 describe("collaboration claims are bound to the socket's participant", () => {
   test("client-supplied participant ids and roles are replaced", () => {
     expect(

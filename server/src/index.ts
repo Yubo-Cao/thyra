@@ -101,6 +101,8 @@ import {
   filterEvent,
   filterListResult,
   filterPresenceResult,
+  narrowLayoutResult,
+  type PaneScope,
 } from "./authz/filters";
 import {
   authorizeHttp,
@@ -111,11 +113,16 @@ import {
 import { runAccountsCommand } from "./accounts/cli";
 import { defaultDatabasePath, openAccountDatabase } from "./accounts/database";
 import { type AccountStore, createAccountStore } from "./accounts/store";
+import {
+  createShareLinkStore,
+  type ShareLinkStore,
+} from "./accounts/share-links";
 import { createAccessControl } from "./auth/access";
 import { createPasskeyService } from "./auth/passkeys";
 import {
   type AuthResult,
   createAuthenticator,
+  guestDisplayName,
   isInstanceAdmin,
   type Principal,
   principalView,
@@ -123,6 +130,7 @@ import {
 } from "./auth/principal";
 import { createPublicAuthenticator } from "./auth/public";
 import { createAuthRoutes } from "./auth/routes";
+import { createShareRoutes } from "./auth/share-routes";
 import {
   type ListenerKind,
   loadPublicListenerConfig,
@@ -309,9 +317,12 @@ if (thyraEnv("PASSWORD"))
   );
 
 let accountStore: AccountStore;
+let shareLinks: ShareLinkStore;
 try {
   accountStore = createAccountStore(openAccountDatabase(defaultDatabasePath()));
   accountStore.pruneExpired();
+  shareLinks = createShareLinkStore(accountStore);
+  shareLinks.pruneExpired();
 } catch (error) {
   logger.error("cannot open the account database", {
     error: (error as Error).message,
@@ -325,6 +336,7 @@ const authenticator = createAuthenticator({
   tailnetMode: tailnetAuth.mode,
   tailnetUser: clientIdentity.tailnetUser,
   secureCookies: Boolean(config.tls),
+  shares: shareLinks,
   logger: logger.child("auth"),
 });
 /**
@@ -337,6 +349,7 @@ const publicAuthenticator = createAuthenticator({
   tailnetMode: "off",
   tailnetUser: async () => null,
   hostOnlyCookie: true,
+  shares: shareLinks,
   logger: logger.child("auth"),
 });
 const accessControl = createAccessControl(accountStore);
@@ -360,18 +373,20 @@ function accountRoutes(
   listenerAuthenticator: typeof authenticator,
   limiter: ReturnType<typeof createLoginRateLimiter>,
 ) {
+  const connectionExists = (connectionId: string) =>
+    connectionProfiles.list().some((profile) => profile.id === connectionId);
+  const onChange = () => {
+    accessControl.invalidate();
+    checkLiveSessions();
+  };
   return createAuthRoutes({
     store: accountStore,
     authenticator: listenerAuthenticator,
     passkeys,
     limiter,
     authzDeps,
-    connectionExists: (connectionId) =>
-      connectionProfiles.list().some((profile) => profile.id === connectionId),
-    onChange: () => {
-      accessControl.invalidate();
-      checkLiveSessions();
-    },
+    connectionExists,
+    onChange,
     onSessionEnded: (idHash) =>
       closeSockets(
         (principal) =>
@@ -379,8 +394,36 @@ function accountRoutes(
         4001,
         "Logged out",
       ),
+    shares: shareLinks,
+    onGuestsEnded: closeGuestSockets,
+    shareRoutes: createShareRoutes({
+      store: accountStore,
+      shares: shareLinks,
+      authenticator: listenerAuthenticator,
+      // Its own budget: failed share redemptions never block passkey login.
+      limiter: createLoginRateLimiter(),
+      authzDeps,
+      connectionExists,
+      // Guests open links on the public listener when there is one.
+      linkOrigin: (access) => publicListener?.origin ?? access.ownOrigin,
+      onChange,
+      onGuestsEnded: closeGuestSockets,
+      logger: logger.child("share"),
+    }),
     logger: logger.child("auth"),
   });
+}
+
+/** Close the sockets of ended guest sessions (revoked links, leaving). */
+function closeGuestSockets(idHashes: string[]) {
+  const ended = new Set(idHashes);
+  if (ended.size === 0) return;
+  closeSockets(
+    (principal) =>
+      principal.kind === "guest" && ended.has(principal.guest.idHash),
+    4001,
+    "Shared view ended",
+  );
 }
 const authRoutes = accountRoutes(authenticator, createLoginRateLimiter());
 const publicRoutes = accountRoutes(publicAuthenticator, publicLoginLimiter);
@@ -413,6 +456,14 @@ function checkLiveSessions(force = false) {
   if (!accessControl.refresh() && !force) return;
   for (const client of [...clients]) {
     const principal = socketPrincipals.get(client);
+    if (principal?.kind === "guest") {
+      // Revoking a link deletes its guest sessions, here or in the CLI.
+      if (!shareLinks.guestByHash(principal.guest.idHash)) {
+        webSocketCleanup.cleanup(client);
+        client.close(4001, "Shared view ended");
+      }
+      continue;
+    }
     if (principal?.kind !== "user") continue;
     const session = accountStore.sessionByHash(principal.session.idHash);
     const user = accountStore.getUser(principal.user.id);
@@ -425,9 +476,23 @@ function checkLiveSessions(force = false) {
     }
   }
 }
-setInterval(() => checkLiveSessions(), 1000).unref();
+/** Guests whose link expired leave at once; expiry changes no database row. */
+function closeExpiredGuests() {
+  const now = Date.now();
+  closeSockets(
+    (principal) =>
+      principal.kind === "guest" && principal.guest.expiresAt <= now,
+    4001,
+    "Shared view ended",
+  );
+}
+setInterval(() => {
+  checkLiveSessions();
+  closeExpiredGuests();
+}, 1000).unref();
 setInterval(() => {
   accountStore.pruneExpired();
+  shareLinks.pruneExpired();
   checkLiveSessions(true);
 }, 60_000).unref();
 
@@ -436,6 +501,36 @@ function viewerRoles(ws: ServerWebSocket<unknown>, connectionId: string) {
   const principal = socketPrincipals.get(ws);
   if (!principal || isInstanceAdmin(principal)) return null;
   return accessControl.roleOf(principal, connectionId);
+}
+
+function scopedPaneOf(ws: ServerWebSocket<unknown>): string | null {
+  const principal = socketPrincipals.get(ws);
+  return principal?.kind === "guest" ? principal.link.paneId : null;
+}
+
+/**
+ * The pane a guest's link is narrowed to, with the tab holding it, from the
+ * last loaded topology (events are filtered synchronously).
+ */
+function peekScope(
+  ws: ServerWebSocket<unknown>,
+  connectionId: string,
+): PaneScope | null {
+  const pane = scopedPaneOf(ws);
+  if (!pane) return null;
+  const topology = connectionManager.readyRuntime(connectionId)?.topology;
+  return { pane, tab: topology?.peek({ pane })?.tab ?? null };
+}
+
+/** `peekScope`, reloading a stale topology first (RPC results). */
+async function freshScope(
+  ws: ServerWebSocket<unknown>,
+  connectionId: string,
+): Promise<PaneScope | null> {
+  const pane = scopedPaneOf(ws);
+  if (!pane) return null;
+  const topology = connectionManager.readyRuntime(connectionId)?.topology;
+  return { pane, tab: (await topology?.locate({ pane }))?.tab ?? null };
 }
 
 const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
@@ -837,14 +932,21 @@ function runtimeFactoryForProfile(
           if (name === "workspace.closed") {
             const workspaceId = (event as { data?: { workspace_id?: unknown } })
               .data?.workspace_id;
-            // Herdr may reuse the id of a closed workspace; its grants go.
-            if (
-              typeof workspaceId === "string" &&
-              accountStore.removeWorkspaceGrants(eventIdentity.id, workspaceId)
-                .length > 0
-            ) {
-              accessControl.invalidate();
-              checkLiveSessions();
+            // Herdr may reuse the id of a closed workspace; its grants and
+            // share links go.
+            if (typeof workspaceId === "string") {
+              const grants = accountStore.removeWorkspaceGrants(
+                eventIdentity.id,
+                workspaceId,
+              ).length;
+              const links = shareLinks.revokeWorkspaceLinks(
+                eventIdentity.id,
+                workspaceId,
+              );
+              if (grants > 0 || links > 0) {
+                accessControl.invalidate();
+                checkLiveSessions();
+              }
             }
           }
           try {
@@ -864,7 +966,11 @@ function runtimeFactoryForProfile(
               const key = socketPrincipals.get(ws)?.key ?? "";
               let view = views.get(key);
               if (view === undefined) {
-                const filtered = filterEvent(event, roles);
+                const filtered = filterEvent(
+                  event,
+                  roles,
+                  peekScope(ws, eventIdentity.id),
+                );
                 view = !filtered
                   ? null
                   : serializeHerdrEventEnvelope(
@@ -1159,6 +1265,11 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     return;
   }
   const roles = connectionId ? viewerRoles(ws, connectionId) : null;
+  // A guest link narrowed to one pane filters results to that pane.
+  const scope =
+    connectionId && scopedPaneOf(ws)
+      ? await freshScope(ws, connectionId)
+      : null;
   if (
     authorization.autoClaim &&
     authorization.paneId &&
@@ -1402,7 +1513,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         params ?? {},
       );
       sendReply(
-        { id, result: roles ? filterListResult(result, roles) : result },
+        {
+          id,
+          result: roles ? filterListResult(result, roles, scope) : result,
+        },
         "agent-list",
       );
     } catch (e) {
@@ -1538,7 +1652,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       method,
       params ?? {},
       requestIsCurrent,
-      roles ? (result) => filterDisplayOwners(result, roles) : undefined,
+      roles ? (result) => filterDisplayOwners(result, roles, scope) : undefined,
     );
   }
   if (method.startsWith("collaboration.")) {
@@ -1551,6 +1665,12 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         method,
         params ?? {},
         participantId,
+        principal.kind === "guest"
+          ? {
+              workspace: principal.link.workspaceId,
+              pane: principal.link.paneId,
+            }
+          : null,
       );
       const callParams =
         method === "collaboration.update"
@@ -1595,7 +1715,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         connection.presenceContext,
       );
       sendReply(
-        { id, result: roles ? filterPresenceResult(result, roles) : result },
+        {
+          id,
+          result: roles ? filterPresenceResult(result, roles, scope) : result,
+        },
         method,
       );
     } catch (e) {
@@ -1809,10 +1932,12 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     }
     if (authorization.entry.scope === "list")
       result = roles
-        ? filterListResult(result, roles)
+        ? filterListResult(result, roles, scope)
         : method === "workspace.list"
           ? annotateOwnerAccess(result)
           : result;
+    else if (scope && method === "pane.layout")
+      result = narrowLayoutResult(result, scope);
     sendReply({ id, result }, method);
   } catch (e) {
     sendError(`${method}-error`, e);
@@ -1978,6 +2103,14 @@ async function routeAuthenticated(
       upgrade.context.account = {
         key: principal.key,
         displayName: principal.user.displayName,
+      };
+    } else if (principal.kind === "guest") {
+      // Guests are "Guest" (plus the link's label) to everyone, whatever
+      // name their device had before.
+      upgrade.context.account = {
+        key: principal.key,
+        displayName: guestDisplayName(principal.link),
+        fixedName: true,
       };
     }
     const clientSession = url.searchParams.get("client_session");
@@ -2196,12 +2329,14 @@ async function primaryFetch(
   const routeId = route.routeId;
 
   // Direct local use, the session cookie, or tailnet login. Bearer MCP,
-  // icons, the login script and logout never start a session.
+  // icons, the login script, logout and share links never start a session.
   const auth: AuthResult =
     routeId === "mcp" ||
     routeId === "login.icon" ||
     routeId === "login.script" ||
-    routeId === "logout"
+    routeId === "logout" ||
+    routeId === "share.page" ||
+    routeId === "share.redeem"
       ? { principal: null }
       : await authenticator.authenticate(req, access);
   const principal = auth.principal;

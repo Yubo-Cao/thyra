@@ -5,7 +5,7 @@
  * trigger at most one reload per second, so guessing ids cannot flood Herdr.
  */
 
-export type Location = { workspace: string; pane?: string };
+export type Location = { workspace: string; pane?: string; tab?: string };
 
 const MISS_RELOAD_INTERVAL_MS = 1000;
 
@@ -41,10 +41,18 @@ export function createTopology(args: {
       const workspace = pane.workspace_id;
       const paneId = pane.pane_id;
       if (typeof workspace !== "string" || !workspace) continue;
+      const tab =
+        typeof pane.tab_id === "string" && pane.tab_id
+          ? { tab: pane.tab_id }
+          : {};
       if (typeof paneId === "string" && paneId) {
-        nextPanes.set(paneId, { workspace, pane: paneId });
+        nextPanes.set(paneId, { workspace, pane: paneId, ...tab });
         if (typeof pane.terminal_id === "string" && pane.terminal_id)
-          nextTerminals.set(pane.terminal_id, { workspace, pane: paneId });
+          nextTerminals.set(pane.terminal_id, {
+            workspace,
+            pane: paneId,
+            ...tab,
+          });
       }
       if (typeof pane.tab_id === "string" && pane.tab_id)
         nextTabs.set(pane.tab_id, { workspace });
@@ -82,6 +90,14 @@ export function createTopology(args: {
   return {
     invalidate() {
       stale = true;
+    },
+    /** The last loaded location, without waiting (event filtering). */
+    peek(target: {
+      tab?: string;
+      pane?: string;
+      terminal?: string;
+    }): Location | null {
+      return find(target);
     },
     async locate(target: {
       tab?: string;

@@ -380,4 +380,38 @@ export default {
   "Only instance admins can open this workspace.":
     "只有实例管理员可以打开此工作区。",
   "Role of {name}": "{name} 的角色",
+  // Share links
+  Links: "链接",
+  "Anyone with a link can watch without an account: read-only, scrolling history, never typing.":
+    "任何持有链接的人无需账户即可观看：只读，可滚动历史记录，不能输入。",
+  Shows: "显示范围",
+  "Whole workspace": "整个工作区",
+  "Only {pane}": "仅 {pane}",
+  "Expires after": "有效期",
+  "1 hour": "1 小时",
+  "24 hours": "24 小时",
+  "7 days": "7 天",
+  "Max uses": "最多使用次数",
+  Unlimited: "不限",
+  "Enter a whole number": "请输入整数",
+  "Create link": "创建链接",
+  "New link: copy it now, it is shown only once":
+    "新链接：请立即复制，它只显示一次",
+  "Could not copy. Select the link and copy it.":
+    "无法复制。请选中链接后手动复制。",
+  "Share links": "共享链接",
+  "No links yet.": "暂无链接。",
+  "Expires {when}": "{when}过期",
+  Expired: "已过期",
+  Revoked: "已撤销",
+  "Used up": "次数已用完",
+  "{uses} of {max} uses": "已使用 {uses}/{max} 次",
+  "Not used yet": "尚未使用",
+  "Used once": "已使用 1 次",
+  "Used {uses} times": "已使用 {uses} 次",
+  "{count} watching": "{count} 人正在观看",
+  Revoke: "撤销",
+  "Shared by {name}": "由 {name} 共享",
+  "You are watching through a share link. Others see you as a guest.":
+    "你正在通过共享链接观看。其他人会看到你显示为访客。",
 } satisfies Record<string, string>;

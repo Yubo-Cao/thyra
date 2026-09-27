@@ -54,10 +54,12 @@ function setup(
     authzDeps: {
       ...testDeps(),
       roleOn: (principal, _connection, workspace) =>
-        principal.kind === "local" || principal.user.role === "admin"
-          ? "owner"
-          : (store.grantsOf(principal.user.id).get(`c1\u0000${workspace}`) ??
-            null),
+        principal.kind === "guest"
+          ? null
+          : principal.kind === "local" || principal.user.role === "admin"
+            ? "owner"
+            : (store.grantsOf(principal.user.id).get(`c1\u0000${workspace}`) ??
+              null),
     },
     connectionExists: (id) => id === "c1",
     onChange: () => {},

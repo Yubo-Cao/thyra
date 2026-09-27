@@ -32,6 +32,14 @@ Grant **editor** only to people you would give a shell account on the host.
   A passkey belongs to the host name it was created on and needs HTTPS or `localhost`; plain HTTP to a LAN address cannot log in.
   A logged-in user adds passkeys for the current host under **Configuration > Account**.
 
+- **Share-link guests** have no account.
+  A workspace owner or instance admin creates an anonymous, read-only link (`https://<host>/s/<id>#<secret>`) in **Share workspace… > Links** or with `thyra share create`; see [share links](docs/DEPLOYMENT.md#read-only-share-links).
+  The 256-bit secret is in the URL fragment, which browsers never send: the landing page (`Referrer-Policy: no-referrer`) posts it once the visitor opens the view, and the database stores only its SHA-256, compared in constant time.
+  Redeeming it creates a guest session (a random 256-bit cookie, `thyra_guest` or `__Host-thyra_guest` on the public listener, stored as a digest) that is the viewer of that one workspace, or of one pane of it, until the link expires (24 hours by default, 30 days at most) or is revoked; both disconnect the guest within a second.
+  Links may be limited to a number of uses; failed redemptions count toward the same per-address limit as passkey attempts; creating, redeeming and revoking are audited, never with a secret.
+  **Anyone holding the link can watch** the shared terminals, their scrollback and agent status, and for a whole-workspace link its files and Git changes, until it ends; share it privately and keep it short-lived.
+  A guest cookie takes precedence in its browser, so an admin who opens a link in the same browser watches as that guest until the link ends.
+
 There is no shared password or token login.
 The session cookie `thyra_session` holds a random 256-bit id; the database stores only its SHA-256 digest.
 Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, and last 30 days.
@@ -41,10 +49,10 @@ Passkey and enrollment attempts allow 10 failures a minute per client address (f
 
 **Listeners decide trust, never headers.**
 The primary listener (`HOST`/`PORT`) is `tailnet` when tailnet login is on and `local` otherwise.
-The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always `public`: only a passkey session in its own `__Host-thyra_session` cookie authenticates there, never the loopback bypass, tailnet login or the primary listener's cookie.
+The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always `public`: only a passkey session in its own `__Host-thyra_session` cookie (or a share link's `__Host-thyra_guest`) authenticates there, never the loopback bypass, tailnet login or the primary listener's cookies.
 On the public listener `X-Forwarded-*` and Tailscale headers are ignored, `CF-Connecting-IP` sets only the rate-limit address (and only from `THYRA_PUBLIC_TRUSTED_PROXIES`, loopback by default), and `Host` and `Origin` must be `THYRA_PUBLIC_ORIGIN`.
 It sends HSTS and a strict Content Security Policy (the login page's script is the same-origin `/auth/passkey.js`), and sets only `__Host-` cookies.
-Before login it serves the login and enrollment pages, the passkey ceremonies and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
+Before login it serves the login and enrollment pages, the passkey ceremonies, share-link landing and redemption, and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
 On the primary listener, the public host gets `421` and a request carrying Cloudflare headers never gets tailnet login, so a misrouted tunnel fails closed.
 See [public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
 
@@ -59,13 +67,16 @@ Instance **admins** (and direct local use) may do everything, including host-wid
 | editor | also type (single writer, below), change layout, edit files, run Git actions, use voice input |
 | owner | also rename, close and share the workspace, and take control of a pane at any time |
 
-Workspace lists, events, presence, pane claims, bridge status and Web Push notifications are filtered to the caller's workspaces.
+A **share-link guest** is a viewer of its link's workspace only, or of just one pane (never that workspace's other panes, files or Git), and cannot change a display name, subscribe to Web Push, use voice input, or see accounts and sessions.
+Guests appear in presence as "Guest" plus the link's label.
+
+Workspace lists, events, presence, pane claims, bridge status and Web Push notifications are filtered to the caller's workspaces (and a pane-scoped guest's pane).
 Grants name a connection and a Herdr workspace id; Herdr keeps ids across restarts and live handoff, and a workspace's grants are deleted when Herdr reports it closed.
 
 **Single writer.** Only the holder of a pane's claim may send it input, resize it or move its terminal focus; the same person's other pages may type too.
 Typing into an unclaimed pane claims it with 15 seconds of protection.
 An editor takes control with **Take control** once the protection ends; owners and admins may take it at any time.
-Viewers never write; viewers, and editors while another person holds the pane, scroll only Herdr's history.
+Viewers and guests never write; they, and editors while another person holds the pane, scroll only Herdr's history (Herdr keeps one history position per pane, so everyone watching the pane sees the scroll).
 
 ### Browser request checks
 
@@ -98,7 +109,7 @@ Checksums detect corruption and bind the archive, **not independently verify pub
 Custom mirrors are trusted executable-code infrastructure.
 Update requests need an instance admin plus `x-thyra-update: 1`.
 
-The account database (`~/.config/thyra/thyra.db`, mode `0600`) holds accounts, passkey public keys, session digests, grants and an audit log; protect it and its backups.
+The account database (`~/.config/thyra/thyra.db`, mode `0600`) holds accounts, passkey public keys, session digests, grants, share-link and guest-session digests and an audit log; protect it and its backups.
 
 Web Push subscription mutations require a login, JSON, and `x-thyra-push: 1`; cross-site browser requests are rejected.
 Each subscription records the account that created it and receives notifications only for workspaces that account may see.

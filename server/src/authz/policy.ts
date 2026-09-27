@@ -13,7 +13,11 @@ import type { WorkspaceRole } from "../accounts/store";
  * - `admin` and `dangerous` classes, and the `host` scope, need an instance
  *   admin (or direct local use).
  * - `session` methods act only on the caller's own socket, presence or
- *   profile; any logged-in principal may call them.
+ *   profile; any logged-in principal may call them. Share-link guests may
+ *   call only those marked `guest`.
+ * - Guests otherwise hold the viewer role on their link's workspace; a link
+ *   narrowed to one pane admits only requests naming that pane (or its tab),
+ *   never workspace-wide ones such as files or Git.
  * - `workspace` methods name their target through `resolve(params)`; every
  *   named workspace, tab, pane or terminal must resolve to a workspace where
  *   the caller holds at least `minimum` (default: viewer for reads, editor
@@ -47,6 +51,8 @@ export type RpcPolicyEntry = {
   /** Least workspace role; defaults by class. */
   minimum?: WorkspaceRole;
   writer?: "input" | "control";
+  /** A `session` method share-link guests may call (default: denied). */
+  guest?: true;
   /**
    * Answer for callers the method is not allowed for, instead of an error,
    * when the browser calls it routinely (host theme, popup state). Nothing
@@ -103,6 +109,10 @@ const session = (cls: "read" | "write" = "read"): RpcPolicyEntry => ({
   class: cls,
   scope: "session",
 });
+const guest = (entry: RpcPolicyEntry): RpcPolicyEntry => ({
+  ...entry,
+  guest: true,
+});
 const admin: RpcPolicyEntry = { class: "admin", scope: "host" };
 const dangerous: RpcPolicyEntry = { class: "dangerous", scope: "host" };
 const hostWrite: RpcPolicyEntry = { class: "write", scope: "host" };
@@ -129,14 +139,14 @@ const herdr = (entry: RpcPolicyEntry): RpcPolicyEntry => ({
 
 export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // Bridge-global.
-  "bridge.ping": session(),
+  "bridge.ping": guest(session()),
   // Filtered: counts, the caller's connections, no host details.
-  "bridge.status": session(),
-  "bridge.identity": session(),
+  "bridge.status": guest(session()),
+  "bridge.identity": guest(session()),
   "bridge.identity_profile": session("write"),
   "bridge.pause_others": admin,
   // Filtered for members: their connections, without profile details.
-  "connections.list": session(),
+  "connections.list": guest(session()),
   "connections.set_default": admin,
   "connections.connect": admin,
   "connections.disconnect": admin,
@@ -167,10 +177,10 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // Terminal streaming. Methods without terminal_id act on the socket's
   // current terminal, which the bridge fills in before authorizing.
   "terminal.attach": read(r.terminal),
-  "terminal.detach": session(),
-  "terminal.frame_ack": session(),
+  "terminal.detach": guest(session()),
+  "terminal.frame_ack": guest(session()),
   // Thins only this browser's own frame stream.
-  "terminal.stream": session(),
+  "terminal.stream": guest(session()),
   // A pane's last lines as text, read through Herdr's passive snapshot path.
   "terminal.preview_text": read(r.pane),
   // Herdr's popup belongs to the host TUI; members see none.
@@ -200,9 +210,9 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   },
 
   // Presence and pane control. The bridge assigns participant ids.
-  "collaboration.list": session(),
-  "collaboration.update": session(),
-  "collaboration.leave": session(),
+  "collaboration.list": guest(session()),
+  "collaboration.update": guest(session()),
+  "collaboration.leave": guest(session()),
   "collaboration.claim": write(r.pane),
   "collaboration.release": session("write"),
 
@@ -233,7 +243,7 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "worktree.remove": hostWrite,
 
   // Herdr navigation and layout, forwarded to Herdr.
-  "session.appearance": herdr(session()),
+  "session.appearance": herdr(guest(session())),
   "workspace.list": herdrList,
   // A new workspace has no grants; only instance admins create them.
   "workspace.create": herdr(hostWrite),

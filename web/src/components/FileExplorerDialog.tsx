@@ -233,6 +233,8 @@ function FileExplorerContent({
   const workspace = workspaceId
     ? workspaces.find((w) => w.workspace_id === workspaceId)
     : focusedWorkspace;
+  // Viewers (and share-link guests) browse and download, never write.
+  const readOnly = workspace?.access === "viewer";
   const cacheWorkspaceId = workspace?.workspace_id;
   const cacheResourceKey = resourceKey ?? cacheWorkspaceId;
   const showHiddenStorageKey = connectionStorageKey(
@@ -1163,7 +1165,7 @@ function FileExplorerContent({
     event: DragEvent<HTMLElement>,
     directory: string,
   ) => {
-    if (!isFileDrag(event)) return;
+    if (readOnly || !isFileDrag(event)) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
@@ -1174,14 +1176,14 @@ function FileExplorerContent({
     event: DragEvent<HTMLElement>,
     directory: string,
   ) => {
-    if (!isFileDrag(event)) return;
+    if (readOnly || !isFileDrag(event)) return;
     event.preventDefault();
     event.stopPropagation();
     void uploadDroppedFiles(directory, event.dataTransfer.files);
   };
 
   const handleRootDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event)) return;
+    if (readOnly || !isFileDrag(event)) return;
     if ((event.target as HTMLElement | null)?.closest(".file-row")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
@@ -1189,7 +1191,7 @@ function FileExplorerContent({
   };
 
   const handleRootDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event)) return;
+    if (readOnly || !isFileDrag(event)) return;
     if ((event.target as HTMLElement | null)?.closest(".file-row")) return;
     event.preventDefault();
     void uploadDroppedFiles("", event.dataTransfer.files);
@@ -1595,18 +1597,22 @@ function FileExplorerContent({
                 <Checkbox checked={showHidden} onChange={setShowHidden}>
                   {t("Hidden")}
                 </Checkbox>
-                <IconButton
-                  label={t("New file")}
-                  disabled={!workspace}
-                  onClick={() => setCreatingEntry("file")}
-                  icon={<FilePlus size={14} />}
-                />
-                <IconButton
-                  label={t("New folder")}
-                  disabled={!workspace}
-                  onClick={() => setCreatingEntry("directory")}
-                  icon={<FolderPlus size={14} />}
-                />
+                {readOnly ? null : (
+                  <>
+                    <IconButton
+                      label={t("New file")}
+                      disabled={!workspace}
+                      onClick={() => setCreatingEntry("file")}
+                      icon={<FilePlus size={14} />}
+                    />
+                    <IconButton
+                      label={t("New folder")}
+                      disabled={!workspace}
+                      onClick={() => setCreatingEntry("directory")}
+                      icon={<FolderPlus size={14} />}
+                    />
+                  </>
+                )}
                 <IconButton
                   label={t("Refresh")}
                   disabled={!workspace}
@@ -1696,7 +1702,7 @@ function FileExplorerContent({
         onCopy={(entry) => {
           void copyEntryPath(entry);
         }}
-        onDelete={setPendingDeleteEntry}
+        onDelete={readOnly ? undefined : setPendingDeleteEntry}
       />
       <TextInputDialog
         open={creatingEntry !== null}

@@ -108,7 +108,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
 Usage: thyra [options]
        thyra service <action>
        thyra mcp [token <action>]   read-only MCP server (see \`thyra mcp --help\`)
-       thyra user|session|grant ... accounts, logins and sharing (see \`thyra user --help\`)
+       thyra user|session|grant|share ... accounts, logins and sharing (see \`thyra user --help\`)
 
 Service actions:
   install [--force]           install and start the platform user service

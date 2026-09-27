@@ -281,6 +281,78 @@ esac
       expect(marked.status).toBe(302);
       // Direct local use is unchanged.
       expect((await request(bases.primary, "/api/health")).status).toBe(200);
+
+      // A share link made on the tailnet listener points at the public
+      // origin; redeeming it there sets a `__Host-` guest cookie that only
+      // the public listener accepts.
+      const made = await request(
+        bases.primary,
+        "/api/share-links?connection_id=legacy-default&workspace_id=w1",
+        {
+          method: "POST",
+          headers: {
+            ...caddy("203.0.113.5"),
+            origin: "https://dev.example",
+            "content-type": "application/json",
+            cookie,
+          },
+          body: JSON.stringify({ label: "public" }),
+        },
+      );
+      expect(made.status).toBe(200);
+      const url = new URL(((await made.json()) as { url: string }).url);
+      expect(url.origin).toBe("https://thyra.example");
+      const landing = await pub(url.pathname, {
+        headers: { ...cloudflared(), accept: "text/html" },
+      });
+      expect(landing.status).toBe(200);
+      expect(landing.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(landing.headers.get("content-security-policy")).toContain(
+        "script-src 'self'",
+      );
+      const redeemed = await pub("/api/share/redeem", {
+        method: "POST",
+        headers: {
+          ...cloudflared(),
+          origin: "https://thyra.example",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          id: url.pathname.split("/")[2],
+          secret: url.hash.slice(1),
+        }),
+      });
+      expect(redeemed.status).toBe(200);
+      const guestSetCookie = redeemed.headers.getSetCookie()[0] ?? "";
+      expect(guestSetCookie).toStartWith("__Host-thyra_guest=");
+      expect(guestSetCookie).toContain("; Secure");
+      const guestCookie = guestSetCookie.split(";", 1)[0]!;
+      const guestHealth = await pub("/api/health", {
+        headers: { ...cloudflared(), cookie: guestCookie },
+      });
+      expect(guestHealth.status).toBe(200);
+      expect(
+        ((await guestHealth.json()) as { principal: { kind: string } })
+          .principal.kind,
+      ).toBe("guest");
+      expect(
+        (
+          await pub("/", {
+            headers: {
+              ...cloudflared(),
+              accept: "text/html",
+              cookie: guestCookie,
+            },
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(bases.primary, "/api/health", {
+            headers: { ...caddy("203.0.113.5"), cookie: guestCookie },
+          })
+        ).status,
+      ).toBe(401);
     } finally {
       child.kill();
       await child.exited;

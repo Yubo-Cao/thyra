@@ -2,8 +2,8 @@ import { useSyncExternalStore } from "react";
 import { bridge, type BridgePrincipal } from "./api";
 
 // Who this page acts for, from the bridge hello: an account (admin or
-// member) or direct local use. The bridge enforces every permission; the
-// interface only hides actions the caller cannot use.
+// member), direct local use, or a share-link guest. The bridge enforces
+// every permission; the interface only hides actions the caller cannot use.
 
 let current: BridgePrincipal | null = null;
 const listeners = new Set<() => void>();
@@ -36,4 +36,9 @@ export function usePrincipal(): BridgePrincipal | null {
 
 export function useInstanceAdmin(): boolean {
   return isInstanceAdmin(usePrincipal());
+}
+
+/** An anonymous share-link guest: read-only, no account or settings. */
+export function useGuest(): boolean {
+  return usePrincipal()?.kind === "guest";
 }

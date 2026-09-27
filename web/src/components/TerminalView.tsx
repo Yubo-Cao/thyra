@@ -728,6 +728,7 @@ export function TerminalView({
             />
           ) : null}
           {!selecting &&
+          !control.access.readOnly &&
           ((!composerOpen && isActivePane) || voiceTyping.active) ? (
             <div
               className="terminal-mobile-input-actions"
@@ -769,6 +770,7 @@ export function TerminalView({
           <TerminalVoicePanel voice={voiceTyping} />
           {!selecting &&
           showMobileKeys &&
+          !control.access.readOnly &&
           mobileSideShortcuts.some((shortcut) => shortcut !== null) ? (
             <TerminalSideShortcuts
               slots={mobileSideShortcuts}
@@ -778,6 +780,7 @@ export function TerminalView({
         </div>
         {!selecting &&
         showMobileKeys &&
+        !control.access.readOnly &&
         mobileShortcuts.some((row) =>
           row.some((shortcut) => shortcut !== null),
         ) ? (

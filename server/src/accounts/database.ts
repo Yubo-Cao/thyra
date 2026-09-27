@@ -6,7 +6,8 @@ import { thyraEnv } from "../config/environment";
 
 /**
  * The account database: users, their identities and passkeys, login
- * sessions, workspace grants and the audit log. One SQLite file in the data
+ * sessions, workspace grants, share links and their guest sessions, and the
+ * audit log. One SQLite file in the data
  * directory (`THYRA_DB_PATH` overrides), mode 0600, WAL so the CLI can write
  * while the server runs. Schema changes are appended to `MIGRATIONS`; the
  * index of the last applied one is stored in `PRAGMA user_version`.
@@ -93,6 +94,39 @@ const MIGRATIONS: readonly string[] = [
     target TEXT,
     detail TEXT
   );
+  `,
+  `
+  -- Anonymous read-only share links. The secret lives in the URL fragment;
+  -- only its SHA-256 is stored. A link shares one workspace, optionally
+  -- narrowed to one pane, and always with the viewer role.
+  CREATE TABLE share_links (
+    id TEXT PRIMARY KEY,
+    secret_hash TEXT NOT NULL,
+    connection_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    pane_id TEXT,
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role = 'viewer'),
+    label TEXT,
+    created_by TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    max_uses INTEGER,
+    uses INTEGER NOT NULL DEFAULT 0,
+    revoked_at INTEGER
+  );
+  CREATE INDEX share_links_workspace ON share_links(connection_id, workspace_id);
+  -- A redeemed link: a guest principal without an account. Revoking or
+  -- expiring the link ends its guest sessions.
+  CREATE TABLE guest_sessions (
+    id_hash TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    link_id TEXT NOT NULL REFERENCES share_links(id) ON DELETE CASCADE,
+    user_agent TEXT,
+    created_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX guest_sessions_link ON guest_sessions(link_id);
   `,
 ];
 

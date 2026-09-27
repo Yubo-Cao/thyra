@@ -6,8 +6,9 @@ import { MATRIX_ROLES, PRINCIPALS, testDeps } from "./test-principals";
 /**
  * The authorization matrix over every RPC method and HTTP route in the
  * policy tables: for each, the roles (of admin, owner, editor, viewer,
- * outsider) that may call it with a request naming workspace `w1`. Tests
- * compare it with the reviewed table in `authorize.test.ts`.
+ * outsider, share-link guest, and a guest whose link shows only pane `w1:p1`)
+ * that may call it with a request naming workspace `w1`. Tests compare it
+ * with the reviewed table in `authorize.test.ts`.
  */
 
 /** Every identifier naming workspace `w1` (terminal `t1` lives there). */

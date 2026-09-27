@@ -3,6 +3,38 @@
   position: relative;
   flex: 0 0 auto;
 }
+
+/* A share-link guest's read-only notice, beside the roster. */
+.guest-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.guest-badge-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.guest-badge-detail::before {
+  content: "·";
+  margin-inline: 4px;
+}
+
+@media (max-width: 720px) {
+  .guest-badge-by {
+    display: none;
+  }
+}
+
+/* Phones keep "Read-only"; the roster popover spells out the rest. */
+@media (max-width: 520px) {
+  .guest-badge-detail {
+    display: none;
+  }
+}
 .collaboration-trigger {
   padding-inline: 4px;
 }

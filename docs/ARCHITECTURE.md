@@ -557,6 +557,7 @@ Each HTTP request is classified before routing (`server/src/http/request-access.
 Unknown hosts are refused; `/ws` and non-GET/HEAD requests require an allowed `Origin` unless local; `/api` reads refuse foreign initiators.
 
 **Principals.** `server/src/auth/principal.ts` resolves every request to a principal: `local` (direct use of a loopback listener, an instance admin without an account), a `user` from the `thyra_session` cookie, or a `user` from tailnet login, which maps a proxied tailnet address through Tailscale `whois` (the identity service's cache) to an account, creating and linking it (identity `tailscale`/login) on first sight, and issues a session cookie on that response or WebSocket upgrade.
+A live share-link guest cookie comes first and yields a `guest` principal (see share links below), so a browser that redeemed a link watches as that guest until it leaves or the link ends.
 A session whose privilege epoch is older than its user's is rotated to a new id on its next request.
 `requireLogin(req, access)` returns the principal and cookie headers, or the login redirect/401, for listeners that require an account.
 Passkey registration and login (`server/src/auth/passkeys.ts`, `@simplewebauthn/server`) use discoverable credentials; the relying party is the effective host name, and challenges are single-use and held in memory for five minutes.
@@ -572,21 +573,31 @@ The login and enrollment pages are small server-rendered documents outside the a
 | `passkeys` | credential id, user, COSE public key, counter, transports, RP ID, name |
 | `enrollments` | SHA-256 of single-use enrollment secrets, user, expiry |
 | `workspace_grants` | `(connection, workspace id, user)` with `owner`/`editor`/`viewer` and who granted it |
-| `audit_log` | account, session, passkey and grant changes (bounded) |
+| `share_links` | public id, SHA-256 of the link secret, connection, workspace, optional pane, role (`viewer` only), label, creator, expiry, max uses, uses, revocation time |
+| `guest_sessions` | SHA-256 of a guest cookie value, public id, link, user agent, created/last seen/expiry (the link's) |
+| `audit_log` | account, session, passkey, grant and share-link changes (bounded) |
 
 Every change to a user's role, grants or status bumps its privilege epoch.
 The server checks `PRAGMA data_version` every second, so changes made by the CLI apply at once: sockets of ended sessions close with code 4001 and sockets whose epoch changed close with 4003 and reconnect under the new authority.
-Herdr keeps workspace ids across restarts and live handoff (they are restored from the session snapshot), so grants name the workspace id; a `workspace.closed` event deletes the workspace's grants, because Herdr may reuse the id of a closed workspace.
-Share links and invitations are meant to create grants through the same `setGrant` call.
+Herdr keeps workspace ids across restarts and live handoff (they are restored from the session snapshot), so grants name the workspace id; a `workspace.closed` event deletes the workspace's grants and revokes its share links, because Herdr may reuse the id of a closed workspace.
+
+**Share links.** `server/src/accounts/share-links.ts` issues anonymous read-only links, `<base>/s/<id>#<secret>`: a 256-bit secret shown once and stored as its SHA-256, scoped to one workspace or one of its panes, always with the viewer role, valid for 5 minutes to 30 days (24 hours by default), optionally limited in uses.
+The landing page `/s/<id>` is server-rendered like the login page; `/auth/passkey.js` reads the fragment, drops it from the address bar and, when the visitor opens the view, posts `{id, secret}` to `/api/share/redeem`.
+Redemption compares digests in constant time (unknown ids cost the same), counts the use atomically, and creates a guest session whose `thyra_guest` cookie (`__Host-thyra_guest` on the public listener) resolves to a `guest` principal (no account) until the link expires or is revoked; a browser redeeming a link it already watches keeps its session and use.
+Failed redemptions are rate-limited per client address like passkey attempts, and create, redeem, leave and revoke are audited without secrets.
+Revocation deletes the link's guest sessions and expiry is checked every second, so both close guest sockets with 4001 within a second; the page then lands on a "Shared view ended" notice served in place of the login page.
+Owners and admins list, create and revoke links over `/api/share-links` (the **Share workspace** dialog) and `thyra share`.
 
 **Authorization.** Every WebSocket method and HTTP route has an entry in `server/src/authz/policy.ts` or `server/src/authz/http-policy.ts`; anything else is refused before routing.
 An entry names a class (`read`, `write`, `admin`, `dangerous`), a scope (`session`, `workspace`, `list`, `host`, and for HTTP also `public`, `connection`, `editor`), and for workspace methods `resolve(params)`, which names the workspace, tab, pane or terminal the request acts on.
 `authorize()` in `server/src/authz/authorize.ts` applies it after connection routing: `admin`, `dangerous` and `host` entries need an instance admin; every id a request names must resolve to a workspace where the caller holds the entry's minimum role (viewer for reads, editor for writes, owner for renaming, closing and sharing).
 Pane and tab ids carry their workspace (`w1:p3`); terminal ids are located through a per-connection map loaded from `pane.list`, marked stale by structural events, and reloaded at most once a second for unknown ids; ids it cannot place are refused for members.
 Terminal methods without `terminal_id` act on the socket's current terminal, which the bridge fills in before authorizing.
-A test compares the decisions for an instance admin, a workspace owner, editor and viewer, and an outsider over every table entry with a reviewed matrix, so a new method or route fails until its row is added, and another test fails when a method the server dispatches or `web/src` calls has no entry.
+A share-link guest holds the viewer role on its link's workspace only, and reaches only the `session` methods and routes marked `guest` (no profile, passkeys, sessions, push or voice); a link narrowed to one pane admits only requests that name that pane, its terminal or its tab, never workspace-wide ones such as files and Git.
+A test compares the decisions for an instance admin, a workspace owner, editor and viewer, an outsider, a guest and a pane-scoped guest over every table entry with a reviewed matrix, so a new method or route fails until its row is added, and another test fails when a method the server dispatches or `web/src` calls has no entry.
 Cross-workspace results and events are filtered per principal (`server/src/authz/filters.ts`): workspace, tab, pane and agent lists (workspaces gain the caller's `access` role), presence snapshots, claims and display owners (`collaboration.display` events and `terminal.display` results too), bridge status and connection lists (no profile details), and forwarded Herdr events, which pass, are filtered, become a bare `session.resync_required`, or are dropped (unknown events without a workspace are dropped).
-Web Push subscriptions record their account and receive only notifications for workspaces it may see.
+For a pane-scoped guest the same filters keep only the pane, the tab holding it and the workspace, shrink `pane.layout` to the one pane, pass events about only that pane, resync on ones that reshape it, and drop the rest; its presence updates never name another place.
+Web Push subscriptions record their account and receive only notifications for workspaces it may see; guests cannot subscribe.
 Routine host-level calls a member's page makes (`terminal.host_theme`, `terminal.watch_popup`) get a fixed harmless answer instead of an error.
 
 **Single writer.** The bridge mirrors each connection's pane claims from every collaboration snapshot and from the results of the claim, release and leave calls it makes.
@@ -598,7 +609,7 @@ The [display owner](#display-owner-and-input-owner) rules compose with these che
 **Listeners.** Each listener has a fixed kind (`server/src/http/listener.ts`) that is threaded into the request-access policy and tailnet login: the primary listener is `tailnet` (tailnet login on) or `local`, and `THYRA_PUBLIC_LISTEN` binds a `public` listener.
 No header changes a request's kind.
 On `public`, the policy accepts only `THYRA_PUBLIC_ORIGIN` as host and origin, is never local, treats the scheme as HTTPS, and takes the client address from `CF-Connecting-IP` of a trusted peer only (never loopback or tailnet values); tailnet login refuses anything but the `tailnet` kind and any request with Cloudflare headers.
-The public router (`publicFetch` in `server/src/index.ts`) rate-limits per client, then asks its `PublicAuthenticator` (`server/src/auth/public.ts`, interface in `server/src/http/public-auth.ts`) to serve the login, enrollment, passkey and logout routes and to resolve the principal from its own `__Host-thyra_session` cookie.
+The public router (`publicFetch` in `server/src/index.ts`) rate-limits per client, then asks its `PublicAuthenticator` (`server/src/auth/public.ts`, interface in `server/src/http/public-auth.ts`) to serve the login, enrollment, passkey, share-link and logout routes and to resolve the principal from its own `__Host-thyra_session` or `__Host-thyra_guest` cookie.
 It shares the account database and routes with the primary listener, but its authenticator has no local bypass and no tailnet login, and the primary listener's cookie name differs, so neither listener accepts the other's cookie.
 Without a principal only those routes and fingerprinted assets are served and everything else is `401` or a redirect to `/login`; with one, requests go through the same HTTP and RPC authorization as on the primary listener, and MCP is never served.
 Public responses add HSTS, a strict CSP (the SPA entry's inline scripts are allowed by hash), and `__Host-` cookies.

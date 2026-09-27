@@ -5,6 +5,7 @@ import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Select } from "./ui/Select";
 import { TextField } from "./ui/TextField";
+import { ShareLinksSection } from "./ShareLinksSection";
 import "./ShareWorkspaceDialog.css";
 
 type Grant = {
@@ -63,8 +64,9 @@ async function grantsRequest(
 }
 
 /**
- * Invite existing users to one workspace and change or remove their roles.
- * Only workspace owners and instance admins see it; the bridge checks again.
+ * Invite existing users to one workspace and change or remove their roles,
+ * and manage its anonymous read-only links. Only workspace owners and
+ * instance admins see it; the bridge checks again.
  */
 export function ShareWorkspaceDialog({
   open,
@@ -138,7 +140,7 @@ export function ShareWorkspaceDialog({
       }}
       title={t("Share workspace")}
       description={workspaceName}
-      size="sm"
+      size="md"
       busy={busy}
       onSubmit={(event) => {
         event.preventDefault();
@@ -218,6 +220,11 @@ export function ShareWorkspaceDialog({
           ))
         )}
       </div>
+      <ShareLinksSection
+        open={open}
+        connectionId={connectionId}
+        workspaceId={workspaceId}
+      />
     </Dialog>
   );
 }

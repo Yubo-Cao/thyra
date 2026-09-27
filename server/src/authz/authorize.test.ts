@@ -8,41 +8,42 @@ import { PRINCIPALS, testDeps } from "./test-principals";
 /**
  * The reviewed authorization matrix. Each row lists the roles allowed to
  * call a method (or route) on workspace w1: an instance admin, w1's owner,
- * editor and viewer, and an outsider who owns only w2 ("-": nobody).
+ * editor and viewer, an outsider who owns only w2, an anonymous share-link
+ * guest of w1, and a guest whose link shows only pane w1:p1 ("-": nobody).
  * The rows are generated from the policy tables, so a new method or route
  * fails this test until its row is reviewed and added here.
  */
 const RPC_MATRIX: Record<string, string> = {
-  "agent.list": "admin owner editor viewer",
+  "agent.list": "admin owner editor viewer guest guest-pane",
   "agent.prompt": "-",
-  "agent_history.entry": "admin owner editor viewer",
-  "agent_history.get": "admin owner editor viewer",
-  "agent_session.get": "admin owner editor viewer",
-  "bridge.identity": "admin owner editor viewer outsider",
+  "agent_history.entry": "admin owner editor viewer guest guest-pane",
+  "agent_history.get": "admin owner editor viewer guest guest-pane",
+  "agent_session.get": "admin owner editor viewer guest guest-pane",
+  "bridge.identity": "admin owner editor viewer outsider guest guest-pane",
   "bridge.identity_profile": "admin owner editor viewer outsider",
   "bridge.pause_others": "admin",
-  "bridge.ping": "admin owner editor viewer outsider",
-  "bridge.status": "admin owner editor viewer outsider",
+  "bridge.ping": "admin owner editor viewer outsider guest guest-pane",
+  "bridge.status": "admin owner editor viewer outsider guest guest-pane",
   "collaboration.claim": "admin owner editor",
-  "collaboration.leave": "admin owner editor viewer outsider",
-  "collaboration.list": "admin owner editor viewer outsider",
+  "collaboration.leave": "admin owner editor viewer outsider guest guest-pane",
+  "collaboration.list": "admin owner editor viewer outsider guest guest-pane",
   "collaboration.release": "admin owner editor viewer outsider",
-  "collaboration.update": "admin owner editor viewer outsider",
+  "collaboration.update": "admin owner editor viewer outsider guest guest-pane",
   "connections.connect": "admin",
   "connections.create": "admin",
   "connections.disconnect": "admin",
-  "connections.list": "admin owner editor viewer outsider",
+  "connections.list": "admin owner editor viewer outsider guest guest-pane",
   "connections.remove": "admin",
   "connections.set_default": "admin",
   "connections.test": "admin",
   "connections.update": "admin",
-  "file.list": "admin owner editor viewer",
+  "file.list": "admin owner editor viewer guest",
   "file.mkdir": "admin owner editor",
-  "file.read": "admin owner editor viewer",
-  "file.resolve": "admin owner editor viewer",
+  "file.read": "admin owner editor viewer guest",
+  "file.resolve": "admin owner editor viewer guest",
   "file.write": "admin owner editor",
-  "git.diff_file": "admin owner editor viewer",
-  "git.diff_summary": "admin owner editor viewer",
+  "git.diff_file": "admin owner editor viewer guest",
+  "git.diff_summary": "admin owner editor viewer guest",
   "git.file_action": "admin owner editor",
   "git.pull": "admin owner editor",
   "git.repo_action": "admin owner editor",
@@ -57,9 +58,9 @@ const RPC_MATRIX: Record<string, string> = {
   "launcher.pins.set": "admin",
   "pane.close": "admin owner editor",
   "pane.focus_direction": "admin owner editor",
-  "pane.get": "admin owner editor viewer",
-  "pane.layout": "admin owner editor viewer",
-  "pane.list": "admin owner editor viewer",
+  "pane.get": "admin owner editor viewer guest guest-pane",
+  "pane.layout": "admin owner editor viewer guest guest-pane",
+  "pane.list": "admin owner editor viewer guest guest-pane",
   "pane.paste": "admin owner editor",
   "pane.resize": "admin owner editor",
   "pane.send_input": "admin owner editor",
@@ -74,7 +75,7 @@ const RPC_MATRIX: Record<string, string> = {
   "popup.close": "admin",
   "server.live_handoff": "-",
   "server.stop": "-",
-  "session.appearance": "admin owner editor viewer outsider",
+  "session.appearance": "admin owner editor viewer outsider guest guest-pane",
   "settings.get": "admin",
   "settings.terminal_transport.get": "admin",
   "settings.terminal_transport.update": "admin",
@@ -87,71 +88,82 @@ const RPC_MATRIX: Record<string, string> = {
   "tab.close": "admin owner editor",
   "tab.create": "admin owner editor",
   "tab.focus": "admin owner editor",
-  "tab.list": "admin owner editor viewer",
+  "tab.list": "admin owner editor viewer guest guest-pane",
   "tab.rename": "admin owner editor",
-  "terminal.attach": "admin owner editor viewer",
-  "terminal.detach": "admin owner editor viewer outsider",
+  "terminal.attach": "admin owner editor viewer guest guest-pane",
+  "terminal.detach": "admin owner editor viewer outsider guest guest-pane",
   "terminal.display": "admin owner editor",
   "terminal.focus": "admin owner editor",
-  "terminal.frame_ack": "admin owner editor viewer outsider",
+  "terminal.frame_ack": "admin owner editor viewer outsider guest guest-pane",
   "terminal.host_theme": "admin",
   "terminal.input": "admin owner editor",
-  "terminal.link.resolve": "admin owner editor viewer",
-  "terminal.preview_text": "admin owner editor viewer",
+  "terminal.link.resolve": "admin owner editor viewer guest guest-pane",
+  "terminal.preview_text": "admin owner editor viewer guest guest-pane",
   "terminal.relay_resize": "admin owner editor",
   "terminal.resize": "admin owner editor",
-  "terminal.scroll": "admin owner editor viewer",
-  "terminal.stream": "admin owner editor viewer outsider",
+  "terminal.scroll": "admin owner editor viewer guest guest-pane",
+  "terminal.stream": "admin owner editor viewer outsider guest guest-pane",
   "terminal.watch_popup": "admin",
   "workspace.close": "admin owner",
   "workspace.create": "admin",
   "workspace.focus": "admin owner editor",
   "workspace.get": "-",
-  "workspace.list": "admin owner editor viewer",
+  "workspace.list": "admin owner editor viewer guest guest-pane",
   "workspace.move": "admin",
   "workspace.rename": "admin owner",
   "worktree.create": "admin",
-  "worktree.list": "admin owner editor viewer",
+  "worktree.list": "admin owner editor viewer guest",
   "worktree.open": "admin",
   "worktree.remove": "admin",
 };
 
 const HTTP_MATRIX: Record<string, string> = {
-  "api.health": "admin owner editor viewer outsider",
-  "auth.me": "admin owner editor viewer outsider",
+  "api.health": "admin owner editor viewer outsider guest guest-pane",
+  "auth.me": "admin owner editor viewer outsider guest guest-pane",
   "auth.passkeys": "admin owner editor viewer outsider",
   "auth.passkeys.remove": "admin owner editor viewer outsider",
   "auth.sessions": "admin owner editor viewer outsider",
   "auth.sessions.revoke": "admin owner editor viewer outsider",
-  "connection.agent-session-atif": "admin owner editor viewer",
-  "connection.agent-session-download": "admin owner editor viewer",
+  "connection.agent-session-atif": "admin owner editor viewer guest guest-pane",
+  "connection.agent-session-download":
+    "admin owner editor viewer guest guest-pane",
   "connection.file-delete": "admin owner editor",
-  "connection.file-download": "admin owner editor viewer",
+  "connection.file-download": "admin owner editor viewer guest",
   "connection.file-upload": "admin owner editor",
   "connection.herdr-info": "admin owner editor viewer outsider",
-  "connection.invalid": "admin owner editor viewer outsider",
+  "connection.invalid": "admin owner editor viewer outsider guest guest-pane",
   "connection.upload-image": "admin owner editor outsider",
-  "enroll.page": "admin owner editor viewer outsider anonymous",
+  "enroll.page":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
   "grants.list": "admin owner",
   "grants.set": "admin owner",
-  health: "admin owner editor viewer outsider anonymous",
+  health: "admin owner editor viewer outsider guest guest-pane anonymous",
   "herdr.setup": "admin",
   "herdr.status": "admin",
-  "login.icon": "admin owner editor viewer outsider anonymous",
-  "login.page": "admin owner editor viewer outsider anonymous",
-  "login.script": "admin owner editor viewer outsider anonymous",
-  logout: "admin owner editor viewer outsider anonymous",
-  mcp: "admin owner editor viewer outsider anonymous",
-  "passkey.login": "admin owner editor viewer outsider anonymous",
-  "passkey.register": "admin owner editor viewer outsider anonymous",
+  "login.icon": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "login.page": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "login.script":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  logout: "admin owner editor viewer outsider guest guest-pane anonymous",
+  mcp: "admin owner editor viewer outsider guest guest-pane anonymous",
+  "passkey.login":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "passkey.register":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
   push: "admin owner editor viewer outsider",
-  static: "admin owner editor viewer outsider",
+  "share.create": "admin owner",
+  "share.list": "admin owner",
+  "share.page": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "share.redeem":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "share.revoke": "admin owner",
+  static: "admin owner editor viewer outsider guest guest-pane",
   "update.check": "admin",
   "update.install": "admin",
   "voice.cleanup": "admin owner editor outsider",
   "voice.status": "admin owner editor viewer outsider",
   "voice.transcribe": "admin owner editor outsider",
-  ws: "admin owner editor viewer outsider",
+  ws: "admin owner editor viewer outsider guest guest-pane",
 };
 
 describe("authorization matrix", () => {
@@ -358,5 +370,62 @@ describe("authorize", () => {
       testDeps(),
     );
     expect(decision.allowed).toBe(false);
+  });
+});
+
+describe("share-link guests", () => {
+  test("guests are viewers of their one workspace and never write", async () => {
+    for (const method of [
+      "terminal.input",
+      "terminal.resize",
+      "terminal.focus",
+      "collaboration.claim",
+      "collaboration.release",
+      "bridge.identity_profile",
+      "file.write",
+    ])
+      expect((await request("guest", method, W1_PARAMS)).allowed).toBe(false);
+    // Another workspace is invisible.
+    expect(
+      (await request("guest", "terminal.attach", { terminal_id: "t2" }))
+        .allowed,
+    ).toBe(false);
+    expect(
+      (await request("guest", "tab.list", { workspace_id: "w2" })).allowed,
+    ).toBe(false);
+    // Scrolling reads Herdr's history, never the application.
+    expect(
+      await request("guest", "terminal.scroll", {
+        terminal_id: "t1",
+        direction: "up",
+        source: "wheel",
+      }),
+    ).toMatchObject({ allowed: true, params: { source: "history" } });
+  });
+
+  test("a pane link admits only its pane and the tab holding it", async () => {
+    const pane = (method: string, params: Record<string, unknown>) =>
+      request("guest-pane", method, params).then(
+        (decision) => decision.allowed,
+      );
+    expect(await pane("terminal.attach", { terminal_id: "t1" })).toBe(true);
+    expect(await pane("pane.layout", { pane_id: "w1:p1" })).toBe(true);
+    expect(await pane("pane.layout", { tab_id: "w1:t1" })).toBe(true);
+    // The other pane of the same tab, and its terminal.
+    expect(await pane("terminal.attach", { terminal_id: "t3" })).toBe(false);
+    expect(await pane("pane.get", { pane_id: "w1:p2" })).toBe(false);
+    expect(await pane("terminal.preview_text", { pane_id: "w1:p2" })).toBe(
+      false,
+    );
+    // Another tab, and workspace-wide reads.
+    expect(await pane("pane.layout", { tab_id: "w1:t9" })).toBe(false);
+    expect(await pane("file.read", { workspace_id: "w1", path: "a" })).toBe(
+      false,
+    );
+    expect(await pane("git.diff_summary", { workspace_id: "w1" })).toBe(false);
+    // Lists name only the workspace; the bridge filters their items.
+    expect(await pane("pane.list", { workspace_id: "w1" })).toBe(true);
+    // Unknown terminals fail closed.
+    expect(await pane("terminal.attach", { terminal_id: "nope" })).toBe(false);
   });
 });

@@ -327,6 +327,23 @@ It points at `--base-url`, else the first HTTPS `THYRA_PUBLIC_BASE_URL`, else `h
 Open the link on the device or password manager that keeps the passkey; a logged-in user adds passkeys for the host they are on under **Configuration > Account**, which also lists and signs out login sessions.
 Workspace owners share a workspace from its context menu (**Share workspace…**) with existing users, by user name or linked login.
 
+### Read-only share links
+
+For someone without an account, create an anonymous **read-only link** in the same dialog (**Links**) or on the host:
+
+```bash
+thyra share create w3                                  # whole workspace, 24 hours
+thyra share create w3 --pane w3:p2 --expires 1h --max-uses 1 --label review
+thyra share list [w3]
+thyra share revoke <link-id>
+```
+
+A guest who opens the link sees only that workspace (or pane), may watch the terminals, scroll their history and read agent status (and, for a whole-workspace link, its files and Git changes), and never types, resizes, takes control or changes anything.
+Guests appear to others as "Guest" plus the link's label and can follow them.
+The URL is shown once (only a digest is stored); `--expires` takes `30m` to `30d` (default `24h`), and revoking a link or its expiry disconnects its guests within a second.
+Links point at `THYRA_PUBLIC_ORIGIN` when the [public listener](#public-access-through-cloudflare-tunnel) is set (`--base-url` overrides it), since guests usually have no tailnet access; they also work on the primary listener, where a browser that opens one watches as the guest until the link ends.
+Anyone who holds the link can watch until then, so share it privately, keep expiry short, and use `--max-uses 1` for one person.
+
 With Tailscale, **tailnet login** needs no passkey: when a proxied request's forwarded client address is a tailnet address and Tailscale `whois` names a user, Thyra logs in that user's account, creating it on first sight and linking the Tailscale login.
 New tailnet accounts are instance admins (`THYRA_TAILNET_AUTH=admin`, the default whenever `whois` works, see [collaborator identity](#collaborator-identity)); `THYRA_TAILNET_AUTH=member` makes them members instead, and `off` disables tailnet login.
 Restrict the proxy's port with Tailscale ACLs.
@@ -407,11 +424,11 @@ Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tai
 Thyra can serve a public address from a second listener while the primary listener stays private (tailnet or loopback).
 **The listener, never a request header, decides trust.** Requests on the public listener are always public:
 
-- Only a passkey session in the listener's own `__Host-thyra_session` cookie authenticates there; tailnet login, direct-local bypass and the primary listener's session cookie never do, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
+- Only a passkey session in the listener's own `__Host-thyra_session` cookie, or a [share link](#read-only-share-links)'s `__Host-thyra_guest` cookie, authenticates there; tailnet login, direct-local bypass and the primary listener's cookies never do, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
 - Only `THYRA_PUBLIC_ORIGIN` is accepted as `Host` and `Origin` (anything else gets `421` or `403`); `X-Forwarded-*` headers are ignored.
 - The client address (login and request rate limits, 300 requests a minute per address) is `CF-Connecting-IP` when the peer is in `THYRA_PUBLIC_TRUSTED_PROXIES` (default `loopback`, the local `cloudflared`), otherwise the peer.
 - Responses carry HSTS, a strict Content Security Policy, `nosniff` and `frame-ancestors 'none'`; cookies set there use the `__Host-` prefix.
-- Before login it serves only the passkey login and enrollment pages, their script (`/auth/passkey.js`) and static assets; every other page redirects to login, and every API and WebSocket request gets `401`.
+- Before login it serves only the passkey login and enrollment pages, share-link landing pages (`/s/<id>`) and redemption, their script (`/auth/passkey.js`) and static assets; every other page redirects to login, and every API and WebSocket request gets `401`.
   MCP is never served there.
 
 Cloudflare Tunnel (`cloudflared`) connects outbound, so no inbound port opens.

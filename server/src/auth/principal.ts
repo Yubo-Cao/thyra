@@ -6,6 +6,11 @@ import {
 } from "../http/tailnet-auth";
 import { type Logger, silentLogger } from "../utils/logger";
 import type {
+  GuestSession,
+  ShareLink,
+  ShareLinkStore,
+} from "../accounts/share-links";
+import type {
   AccountStore,
   InstanceRole,
   SessionRecord,
@@ -20,6 +25,9 @@ import type {
  *   instance-admin authority, without an account.
  * - `user`: a logged-in account, from its session cookie or from Tailscale
  *   `whois` behind a trusted proxy (which creates and links the account).
+ * - `guest`: an anonymous visitor who redeemed a share link. It has no
+ *   account; it views the link's workspace (or pane) read-only until the
+ *   link expires or is revoked.
  */
 export type Principal =
   | { kind: "local"; key: "local" }
@@ -28,7 +36,36 @@ export type Principal =
       key: string;
       user: User;
       session: SessionRecord;
-    };
+    }
+  | GuestPrincipal;
+
+export type GuestPrincipal = {
+  kind: "guest";
+  key: string;
+  guest: GuestSession;
+  link: ShareLink;
+  /** Display name of the account that created the link, if any. */
+  sharedBy: string | null;
+};
+
+export function guestPrincipal(
+  guest: GuestSession,
+  link: ShareLink,
+  sharedBy: string | null,
+): GuestPrincipal {
+  return {
+    kind: "guest",
+    key: `guest:${guest.publicId}`,
+    guest,
+    link,
+    sharedBy,
+  };
+}
+
+/** How guests appear in presence: "Guest", plus the link's label. */
+export function guestDisplayName(link: ShareLink): string {
+  return link.label ? `Guest · ${link.label}` : "Guest";
+}
 
 export const LOCAL_PRINCIPAL: Principal = { kind: "local", key: "local" };
 
@@ -47,6 +84,21 @@ export function isInstanceAdmin(principal: Principal | null | undefined) {
 export function principalView(principal: Principal) {
   if (principal.kind === "local")
     return { kind: "local" as const, role: "admin" as const, user: null };
+  if (principal.kind === "guest")
+    return {
+      kind: "guest" as const,
+      role: "guest" as const,
+      user: null,
+      session_id: principal.guest.publicId,
+      share: {
+        connection_id: principal.link.connectionId,
+        workspace_id: principal.link.workspaceId,
+        pane_id: principal.link.paneId,
+        label: principal.link.label,
+        shared_by: principal.sharedBy,
+        expires_at: principal.guest.expiresAt,
+      },
+    };
   return {
     kind: "user" as const,
     role: principal.user.role,
@@ -61,6 +113,8 @@ export function principalView(principal: Principal) {
 }
 
 export const SESSION_COOKIE = "thyra_session";
+/** A share link's guest session; `__Host-` prefixed on the public listener. */
+export const GUEST_COOKIE = "thyra_guest";
 
 export {
   parseTailnetAuthMode,
@@ -106,12 +160,17 @@ export function createAuthenticator(args: {
    * no `Domain`, so no other subdomain can set or read the session.
    */
   hostOnlyCookie?: boolean;
+  /** Share links: a guest cookie authenticates as its link's guest. */
+  shares?: ShareLinkStore;
   logger?: Logger;
 }) {
   const logger = args.logger ?? silentLogger;
   const cookieName = args.hostOnlyCookie
     ? `__Host-${SESSION_COOKIE}`
     : SESSION_COOKIE;
+  const guestCookieName = args.hostOnlyCookie
+    ? `__Host-${GUEST_COOKIE}`
+    : GUEST_COOKIE;
 
   function secure(access: Pick<RequestAccess, "secure">) {
     return Boolean(args.hostOnlyCookie || args.secureCookies || access.secure);
@@ -131,6 +190,36 @@ export function createAuthenticator(args: {
 
   function sessionToken(req: Request): string | null {
     return parseCookie(req.headers.get("cookie"), cookieName);
+  }
+
+  function guestToken(req: Request): string | null {
+    return parseCookie(req.headers.get("cookie"), guestCookieName);
+  }
+
+  function guestCookie(
+    token: string,
+    access: Pick<RequestAccess, "secure">,
+    maxAgeSeconds: number,
+  ): string {
+    return `${guestCookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}${secure(access) ? "; Secure" : ""}`;
+  }
+
+  /** The principal of a live guest cookie. */
+  function fromGuest(req: Request): AuthResult | null {
+    const token = guestToken(req);
+    if (!token || !args.shares) return null;
+    const resolved = args.shares.resolveGuest(token);
+    if (!resolved) return null;
+    const creator = resolved.link.createdBy
+      ? args.store.getUser(resolved.link.createdBy)
+      : null;
+    return {
+      principal: guestPrincipal(
+        resolved.session,
+        resolved.link,
+        creator?.displayName ?? null,
+      ),
+    };
   }
 
   function bypassesLogin(access: Pick<RequestAccess, "local">): boolean {
@@ -218,13 +307,17 @@ export function createAuthenticator(args: {
   }
 
   /**
-   * Authenticate a request: direct local use, the session cookie, then
-   * Tailscale `whois` for proxied tailnet requests.
+   * Authenticate a request: a share link's guest cookie (a browser that
+   * redeemed a link views as that guest until it leaves or the link ends),
+   * direct local use, the session cookie, then Tailscale `whois` for proxied
+   * tailnet requests.
    */
   async function authenticate(
     req: Request,
     access: RequestAccess,
   ): Promise<AuthResult> {
+    const guest = fromGuest(req);
+    if (guest) return guest;
     if (bypassesLogin(access)) return { principal: LOCAL_PRINCIPAL };
     const cookie = fromCookie(req, access);
     if (cookie) return cookie;
@@ -237,6 +330,8 @@ export function createAuthenticator(args: {
     sessionCookie,
     clearCookie,
     sessionToken,
+    guestToken,
+    guestCookie,
     /**
      * For listeners and routes that require an account: the principal and
      * headers to add, or the response to return (login redirect for page

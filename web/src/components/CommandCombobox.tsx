@@ -71,6 +71,10 @@ type ActionGroupDefinition = {
   actions: ActionDefinition[];
 };
 
+/** Actions that change a workspace, hidden from its viewers. */
+const READ_ONLY_HIDDEN_ACTION =
+  /^(launch-agent|create-|current-create-tab|current-toggle-pane-zoom|current-(new|open|remove)-worktree|current-worktree-hooks|rename-|close-|split-|toggle-pane-zoom)/;
+
 function tabName(tab?: Tab) {
   if (!tab) return "";
   return tab.label && tab.label !== String(tab.number)
@@ -899,15 +903,28 @@ export function CommandCombobox({
     });
   }
 
+  // Viewers (and share-link guests) keep navigation and reading only.
+  const readOnly = focusedWorkspace?.access === "viewer";
   const actionGroups: ActionGroupDefinition[] = [
     { heading: t("Current"), actions: currentActions },
     { heading: t("Files"), actions: fileActions },
     { heading: t("Workspaces"), actions: workspaceActions },
-    { heading: t("Worktrees"), actions: worktreeActions },
+    { heading: t("Worktrees"), actions: readOnly ? [] : worktreeActions },
     { heading: t("Tabs"), actions: tabActions },
     { heading: t("Panes"), actions: paneActions },
     { heading: t("Agents"), actions: agentActions },
-  ].filter((group) => group.actions.length > 0);
+  ]
+    .map((group) =>
+      readOnly
+        ? {
+            ...group,
+            actions: group.actions.filter(
+              (action) => !READ_ONLY_HIDDEN_ACTION.test(action.key),
+            ),
+          }
+        : group,
+    )
+    .filter((group) => group.actions.length > 0);
 
   const normalizedSearch = normalizeSearchText(search);
   const rankedActions = normalizedSearch

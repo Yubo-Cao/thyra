@@ -11,6 +11,8 @@ const PUBLIC_AUTH_ROUTES: ReadonlySet<HttpRouteId> = new Set([
   "passkey.login",
   "passkey.register",
   "logout",
+  "share.page",
+  "share.redeem",
 ]);
 
 /**
@@ -26,7 +28,10 @@ export function createPublicAuthenticator(args: {
       const route = matchHttpRoute(req.method, url.pathname);
       if (!route || !PUBLIC_AUTH_ROUTES.has(route)) return null;
       const auth =
-        route === "logout" || route === "login.script"
+        route === "logout" ||
+        route === "login.script" ||
+        route === "share.page" ||
+        route === "share.redeem"
           ? { principal: null }
           : await args.authenticator.authenticate(req, context.access);
       if (route === "login.page" && auth.principal) {

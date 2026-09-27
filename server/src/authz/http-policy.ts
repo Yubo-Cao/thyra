@@ -10,8 +10,10 @@ import { targetResolvers } from "./policy";
  * that matches nothing is refused. Scopes:
  *
  * - `public`: no login (health, login and enrollment, logout, the login
- *   page's icons, and `/mcp`, which authenticates with its own bearer tokens).
+ *   page's icons, share-link pages and redemption, and `/mcp`, which
+ *   authenticates with its own bearer tokens).
  * - `session`: any logged-in principal; the handler acts on its own data.
+ *   Share-link guests reach only the routes marked `guest`.
  * - `workspace`: `resolve` names the target from the query string; the caller
  *   needs `minimum` there.
  * - `connection`: an editor of at least one workspace on the connection.
@@ -33,6 +35,8 @@ export type HttpPolicyEntry = {
   scope: HttpScope;
   minimum?: WorkspaceRole;
   resolve?: (query: URLSearchParams) => RpcTarget;
+  /** A `session` route share-link guests may use (default: denied). */
+  guest?: true;
 };
 
 const fromQuery =
@@ -52,8 +56,12 @@ export const HTTP_POLICY = {
   "passkey.register": { class: "write", scope: "public" },
   logout: { class: "write", scope: "public" },
   mcp: { class: "read", scope: "public" },
+  // The share-link landing page and redemption (rate-limited); the secret
+  // stays in the URL fragment until the page posts it.
+  "share.page": { class: "read", scope: "public" },
+  "share.redeem": { class: "write", scope: "public" },
 
-  "auth.me": { class: "read", scope: "session" },
+  "auth.me": { class: "read", scope: "session", guest: true },
   "auth.sessions": { class: "read", scope: "session" },
   "auth.sessions.revoke": { class: "write", scope: "session" },
   "auth.passkeys": { class: "read", scope: "session" },
@@ -71,9 +79,28 @@ export const HTTP_POLICY = {
     minimum: "owner",
     resolve: fromQuery(targetResolvers.workspace),
   },
+  // Workspace owners (and admins) list, create and revoke share links.
+  "share.list": {
+    class: "read",
+    scope: "workspace",
+    minimum: "owner",
+    resolve: fromQuery(targetResolvers.workspace),
+  },
+  "share.create": {
+    class: "write",
+    scope: "workspace",
+    minimum: "owner",
+    resolve: fromQuery(targetResolvers.workspace),
+  },
+  "share.revoke": {
+    class: "write",
+    scope: "workspace",
+    minimum: "owner",
+    resolve: fromQuery(targetResolvers.workspace),
+  },
 
-  ws: { class: "read", scope: "session" },
-  "api.health": { class: "read", scope: "session" },
+  ws: { class: "read", scope: "session", guest: true },
+  "api.health": { class: "read", scope: "session", guest: true },
   push: { class: "write", scope: "session" },
   "voice.status": { class: "read", scope: "session" },
   // Cloud recognition and cleanup spend the owner's provider credentials.
@@ -86,7 +113,7 @@ export const HTTP_POLICY = {
 
   "connection.herdr-info": { class: "read", scope: "session" },
   // A malformed connection route: log in first, then see the routing error.
-  "connection.invalid": { class: "read", scope: "session" },
+  "connection.invalid": { class: "read", scope: "session", guest: true },
   // Writes the image to the host's temporary directory for pasting.
   "connection.upload-image": { class: "write", scope: "connection" },
   "connection.agent-session-download": {
@@ -115,7 +142,7 @@ export const HTTP_POLICY = {
     resolve: fromQuery(targetResolvers.files),
   },
   // The application shell and its assets.
-  static: { class: "read", scope: "session" },
+  static: { class: "read", scope: "session", guest: true },
 } as const satisfies Record<string, HttpPolicyEntry>;
 
 export type HttpRouteId = keyof typeof HTTP_POLICY;
@@ -139,6 +166,9 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/auth/passkeys": { GET: "auth.passkeys" },
   "/api/auth/passkeys/remove": { POST: "auth.passkeys.remove" },
   "/api/workspace-grants": { GET: "grants.list", POST: "grants.set" },
+  "/api/share-links": { GET: "share.list", POST: "share.create" },
+  "/api/share-links/revoke": { POST: "share.revoke" },
+  "/api/share/redeem": { POST: "share.redeem" },
   "/ws": { GET: "ws" },
   "/api/health": { GET: "api.health" },
   "/api/notifications/push": { GET: "push", POST: "push", DELETE: "push" },
@@ -150,6 +180,9 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/herdr/status": { GET: "herdr.status" },
   "/api/herdr/setup": { POST: "herdr.setup" },
 };
+
+/** A share link's landing page, `/s/<id>` (the secret is in the fragment). */
+const SHARE_PAGE_PATH = /^\/s\/[A-Za-z0-9_-]{8,32}$/;
 
 /** Connection-scoped endpoint names from `connections/http-routing.ts`. */
 export function connectionRouteId(endpoint: string): HttpRouteId | null {
@@ -169,6 +202,11 @@ export function matchHttpRoute(
   const exact = Object.hasOwn(EXACT, pathname) ? EXACT[pathname] : undefined;
   if (exact) return exact[method] ?? null;
   if (pathname === "/mcp") return "mcp";
+  if (pathname === "/s" || pathname.startsWith("/s/"))
+    return SHARE_PAGE_PATH.test(pathname) &&
+      (method === "GET" || method === "HEAD")
+      ? "share.page"
+      : null;
   if (pathname === "/api" || pathname.startsWith("/api/")) return null;
   if (pathname.startsWith("/mcp/")) return null;
   return method === "GET" || method === "HEAD" ? "static" : null;
@@ -195,6 +233,12 @@ export async function authorizeHttp(args: {
   if (entry.scope === "public") return { ok: true };
   const principal = args.principal;
   if (!principal) return { ok: false, status: 401, message: "unauthorized" };
+  if (principal.kind === "guest" && entry.scope === "session" && !entry.guest)
+    return {
+      ok: false,
+      status: 403,
+      message: "this is not available through a share link",
+    };
   const admin = isInstanceAdmin(principal);
   if (
     entry.class === "admin" ||

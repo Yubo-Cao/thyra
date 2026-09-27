@@ -1,8 +1,9 @@
 /**
- * The login and passkey-enrollment pages: small server-rendered documents
- * that load none of the application bundle. Their one script is served from
- * `AUTH_SCRIPT_PATH` (no inline code, so a strict `script-src 'self'` policy
- * allows it); the page's strings travel in a JSON data block.
+ * The login, passkey-enrollment and share-link pages: small server-rendered
+ * documents that load none of the application bundle. Their one script is
+ * served from `AUTH_SCRIPT_PATH` (no inline code, so a strict
+ * `script-src 'self'` policy allows it); the page's strings travel in a JSON
+ * data block.
  */
 
 export const AUTH_SCRIPT_PATH = "/auth/passkey.js";
@@ -42,6 +43,25 @@ const STRINGS = {
       "Cannot reach the server. Check your connection and try again.",
     noscript: "Enable JavaScript to use passkeys.",
     back: "Back to Thyra",
+    shareTitle: "Shared Thyra workspace",
+    shareHeading: "Watch a shared workspace",
+    shareIntro:
+      "You were given a read-only view of a Thyra workspace. You can watch its terminals and scroll their history; you cannot type or change anything.",
+    shareButton: "Open shared view",
+    sharing: "Opening...",
+    shareNote:
+      "No account needed. This browser keeps a cookie for the view until the link expires or its owner revokes it.",
+    shareMissing:
+      "This link is incomplete. Open the full link you were sent, including the part after #.",
+    share_invalid: "This share link is not valid.",
+    share_expired: "This share link has expired.",
+    share_revoked: "This share link was revoked.",
+    share_used: "This share link has been used the maximum number of times.",
+    shareNoscript: "Enable JavaScript to open the shared view.",
+    endedTitle: "Shared view ended",
+    endedHeading: "Shared view ended",
+    endedIntro:
+      "The shared view you were watching has ended: its link expired or was revoked. Ask the person who shared it for a new link.",
   },
   "zh-CN": {
     loginTitle: "登录 Thyra",
@@ -73,6 +93,24 @@ const STRINGS = {
     unreachable: "无法连接到服务器。请检查网络连接后重试。",
     noscript: "请启用 JavaScript 以使用通行密钥。",
     back: "返回 Thyra",
+    shareTitle: "共享的 Thyra 工作区",
+    shareHeading: "观看共享的工作区",
+    shareIntro:
+      "你获得了一个 Thyra 工作区的只读视图。你可以观看其中的终端并滚动历史记录，但不能输入或更改任何内容。",
+    shareButton: "打开共享视图",
+    sharing: "正在打开…",
+    shareNote:
+      "无需账户。此浏览器会为该视图保留一个 Cookie，直到链接过期或被所有者撤销。",
+    shareMissing: "此链接不完整。请打开收到的完整链接，包括 # 之后的部分。",
+    share_invalid: "此共享链接无效。",
+    share_expired: "此共享链接已过期。",
+    share_revoked: "此共享链接已被撤销。",
+    share_used: "此共享链接的使用次数已达上限。",
+    shareNoscript: "请启用 JavaScript 以打开共享视图。",
+    endedTitle: "共享视图已结束",
+    endedHeading: "共享视图已结束",
+    endedIntro:
+      "你正在观看的共享视图已结束：其链接已过期或被撤销。请向分享者索取新的链接。",
   },
 } satisfies Record<PageLocale, Record<string, string>>;
 
@@ -153,6 +191,27 @@ const toJSON=(c)=>{if(typeof c.toJSON==='function'){try{return c.toJSON();}catch
 const post=async(url,body)=>{const r=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)});let d={};try{d=await r.json();}catch{}return{status:r.status,ok:r.ok,data:d};};
 const status=document.getElementById('status'),btn=document.getElementById('btn');
 const show=(text,error)=>{status.textContent=text;status.className='status'+(error?' error':'');};
+if(data.page==='share'){
+  // The link's secret is in the fragment, which browsers never send to
+  // servers; keep it in memory only and post it when the visitor opens the
+  // view (link previews never redeem a use).
+  const secret=location.hash.length>1?decodeURIComponent(location.hash.slice(1)):'';
+  if(secret)history.replaceState(null,'',location.pathname);
+  const id=location.pathname.split('/')[2]||'';
+  if(!secret){show(S.shareMissing,true);return;}
+  btn.disabled=false;
+  btn.onclick=async()=>{
+    if(btn.disabled)return;
+    btn.disabled=true;btn.textContent=S.sharing;show('',false);
+    try{
+      const r=await post('/api/share/redeem',{id,secret});
+      if(r.ok){location.replace('/');return;}
+      show(r.status===429?S.tooManyAttempts:S['share_'+(r.data&&r.data.reason)]||S.share_invalid,true);
+    }catch{show(S.unreachable,true);}
+    btn.disabled=false;btn.textContent=S.shareButton;
+  };
+  return;
+}
 const errorFor=(r)=>r.status===429?S.tooManyAttempts:r.status===403?S.disabled:r.status===401?S.unknownPasskey:(r.data&&r.data.error)||S.failed;
 const secure=window.isSecureContext&&!!PKC&&!!navigator.credentials;
 if(!window.isSecureContext){show(S.insecure,true);btn.disabled=true;}
@@ -212,7 +271,7 @@ function page(
   locale: PageLocale,
   title: string,
   body: string,
-  data: { page: "login" | "enroll"; s: Strings },
+  data: { page: "login" | "enroll" | "share"; s: Strings } | null,
 ) {
   return `<!doctype html>
 <html lang="${locale}">
@@ -231,10 +290,46 @@ function page(
   <div class="brand"><img src="/thyra-icon-192.png" alt="" width="36" height="36"><span>Thyra</span></div>
 ${body}
 </main>
-<script type="application/json" id="thyra-auth">${scriptValue(data)}</script>
+${
+  data
+    ? `<script type="application/json" id="thyra-auth">${scriptValue(data)}</script>
 <script src="${AUTH_SCRIPT_PATH}" defer></script>
-</body>
+`
+    : ""
+}</body>
 </html>`;
+}
+
+/** The landing page of a share link, `/s/<id>#<secret>`. */
+export function renderSharePage(locale: PageLocale): string {
+  const s = STRINGS[locale];
+  return page(
+    locale,
+    s.shareTitle,
+    `  <section class="card" aria-labelledby="heading">
+    <h1 id="heading">${s.shareHeading}</h1>
+    <p>${s.shareIntro}</p>
+    <button class="submit" id="btn" type="button" disabled>${s.shareButton}</button>
+    <div class="status" id="status" role="alert" aria-live="polite"></div>
+    <noscript><p class="status error">${s.shareNoscript}</p></noscript>
+    <p class="note">${s.shareNote}</p>
+  </section>`,
+    { page: "share", s },
+  );
+}
+
+/** Shown instead of the login page once a guest's shared view has ended. */
+export function renderShareEndedPage(locale: PageLocale): string {
+  const s = STRINGS[locale];
+  return page(
+    locale,
+    s.endedTitle,
+    `  <section class="card" aria-labelledby="heading">
+    <h1 id="heading">${s.endedHeading}</h1>
+    <p>${s.endedIntro}</p>
+  </section>`,
+    null,
+  );
 }
 
 export function renderLoginPage(locale: PageLocale): string {

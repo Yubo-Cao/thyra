@@ -88,7 +88,7 @@ export function hashSecret(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
 }
 
-function randomToken(bytes = 32): string {
+export function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString("base64url");
 }
 
@@ -96,7 +96,11 @@ export function validUserName(name: string): boolean {
   return USER_NAME_PATTERN.test(name);
 }
 
-function cleanText(value: string | null | undefined, max: number): string {
+/** Printable text without control characters, trimmed to `max`. */
+export function cleanText(
+  value: string | null | undefined,
+  max: number,
+): string {
   return (value ?? "")
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
     .trim()
@@ -492,6 +496,9 @@ export function createAccountStore(
     },
 
     audit,
+    /** Record an in-process write made outside this store (share links). */
+    markChanged: changed,
+    now,
 
     // Users.
     getUser,
