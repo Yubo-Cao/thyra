@@ -156,6 +156,19 @@ export function parseConnectionSummary(
   };
 }
 
+/** Who the bridge authenticated this page as. */
+export interface BridgePrincipal {
+  kind: "local" | "user";
+  role: "admin" | "member";
+  user: {
+    id: string;
+    name: string;
+    display_name: string;
+    role: "admin" | "member";
+  } | null;
+  session_id?: string;
+}
+
 export interface BridgeHello {
   hello: true;
   socket?: string;
@@ -163,6 +176,7 @@ export interface BridgeHello {
   default_connection_id: string;
   /** Presence participant id the bridge assigned to this page. */
   participant_id?: string;
+  principal?: BridgePrincipal;
   capabilities: {
     connection_id?: boolean;
     connection_scoped_http?: boolean;

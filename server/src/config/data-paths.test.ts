@@ -49,11 +49,7 @@ test("data files never read other product directories", () => {
       write(join(root, ".config", product, name), '{"version":1}\n');
     }
   }
-  for (const name of [
-    "auth-token",
-    "settings.json",
-    "connections.json",
-  ] as const) {
+  for (const name of ["settings.json", "connections.json"] as const) {
     const target = defaultDataFile(name, root, "linux");
     expect(target).toBe(join(root, ".config", "thyra", name));
     expect(existsSync(target)).toBeFalse();
@@ -74,9 +70,11 @@ test("refuses symlinked data directories and files", () => {
   mkdirSync(dataRoot(root, "linux"));
   symlinkSync(
     join(elsewhere, "token"),
-    join(dataRoot(root, "linux"), "auth-token"),
+    join(dataRoot(root, "linux"), "connections.json"),
   );
-  expect(() => defaultDataFile("auth-token", root, "linux")).toThrow("symlink");
+  expect(() => defaultDataFile("connections.json", root, "linux")).toThrow(
+    "symlink",
+  );
 });
 
 test("failed publication leaves no partial target and retries without overwriting", () => {
@@ -149,30 +147,7 @@ test("settings caller saves privately; clearing profiles stays cleared on next l
   expect(readdirSync(current)).toEqual(["settings.json"]);
 });
 
-test("concurrent fresh authentication returns the same complete token", async () => {
-  const root = home();
-  const target = join(dataRoot(root), "auth-token");
-  const script = `import { loadOrCreateAuthToken } from ${JSON.stringify(join(import.meta.dir, "auth-token.ts"))}; console.log(loadOrCreateAuthToken(process.argv[1]));`;
-  const children = Array.from({ length: 6 }, () =>
-    Bun.spawn([process.execPath, "-e", script, target], {
-      stdout: "pipe",
-      stderr: "pipe",
-    }),
-  );
-  const tokens = await Promise.all(
-    children.map(async (child) => {
-      const value = (await new Response(child.stdout).text()).trim();
-      expect(await child.exited).toBe(0);
-      expect(value).toMatch(/^[a-f0-9]{64}$/);
-      return value;
-    }),
-  );
-  expect(new Set(tokens).size).toBe(1);
-  expect(readFileSync(target, "utf8").trim()).toBe(tokens[0]);
-  expect(readdirSync(dirname(target))).toEqual(["auth-token"]);
-});
-
-test("plugin URL reads only the Thyra env file and token", async () => {
+test("plugin URL reads only the Thyra env file", async () => {
   const root = home();
   const appData = join(root, "AppData", "Roaming");
   const current = dataRoot(root, process.platform, appData);
@@ -193,6 +168,5 @@ test("plugin URL reads only the Thyra env file and token", async () => {
   };
   expect(await invoke()).toBe("http://127.0.0.1:8787");
   write(join(current, "thyra.env"), "HOST=0.0.0.0\nPORT=8891\n");
-  write(join(current, "auth-token"), `${"d".repeat(64)}\n`);
-  expect(await invoke()).toBe(`http://localhost:8891/?token=${"d".repeat(64)}`);
+  expect(await invoke()).toBe("http://localhost:8891");
 });

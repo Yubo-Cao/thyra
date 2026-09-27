@@ -361,4 +361,23 @@ export default {
     "在新标签页中输入的命令。保存在此连接的 Thyra 服务器上，由你的各个设备共享。留空则使用默认命令。",
   "{agent} command": "{agent} 命令",
   "Default: {command}": "默认：{command}",
+  // Sharing
+  "Share workspace…": "共享工作区…",
+  "Share workspace": "共享工作区",
+  Viewer: "查看者",
+  "Watches terminals and scrolls history": "查看终端并滚动历史记录",
+  Editor: "编辑者",
+  "Types after taking control, edits files": "接管控制后可输入，可编辑文件",
+  Owner: "所有者",
+  "Also shares and closes the workspace": "还可共享和关闭工作区",
+  "User name or login": "用户名或登录名",
+  "alice or alice@example.com": "alice 或 alice@example.com",
+  Role: "角色",
+  Invite: "邀请",
+  "People need an account first: tailnet users get one on their first visit; others need `thyra user add` on the host.":
+    "对方需要先有账户：tailnet 用户首次访问时自动获得；其他人需要在主机上运行 `thyra user add`。",
+  "People with access": "有权访问的人",
+  "Only instance admins can open this workspace.":
+    "只有实例管理员可以打开此工作区。",
+  "Role of {name}": "{name} 的角色",
 } satisfies Record<string, string>;

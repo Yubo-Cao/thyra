@@ -39,6 +39,8 @@ export type ClientContext = {
   deviceId: string;
   address: string | null;
   userAgent: string;
+  /** The logged-in account: it is the person, whatever the device. */
+  account?: { key: string; displayName: string };
 };
 
 export type IdentityMatch =
@@ -219,12 +221,14 @@ export function createIdentityService<Socket extends object>(args: {
       : tailnet
         ? `tailnet:${address}`
         : `device:${root}`;
-    const personKey = tailscale?.user
+    const tailscalePerson = tailscale?.user
       ? `ts-user:${tailscale.user.login}`
-      : deviceKey;
+      : null;
+    const personKey = context.account?.key ?? tailscalePerson ?? deviceKey;
     const profiles = [
       ...new Set([
         personKey,
+        ...(tailscalePerson ? [tailscalePerson] : []),
         deviceKey,
         `device:${root}`,
         `device:${context.deviceId}`,
@@ -244,7 +248,11 @@ export function createIdentityService<Socket extends object>(args: {
       deviceKey,
       personId: publicId(personKey),
       deviceId: publicId(deviceKey),
-      displayName: customName ?? tailscale?.user?.displayName ?? null,
+      displayName:
+        customName ??
+        context.account?.displayName ??
+        tailscale?.user?.displayName ??
+        null,
       customName: Boolean(customName),
       color,
       deviceName: tailscale?.deviceName || deviceLabel(session.hints),
@@ -534,10 +542,17 @@ export function createIdentityService<Socket extends object>(args: {
      */
     async tailnetUser(
       address: string | null | undefined,
-    ): Promise<{ login: string } | null> {
+    ): Promise<{ login: string; displayName?: string } | null> {
       if (!address || !isTailnetAddress(address)) return null;
       const identity = await args.whois.lookup(address);
-      return identity?.user ? { login: identity.user.login } : null;
+      return identity?.user
+        ? {
+            login: identity.user.login,
+            ...(identity.user.displayName
+              ? { displayName: identity.user.displayName }
+              : {}),
+          }
+        : null;
     },
 
     /** Device key for client counting; falls back to the cookie device. */

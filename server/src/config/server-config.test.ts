@@ -140,14 +140,10 @@ describe("native TLS", () => {
             }),
           ).toBe(0);
           expect(
-            logs.some((line) =>
-              line.startsWith("Open: https://localhost:8443/"),
-            ),
+            logs.some((line) => line === "Open: https://localhost:8443"),
           ).toBe(true);
           expect(
-            logs.some((line) =>
-              line.startsWith("LAN: https://192.0.2.10:8443/"),
-            ),
+            logs.some((line) => line === "LAN: https://192.0.2.10:8443"),
           ).toBe(true);
         }
         const server = Bun.serve({

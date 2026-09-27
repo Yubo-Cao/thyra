@@ -225,33 +225,23 @@ describe("computeUrl", () => {
     expect(computeUrl(fixture({}))).toBe("http://127.0.0.1:8787");
   });
 
-  test("includes the login token only for non-loopback binds", () => {
+  test("never embeds a login token", () => {
     const dir = fixture({
       "thyra.env": "HOST=0.0.0.0\nPORT=8791\n",
       "auth-token": "abc123\n",
     });
-    expect(computeUrl(dir)).toBe("http://localhost:8791/?token=abc123");
+    expect(computeUrl(dir)).toBe("http://localhost:8791");
   });
 
-  test("ignores a stale token file on loopback binds", () => {
+  test("prefers the public base URL, where passkeys live", () => {
     const dir = fixture({
-      "thyra.env": "HOST=127.0.0.1\nPORT=8787\n",
-      "auth-token": "abc123\n",
+      "thyra.env":
+        "HOST=127.0.0.1\nTHYRA_PUBLIC_BASE_URL=https://thyra.example.com/app, http://other\n",
     });
-    expect(computeUrl(dir)).toBe("http://127.0.0.1:8787");
+    expect(computeUrl(dir)).toBe("https://thyra.example.com");
   });
 
-  test("a fixed password omits the token; empty or foreign names do not", () => {
-    const dir = fixture({
-      "thyra.env": "HOST=0.0.0.0\nTHYRA_PASSWORD=secret\n",
-      "auth-token": "saved-token\n",
-    });
-    expect(computeUrl(dir)).toBe("http://localhost:8787");
-    writeFileSync(join(dir, "thyra.env"), "HOST=0.0.0.0\nTHYRA_PASSWORD=\n");
-    expect(computeUrl(dir)).toBe("http://localhost:8787/?token=saved-token");
-  });
-
-  test("honors exported and quoted entries without a token file", () => {
+  test("honors exported and quoted entries", () => {
     const dir = fixture({
       "thyra.env": 'export HOST="0.0.0.0"\nPORT = "8799"\n',
     });

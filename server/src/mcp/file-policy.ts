@@ -44,6 +44,7 @@ export const DEFAULT_DENIED_FILE_PATTERNS: readonly string[] = [
   ".config/gh/hosts.yml",
   ".config/thyra",
   "auth-token",
+  "thyra.db*",
   "mcp-tokens.json",
 ];
 

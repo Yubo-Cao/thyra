@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import {
   DEFAULT_SERVICE_ENV_FILE,
   escapeSystemdExecPath,
@@ -24,13 +24,11 @@ import {
 } from "./service-definitions";
 import { publishDataFile } from "./data-paths";
 import { thyraEnv } from "./environment";
-import { loadOrCreateAuthToken } from "./auth-token";
 import {
   browserUrlFor,
   getLanIPs,
   isAnyHost,
   loadServerTls,
-  withLoginToken,
 } from "./server-config";
 
 type ServiceAction = "install" | "uninstall" | "status" | "restart" | "reload";
@@ -346,9 +344,10 @@ interface ServiceAccess {
   host: string;
   port: number;
   tls: boolean;
-  token?: string;
-  tokenPath?: string;
-  usesFixedPassword: boolean;
+}
+
+function isLoopbackHost(host: string) {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
 function prepareServiceAccess(configPath: string): ServiceAccess {
@@ -366,26 +365,7 @@ function prepareServiceAccess(configPath: string): ServiceAccess {
       readEnvironmentValue(contents, "THYRA_TLS_KEY"),
     ),
   );
-  const password = readEnvironmentValue(contents, "THYRA_PASSWORD") ?? "";
-  const usesFixedPassword = password.length > 0;
-  if (
-    usesFixedPassword ||
-    host === "127.0.0.1" ||
-    host === "localhost" ||
-    host === "::1"
-  ) {
-    return { host, port, tls, usesFixedPassword };
-  }
-
-  const tokenPath = join(dirname(configPath), "auth-token");
-  return {
-    host,
-    port,
-    tls,
-    token: loadOrCreateAuthToken(tokenPath),
-    tokenPath,
-    usesFixedPassword,
-  };
+  return { host, port, tls };
 }
 
 function printServiceAccess(
@@ -393,33 +373,21 @@ function printServiceAccess(
   resolveLanIPs: () => string[],
   log: (message: string) => void,
 ) {
-  if (access.usesFixedPassword) {
-    log("Authentication: fixed password from the service config");
-    log(`Open: ${browserUrlFor(access.host, access.port, access.tls)}`);
-    return;
-  }
-  if (!access.token) {
+  if (isLoopbackHost(access.host)) {
     log(
       `Open: ${browserUrlFor(access.host, access.port, access.tls)} (local access)`,
     );
     return;
   }
-
-  log(`Login token: ${access.token}`);
-  log(`Token file: ${access.tokenPath}`);
-  log(
-    `Open: ${withLoginToken(
-      browserUrlFor(access.host, access.port, access.tls),
-      access.token,
-    )}`,
-  );
+  log(`Open: ${browserUrlFor(access.host, access.port, access.tls)}`);
   if (isAnyHost(access.host)) {
     for (const ip of resolveLanIPs()) {
-      log(
-        `LAN: ${withLoginToken(browserUrlFor(ip, access.port, access.tls), access.token)}`,
-      );
+      log(`LAN: ${browserUrlFor(ip, access.port, access.tls)}`);
     }
   }
+  log(
+    "Log in with a passkey: run `thyra user add <name> --admin` for an enrollment link. Passkeys need HTTPS or localhost.",
+  );
 }
 
 function installService(

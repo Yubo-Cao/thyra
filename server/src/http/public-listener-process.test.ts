@@ -6,7 +6,7 @@ import { join } from "node:path";
 // The real server with both listeners: the tailnet listener behind a
 // simulated Caddy and the public listener behind a simulated cloudflared.
 test.skipIf(process.platform === "win32")(
-  "the public listener serves only login and assets and never trusts tailnet headers",
+  "the public listener serves only passkey login and assets and never trusts tailnet headers",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "thyra-public-"));
     const whoisLog = join(root, "whois.log");
@@ -32,7 +32,7 @@ esac
         HOST: "127.0.0.1",
         PORT: "0",
         OPEN_BROWSER: "0",
-        THYRA_PASSWORD: "correct horse",
+        THYRA_DB_PATH: join(root, "thyra.db"),
         THYRA_PUBLIC_BASE_URL: "https://dev.example",
         THYRA_TRUSTED_PROXIES: "loopback",
         THYRA_PUBLIC_LISTEN: "127.0.0.1:0",
@@ -122,7 +122,28 @@ esac
       const csp = login.headers.get("content-security-policy") ?? "";
       expect(csp).toContain("script-src 'self'");
       expect(csp).toContain("frame-ancestors 'none'");
-      expect(await login.text()).not.toContain("<form");
+      // No inline script: the passkey logic is an external same-origin file.
+      const loginHtml = await login.text();
+      expect(loginHtml).toContain('<script src="/auth/passkey.js" defer>');
+      expect(loginHtml).not.toContain("<form");
+      const script = await pub("/auth/passkey.js", { headers: cloudflared() });
+      expect(script.status).toBe(200);
+      expect(script.headers.get("content-type")).toContain("text/javascript");
+      // Passkeys are bound to the public host name.
+      const options = await pub("/api/auth/passkey/login/options", {
+        method: "POST",
+        headers: {
+          ...cloudflared(),
+          origin: "https://thyra.example",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      });
+      expect(options.status).toBe(200);
+      expect(
+        ((await options.json()) as { options?: { rpId?: string } }).options
+          ?.rpId,
+      ).toBe("thyra.example");
       expect(
         (await pub("/thyra-icon.svg", { headers: cloudflared() })).status,
       ).toBe(200);
@@ -140,8 +161,8 @@ esac
       expect(app.status).toBe(302);
       expect(app.headers.get("location")).toBe("/login");
 
-      // The owner's password, a tailnet cookie, and every header that
-      // claims tailnet identity are all ignored.
+      // The removed password login, a tailnet cookie, and every header
+      // that claims tailnet identity are all ignored.
       const passwordLogin = await pub("/api/login", {
         method: "POST",
         headers: {
@@ -219,7 +240,7 @@ esac
       expect(tailnet.status).toBe(200);
       const session = tailnet.headers
         .getSetCookie()
-        .find((cookie) => cookie.startsWith("herdr_auth="));
+        .find((cookie) => cookie.startsWith("thyra_session="));
       expect(session).toContain("; Secure");
       const cookie = session?.split(";", 1)[0] ?? "";
       expect(

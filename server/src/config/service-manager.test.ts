@@ -214,18 +214,14 @@ describe("service commands", () => {
     );
     expect(readFileSync(configPath, "utf8")).toContain("HOST=0.0.0.0");
     expect(statSync(configPath).mode & 0o777).toBe(0o600);
-    const tokenPath = join(homeDir, ".config", "thyra", "auth-token");
-    const token = readFileSync(tokenPath, "utf8").trim();
-    expect(token).toMatch(/^[a-f0-9]{64}$/);
-    expect(statSync(tokenPath).mode & 0o777).toBe(0o600);
+    // Browsers log in with passkeys; install never creates a shared token.
+    expect(existsSync(join(homeDir, ".config", "thyra", "auth-token"))).toBe(
+      false,
+    );
     expect(logs.join("\n")).toContain("Installed systemd service");
-    expect(logs.join("\n")).toContain(`Login token: ${token}`);
-    expect(logs.join("\n")).toContain(
-      `Open: http://localhost:8787/?token=${token}`,
-    );
-    expect(logs.join("\n")).toContain(
-      `LAN: http://192.0.2.23:8787/?token=${token}`,
-    );
+    expect(logs).toContain("Open: http://localhost:8787");
+    expect(logs).toContain("LAN: http://192.0.2.23:8787");
+    expect(logs.join("\n")).toContain("thyra user add <name> --admin");
   });
 
   test("reloads the systemd definition before restarting", () => {
@@ -641,9 +637,7 @@ describe("service commands", () => {
     );
     expect(definition).toContain(`service run "${configPath}"`);
     expect(readFileSync(configPath, "utf8")).toContain("HOST=0.0.0.0");
-    expect(
-      readFileSync(join(appDataDir, "thyra", "auth-token"), "utf8").trim(),
-    ).toMatch(/^[a-f0-9]{64}$/);
+    expect(existsSync(join(appDataDir, "thyra", "auth-token"))).toBe(false);
 
     expect(
       runServiceCommand(["service", "status"], { runtime, runCommand }),

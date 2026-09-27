@@ -2,12 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-import {
-  authorizeRpc,
-  DENIED_RPC_METHODS,
-  RPC_POLICY,
-  rpcRoleFor,
-} from "./policy";
+import { DENIED_RPC_METHODS, lookupRpc, RPC_POLICY } from "./policy";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
 const METHOD = String.raw`[a-z_]+(?:\.[a-z_]+)+`;
@@ -138,7 +133,7 @@ describe("RPC policy coverage", () => {
   });
 });
 
-describe("authorizeRpc", () => {
+describe("lookupRpc", () => {
   test.each([
     "server.stop",
     "server.live_handoff",
@@ -146,7 +141,7 @@ describe("authorizeRpc", () => {
     "integration.install",
     "agent.prompt",
   ])("denies the dangerous Herdr method %s with a reason", (method) => {
-    const decision = authorizeRpc(method);
+    const decision = lookupRpc(method);
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.message).toContain(method);
   });
@@ -159,7 +154,7 @@ describe("authorizeRpc", () => {
     "constructor",
     "",
   ])("denies unlisted method %p by default", (method) => {
-    expect(authorizeRpc(method).allowed).toBe(false);
+    expect(lookupRpc(method).allowed).toBe(false);
   });
 
   test("classes display ownership: sizing and pinning write, previews read", () => {
@@ -169,36 +164,25 @@ describe("authorizeRpc", () => {
       "terminal.relay_resize",
       "terminal.focus",
       "terminal.input",
-    ])
+    ]) {
       expect(RPC_POLICY[method]?.class).toBe("write");
-    expect(RPC_POLICY["terminal.stream"]).toEqual({ class: "read" });
-    expect(RPC_POLICY["terminal.preview_text"]).toEqual({ class: "read" });
+      expect(RPC_POLICY[method]?.writer).toBeDefined();
+    }
+    expect(RPC_POLICY["terminal.stream"]).toMatchObject({
+      class: "read",
+      scope: "session",
+    });
+    expect(RPC_POLICY["terminal.preview_text"]).toMatchObject({
+      class: "read",
+      scope: "workspace",
+    });
     // Browsers never choose pane.read parameters themselves.
     expect(RPC_POLICY["pane.read"]).toBeUndefined();
   });
 
-  test("allows listed methods for the owner", () => {
+  test("finds every listed method", () => {
     for (const method of Object.keys(RPC_POLICY)) {
-      expect(authorizeRpc(method).allowed).toBe(true);
-    }
-  });
-});
-
-describe("roles by listener", () => {
-  test("private listeners authenticate only the owner", () => {
-    expect(rpcRoleFor("tailnet", null)).toBe("owner");
-    expect(rpcRoleFor("local", null)).toBe("owner");
-  });
-
-  test("the public listener grants nothing without a principal", () => {
-    expect(rpcRoleFor("public", null)).toBe("anonymous");
-    expect(rpcRoleFor("public", "anonymous")).toBe("anonymous");
-    expect(rpcRoleFor("public", "owner")).toBe("owner");
-  });
-
-  test("the anonymous role can call no method", () => {
-    for (const method of Object.keys(RPC_POLICY)) {
-      expect(authorizeRpc(method, "anonymous").allowed).toBe(false);
+      expect(lookupRpc(method).allowed).toBe(true);
     }
   });
 });

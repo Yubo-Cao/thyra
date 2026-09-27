@@ -6,111 +6,104 @@ Security fixes cover the latest release.
 
 ## Reporting a Vulnerability
 
-**Do not open a public issue.** Use a private repository security advisory with
-versions, reproduction steps, and impact. If unavailable, use the maintainer's
-GitHub-profile contact address.
+**Do not open a public issue.** Use a private repository security advisory with versions, reproduction steps, and impact.
+If unavailable, use the maintainer's GitHub-profile contact address.
 
 ## Trust Model
 
-**UI access grants the Thyra user's authority:** terminals, repository hooks,
-session data, and workspace uploads/deletions. This is privileged administration,
-not a sandbox or multi-user permission system.
+Thyra runs as one operating-system user and drives that user's Herdr.
+**A terminal is that user's shell:** anyone who may type into a pane can run any command the Thyra user can, read any file it can, and reach anything on its network.
+Workspace grants decide which terminals, files and events a person sees and whether they may type; they are not a sandbox.
+Grant **editor** only to people you would give a shell account on the host.
 
-The default bind is `127.0.0.1`. Listeners configured as `127.0.0.1`, `localhost`,
-or `::1` skip login only for **direct local use**: a loopback peer that sends no
-forwarding headers, addresses a loopback host, and carries no foreign `Origin`.
-An SSH port forward is direct local use. A request that arrives through a reverse
-proxy (`X-Forwarded-*`, `Forwarded`, or `X-Real-IP`) is never local and must log in
-with `THYRA_PASSWORD` or the generated token, even on a loopback listener.
+### Who is logged in
 
-**Tailnet login** (`THYRA_TAILNET_AUTH=admin`, the default when Tailscale `whois`
-is available) logs in a proxied request without a password when the proxy is in
-`THYRA_TRUSTED_PROXIES`, the forwarded client address is a tailnet address
-(`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), and `whois` names a Tailscale user for it;
-the browser then receives the normal session cookie. Every user of the tailnet who
-can reach the proxy therefore gets full (owner) access; restrict it with Tailscale
-ACLs. Tagged nodes, unknown peers, and `whois` failures fall back to the login page.
-Set `THYRA_TAILNET_AUTH=off` for a proxy reachable from outside the tailnet: a
-public tunnel (such as `cloudflared`) must never be combined with tailnet login.
+- **Direct local use.** Listeners on `127.0.0.1`, `localhost` or `::1` skip login for a loopback peer that sends no forwarding headers, addresses a loopback host, and carries no foreign `Origin` (an SSH port forward counts).
+  It acts as the host owner (instance admin) without an account.
+  A request that arrived through a reverse proxy (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`) is never local.
+- **Tailnet login** (`THYRA_TAILNET_AUTH=admin`, the default when Tailscale `whois` works).
+  A proxied request from a proxy in `THYRA_TRUSTED_PROXIES` whose forwarded client address is a tailnet address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) that `whois` maps to a user is logged in to that user's account, which is created on first sight and linked to the Tailscale login.
+  New tailnet accounts are **instance admins** (`THYRA_TAILNET_AUTH=member` makes them members); a later `thyra user role` change or `thyra user disable` is kept.
+  Restrict who reaches the proxy with Tailscale ACLs.
+  Tagged nodes, unknown peers and `whois` failures get the login page.
+  Never enable tailnet login on a proxy or listener reachable from outside the tailnet, such as a public tunnel.
+- **Passkeys** (WebAuthn) for everyone else.
+  `thyra user add <name>` on the host prints a single-use enrollment link, valid for 24 hours, whose secret is in the URL fragment (never sent to servers or logs).
+  A passkey belongs to the host name it was created on and needs HTTPS or `localhost`; plain HTTP to a LAN address cannot log in.
+  A logged-in user adds passkeys for the current host under **Configuration > Account**.
 
-**Listeners decide trust, never headers.** The primary listener (`HOST`/`PORT`)
-is `tailnet` when tailnet login is on and `local` otherwise. The optional
-**public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always
-`public`: no loopback bypass, tailnet login, owner password or token, `?token=`
-link, or primary-listener cookie authenticates there; `X-Forwarded-*` and
-Tailscale headers are ignored; `CF-Connecting-IP` sets only the rate-limit address,
-and only from `THYRA_PUBLIC_TRUSTED_PROXIES` (loopback by default); `Host` and
-`Origin` must be `THYRA_PUBLIC_ORIGIN`. It sends HSTS and a strict Content Security
-Policy and sets only `__Host-` cookies. Without an account sign-in it serves the
-login page and static assets and refuses every API, MCP and WebSocket request, and
-a public socket without an account principal holds no RPC class. On the primary
-listener, the public host gets `421` and a request carrying Cloudflare headers never
-gets tailnet login, so a misrouted tunnel fails closed. See
-[public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
+There is no shared password or token login.
+The session cookie `thyra_session` holds a random 256-bit id; the database stores only its SHA-256 digest.
+Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, and last 30 days.
+When a user's role, grants or status change, their sessions are rotated to a new id on the next request, and their open pages are disconnected (close code 4003) and reconnect under the new authority.
+**Log out** and **Sign out** (Configuration > Account), `thyra session revoke`, `thyra user disable` and `thyra user remove` end sessions at once: live connections close within a second, including sessions ended from the CLI while the server runs.
+Passkey and enrollment attempts allow 10 failures a minute per client address (forwarded only by trusted proxies), then block that address for a minute, doubling up to 15 minutes.
 
-**Do not expose the primary listener to the public internet**; use the public
-listener behind Cloudflare Tunnel for a public address. For non-loopback:
+**Listeners decide trust, never headers.**
+The primary listener (`HOST`/`PORT`) is `tailnet` when tailnet login is on and `local` otherwise.
+The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always `public`: only a passkey session in its own `__Host-thyra_session` cookie authenticates there, never the loopback bypass, tailnet login or the primary listener's cookie.
+On the public listener `X-Forwarded-*` and Tailscale headers are ignored, `CF-Connecting-IP` sets only the rate-limit address (and only from `THYRA_PUBLIC_TRUSTED_PROXIES`, loopback by default), and `Host` and `Origin` must be `THYRA_PUBLIC_ORIGIN`.
+It sends HSTS and a strict Content Security Policy (the login page's script is the same-origin `/auth/passkey.js`), and sets only `__Host-` cookies.
+Before login it serves the login and enrollment pages, the passkey ceremonies and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
+On the primary listener, the public host gets `421` and a request carrying Cloudflare headers never gets tailnet login, so a misrouted tunnel fails closed.
+See [public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
 
-- Set a strong `THYRA_PASSWORD`; prefer it to `--password`, which exposes
-  secrets in process arguments.
-- Use [native HTTPS](docs/DEPLOYMENT.md#native-https), an HTTPS proxy, or a trusted
-  VPN; restrict access with a firewall/reverse proxy.
-- Treat worktree hooks as executable code.
+### What each role may do
+
+Instance **admins** (and direct local use) may do everything, including host-wide file browsing (`scope: "filesystem"`), the project launcher, worktree creation and hooks, repository settings, connections and SSH profiles, Herdr setup, updates, plugins and integrations, and every workspace.
+**Members** see only workspaces granted to them:
+
+| Workspace role | May |
+| --- | --- |
+| viewer | list and watch its terminals, scroll history, read its files, Git state and agent history |
+| editor | also type (single writer, below), change layout, edit files, run Git actions, use voice input |
+| owner | also rename, close and share the workspace, and take control of a pane at any time |
+
+Workspace lists, events, presence, pane claims, bridge status and Web Push notifications are filtered to the caller's workspaces.
+Grants name a connection and a Herdr workspace id; Herdr keeps ids across restarts and live handoff, and a workspace's grants are deleted when Herdr reports it closed.
+
+**Single writer.** Only the holder of a pane's claim may send it input, resize it or move its terminal focus; the same person's other pages may type too.
+Typing into an unclaimed pane claims it with 15 seconds of protection.
+An editor takes control with **Take control** once the protection ends; owners and admins may take it at any time.
+Viewers never write; viewers, and editors while another person holds the pane, scroll only Herdr's history.
+
+### Browser request checks
+
+Browser requests are bound to Thyra's own origin, so another web page open in a signed-in (or local) browser cannot drive the bridge:
+
+- **Host allowlist.** `Host` (or a trusted proxy's `X-Forwarded-Host`) must be a loopback name, an IP literal, the bind host, or a host in `THYRA_PUBLIC_BASE_URL`; anything else gets `421`.
+  This defeats DNS rebinding.
+- **Origin allowlist.** WebSocket upgrades and every non-GET/HEAD request need an `Origin` equal to the request's own origin (as seen through a trusted proxy), a `THYRA_PUBLIC_BASE_URL` origin, or `http://localhost:<port>`/`127.0.0.1:<port>`.
+  Without `Origin` they are accepted only as direct local use.
+  API reads are also refused for a foreign `Origin` or a cross-site/same-site `Sec-Fetch-Site`.
+- **Deny by default.** Every WebSocket method and HTTP route is looked up in a policy table (`server/src/authz/policy.ts`, `server/src/authz/http-policy.ts`) that names its class, scope and target; anything unlisted is refused.
+  Herdr methods the web client does not use, such as `server.stop`, `plugin.enable`, `integration.install` or `agent.prompt`, are rejected for everyone.
+- **Presence.** The bridge assigns each page's collaboration participant id and role; a page can claim, release, or leave only as itself.
+
+Thyra's HTML pages send `Referrer-Policy: no-referrer` and `frame-ancestors 'none'`.
+
+### Exposure
+
+**Do not expose the primary listener to the public internet**; use the public listener behind Cloudflare Tunnel for a public address.
+For non-loopback listeners, use [native HTTPS](docs/DEPLOYMENT.md#native-https), an HTTPS proxy, or a trusted VPN, and restrict access with a firewall or reverse proxy.
+Treat worktree hooks as executable code.
 
 [Voice input](docs/DEPLOYMENT.md#voice-input) sends recorded speech segments to the configured providers; a cloud provider receives that audio, and a fallback provider receives it when the primary fails.
 Dictation cleanup sends the transcript text to the configured language model.
 Personal dictionary terms accompany recognition and cleanup requests.
-Their credentials stay in the service environment, and any authenticated client can use them.
+Their credentials stay in the service environment; any editor of any workspace can use them.
 
-Browser requests are bound to Thyra's own origin, so another web page open in a
-signed-in (or local) browser cannot drive the bridge:
+Updates trust the configured HTTPS release origin (or explicit loopback test mirror) and its manifest/checksums.
+Checksums detect corruption and bind the archive, **not independently verify publisher identity**.
+Custom mirrors are trusted executable-code infrastructure.
+Update requests need an instance admin plus `x-thyra-update: 1`.
 
-- **Host allowlist.** `Host` (or a trusted proxy's `X-Forwarded-Host`) must be a
-  loopback name, an IP literal, the bind host, or a host in `THYRA_PUBLIC_BASE_URL`;
-  anything else gets `421`. This defeats DNS rebinding.
-- **Origin allowlist.** WebSocket upgrades and every non-GET/HEAD request need an
-  `Origin` equal to the request's own origin (as seen through a trusted proxy), a
-  `THYRA_PUBLIC_BASE_URL` origin, or `http://localhost:<port>`/`127.0.0.1:<port>`.
-  Without `Origin` they are accepted only as direct local use. API reads are also
-  refused for a foreign `Origin` or a cross-site/same-site `Sec-Fetch-Site`.
-- **RPC policy.** Every WebSocket method is looked up in a deny-by-default table
-  (`server/src/authz/policy.ts`) classed read, write, admin, or dangerous. Herdr
-  methods the web client does not use, such as `server.stop`, `plugin.enable`,
-  `integration.install`, or `agent.prompt`, are rejected.
-- **Presence.** The bridge assigns each page's collaboration participant id and
-  role; a page can claim, release, or leave only as itself.
+The account database (`~/.config/thyra/thyra.db`, mode `0600`) holds accounts, passkey public keys, session digests, grants and an audit log; protect it and its backups.
 
-`/api/login` and `?token=` logins allow 10 failures a minute per client address
-(forwarded by trusted proxies), then block that address for a minute, doubling up
-to 15 minutes. `?token=` works only on a page navigation, which sets the cookie
-and redirects to the same URL without the token. Thyra's HTML pages send
-`Referrer-Policy: no-referrer` and `frame-ancestors 'none'`.
-
-Authenticated access still has full authority. Secure the outer access path:
-native TLS encrypts transport but supplies no multi-user authorization or
-sandboxing. Without TLS configuration, the listener uses unencrypted HTTP.
-
-**Menu > Log out** removes this browser's authentication cookie, disconnects its
-active tabs, and returns to login. It does not stop terminals, change the server
-password/token, or log out other browsers. The action is hidden when this browser
-did not need to log in. Cookies are stateless signed credentials: logout removes
-the browser's copy, but does not revoke a copied cookie before its expiry. Rotate
-the server credential if it or a session cookie has been compromised.
-
-Updates trust the configured HTTPS release origin (or explicit loopback test
-mirror) and its manifest/checksums. Checksums detect corruption and bind the
-archive, **not independently verify publisher identity**. Custom mirrors are
-trusted executable-code infrastructure.
-
-Protect the auth token and its backups; see
-[token rotation](./docs/DEPLOYMENT.md#run-as-a-user-service).
-Update requests require normal listener authentication plus `x-thyra-update: 1`,
-which does not replace login.
-
-Web Push subscription mutations require listener authentication, JSON, and
-`x-thyra-push: 1`; cross-site browser requests are rejected. Push endpoints
-are restricted to supported browser-provider HTTPS hosts and are never followed
-through redirects. Treat the private push registry as credentials. Revoking a
-login password or logging out does not revoke device subscriptions: disable Web Push or remove
-subscriptions separately. Notification payloads can expose agent names and
-routing IDs on lock screens. See [Web Push configuration](docs/DEPLOYMENT.md#web-push-notifications).
+Web Push subscription mutations require a login, JSON, and `x-thyra-push: 1`; cross-site browser requests are rejected.
+Each subscription records the account that created it and receives notifications only for workspaces that account may see.
+Push endpoints are restricted to supported browser-provider HTTPS hosts and are never followed through redirects.
+Treat the private push registry as credentials.
+Logging out does not remove device subscriptions: disable Web Push or remove subscriptions separately.
+Notification payloads can expose agent names and routing IDs on lock screens.
+See [Web Push configuration](docs/DEPLOYMENT.md#web-push-notifications).

@@ -50,15 +50,7 @@ export default {
   "No history": "无历史记录",
   "Pane control": "窗格控制",
   Viewing: "只读",
-  "You control this pane's layout. Collaborators can still type.":
-    "你正在控制此窗格的布局。协作者仍可输入。",
   Layout: "布局",
-  "Another collaborator has protected layout control":
-    "另一位协作者已锁定布局控制",
-  "{owner} controls layout. Take layout control for 15 seconds; collaborators can still type":
-    "{owner} 正在控制布局。接管布局控制 15 秒；协作者仍可输入",
-  "Take layout control for 15 seconds; collaborators can still type":
-    "接管布局控制 15 秒；协作者仍可输入",
   "Take control": "接管控制",
   Typing: "输入中",
   "You type here; {device} keeps the pane size":
@@ -329,4 +321,15 @@ export default {
     "选择已有按钮进行编辑，或选择空的 + 槽位添加按钮。",
   "Restore defaults": "恢复默认",
   "Save shortcuts": "保存快捷键",
+  // Single-writer pane control
+  "You control this pane. Others watch until they take control.":
+    "你正在控制此窗格。其他人在接管前只能查看。",
+  "In control": "控制中",
+  "Another collaborator has protected control": "另一位协作者已锁定控制",
+  "{owner} controls this pane. Take control; it stays yours for at least 15 seconds":
+    "{owner} 正在控制此窗格。接管后至少保持 15 秒",
+  "Take control of this pane; it stays yours for at least 15 seconds":
+    "接管此窗格的控制，至少保持 15 秒",
+  "Another collaborator controls this pane. Try again when its protection ends.":
+    "另一位协作者正在控制此窗格。请在其保护期结束后重试。",
 } satisfies Record<string, string>;

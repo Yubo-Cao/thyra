@@ -19,8 +19,9 @@ export const DEFAULT_SERVICE_ENV_FILE = `# thyra service environment
 HOST=0.0.0.0
 PORT=8787
 
-# Optional fixed password. By default, service install creates a generated token.
-# THYRA_PASSWORD=replace-with-a-strong-password
+# Browsers log in with passkeys: run \`thyra user add <name> --admin\` for an
+# enrollment link. Passkeys need HTTPS (see below or a proxy) or localhost.
+# THYRA_PUBLIC_BASE_URL=https://thyra.example.com
 
 # Optional native HTTPS. Set both to absolute PEM file paths.
 # THYRA_TLS_CERT=/path/to/cert-chain.pem

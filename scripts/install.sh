@@ -36,13 +36,13 @@ Usage: install.sh [options]
 Options:
   --version X.Y.Z   Install this Thyra release instead of the latest one.
   --port N          Thyra's port for a new service config (default 8787).
-  --lan             Listen on all interfaces with a generated login token.
+  --lan             Listen on all interfaces; browsers log in with passkeys.
   --local           Listen on 127.0.0.1 only (the default for new configs).
   --no-service      Install binaries only; do not create or start services.
   --no-herdr        Do not install or start Herdr.
   --replace-herdr   Replace a Herdr binary this installer did not install.
   --uninstall       Stop and remove the services and installed binaries.
-  --purge           With --uninstall, also delete ~/.config/thyra (tokens,
+  --purge           With --uninstall, also delete ~/.config/thyra (accounts,
                     connection profiles, settings). Herdr data is never removed.
   -h, --help        Show this help.
 
@@ -338,11 +338,11 @@ write_service_config() {
 # upgrade; restart the service after editing (thyra service restart).
 # HOST=127.0.0.1 accepts only this machine and needs no login. For phones and
 # other computers, publish it privately with Tailscale Serve, or set
-# HOST=0.0.0.0 to require the generated login token on your LAN.
+# HOST=0.0.0.0 and log in with passkeys (thyra user add <name> --admin).
 HOST=$host
 PORT=$port
 
-# THYRA_PASSWORD=replace-with-a-strong-password
+# THYRA_PUBLIC_BASE_URL=https://thyra.example.com
 # THYRA_TLS_CERT=/path/to/cert-chain.pem
 # THYRA_TLS_KEY=/path/to/private-key.pem
 # THYRA_LOG_LEVEL=info
@@ -421,7 +421,7 @@ uninstall() {
     say "Removed $config_dir"
   else
     [ -d "$config_dir" ] &&
-      say "Kept $config_dir (tokens, connections, settings); --purge removes it"
+      say "Kept $config_dir (accounts, connections, settings); --purge removes it"
   fi
   say "Herdr's own data in ~/.config/herdr was not changed."
 }
@@ -663,7 +663,8 @@ main() {
       say "  Open http://127.0.0.1:$port on this machine (no login needed)."
       ;;
     *)
-      say "  Use the tokenized URL printed above; the token is in $config_dir/auth-token."
+      say "  Create your login: thyra user add <name> --admin (prints a passkey enrollment link;"
+      say "  passkeys need HTTPS or localhost)."
       ;;
     esac
     say "  Service config: $config_file"

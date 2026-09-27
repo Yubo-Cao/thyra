@@ -131,6 +131,7 @@ bun run dev:web
 ## 安全
 
 Thyra 能控制终端，也会修改真实文件。请保持默认的仅本机（loopback）监听；允许其他设备访问前，请先阅读 [SECURITY.md](./SECURITY.md)。
+tailnet 用户自动以管理员身份登录，其他人使用通行密钥登录，工作区可按查看者、编辑者或所有者共享（见[账户与登录](./docs/DEPLOYMENT.md#accounts-and-login)）。
 
 ## 许可证
 

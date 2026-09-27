@@ -32,8 +32,10 @@ const snapshot: CollaborationSnapshot = {
   ],
   lease_ttl_ms: 400,
 };
-test("layout ownership is pane-specific, expires, and does not grant input in view-only mode", () => {
+test("control is pane-specific, exclusive, expires, and does not grant input in view-only mode", () => {
+  // One writer: another person's claim blocks input and resizing here.
   expect(paneControlState(snapshot, "p1", "bob", false, 200)).toMatchObject({
+    viewOnly: true,
     ownsLayout: false,
     canResize: false,
     ownerName: "Alice",
@@ -48,9 +50,30 @@ test("layout ownership is pane-specific, expires, and does not grant input in vi
     viewOnly: true,
   });
   expect(paneControlState(snapshot, "p1", "bob", false, 501)).toMatchObject({
+    viewOnly: false,
     ownerName: null,
     canResize: true,
   });
+});
+test("the same person's other page may type but not resize; viewers never write", () => {
+  const annotated: CollaborationSnapshot = {
+    ...snapshot,
+    participants: [{ ...snapshot.participants[0], person_id: "person-a" }],
+  };
+  expect(
+    paneControlState(annotated, "p1", "alice-phone", false, 200, {
+      personId: "person-a",
+    }),
+  ).toMatchObject({ viewOnly: false, canResize: false, readOnly: false });
+  expect(
+    paneControlState(snapshot, "p2", "bob", false, 200, { readOnly: true }),
+  ).toMatchObject({ viewOnly: true, canResize: false, readOnly: true });
+  // Workspace owners may take control during another's protection.
+  expect(
+    paneControlState(snapshot, "p1", "bob", false, 200, {
+      overridesProtection: true,
+    }).protectedUntil,
+  ).toBe(0);
 });
 test("names the owner's device so another device of the same person is clear", () => {
   const annotated: CollaborationSnapshot = {
@@ -79,6 +102,7 @@ test("one live gate blocks keys, IME, paste/composer and resizing while preservi
   };
   let access: PaneControlState = {
     viewOnly: true,
+    readOnly: false,
     ownsLayout: false,
     canResize: false,
     ownerName: "Alice",
@@ -128,6 +152,8 @@ const participant = (
   ...snapshot.participants[0],
   participant_id: id,
   display_name: id,
+  // One person with two devices.
+  person_id: "person-a",
   device_id: device,
   activity,
 });
@@ -162,17 +188,26 @@ test("a device typing into a pane another device displays is input-only", () => 
     inputOnly: true,
     display: { mine: false, pinned: true, name: "ipad (iPad)", active: true },
   });
-  // The iPad keeps sizing the pane without holding the claim.
-  expect(paneControlState(state, "p1", "ipad", false, 200)).toMatchObject({
-    ownsLayout: false,
-    canResize: true,
-    inputOnly: false,
-    display: { mine: true },
-  });
+  // The iPad keeps sizing the pane without holding the claim, because the
+  // claim holder is the same person.
+  const same = { personId: "person-a" };
+  expect(paneControlState(state, "p1", "ipad", false, 200, same)).toMatchObject(
+    {
+      ownsLayout: false,
+      canResize: true,
+      inputOnly: false,
+      display: { mine: true },
+    },
+  );
   // A reloaded iPad page is the same device, so the pin is still its own.
   expect(
-    paneControlState(state, "p1", "ipad-reloaded", false, 200).canResize,
+    paneControlState(state, "p1", "ipad-reloaded", false, 200, same).canResize,
   ).toBe(true);
+  // Another person's claim leaves a display owner nothing to size.
+  expect(
+    paneControlState(state, "p1", "ipad", false, 200, { personId: "person-b" })
+      .canResize,
+  ).toBe(false);
   // Viewing only never sizes or types, even for the display owner.
   expect(paneControlState(state, "p1", "ipad", true, 200)).toMatchObject({
     canResize: false,

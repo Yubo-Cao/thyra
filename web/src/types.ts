@@ -61,7 +61,11 @@ export interface Workspace {
   active_tab_id?: string;
   agent_status: string;
   worktree?: WorktreeInfo;
+  /** The caller's role here: owners share it, viewers only watch. */
+  access?: WorkspaceAccess;
 }
+
+export type WorkspaceAccess = "owner" | "editor" | "viewer";
 
 export interface Tab {
   tab_id: string;

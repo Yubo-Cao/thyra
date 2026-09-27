@@ -15,7 +15,10 @@ export type PaneDisplayOwner = {
 };
 
 export type PaneControlState = {
+  /** No input or resizing: chosen here, a viewer, or another person controls it. */
   viewOnly: boolean;
+  /** The caller is a viewer of this workspace and cannot take control. */
+  readOnly: boolean;
   ownsLayout: boolean;
   canResize: boolean;
   ownerName: string | null;
@@ -82,25 +85,44 @@ export function paneControlState(
   participantId: string,
   viewOnly: boolean,
   now = Date.now(),
+  options: {
+    readOnly?: boolean;
+    overridesProtection?: boolean;
+    personId?: string | null;
+  } = {},
 ): PaneControlState {
   const claim = snapshot?.pane_claims.find(
     (item) => item.pane_id === paneId && item.expires_at_unix_ms > now,
   );
   const ownsLayout = claim?.participant_id === participantId;
   const display = displayOwnerState(snapshot, paneId, participantId);
+  const owner = claim
+    ? snapshot?.participants.find(
+        (item) => item.participant_id === claim.participant_id,
+      )
+    : undefined;
+  // One writer per pane: the claim holder, or this person's other pages.
+  const samePerson =
+    !!options.personId && owner?.person_id === options.personId;
+  const heldByOther = !!claim && !ownsLayout && !samePerson;
+  const readOnly = options.readOnly === true;
+  const blocked = viewOnly || readOnly || heldByOther;
   return {
-    viewOnly,
+    viewOnly: blocked,
+    readOnly,
     ownsLayout,
     // A display owner alone sizes the pane; otherwise the claim holder does.
-    canResize: !viewOnly && (display ? display.mine : !claim || ownsLayout),
+    canResize: !blocked && (display ? display.mine : !claim || ownsLayout),
     ownerName: claim
       ? (participantLabel(snapshot, claim.participant_id) ??
         t("Another collaborator"))
       : null,
     protectedUntil:
-      claim && !ownsLayout ? (claim.protected_until_unix_ms ?? 0) : 0,
+      claim && !ownsLayout && !options.overridesProtection
+        ? (claim.protected_until_unix_ms ?? 0)
+        : 0,
     display,
-    inputOnly: !viewOnly && ownsLayout && !!display && !display.mine,
+    inputOnly: !blocked && ownsLayout && !!display && !display.mine,
   };
 }
 

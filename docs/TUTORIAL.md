@@ -29,15 +29,16 @@ browser leaves terminals running; host sleep, shutdown, or process exit can stop
    starts both as user services, and prints the address. A Herdr you already
    run is kept. Plugin users instead use the [startup action](./DEPLOYMENT.md#herdr-plugin)
    and obtain the URL from its panel/log; the plugin does not add the CLI to PATH.
-2. Open the printed URL, including any token, **on the same computer**.
+2. Open the printed URL **on the same computer**.
 3. Open a trusted project in a Herdr workspace, select an idle shell, and run
    `pwd` (`Get-Location` in PowerShell).
 
 **You are done when:** terminal input shows your project directory.
 
 Standalone and the installer's service default to `127.0.0.1:8787`, which
-**skips login for direct local use even with a password**; proxied access logs in. A service created by
-`thyra service install` or the plugin alone defaults to `0.0.0.0:8787` with a token.
+**skips login for direct local use**; proxied access logs in. A service created by
+`thyra service install` or the plugin alone defaults to `0.0.0.0:8787`, where every browser logs in with a
+[passkey](./DEPLOYMENT.md#accounts-and-login).
 
 ![Desktop workspace: agents and their status in the tree, an agent terminal, and the Changes inspector](./images/thyra-desktop-changes.png)
 
@@ -170,11 +171,11 @@ Hop B: Thyra -> Herdr       (local sockets / Thyra SSH profile)
 - Admit only fully trusted people/devices. UI access has the Thyra user's authority.
 - **Loopback skips login only for direct local use.** An SSH tunnel is direct
   local use, so it becomes the entire remote access boundary. Requests through a
-  reverse proxy such as Serve log in with the password or token, or by Tailscale
-  identity for tailnet users ([tailnet login](./DEPLOYMENT.md#reverse-proxies-and-allowed-origins)).
+  reverse proxy such as Serve log in with a passkey, or by Tailscale identity for
+  tailnet users ([accounts and login](./DEPLOYMENT.md#accounts-and-login)).
 - Use trusted HTTPS/encrypted tunnels and restrict listener/access policy.
-  Authentication alone adds no TLS, rate limiting, permission roles, or sandbox.
-- Keep passwords, token URLs, and Tailcat addresses out of screenshots, issues,
+  Workspace roles limit what people see and whether they type, but a terminal is still your shell: see [Security](../SECURITY.md#trust-model).
+- Keep enrollment links, MCP tokens, and Tailcat addresses out of screenshots, issues,
   chats, and committed configuration. Read [Security](../SECURITY.md).
 
 <a id="tailscale"></a>
@@ -215,7 +216,7 @@ remain encrypted.
    public certificate transparency logs, so avoid sensitive names.
 5. On the Tailscale-connected phone, open the **printed HTTPS hostname**, not an
    IP or localhost. Tailnet login signs you in by Tailscale identity; if the login
-   page appears, use the password or the token from `~/.config/thyra/auth-token`.
+   page appears, the device is not a tailnet user's (a tagged node) or `whois` failed.
    Run `pwd` in an idle pane. Verify excluded devices cannot
    connect, using policy tests if no test device exists. With Tailscale off and
    no other access path, the URL should be unreachable.
@@ -333,13 +334,13 @@ Check in order (about 3 minutes):
 | Symptom | First check |
 | --- | --- |
 | Phone localhost cannot reach the computer | Use Serve's printed HTTPS hostname. |
-| Password set but no login page | Direct local use of a loopback listener skips login; otherwise use incognito to rule out an existing cookie. |
+| No login page | Direct local use of a loopback listener and tailnet devices log in without one; otherwise use incognito to rule out an existing cookie. |
 | `421 misdirected request` | Add the URL you opened to `THYRA_PUBLIC_BASE_URL` and restart Thyra. |
 | Address already in use | Check for an existing plugin/user service; do not duplicate it. |
 | SSH history is empty | Check transcript readability and [session lookup limits](../FEATURES.md#agent-awareness-and-session-inspection). |
 | Clipboard/PWA restricted | Use trusted, warning-free HTTPS; check browser permissions/support. |
 
-See [Deployment](./DEPLOYMENT.md) for tokens, service restarts, and debug logs.
+See [Deployment](./DEPLOYMENT.md) for accounts, service restarts, and debug logs.
 Do not disable authentication or open the entire firewall. Share only redacted
 logs, versions, and the failing step when requesting help.
 

@@ -17,7 +17,6 @@ import {
   validatePushEndpoint,
   type PushTask,
 } from "./web-push";
-import { createAuthHandlers } from "../http/auth";
 import { createLegacyConnectionRuntime } from "../connections/runtime";
 
 function device(id = "device-1") {
@@ -172,18 +171,9 @@ test("rejects SSRF destinations, credentials, malformed keys and oversized endpo
   ).toThrow();
 });
 
-test("authenticated, non-CSRF device mutations persist privately across restart and revoke independently", async () => {
+test("non-CSRF device mutations persist privately across restart and revoke independently", async () => {
   const f = fixture();
   try {
-    const auth = createAuthHandlers({
-      authRequired: true,
-      password: randomBytes(32).toString("hex"),
-    });
-    const handle = (req: Request) =>
-      auth.isAuthed(req)
-        ? f.service.handle(req)
-        : Promise.resolve(new Response("unauthorized", { status: 401 }));
-    expect((await handle(request())).status).toBe(401);
     const first = device("first"),
       second = device("second");
     expect(
@@ -217,7 +207,8 @@ test("authenticated, non-CSRF device mutations persist privately across restart 
       ).status,
     ).toBe(200);
     const data = JSON.parse(readFileSync(f.path, "utf8"));
-    expect(data.devices).toEqual([second]);
+    // Each subscription records the principal that registered it.
+    expect(data.devices).toEqual([{ ...second, owner: "local" }]);
     expect(data.publicKey).toBe(before.publicKey);
     reloaded.stop();
   } finally {
@@ -644,6 +635,34 @@ test.each([
     f.service.stop();
   } finally {
     await runtime.stop();
+    f.cleanup();
+  }
+});
+
+test("notifications reach only subscribers who may see the workspace", async () => {
+  const sent: string[] = [];
+  const f = fixture(
+    mock(async (subscription: webpush.PushSubscription) => {
+      sent.push(subscription.endpoint.split("/").at(-1)!);
+      return { statusCode: 201, body: "", headers: {} };
+    }) as unknown as typeof webpush.sendNotification,
+  );
+  try {
+    await f.service.handle(request("POST", device("alice")), "user:u_alice");
+    await f.service.handle(request("POST", device("bob")), "user:u_bob");
+    const stored = JSON.parse(readFileSync(f.path, "utf8")).devices;
+    expect(stored.map((entry: { owner?: string }) => entry.owner)).toEqual([
+      "user:u_alice",
+      "user:u_bob",
+    ]);
+    f.service.notify(
+      task,
+      () => true,
+      (owner) => owner === "user:u_alice",
+    );
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(sent).toEqual(["alice"]);
+  } finally {
     f.cleanup();
   }
 });

@@ -1213,6 +1213,8 @@ export function createTerminalBridge(args: {
     method: string,
     params: Record<string, unknown>,
     requestIsCurrent: () => boolean = () => true,
+    /** Narrow a result to what this socket may see (display owners). */
+    viewResult: (result: unknown) => unknown = (result) => result,
   ) {
     const fail = (message: string) => {
       const effectiveMessage = requestIsCurrent()
@@ -1227,7 +1229,11 @@ export function createTerminalBridge(args: {
     };
     const reply = (result: unknown) =>
       requestIsCurrent()
-        ? args.safeSend(ws, serialize({ id, result }), method)
+        ? args.safeSend(
+            ws,
+            serialize({ id, result: viewResult(result) }),
+            method,
+          )
         : fail(CONNECTION_CHANGED_DURING_REQUEST);
     try {
       if (!requestIsCurrent()) return fail(CONNECTION_CHANGED_DURING_REQUEST);
@@ -1888,6 +1894,9 @@ export function createTerminalBridge(args: {
   }
 
   return {
+    /** The terminal a socket's terminal RPCs default to (its last attach). */
+    currentTerminalId: (ws: ServerWebSocket<unknown>): string | null =>
+      terminals.get(ws)?.terminalId ?? null,
     createFromTerminal,
     navigationMode,
     endpointAvailability,

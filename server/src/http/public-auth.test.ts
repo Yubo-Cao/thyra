@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
+import { openAccountDatabase } from "../accounts/database";
+import { createAccountStore } from "../accounts/store";
+import { createPasskeyService } from "../auth/passkeys";
+import { createAuthenticator } from "../auth/principal";
+import { createPublicAuthenticator } from "../auth/public";
+import { createAuthRoutes } from "../auth/routes";
+import { testDeps } from "../authz/test-principals";
 import { parseTrustedProxies } from "../identity/client-address";
 import { createLoginRateLimiter } from "./login-rate-limit";
 import {
-  createLoginUnavailableAuthenticator,
   inlineScriptHashes,
   isPublicStaticAsset,
   publicContentSecurityPolicy,
@@ -31,34 +37,86 @@ function context(req: Request) {
   };
 }
 
-describe("login-unavailable authenticator", () => {
-  const auth = createLoginUnavailableAuthenticator();
+function publicAuthenticator() {
+  const store = createAccountStore(openAccountDatabase(":memory:"));
+  const authenticator = createAuthenticator({
+    store,
+    authRequired: true,
+    tailnetMode: "off",
+    // Tailnet login never applies on the public listener.
+    tailnetUser: async () => ({ login: "owner@example.com" }),
+    hostOnlyCookie: true,
+  });
+  const routes = createAuthRoutes({
+    store,
+    authenticator,
+    passkeys: createPasskeyService({ store }),
+    limiter: createLoginRateLimiter(),
+    authzDeps: testDeps(),
+    connectionExists: () => false,
+    onChange: () => {},
+    onSessionEnded: () => {},
+  });
+  return {
+    store,
+    auth: createPublicAuthenticator({ authenticator, routes }),
+  };
+}
 
-  test("serves an explanatory login page without a form or script", async () => {
-    const req = new Request("http://127.0.0.1:8788/login", {
+describe("public authenticator", () => {
+  test("serves the passkey login page and its external script", async () => {
+    const { auth } = publicAuthenticator();
+    const page = new Request("http://127.0.0.1:8788/login", {
       headers: { host: "thyra.example", "accept-language": "zh-CN" },
     });
-    const response = await auth.handle(req, new URL(req.url), context(req));
+    const response = await auth.handle(page, new URL(page.url), context(page));
     expect(response?.status).toBe(200);
     const html = (await response?.text()) ?? "";
     expect(html).toContain('lang="zh-CN"');
-    expect(html).not.toContain("<script");
-    expect(html).not.toContain("<form");
+    expect(html).toContain('<script src="/auth/passkey.js" defer>');
+    // Only a JSON data block inline: the strict CSP needs no hash for it.
+    expect(
+      inlineScriptHashes(
+        html.replace(
+          /<script type="application\/json"[^>]*>[\s\S]*?<\/script>/,
+          "",
+        ),
+      ),
+    ).toEqual([]);
+    const script = new Request("http://127.0.0.1:8788/auth/passkey.js", {
+      headers: { host: "thyra.example" },
+    });
+    const js = await auth.handle(script, new URL(script.url), context(script));
+    expect(js?.headers.get("content-type")).toContain("text/javascript");
   });
 
-  test("handles nothing else and authenticates nobody", async () => {
+  test("handles nothing else and authenticates only its own cookie", async () => {
+    const { auth, store } = publicAuthenticator();
+    const user = store.createUser({ name: "owner", role: "admin" });
+    const { token } = store.createSession({
+      userId: user.id,
+      authMethod: "passkey",
+    });
     for (const path of ["/", "/api/login", "/api/health", "/ws"]) {
       const req = new Request(`http://127.0.0.1:8788${path}`, {
         method: path === "/api/login" ? "POST" : "GET",
         headers: {
           host: "thyra.example",
-          // The owner's cookie means nothing on the public listener.
-          cookie: "herdr_auth=anything; __Host-thyra_session=forged",
+          // The primary listener's cookie means nothing here.
+          cookie: `thyra_session=${token}; __Host-thyra_session=forged`,
         },
       });
       expect(await auth.handle(req, new URL(req.url), context(req))).toBeNull();
-      expect(await auth.authenticate(req, context(req))).toBeNull();
+      expect((await auth.authenticate(req, context(req))).principal).toBeNull();
     }
+    const req = new Request("http://127.0.0.1:8788/", {
+      headers: {
+        host: "thyra.example",
+        cookie: `__Host-thyra_session=${token}`,
+      },
+    });
+    const principal = (await auth.authenticate(req, context(req))).principal;
+    expect(principal?.kind === "user" && principal.user.name).toBe("owner");
   });
 });
 

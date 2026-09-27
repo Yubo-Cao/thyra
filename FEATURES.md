@@ -329,9 +329,11 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   `/health` or `/healthz`.
 
 **Direct local use of a loopback listener skips login.** Proxied and non-loopback
-access requires a token or password, except tailnet users recognized by Tailscale
-behind a local proxy. UI access grants terminal/file authority, not a read-only role;
-read [Security](./SECURITY.md) before sharing access.
+access logs in with a passkey, except tailnet users recognized by Tailscale behind
+a local proxy, who get admin accounts. Workspace owners share a workspace from its
+context menu (**Share workspace…**) as viewer, editor, or owner; viewers watch and
+scroll, and one writer at a time types into a pane (**Take control**). Editing a
+terminal is shell access on the host; read [Security](./SECURITY.md) before sharing.
 
 ![Configuration dialog on the Appearance tab: theme, accent, text size, terminal font, language, and layout](docs/images/thyra-desktop-settings.png)
 

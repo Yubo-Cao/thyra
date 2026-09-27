@@ -416,7 +416,7 @@ pages suppress duplicate local notifications. See [delivery limits](./DEPLOYMENT
 Each browser page receives an ephemeral participant ID, which keeps tabs, windows, and separate browser sessions distinct for pane claims while allowing one participant session to hold claims on several panes.
 The bridge assigns it: a page opens `/ws?client_session=<random per page load>`, and the bridge derives `web-<keyed hash of the device cookie and that nonce>` and returns it as `participant_id` in the hello.
 Reconnects of the same page keep the id (and its claims); other browsers cannot reproduce it.
-The bridge replaces `participant_id` and `role` (`editor`) in every `collaboration.*` call, so a page can update, claim, release, or leave only as itself.
+The bridge replaces `participant_id` and `role` (`editor`) in every `collaboration.*` call, so a page can update, claim, release, or leave only as itself; claiming needs the editor role on the pane's workspace ([single writer](#trust-boundary)).
 Presence reports include the active workspace, tab, and pane.
 Who a participant is (person and device) is decided by the bridge, not the page; see [collaborator identity](#collaborator-identity).
 
@@ -431,12 +431,14 @@ Following moves this page to that focus whenever it changes and ends when the us
 A closed socket leaves its participants at once instead of waiting for the 45-second lease, unless the page already reconnected on another socket.
 
 Pane claims are exclusive per pane, not per Herdr session. The bridge shares one
-render stream for a terminal among all watching browsers. `Take control` claims
-layout ownership with a 15-second takeover protection; keyboard input remains
-shared among editors. Non-owners preserve an existing shared terminal's
+render stream for a terminal among all watching browsers. One writer at a time:
+`Take control` claims the pane with a 15-second takeover protection, typing into
+an unclaimed pane claims it, and the bridge refuses input, resizing and focus
+from anyone else ([single writer](#trust-boundary)). Non-owners preserve an existing shared terminal's
 dimensions on attachment. Pane viewing mode blocks local keyboard, IME, paste,
 composer, focus, and resize commands while allowing explicit history scrolling;
-it is a browser-local preference, not an authorization boundary.
+it is a browser-local preference, and it is on whenever another person holds the
+pane or the caller is a viewer of the workspace.
 
 ### Display owner and input owner
 
@@ -479,6 +481,7 @@ The bridge resolves every WebSocket to a device and a person when it upgrades an
 - **Client address.** The socket peer, unless the peer is a trusted reverse proxy (`THYRA_TRUSTED_PROXIES`, loopback by default).
   From a trusted proxy, `X-Forwarded-For` is read from the right, skipping trusted hops, so a client cannot choose its address; `X-Real-IP` is used only without `X-Forwarded-For`.
   Forwarded headers from any other peer are ignored. The address is used only for identity, never for authentication.
+- **Account.** A logged-in page's person is its account, whatever the device; its account display name is the default name.
 - **Tailscale (preferred).** A tailnet address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) belongs to one node, so `whois` through the tailscaled LocalAPI socket or the `tailscale` CLI names the device (node StableID and MagicDNS name) and, for user-owned nodes, the person (login, display name, profile picture).
   Lookups are cached per address for five minutes (30 seconds for misses), time out after 1.5 seconds, and fail soft.
   Without `whois`, a tailnet address still identifies one device, but no person.
@@ -539,7 +542,7 @@ Once active it claims open pages, and the page asks it to copy the assets it loa
 - `/assets/*` GETs without a query or `Range` are cache-first in `thyra-assets-v1`; only `200` same-origin, non-redirected, non-HTML responses marked `immutable` are stored.
 - Navigations to `/` or `/index.html` without a query are network-first: the network response (including login redirects and errors) is returned unchanged, and the cached shell in `thyra-shell-v1` answers only when the network fails or has not answered within 4 seconds.
   Only `200` same-origin, non-redirected HTML is stored as the shell.
-- Every other request (API routes, `/ws`, `/login`, token-login queries, file previews, non-GET methods) bypasses the worker.
+- Every other request (API routes, `/ws`, `/login`, navigations with a query, file previews, non-GET methods) bypasses the worker.
 - When a stored shell changes, the worker fetches `/thyra-assets.json` and deletes cached assets used by neither the new nor the previous build, so a page started from a stale shell can finish loading.
   Activation deletes every other `thyra-*` cache; bump the cache names when the stored format or strategy changes.
 
@@ -547,45 +550,58 @@ A stale shell can therefore run one load after a deploy when the network is slow
 
 ## Trust boundary
 
-Thyra is trusted single-user administration, not a sandbox or multi-user
-permission system. Listener access and required authentication grant authority;
-see [Security](../SECURITY.md#trust-model) for loopback, TLS, and outer access controls.
+Thyra runs as one operating-system user; accounts and workspace grants decide what each person sees and may change, not what a shell they may type into can do.
+See [Security](../SECURITY.md#trust-model) for the roles and the outer access controls.
 
-Each HTTP request is classified before routing (`server/src/http/request-access.ts`):
-its effective host and scheme (from `X-Forwarded-Host`/`-Proto` only for trusted
-proxies), whether it was proxied, and whether it is direct local use. Unknown hosts
-are refused; `/ws` and non-GET/HEAD requests require an allowed `Origin` unless
-local; `/api` reads refuse foreign initiators. Login is skipped only for direct
-local use of a loopback listener. Tailnet login (`server/src/http/tailnet-auth.ts`)
-authenticates a proxied request whose forwarded client address is a tailnet
-address that Tailscale `whois` (the identity service's cache) maps to a user, and
-issues the normal session cookie on that response and WebSocket upgrade.
+Each HTTP request is classified before routing (`server/src/http/request-access.ts`): its effective host and scheme (from `X-Forwarded-Host`/`-Proto` only for trusted proxies), whether it was proxied, and whether it is direct local use.
+Unknown hosts are refused; `/ws` and non-GET/HEAD requests require an allowed `Origin` unless local; `/api` reads refuse foreign initiators.
 
-Each listener has a fixed kind (`server/src/http/listener.ts`) that is threaded
-into the request-access policy, tailnet login, and RPC authorization: the primary
-listener is `tailnet` (tailnet login on) or `local`, and `THYRA_PUBLIC_LISTEN`
-binds a `public` listener. No header changes a request's kind. On `public`, the
-policy accepts only `THYRA_PUBLIC_ORIGIN` as host and origin, is never local,
-treats the scheme as HTTPS, and takes the client address from `CF-Connecting-IP`
-of a trusted peer only (never loopback or tailnet values); tailnet login refuses
-anything but the `tailnet` kind and any request with Cloudflare headers. The
-public router (`publicFetch` in `server/src/index.ts`) rate-limits per client,
-then asks a `PublicAuthenticator` (`server/src/http/public-auth.ts`) to serve
-authentication routes and to resolve a principal; the owner cookie and password
-handlers are not reachable there. Without a principal only the login page and
-fingerprinted assets are served and everything else is `401` or a redirect to
-`/login`. A principal's role becomes the socket's RPC role (`rpcRoleFor`);
-private listeners always yield `owner`, a public socket without a principal is
-`anonymous`, which holds no class, and non-owner principals get no HTTP API.
-Public responses add HSTS, a strict CSP (the SPA entry's inline scripts are
-allowed by hash), and `__Host-` cookies.
+**Principals.** `server/src/auth/principal.ts` resolves every request to a principal: `local` (direct use of a loopback listener, an instance admin without an account), a `user` from the `thyra_session` cookie, or a `user` from tailnet login, which maps a proxied tailnet address through Tailscale `whois` (the identity service's cache) to an account, creating and linking it (identity `tailscale`/login) on first sight, and issues a session cookie on that response or WebSocket upgrade.
+A session whose privilege epoch is older than its user's is rotated to a new id on its next request.
+`requireLogin(req, access)` returns the principal and cookie headers, or the login redirect/401, for listeners that require an account.
+Passkey registration and login (`server/src/auth/passkeys.ts`, `@simplewebauthn/server`) use discoverable credentials; the relying party is the effective host name, and challenges are single-use and held in memory for five minutes.
+The login and enrollment pages are small server-rendered documents outside the application bundle; their strings travel in a JSON data block and their logic is the same-origin `/auth/passkey.js`, so they need no inline script under the public listener's CSP.
 
-WebSocket RPC is deny-by-default. `server/src/authz/policy.ts` lists every method
-the bridge handles or forwards to Herdr with a class (`read`, `write`, `admin`,
-`dangerous`); roles map to classes: the owner holds all of them and
-`anonymous` none. Unlisted methods fail before connection routing, so the Herdr
-passthrough only forwards listed navigation, layout, and input methods. A test
-fails when a method the server dispatches or `web/src` calls has no entry.
+**Account database.** `server/src/accounts/` keeps a `bun:sqlite` database (`thyra.db`, WAL, mode `0600`) with numbered migrations in `PRAGMA user_version`:
+
+| Table | Contents |
+| --- | --- |
+| `users` | id, unique name, display name, instance role (`admin`/`member`), disabled flag, privilege epoch |
+| `identities` | `(provider, subject)` linked to a user: `tailscale`/login today, `oidc:<issuer>`/`sub` for future OIDC providers |
+| `sessions` | SHA-256 of the cookie value, public id, user, method, epoch, user agent, created/last seen/expiry |
+| `passkeys` | credential id, user, COSE public key, counter, transports, RP ID, name |
+| `enrollments` | SHA-256 of single-use enrollment secrets, user, expiry |
+| `workspace_grants` | `(connection, workspace id, user)` with `owner`/`editor`/`viewer` and who granted it |
+| `audit_log` | account, session, passkey and grant changes (bounded) |
+
+Every change to a user's role, grants or status bumps its privilege epoch.
+The server checks `PRAGMA data_version` every second, so changes made by the CLI apply at once: sockets of ended sessions close with code 4001 and sockets whose epoch changed close with 4003 and reconnect under the new authority.
+Herdr keeps workspace ids across restarts and live handoff (they are restored from the session snapshot), so grants name the workspace id; a `workspace.closed` event deletes the workspace's grants, because Herdr may reuse the id of a closed workspace.
+Share links and invitations are meant to create grants through the same `setGrant` call.
+
+**Authorization.** Every WebSocket method and HTTP route has an entry in `server/src/authz/policy.ts` or `server/src/authz/http-policy.ts`; anything else is refused before routing.
+An entry names a class (`read`, `write`, `admin`, `dangerous`), a scope (`session`, `workspace`, `list`, `host`, and for HTTP also `public`, `connection`, `editor`), and for workspace methods `resolve(params)`, which names the workspace, tab, pane or terminal the request acts on.
+`authorize()` in `server/src/authz/authorize.ts` applies it after connection routing: `admin`, `dangerous` and `host` entries need an instance admin; every id a request names must resolve to a workspace where the caller holds the entry's minimum role (viewer for reads, editor for writes, owner for renaming, closing and sharing).
+Pane and tab ids carry their workspace (`w1:p3`); terminal ids are located through a per-connection map loaded from `pane.list`, marked stale by structural events, and reloaded at most once a second for unknown ids; ids it cannot place are refused for members.
+Terminal methods without `terminal_id` act on the socket's current terminal, which the bridge fills in before authorizing.
+A test compares the decisions for an instance admin, a workspace owner, editor and viewer, and an outsider over every table entry with a reviewed matrix, so a new method or route fails until its row is added, and another test fails when a method the server dispatches or `web/src` calls has no entry.
+Cross-workspace results and events are filtered per principal (`server/src/authz/filters.ts`): workspace, tab, pane and agent lists (workspaces gain the caller's `access` role), presence snapshots, claims and display owners (`collaboration.display` events and `terminal.display` results too), bridge status and connection lists (no profile details), and forwarded Herdr events, which pass, are filtered, become a bare `session.resync_required`, or are dropped (unknown events without a workspace are dropped).
+Web Push subscriptions record their account and receive only notifications for workspaces it may see.
+Routine host-level calls a member's page makes (`terminal.host_theme`, `terminal.watch_popup`) get a fixed harmless answer instead of an error.
+
+**Single writer.** The bridge mirrors each connection's pane claims from every collaboration snapshot and from the results of the claim, release and leave calls it makes.
+`writer` entries (`terminal.input`, `pane.send_*`, `pane.paste`, `terminal.focus`, `terminal.resize`, `terminal.relay_resize`, `terminal.display`) are refused while another principal's participant holds the pane; input to an unclaimed pane first claims it for the caller with 15 seconds of protection.
+`collaboration.claim` needs the editor role, protection is capped at 15 seconds, and a workspace owner's or admin's takeover first releases a protected claim.
+`terminal.scroll` from a caller who may not write stays in Herdr's history.
+The [display owner](#display-owner-and-input-owner) rules compose with these checks inside the terminal bridge: only a person who may control a pane can take or pin its display, and that person's own devices may split display and input between them.
+
+**Listeners.** Each listener has a fixed kind (`server/src/http/listener.ts`) that is threaded into the request-access policy and tailnet login: the primary listener is `tailnet` (tailnet login on) or `local`, and `THYRA_PUBLIC_LISTEN` binds a `public` listener.
+No header changes a request's kind.
+On `public`, the policy accepts only `THYRA_PUBLIC_ORIGIN` as host and origin, is never local, treats the scheme as HTTPS, and takes the client address from `CF-Connecting-IP` of a trusted peer only (never loopback or tailnet values); tailnet login refuses anything but the `tailnet` kind and any request with Cloudflare headers.
+The public router (`publicFetch` in `server/src/index.ts`) rate-limits per client, then asks its `PublicAuthenticator` (`server/src/auth/public.ts`, interface in `server/src/http/public-auth.ts`) to serve the login, enrollment, passkey and logout routes and to resolve the principal from its own `__Host-thyra_session` cookie.
+It shares the account database and routes with the primary listener, but its authenticator has no local bypass and no tailnet login, and the primary listener's cookie name differs, so neither listener accepts the other's cookie.
+Without a principal only those routes and fingerprinted assets are served and everything else is `401` or a redirect to `/login`; with one, requests go through the same HTTP and RPC authorization as on the primary listener, and MCP is never served.
+Public responses add HSTS, a strict CSP (the SPA entry's inline scripts are allowed by hash), and `__Host-` cookies.
 
 The browser accepts one unscoped bridge hello before other messages. Message kinds
 are exclusive and validated; downstream events cannot inject reserved bridge

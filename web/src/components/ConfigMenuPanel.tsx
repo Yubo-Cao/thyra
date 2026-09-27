@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   Server,
   Settings,
+  UserRound,
   Wifi,
 } from "lucide-react";
 import packageJson from "../../package.json";
@@ -19,6 +20,7 @@ import { type ConnectionClient, logoutBrowserSession } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { msg, t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
+import { useInstanceAdmin } from "../principal";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutLabel, useShortcutPreferences } from "../shortcutPreferences";
 import { store, useStoreSelector } from "../store";
@@ -102,6 +104,7 @@ export function ConfigMenuDropdown({
   const { health, herdrInfo, herdrUnavailable } =
     useMenuServerInfo(connectionClient);
   const layout = useLayoutPreferences();
+  const admin = useInstanceAdmin();
   useShortcutPreferences();
   const updateAvailable = !!s.updateInfo?.update_available;
   const canInstallUpdate = updateAvailable && s.updateInfo?.can_auto_update;
@@ -181,7 +184,12 @@ export function ConfigMenuDropdown({
             </div>
           )}
         </div>
-        <div className="config-section config-section-tiles-3">
+        <div
+          className={cn(
+            "config-section",
+            admin ? "config-section-tiles-3" : "config-section-tiles-2",
+          )}
+        >
           <div className="config-title">{t("Help & updates")}</div>
           <ConfigMenuItem
             icon={<ExternalLink size={15} />}
@@ -201,35 +209,37 @@ export function ConfigMenuDropdown({
               reloadApplicationPage();
             }}
           />
-          <ConfigMenuItem
-            icon={<Download size={15} />}
-            label={
-              canInstallUpdate
-                ? s.updateInstalling
-                  ? t("Updating...")
-                  : t("Update to {version}", {
-                      version: updateVersion ?? "",
-                    })
-                : updateAvailable
-                  ? t("Version {version} available", {
-                      version: updateVersion ?? "",
-                    })
-                  : t("Check for updates")
-            }
-            description={
-              canInstallUpdate
-                ? t("Install and restart")
-                : updateAvailable
-                  ? t("Automatic install unavailable")
-                  : t("Check the release server")
-            }
-            primary={canInstallUpdate}
-            disabled={s.updateInstalling}
-            onClick={() => {
-              setOpen(false);
-              void store.updateOrCheck();
-            }}
-          />
+          {admin ? (
+            <ConfigMenuItem
+              icon={<Download size={15} />}
+              label={
+                canInstallUpdate
+                  ? s.updateInstalling
+                    ? t("Updating...")
+                    : t("Update to {version}", {
+                        version: updateVersion ?? "",
+                      })
+                  : updateAvailable
+                    ? t("Version {version} available", {
+                        version: updateVersion ?? "",
+                      })
+                    : t("Check for updates")
+              }
+              description={
+                canInstallUpdate
+                  ? t("Install and restart")
+                  : updateAvailable
+                    ? t("Automatic install unavailable")
+                    : t("Check the release server")
+              }
+              primary={canInstallUpdate}
+              disabled={s.updateInstalling}
+              onClick={() => {
+                setOpen(false);
+                void store.updateOrCheck();
+              }}
+            />
+          ) : null}
         </div>
         <div className="config-section">
           <div className="config-title">{t("Runtime")}</div>
@@ -325,8 +335,13 @@ export function ConfigMenuDropdown({
                   [
                     ["Appearance", msg("Appearance"), Palette],
                     ["Behavior", msg("Behavior"), SlidersHorizontal],
-                    ["Connection", msg("Connection"), Server],
-                    ["Integrations", msg("Integrations"), Plug],
+                    ...(admin
+                      ? ([
+                          ["Connection", msg("Connection"), Server],
+                          ["Integrations", msg("Integrations"), Plug],
+                        ] as const)
+                      : []),
+                    ["Account", msg("Account"), UserRound],
                   ] as const
                 ).map(([name, label, Icon]) => (
                   <ConfigMenuItem

@@ -1,0 +1,57 @@
+.share-workspace-invite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.share-workspace-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.share-workspace-error {
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--danger-text);
+}
+
+.share-workspace-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+}
+
+.share-workspace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--surface-secondary);
+}
+
+.share-workspace-person {
+  display: grid;
+  min-width: 0;
+}
+
+.share-workspace-person strong,
+.share-workspace-person span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-workspace-person span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 480px) {
+  .share-workspace-invite {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -243,30 +243,29 @@ export function computeUrl(dir = configDir()): string {
   const envFile = readableConfigFile(dir, "thyra.env");
   let host = "127.0.0.1";
   let port = "8787";
-  let usesFixedPassword = false;
+  let publicUrl: string | undefined;
   if (existsSync(envFile)) {
     const contents = readFileSync(envFile, "utf8");
     host = readServiceEnv(contents, "HOST") ?? host;
     port = readServiceEnv(contents, "PORT") ?? port;
-    usesFixedPassword =
-      (readServiceEnv(contents, "THYRA_PASSWORD") ?? "").length > 0;
+    // Browsers log in with passkeys, which belong to the public host name.
+    publicUrl = (readServiceEnv(contents, "THYRA_PUBLIC_BASE_URL") ?? "")
+      .split(/[\s,]+/)
+      .find((entry) => /^https?:\/\//.test(entry));
+  }
+  if (publicUrl) {
+    try {
+      return new URL(publicUrl).origin;
+    } catch {
+      // Fall back to the listener address.
+    }
   }
   const anyHost = host === "0.0.0.0" || host === "::";
   const browserHost = anyHost ? "localhost" : host;
   const formatted = browserHost.includes(":")
     ? `[${browserHost}]`
     : browserHost;
-  let url = `http://${formatted}:${port}`;
-  // Only non-loopback binds require the generated login token (the server
-  // skips auth on loopback); the token file can also be absent or stale.
-  const loopback =
-    host === "127.0.0.1" || host === "localhost" || host === "::1";
-  const tokenPath = readableConfigFile(dir, "auth-token");
-  if (!loopback && !usesFixedPassword && existsSync(tokenPath)) {
-    const token = readFileSync(tokenPath, "utf8").trim();
-    if (token) url = `${url}/?token=${encodeURIComponent(token)}`;
-  }
-  return url;
+  return `http://${formatted}:${port}`;
 }
 
 function printUrl(): number {

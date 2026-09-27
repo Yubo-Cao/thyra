@@ -1,25 +1,16 @@
 import { createHash } from "node:crypto";
 
-import type { RpcRole } from "../authz/policy";
+import type { AuthResult } from "../auth/principal";
 import type { LoginRateLimiter } from "./login-rate-limit";
-import { loginLocale, type LoginLocale } from "./login-page";
 import type { RequestAccess } from "./request-access";
 
 /**
- * Authentication on the public listener. The owner's password, token,
- * `herdr_auth` cookie, tailnet login and loopback bypass never apply there;
- * a request is authenticated only by a `PublicAuthenticator` (accounts and
- * passkeys). The default authenticator knows nobody, so the public listener
- * serves the login page and static assets and answers everything else 401.
+ * Authentication on the public listener. The primary listener's session
+ * cookie, tailnet login and loopback bypass never apply there; a request is
+ * authenticated only by the `PublicAuthenticator` (accounts and passkeys,
+ * `server/src/auth/public.ts`), whose `__Host-` session cookie the primary
+ * listener in turn ignores.
  */
-
-/** An authenticated account on the public listener. */
-export type PublicPrincipal = {
-  /** Stable account id, for logs and grants. */
-  id: string;
-  /** RPC role; `owner` only for accounts the owner marked as admins. */
-  role: RpcRole;
-};
 
 /** Facts the router hands the authenticator for one public request. */
 export type PublicRequestContext = {
@@ -41,11 +32,11 @@ export interface PublicAuthenticator {
     url: URL,
     context: PublicRequestContext,
   ): Response | null | Promise<Response | null>;
-  /** The principal of this request's session, or null. */
+  /** The principal of this request's session (and a rotated cookie), if any. */
   authenticate(
     req: Request,
     context: PublicRequestContext,
-  ): PublicPrincipal | null | Promise<PublicPrincipal | null>;
+  ): AuthResult | Promise<AuthResult>;
 }
 
 /**
@@ -75,75 +66,6 @@ export function readPublicCookie(req: Request, name: string): string | null {
     }
   }
   return null;
-}
-
-const UNAVAILABLE = {
-  en: {
-    title: "Thyra",
-    heading: "Sign-in is not available here yet",
-    body: "This address does not accept sign-ins yet. If you administer this Thyra, use your private address.",
-  },
-  "zh-CN": {
-    title: "Thyra",
-    heading: "此地址暂不支持登录",
-    body: "此地址尚未开放登录。如果你是此 Thyra 的管理员，请使用你的私有地址。",
-  },
-} satisfies Record<LoginLocale, Record<string, string>>;
-
-const UNAVAILABLE_STYLE =
-  "body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;font-family:system-ui,sans-serif;background:#141516;color:#eeeef0}main{max-width:420px}img{width:48px;height:48px}h1{font-size:22px;margin:16px 0 8px}p{color:#a9abb0;line-height:1.6;margin:0}@media(prefers-color-scheme:light){body{background:#f5f5f3;color:#252629}p{color:#64666d}}";
-
-export function renderLoginUnavailableHtml(locale: LoginLocale): string {
-  const s = UNAVAILABLE[locale];
-  return `<!doctype html>
-<html lang="${locale}">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="referrer" content="no-referrer">
-<title>${s.title}</title>
-<link rel="icon" type="image/svg+xml" href="/thyra-icon.svg">
-<style>${UNAVAILABLE_STYLE}</style>
-</head>
-<body>
-<main>
-<img src="/thyra-icon-192.png" alt="" width="48" height="48">
-<h1>${s.heading}</h1>
-<p>${s.body}</p>
-</main>
-</body>
-</html>`;
-}
-
-/**
- * The authenticator used until accounts exist: `/login` explains that
- * sign-in is unavailable and no request is ever authenticated.
- */
-export function createLoginUnavailableAuthenticator(): PublicAuthenticator {
-  return {
-    handle(req, url) {
-      if (url.pathname !== "/login") return null;
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        return new Response("method not allowed", {
-          status: 405,
-          headers: { allow: "GET, HEAD" },
-        });
-      }
-      return new Response(
-        renderLoginUnavailableHtml(
-          loginLocale(req.headers.get("accept-language")),
-        ),
-        {
-          headers: {
-            "content-type": "text/html; charset=utf-8",
-            "cache-control": "no-store",
-            vary: "Accept-Language",
-          },
-        },
-      );
-    },
-    authenticate: () => null,
-  };
 }
 
 /**

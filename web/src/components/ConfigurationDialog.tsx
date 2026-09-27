@@ -63,7 +63,9 @@ import {
   useConnectionClient,
 } from "../useConnectionClient";
 import { cn } from "../utils";
+import { AccountSettings } from "./AccountSettings";
 import { AgentIntegrationsSettings } from "./AgentIntegrationsSettings";
+import { useInstanceAdmin } from "../principal";
 import { AutoSyncRepositoriesDialog } from "./AutoSyncRepositoriesDialog";
 import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 import { TerminalTransportSettings } from "./TerminalTransportSettings";
@@ -123,13 +125,25 @@ export type ConfigurationProps = {
   onTerminalThemeSelectionChange: (selection: TerminalThemeSelection) => void;
   onCustomTerminalThemesChange: (themes: CustomTerminalTheme[]) => void;
 };
-const tabs = ["Appearance", "Behavior", "Connection", "Integrations"] as const;
+const tabs = [
+  "Appearance",
+  "Behavior",
+  "Connection",
+  "Integrations",
+  "Account",
+] as const;
 export type ConfigurationTab = (typeof tabs)[number];
+/** Host settings: instance admins only. */
+const ADMIN_TABS: ReadonlySet<ConfigurationTab> = new Set([
+  "Connection",
+  "Integrations",
+]);
 const TAB_LABELS: Record<ConfigurationTab, string> = {
   Appearance: msg("Appearance"),
   Behavior: msg("Behavior"),
   Connection: msg("Connection"),
   Integrations: msg("Integrations"),
+  Account: msg("Account"),
 };
 type Detail = "terminal" | "layout" | "keyboard" | "mobile" | "sync";
 
@@ -159,7 +173,11 @@ export function ConfigurationDialog({
     })),
   );
   const connectionClient = useConnectionClient();
-  const [tab, setTab] = useState<ConfigurationTab>(initialTab);
+  const admin = useInstanceAdmin();
+  const visibleTabs = tabs.filter((name) => admin || !ADMIN_TABS.has(name));
+  const [tab, setTab] = useState<ConfigurationTab>(
+    visibleTabs.includes(initialTab) ? initialTab : "Appearance",
+  );
   const voiceCleanup = useVoiceCleanupMode();
   // A detail dialog opens on top of this one, which hides until it closes;
   // focus then returns to the row that opened it (WebKit does not focus a
@@ -505,12 +523,16 @@ export function ConfigurationDialog({
         panelClassName="configuration-content"
         value={tab}
         onChange={setTab}
-        items={tabs.map((name) => ({ id: name, label: t(TAB_LABELS[name]) }))}
+        items={visibleTabs.map((name) => ({
+          id: name,
+          label: t(TAB_LABELS[name]),
+        }))}
       >
         {tab === "Appearance" ? appearance : null}
         {tab === "Behavior" ? behavior : null}
-        {tab === "Connection" ? connection : null}
-        {tab === "Integrations" ? (
+        {tab === "Connection" && admin ? connection : null}
+        {tab === "Account" ? <AccountSettings /> : null}
+        {tab === "Integrations" && admin ? (
           <AgentIntegrationsSettings
             key={scopeKey}
             connectionLabel={s.connectionLabel}

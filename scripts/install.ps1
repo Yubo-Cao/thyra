@@ -203,7 +203,7 @@ function Uninstall-Thyra($Paths, [bool]$SkipServices, [bool]$SkipHerdr, [bool]$P
             Write-Step "Removed $($Paths.ConfigDir)"
         }
     } elseif (Test-Path -LiteralPath $Paths.ConfigDir) {
-        Write-Step "Kept $($Paths.ConfigDir) (tokens, connections, settings); -Purge removes it."
+        Write-Step "Kept $($Paths.ConfigDir) (accounts, connections, settings); -Purge removes it."
     }
     Write-Step "Herdr's own data in %APPDATA%\herdr was not changed."
 }
@@ -347,11 +347,11 @@ function Install-Thyra {
                     "# upgrade; run thyra service restart after editing.",
                     "# HOST=127.0.0.1 accepts only this computer and needs no login. For phones and",
                     "# other computers, publish it privately with Tailscale Serve, or set",
-                    "# HOST=0.0.0.0 to require the generated login token on your LAN.",
+                    "# HOST=0.0.0.0 and log in with passkeys (thyra user add <name> --admin).",
                     "HOST=$hostValue",
                     "PORT=$port",
                     "",
-                    "# THYRA_PASSWORD=replace-with-a-strong-password",
+                    "# THYRA_PUBLIC_BASE_URL=https://thyra.example.com",
                     "# THYRA_LOG_LEVEL=info"
                 )
                 Write-Step "Created $($paths.Config)"
@@ -398,7 +398,7 @@ function Install-Thyra {
             if ($hostValue -eq "127.0.0.1" -or $hostValue -eq "localhost" -or -not $hostValue) {
                 Write-Step "  Open http://127.0.0.1:$port on this computer (no login needed)."
             } else {
-                Write-Step "  Use the tokenized URL printed above; the token is in $($paths.ConfigDir)\auth-token."
+                Write-Step "  Create your login: thyra user add <name> --admin (prints a passkey enrollment link; passkeys need HTTPS or localhost)."
             }
             Write-Step "  Service config: $($paths.Config)"
         } else {

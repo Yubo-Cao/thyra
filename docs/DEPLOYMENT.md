@@ -100,7 +100,7 @@ A running Herdr server is never restarted, because that ends its panes: it keeps
 | --- | --- | --- | --- |
 | `--version X.Y.Z` | `-Version X.Y.Z` | `THYRA_VERSION` | Install that release instead of the latest |
 | `--port N` | `-Port N` | `THYRA_PORT` | Port for the service config (default 8787) |
-| `--lan` | `-Lan` | | Bind `0.0.0.0` with a generated login token |
+| `--lan` | `-Lan` | | Bind `0.0.0.0`; browsers log in with [passkeys](#accounts-and-login) |
 | `--local` | | | Bind `127.0.0.1` (the default for new configs) |
 | `--no-service` | `-NoService` | `THYRA_NO_SERVICE=1` | Install binaries only |
 | `--no-herdr` | `-NoHerdr` | `THYRA_NO_HERDR=1` | Leave Herdr alone |
@@ -118,7 +118,7 @@ To test a build locally, serve `dist/` plus `scripts/install.sh`, `scripts/insta
 On Linux, `sudo loginctl enable-linger "$USER"` keeps user services running after logout.
 
 **Uninstall** with `curl -fsSL .../install.sh | sh -s -- --uninstall`.
-It runs `thyra service uninstall` and `thyra herdr uninstall` (both remove only definitions Thyra generated), deletes Thyra and the Herdr it installed, and keeps `~/.config/thyra` (tokens, connection profiles, settings) unless `--purge` is given.
+It runs `thyra service uninstall` and `thyra herdr uninstall` (both remove only definitions Thyra generated), deletes Thyra and the Herdr it installed, and keeps `~/.config/thyra` (accounts, connection profiles, settings) unless `--purge` is given.
 Herdr's own data (`~/.config/herdr`, `%APPDATA%\herdr`) is never touched.
 
 **Windows notes.**
@@ -137,7 +137,7 @@ Then run `thyra`, or `thyra service install` for a user service.
 New installer configs bind `127.0.0.1`: only the same machine can connect, and direct local requests need no login.
 For phones and other computers, keep that binding and publish it privately with `tailscale serve --bg --https=443 http://127.0.0.1:8787`, and set `THYRA_PUBLIC_BASE_URL` to the HTTPS address; tailnet users are then logged in by Tailscale identity ([tutorial](./TUTORIAL.md#tailscale), [reverse proxies](#reverse-proxies-and-allowed-origins)).
 To use Thyra from another computer over SSH, forward the port: `ssh -L 8787:127.0.0.1:8787 host`.
-`--lan` binds all interfaces and requires the login token printed at install time (stored in `~/.config/thyra/auth-token`); use it only on trusted networks, preferably with [native HTTPS](#native-https).
+`--lan` binds all interfaces, and every browser must log in with a [passkey](#accounts-and-login), which needs [native HTTPS](#native-https) or an HTTPS proxy; use it only on trusted networks.
 Never expose Thyra directly to the public internet, and never use `tailscale funnel` for it; Thyra runs shell commands with your user's rights.
 Read [Security](../SECURITY.md) before allowing another device access.
 
@@ -196,7 +196,7 @@ Plugin actions manage the same [user service](#run-as-a-user-service):
 
 ```bash
 herdr plugin action invoke thyra.start      # install/start
-herdr plugin action invoke thyra.url        # login URL
+herdr plugin action invoke thyra.url        # browser URL
 herdr plugin action invoke thyra.status
 herdr plugin action invoke thyra.restart
 herdr plugin action invoke thyra.uninstall  # remove service, retain data
@@ -260,7 +260,6 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | --- | --- | --- |
 | `--host <addr>` | `HOST` | `127.0.0.1` |
 | `--port <n>` | `PORT` | `8787` |
-| `--password <pw>` | `THYRA_PASSWORD` | Generated token |
 | `--tls-cert <path>` | `THYRA_TLS_CERT` | Disabled; PEM chain, requires key |
 | `--tls-key <path>` | `THYRA_TLS_KEY` | Disabled; PEM key, requires certificate |
 | `--socket-path <path>` | `HERDR_SOCKET_PATH` | Default control socket/pipe |
@@ -279,7 +278,8 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
 | `THYRA_PUBLIC_BASE_URL` | Comma-separated URLs browsers use through a proxy or DNS name, such as `https://thyra.example.ts.net`; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded headers are believed; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
-| `THYRA_TAILNET_AUTH=admin\|off` | Log in proxied tailnet users by Tailscale `whois` (default `admin` when `whois` is available); see [reverse proxies](#reverse-proxies-and-allowed-origins) |
+| `THYRA_TAILNET_AUTH=admin\|member\|off` | Log in proxied tailnet users by Tailscale `whois`, creating accounts with that role (default `admin` when `whois` is available); see [accounts and login](#accounts-and-login) |
+| `THYRA_DB_PATH` | Account database (default `~/.config/thyra/thyra.db`) |
 | `THYRA_PUBLIC_LISTEN` | Second, internet-facing listener (`127.0.0.1:8788`) for Cloudflare Tunnel; see [public access](#public-access-through-cloudflare-tunnel) |
 | `THYRA_PUBLIC_ORIGIN` | The one HTTPS origin served by the public listener, such as `https://thyra.example.com` |
 | `THYRA_PUBLIC_TRUSTED_PROXIES` | Peers whose `CF-Connecting-IP` the public listener believes (default `loopback`) |
@@ -294,13 +294,49 @@ credentials, queries, and fragments in URLs are rejected.
 
 ```bash
 thyra                              # local, no login for direct local use
-thyra --host 0.0.0.0 --port 8787     # generated token
+thyra --host 0.0.0.0 --port 8787     # every browser logs in with a passkey
 ```
 
-Without `THYRA_PASSWORD`, the token lives in `~/.config/thyra/auth-token` (created on first start) and is also the password for proxied access to a loopback listener.
+Read [accounts and login](#accounts-and-login) and [Security](../SECURITY.md) before non-loopback use.
 
-For a fixed password, prefer `THYRA_PASSWORD` over process-visible
-`--password`. Read [Security](../SECURITY.md) before non-loopback use.
+## Accounts and login
+
+Direct local use of a loopback listener needs no login.
+Everyone else has an account: tailnet users behind a trusted proxy get one automatically, and others log in with a passkey.
+Instance admins manage the host; members see only the workspaces shared with them, as viewer, editor or owner ([roles](../SECURITY.md#what-each-role-may-do)).
+
+```bash
+thyra user add yubo --admin --tailscale yubo@github   # instance admin; prints a passkey link
+thyra user add alice                                  # member; prints a passkey link
+thyra user enroll alice --base-url https://thyra.example.com  # another link, for another host name
+thyra user list
+thyra user role alice admin|member
+thyra user disable alice | thyra user enable alice
+thyra user remove alice
+thyra grant alice w3 editor          # owner|editor|viewer|none; w3 on the default connection
+thyra grant alice ssh-box/w1 viewer  # a workspace on another connection
+thyra grant list w3
+thyra session list [alice]
+thyra session revoke <session-id> | thyra session revoke --user alice
+```
+
+The commands write the account database directly (`~/.config/thyra/thyra.db`, or `THYRA_DB_PATH` from the environment or the service environment file); a running Thyra applies them within a second and disconnects affected browsers.
+An enrollment link is single-use, valid for 24 hours, and carries its secret in the URL fragment.
+It points at `--base-url`, else the first HTTPS `THYRA_PUBLIC_BASE_URL`, else `http://localhost:$PORT`.
+**A passkey belongs to one host name** and works only in a secure context: HTTPS, or `localhost` (an SSH port forward).
+Open the link on the device or password manager that keeps the passkey; a logged-in user adds passkeys for the host they are on under **Configuration > Account**, which also lists and signs out login sessions.
+Workspace owners share a workspace from its context menu (**Share workspace…**) with existing users, by user name or linked login.
+
+With Tailscale, **tailnet login** needs no passkey: when a proxied request's forwarded client address is a tailnet address and Tailscale `whois` names a user, Thyra logs in that user's account, creating it on first sight and linking the Tailscale login.
+New tailnet accounts are instance admins (`THYRA_TAILNET_AUTH=admin`, the default whenever `whois` works, see [collaborator identity](#collaborator-identity)); `THYRA_TAILNET_AUTH=member` makes them members instead, and `off` disables tailnet login.
+Restrict the proxy's port with Tailscale ACLs.
+Tagged nodes and failed lookups get the login page.
+Never enable tailnet login for a proxy that is also reachable from outside the tailnet, such as a public tunnel (`cloudflared`).
+
+**Upgrading from password or token login.**
+`THYRA_PASSWORD`, `--password`, `~/.config/thyra/auth-token` and `?token=` links are no longer used, and old session cookies are ignored.
+Before upgrading a host that is used only through a proxy or on a non-loopback address, make sure you can still get in: tailnet login through a local proxy, an SSH port forward (`ssh -L 8787:127.0.0.1:8787 host`, then `http://localhost:8787`), or a passkey from `thyra user add <name> --admin`.
+Then remove `THYRA_PASSWORD` from the service environment and delete `auth-token`.
 
 ### Native HTTPS
 
@@ -314,9 +350,10 @@ thyra --host 0.0.0.0 --port 8443 \
 
 Missing/unreadable/malformed/mismatched files stop startup, never fall back to
 HTTP. Without TLS settings, HTTP is used. HTTPS adds `Secure` cookies and HTTPS
-startup links, but **does not change authentication**: direct local use of a
-loopback listener skips login; everything else requires a token/password. Do not
-expose directly to the public internet.
+startup links, and lets browsers use passkeys on a host name, but **does not change
+authentication**: direct local use of a loopback listener skips login; everything
+else logs in ([accounts and login](#accounts-and-login)). Do not expose directly
+to the public internet.
 
 For private LAN testing, use your issuer or [mkcert](https://github.com/FiloSottile/mkcert).
 Replace this reserved example IP with the host's actual LAN address:
@@ -360,22 +397,22 @@ PORT=8787
 THYRA_PUBLIC_BASE_URL=https://thyra.example.com
 ```
 
-Each browser, including an installed home-screen app, logs in once with the password or token; the session cookie lasts 30 days and is `Secure` over HTTPS.
+Each browser, including an installed home-screen app, logs in once, with a passkey or by [tailnet login](#accounts-and-login); the session cookie lasts 30 days and is `Secure` over HTTPS.
 
-With Tailscale, **tailnet login** skips that step: when a proxied request's forwarded client address is a tailnet address and Tailscale `whois` names a user for it, Thyra issues the session cookie itself.
-It is on (`THYRA_TAILNET_AUTH=admin`) whenever `whois` works ([collaborator identity](#collaborator-identity)), and gives every tailnet user who can reach the proxy full access, so restrict the proxy's port with Tailscale ACLs.
-Tagged nodes and failed lookups get the login page. Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tailnet; never point a public tunnel such as `cloudflared` at this listener: use the [public listener](#public-access-through-cloudflare-tunnel).
+Tailnet login (see [accounts and login](#accounts-and-login)) gives every tailnet user who can reach the proxy an account, so restrict the proxy's port with Tailscale ACLs.
+Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tailnet; never point a public tunnel such as `cloudflared` at this listener: use the [public listener](#public-access-through-cloudflare-tunnel).
 
 ### Public access through Cloudflare Tunnel
 
 Thyra can serve a public address from a second listener while the primary listener stays private (tailnet or loopback).
 **The listener, never a request header, decides trust.** Requests on the public listener are always public:
 
-- Tailnet login, direct-local bypass, the owner password or token, `?token=` links and the primary listener's session cookie never authenticate there, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
+- Only a passkey session in the listener's own `__Host-thyra_session` cookie authenticates there; tailnet login, direct-local bypass and the primary listener's session cookie never do, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
 - Only `THYRA_PUBLIC_ORIGIN` is accepted as `Host` and `Origin` (anything else gets `421` or `403`); `X-Forwarded-*` headers are ignored.
 - The client address (login and request rate limits, 300 requests a minute per address) is `CF-Connecting-IP` when the peer is in `THYRA_PUBLIC_TRUSTED_PROXIES` (default `loopback`, the local `cloudflared`), otherwise the peer.
 - Responses carry HSTS, a strict Content Security Policy, `nosniff` and `frame-ancestors 'none'`; cookies set there use the `__Host-` prefix.
-- Without an account sign-in it serves only the login page (which says sign-in is unavailable) and static assets; every other page redirects to it, and every API, MCP and WebSocket request gets `401`.
+- Before login it serves only the passkey login and enrollment pages, their script (`/auth/passkey.js`) and static assets; every other page redirects to login, and every API and WebSocket request gets `401`.
+  MCP is never served there.
 
 Cloudflare Tunnel (`cloudflared`) connects outbound, so no inbound port opens.
 Create a named tunnel once, as the account owner:
@@ -406,10 +443,14 @@ The unit restarts a dropped tunnel but gives up after five failures in five minu
 `THYRA_PUBLIC_ORIGIN` must not also appear in `THYRA_PUBLIC_BASE_URL`, and the tunnel must target the public listener's port, never `PORT`: the primary listener answers the public host with `421` and never gives tailnet login to a request carrying Cloudflare headers.
 Startup fails if `THYRA_PUBLIC_LISTEN` is set without a valid HTTPS `THYRA_PUBLIC_ORIGIN`.
 
+Passkeys belong to the host name they were created on, so a passkey from the tailnet address does not work at the public address.
+Enroll each person for the public host with `thyra user enroll <name> --base-url https://thyra.example.com` (or `thyra user add <name> --base-url ...` for a new account) and open the printed link there; a logged-in user can also add a passkey for the current host under **Configuration > Account**.
+Tailnet login never applies on the public listener, so an instance admin who only ever used tailnet login needs such a passkey before using the public address.
+
 ## Collaborator identity
 
 Thyra recognizes the same device, and with Tailscale the same person, across tabs, browsers, and the home screen app, so the collaborator list shows "Yubo · iphone, liveopt" instead of one entry per tab.
-Custom display names are stored on the server per person (or per device without Tailscale), so every device of that person shares one name.
+A logged-in account is the person; custom display names are stored on the server per person (or per device for direct local use without Tailscale), so every device of that person shares one name.
 See [collaborator identity](./ARCHITECTURE.md#collaborator-identity) for the rules.
 
 - **Tailscale.** When a browser connects from a tailnet address, Thyra asks tailscaled who that node and its user are, through `/var/run/tailscale/tailscaled.sock` on Linux or the `tailscale` CLI elsewhere.
@@ -459,7 +500,8 @@ minutes, with no durable replay; HTTP 404/410 removes expired subscriptions.
 Turning notifications off revokes on the server before browser unsubscribe.
 If revocation fails, reconnect/retry or revoke OS/browser permission immediately;
 already-accepted messages may arrive. Server-wide disable retains the registry
-for reuse when re-enabled. Password changes do not revoke device subscriptions.
+for reuse when re-enabled. Logging out does not revoke device subscriptions; each
+subscription receives only workspaces its account may see.
 
 **Active page only** is the fallback when push is unavailable; do not rely on it
 while suspended/closed. Encrypted payloads contain agent names/routing IDs, not
@@ -524,7 +566,7 @@ Logs use one line per event: timestamp, severity, scope, bounded key/value conte
 `info` covers lifecycle/failures, not routine RPC/events/frames/successful auto-sync.
 Use `thyra --log-level debug` or `THYRA_LOG_LEVEL=debug` temporarily;
 restart services after editing their environment. Debug can expose paths/IDs;
-return to `info` afterwards. Logs omit URL auth tokens, which remain in protected files.
+return to `info` afterwards. Logs omit URL tokens and never contain session cookies or enrollment secrets.
 
 ## Multiple and remote Herdr connections
 
@@ -639,7 +681,7 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 | `thyra service status` | Native manager status |
 | `thyra service restart` | Restart after environment changes |
 | `thyra service reload` | Reload definition, then restart |
-| `thyra service uninstall` | Stop/remove service; retain configuration/tokens |
+| `thyra service uninstall` | Stop/remove service; retain configuration and accounts |
 
 | Platform | Definition / behavior |
 | --- | --- |
@@ -647,10 +689,10 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 | macOS | `~/Library/LaunchAgents/dev.thyra.plist`, label `dev.thyra`, `KeepAlive`; logs `~/Library/Logs/thyra.stdout.log` / `thyra.stderr.log` |
 | Windows | Task `dev.thyra-<user-key>` (config-path hash), `%APPDATA%\thyra\thyra-task.ps1`; login start, normal privileges, restart on failure |
 
-**`thyra service install` alone creates a config that binds `0.0.0.0:8787`**, generates a persistent token, and prints
-localhost/LAN token URLs. The [one-line installer](#install-with-the-one-line-installer) instead creates a loopback-only config first. Config lives in `~/.config/thyra/thyra.env` or
+**`thyra service install` alone creates a config that binds `0.0.0.0:8787`**, where every browser logs in
+with a [passkey](#accounts-and-login), and prints localhost/LAN URLs. The [one-line installer](#install-with-the-one-line-installer) instead creates a loopback-only config first. Config lives in `~/.config/thyra/thyra.env` or
 `%APPDATA%\thyra\thyra.env`, preserved on reinstall/uninstall. Edit HOST,
-PORT, password, and Herdr settings there, then restart. For local-only installation,
+PORT, public URL, and Herdr settings there, then restart. For local-only installation,
 set `HOST=127.0.0.1` first. On Windows, allow Private networks only if prompted;
 on Linux, `sudo loginctl enable-linger "$USER"` keeps services after logout.
 
@@ -658,10 +700,8 @@ on Linux, `sudo loginctl enable-linger "$USER"` keeps services after logout.
 curl -fsS http://127.0.0.1:8787/healthz
 ```
 
-Tokens live in `~/.config/thyra/auth-token` or `%APPDATA%\thyra\auth-token`.
-A `?token=...` page visit sets an HttpOnly cookie and redirects without the token; API and WebSocket requests ignore it. To rotate,
-stop the service, replace the file with a fresh 64-character lowercase hexadecimal
-secret (mode `0600`), then restart.
+Accounts, passkeys, sessions and grants live in `~/.config/thyra/thyra.db` or
+`%APPDATA%\thyra\thyra.db`; manage them with [`thyra user`](#accounts-and-login).
 
 Manual templates live under `deploy/`. Keep systemd as restart owner for wrappers:
 
@@ -788,7 +828,8 @@ Release packaging/publishing follows [AGENTS.md](../AGENTS.md#release-notes).
 | Symptom | Action |
 | --- | --- |
 | Cannot connect to Herdr | Check server and both socket paths; default local setup can use `thyra herdr setup`. Override with `--socket-path /path/to/herdr.sock` only deliberately. |
-| Another device cannot open the page | Check bind, token URL, network/firewall, and [private access setup](./TUTORIAL.md#networking). |
+| Another device cannot open the page | Check bind, network/firewall, and [private access setup](./TUTORIAL.md#networking). |
+| Passkey button disabled or "needs HTTPS" | Open Thyra through its HTTPS host name (or `localhost`); a passkey works only on the host name it was created on. Create a link for that host with `thyra user enroll <name> --base-url https://...`. |
 | SSH connects locally | Remove explicit socket flags/`HERDR_SOCKET_PATH`/`HERDR_CLIENT_SOCKET_PATH`; they override tunnel paths. |
 | Want automatic browser launch | Use `thyra --open` or `OPEN_BROWSER=1`. |
 | Slow first load behind a reverse proxy | Pass Thyra's `Content-Encoding`, `ETag`, and `Cache-Control` through unchanged; Thyra already sends quality-11 Brotli. Repeat loads are served from the browser's service-worker cache only on trusted HTTPS or `localhost`; see [web delivery](./ARCHITECTURE.md#web-delivery-and-caching). |

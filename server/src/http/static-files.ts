@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
-import { HTML_SECURITY_HEADERS } from "./auth";
+import { HTML_SECURITY_HEADERS } from "./security-headers";
 import {
   decodeStaticPathname,
   isStaticRequestMethod,

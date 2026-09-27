@@ -6,14 +6,12 @@ import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { assertSshTunnelPlatformSupported } from "../bridge/ssh-tunnel";
-import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 import { thyraEnv } from "./environment";
 import { type LogLevel, parseLogLevel, serverLogger } from "../utils/logger";
 
 type CliArgs = Partial<{
   host: string;
   port: string;
-  password: string;
   "tls-cert": string;
   "tls-key": string;
   "socket-path": string;
@@ -31,11 +29,9 @@ export type ServerConfig = {
   appVersion: string;
   host: string;
   port: number;
-  password: string;
+  /** Non-loopback listener: every request logs in, even from this host. */
   authRequired: boolean;
   tls?: { cert: Buffer; key: Buffer };
-  generatedAuthToken?: string;
-  generatedAuthTokenPath?: string;
   socketPath: string;
   clientSocketPath: string;
   publicDir: string;
@@ -50,7 +46,6 @@ export type ServerConfig = {
 const cliOptions = {
   host: { type: "string" },
   port: { type: "string" },
-  password: { type: "string" },
   "tls-cert": { type: "string" },
   "tls-key": { type: "string" },
   "socket-path": { type: "string" },
@@ -113,6 +108,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
 Usage: thyra [options]
        thyra service <action>
        thyra mcp [token <action>]   read-only MCP server (see \`thyra mcp --help\`)
+       thyra user|session|grant ... accounts, logins and sharing (see \`thyra user --help\`)
 
 Service actions:
   install [--force]           install and start the platform user service
@@ -125,7 +121,6 @@ Service actions:
 Options (flags override env vars):
   --host <addr>              listen address        (env HOST,            default 127.0.0.1)
   --port <n>                 listen port           (env PORT,            default 8787)
-  --password <pw>            fixed login password  (env THYRA_PASSWORD; otherwise a token is generated)
   --tls-cert <path>          PEM certificate chain (env THYRA_TLS_CERT; requires --tls-key)
   --tls-key <path>           PEM private key       (env THYRA_TLS_KEY; requires --tls-cert)
   --socket-path <path>       control socket        (env HERDR_SOCKET_PATH)
@@ -166,27 +161,9 @@ Options (flags override env vars):
     console.error(`[bridge] ${(error as Error).message}`);
     process.exit(2);
   }
-  const configuredPassword = String(
-    args.password ?? thyraEnv("PASSWORD") ?? "",
-  );
   // A loopback listener skips login only for direct local requests; requests
-  // through a reverse proxy still log in, so a credential always exists.
+  // through a reverse proxy always log in (passkey or tailnet login).
   const authRequired = !isLocalHost(host);
-  const generatedAuthTokenPath = !configuredPassword
-    ? defaultAuthTokenPath()
-    : undefined;
-  let generatedAuthToken: string | undefined;
-  try {
-    generatedAuthToken = generatedAuthTokenPath
-      ? loadOrCreateAuthToken(generatedAuthTokenPath)
-      : undefined;
-  } catch (cause) {
-    console.error(
-      `[bridge] FATAL: could not load the generated auth token: ${(cause as Error).message}`,
-    );
-    process.exit(1);
-  }
-  const password = configuredPassword || generatedAuthToken || "";
 
   const sshHostValue =
     (typeof args["ssh-host"] === "string" && args["ssh-host"]) ||
@@ -217,11 +194,8 @@ Options (flags override env vars):
     appVersion,
     host,
     port,
-    password,
     authRequired,
     tls,
-    generatedAuthToken,
-    generatedAuthTokenPath,
     socketPath,
     clientSocketPath,
     publicDir: resolvePublicDir(args),
@@ -344,17 +318,6 @@ function formatUrlHost(host: string): string {
 export function browserUrlFor(host: string, port: number, tls = false): string {
   const browserHost = isAnyHost(host) ? "localhost" : formatUrlHost(host);
   return `${tls ? "https" : "http"}://${browserHost}:${port}`;
-}
-
-export function withLoginToken(url: string, token?: string): string {
-  if (!token) return url;
-  try {
-    const result = new URL(url);
-    result.searchParams.set("token", token);
-    return result.toString();
-  } catch {
-    return url;
-  }
 }
 
 export function openBrowser(config: ServerConfig, url: string) {

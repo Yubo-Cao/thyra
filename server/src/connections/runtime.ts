@@ -19,6 +19,8 @@ import {
   type SocketIdentity,
 } from "../bridge/display-ownership";
 import { acquireOwnShellClients } from "../bridge/own-shell-clients";
+import { createClaimTracker } from "../authz/pane-claims";
+import { createTopology, isStructuralEvent } from "../authz/topology";
 import { createPresenceFocusTracker } from "../bridge/presence-focus";
 import { hostname } from "node:os";
 import {
@@ -226,6 +228,12 @@ export function createLegacyConnectionRuntime(args: {
     (event: unknown) =>
       args.onEvent(filterCollaborationEvent(event, presentSnapshot), identity),
   );
+  // Authorization mirrors: pane claims (single writer) and where each
+  // terminal, pane and tab lives (workspace grants).
+  const claims = createClaimTracker();
+  const topology = createTopology({
+    listPanes: () => herdr.call("pane.list", {}, 5000),
+  });
   const collaboration = createCollaborationService({
     herdrCall: (method, params) => herdr.call(method, params),
     filterSnapshot: ownShellClients.filterSnapshot,
@@ -239,11 +247,13 @@ export function createLegacyConnectionRuntime(args: {
         },
         identity,
       ),
-    onSnapshot: (snapshot) =>
+    onSnapshot: (snapshot) => {
+      claims.observeSnapshot(snapshot);
       collaborationForward.push({
         event: "collaboration.updated",
         data: { type: "collaboration_updated", snapshot },
-      }),
+      });
+    },
   });
   // Presence already sent to browsers may list a shell learned only now.
   const stopOwnShellUpdates = ownShellClients.onChange((result) => {
@@ -579,8 +589,12 @@ export function createLegacyConnectionRuntime(args: {
     const name = (event as { event?: string })?.event;
     if (name === "workspace.focused")
       terminalBridge.refreshPopupObserverFocus();
+    if (isStructuralEvent(name)) topology.invalidate();
     // Herdr names this event with an underscore; the local fallback uses a dot.
     if (name === "collaboration_updated" || name === "collaboration.updated") {
+      claims.observeSnapshot(
+        (event as { data?: { snapshot?: unknown } }).data?.snapshot,
+      );
       collaborationForward.push(event);
       return;
     }
@@ -712,6 +726,8 @@ export function createLegacyConnectionRuntime(args: {
     sshHost,
     herdr,
     collaboration,
+    claims,
+    topology,
     worktreeParents,
     handleHerdrInfo,
     handleImageUpload,

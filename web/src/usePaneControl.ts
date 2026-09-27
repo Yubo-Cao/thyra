@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConnectionClient } from "./api";
 import {
   collaborationProfile,
+  collaborationSelfIdentity,
   parseDisplayOwners,
   publishCollaborationSnapshot,
   publishDisplayOwners,
@@ -11,7 +12,7 @@ import {
   type CollaborationSnapshot,
 } from "./collaboration";
 import { paneControlClient, paneControlState } from "./paneControl";
-import { store } from "./store";
+import { store, useStoreSelector } from "./store";
 
 export function usePaneControl(
   client: ConnectionClient,
@@ -30,6 +31,15 @@ export function usePaneControl(
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const participantId = collaborationProfile().participantId;
+  // Viewers of this workspace watch only; the bridge refuses their input.
+  // Owners (and instance admins) may take control during the protection.
+  const workspaceAccess = useStoreSelector((state) => {
+    const pane = state.panes.find((item) => item.pane_id === paneId);
+    return pane
+      ? state.workspaces.find((item) => item.workspace_id === pane.workspace_id)
+          ?.access
+      : undefined;
+  });
   useEffect(
     () => subscribeCollaborationSnapshot(client, setSnapshot),
     [client],
@@ -56,6 +66,11 @@ export function usePaneControl(
     participantId,
     viewingScope === scope,
     Date.now(),
+    {
+      readOnly: workspaceAccess === "viewer",
+      overridesProtection: workspaceAccess === "owner",
+      personId: collaborationSelfIdentity()?.person_id ?? null,
+    },
   );
   const accessRef = useRef(access);
   accessRef.current = access;
@@ -76,6 +91,7 @@ export function usePaneControl(
     async (mode: "view" | "type" | "resize") => {
       const viewOnly = mode === "view";
       if (!paneId || busy || !client.isCurrent()) return;
+      if (!viewOnly && accessRef.current.readOnly) return;
       const expectedScope = scope;
       setBusy(true);
       setError("");
@@ -105,7 +121,7 @@ export function usePaneControl(
         if (!viewOnly && result?.granted !== true)
           throw new Error(
             t(
-              "Layout control is temporarily held by another collaborator. Try again when its protection ends.",
+              "Another collaborator controls this pane. Try again when its protection ends.",
             ),
           );
         if (!viewOnly) setViewingScope(null);

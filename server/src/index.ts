@@ -17,7 +17,6 @@ import {
   isAnyHost,
   loadServerConfig,
   openBrowser,
-  withLoginToken,
 } from "./config/server-config";
 import {
   runServiceCommand,
@@ -77,9 +76,8 @@ import {
 import { createShutdownController } from "./connections/shutdown";
 import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
-import { createAuthHandlers, unauthenticatedLoginRedirect } from "./http/auth";
 import { createLoginRateLimiter } from "./http/login-rate-limit";
-import { parseTailnetAuthMode, tailnetLogin } from "./http/tailnet-auth";
+import { parseTailnetAuthMode } from "./http/tailnet-auth";
 import {
   createRequestAccessPolicy,
   forbiddenResponse,
@@ -89,14 +87,48 @@ import {
   type RequestAccess,
   type RequestAccessPolicy,
 } from "./http/request-access";
-import { authorizeRpc, type RpcRole, rpcRoleFor } from "./authz/policy";
+import { lookupRpc } from "./authz/policy";
+import {
+  type AuthzDeps,
+  authorize,
+  TAKEOVER_PROTECTION_MS,
+} from "./authz/authorize";
+import {
+  annotateOwnerAccess,
+  filterBridgeStatus,
+  filterConnections,
+  filterDisplayOwners,
+  filterEvent,
+  filterListResult,
+  filterPresenceResult,
+} from "./authz/filters";
+import {
+  authorizeHttp,
+  connectionRouteId,
+  type HttpRouteId,
+  matchHttpRoute,
+} from "./authz/http-policy";
+import { runAccountsCommand } from "./accounts/cli";
+import { defaultDatabasePath, openAccountDatabase } from "./accounts/database";
+import { type AccountStore, createAccountStore } from "./accounts/store";
+import { createAccessControl } from "./auth/access";
+import { createPasskeyService } from "./auth/passkeys";
+import {
+  type AuthResult,
+  createAuthenticator,
+  isInstanceAdmin,
+  type Principal,
+  principalView,
+  unauthenticatedLoginRedirect,
+} from "./auth/principal";
+import { createPublicAuthenticator } from "./auth/public";
+import { createAuthRoutes } from "./auth/routes";
 import {
   type ListenerKind,
   loadPublicListenerConfig,
   primaryListenerKind,
 } from "./http/listener";
 import {
-  createLoginUnavailableAuthenticator,
   inlineScriptHashes,
   isPublicStaticAsset,
   type PublicAuthenticator,
@@ -164,6 +196,10 @@ const mcpCommandResult = await runMcpCommand(
 if (mcpCommandResult !== null) {
   process.exit(mcpCommandResult);
 }
+const accountsCommandResult = await runAccountsCommand(process.argv.slice(2));
+if (accountsCommandResult !== null) {
+  process.exit(accountsCommandResult);
+}
 const config = loadServerConfig(APP_VERSION);
 configureServerLogger(config.logLevel);
 const logger = serverLogger;
@@ -182,21 +218,6 @@ const downstreamConnectionConfig = {
   hasExplicitSocketPath: config.hasExplicitSocketPath,
   hasExplicitClientSocketPath: config.hasExplicitClientSocketPath,
 };
-const {
-  isAuthed,
-  sessionCookie,
-  sessionToken,
-  handleTokenLogin,
-  handleLogin,
-  handleLogout,
-  loginPage,
-} = createAuthHandlers({
-  authRequired: config.authRequired,
-  password: config.password,
-  urlLoginToken: config.generatedAuthToken,
-  secureCookies: Boolean(config.tls),
-  loginLimiter: createLoginRateLimiter(),
-});
 const publicBaseUrls = parsePublicBaseUrls(thyraEnv("PUBLIC_BASE_URL"));
 if (publicBaseUrls.invalid.length > 0) {
   logger.warn("ignoring invalid THYRA_PUBLIC_BASE_URL entries", {
@@ -246,11 +267,6 @@ const publicAccessPolicy = publicListener
       trustedProxies: publicListener.trustedProxies,
     })
   : null;
-/**
- * Authentication for the public listener. Until accounts exist this knows
- * nobody, so the public listener serves only the login page and assets.
- */
-const publicAuth: PublicAuthenticator = createLoginUnavailableAuthenticator();
 const publicRequests = createRequestRateLimiter();
 const publicLoginLimiter = createLoginRateLimiter();
 let publicHtmlPolicy: Promise<string> | null = null;
@@ -264,11 +280,6 @@ function publicPagePolicy(): Promise<string> {
   return publicHtmlPolicy;
 }
 const CLIENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
-
-function cookieValue(setCookie: string): string {
-  const pair = setCookie.split(";", 1)[0] ?? "";
-  return pair.slice(pair.indexOf("=") + 1);
-}
 
 function withSetCookie(response: Response, setCookie: string): Response {
   const headers = new Headers(response.headers);
@@ -292,6 +303,140 @@ const tailnetAuth = parseTailnetAuthMode(
 );
 if (tailnetAuth.warning) logger.warn(tailnetAuth.warning);
 const primaryKind: ListenerKind = primaryListenerKind(tailnetAuth.mode);
+if (thyraEnv("PASSWORD"))
+  logger.warn(
+    "THYRA_PASSWORD is no longer used: log in with a passkey (`thyra user add`) or through tailnet login",
+  );
+
+let accountStore: AccountStore;
+try {
+  accountStore = createAccountStore(openAccountDatabase(defaultDatabasePath()));
+  accountStore.pruneExpired();
+} catch (error) {
+  logger.error("cannot open the account database", {
+    error: (error as Error).message,
+  });
+  process.exit(1);
+}
+/** The primary listener: direct local use, session cookies, tailnet login. */
+const authenticator = createAuthenticator({
+  store: accountStore,
+  authRequired: config.authRequired,
+  tailnetMode: tailnetAuth.mode,
+  tailnetUser: clientIdentity.tailnetUser,
+  secureCookies: Boolean(config.tls),
+  logger: logger.child("auth"),
+});
+/**
+ * The public listener: `__Host-` session cookies only. It never skips login
+ * and never runs tailnet login, whatever the request's headers.
+ */
+const publicAuthenticator = createAuthenticator({
+  store: accountStore,
+  authRequired: true,
+  tailnetMode: "off",
+  tailnetUser: async () => null,
+  hostOnlyCookie: true,
+  logger: logger.child("auth"),
+});
+const accessControl = createAccessControl(accountStore);
+/** Principal of each browser socket, fixed at its upgrade. */
+const socketPrincipals = new WeakMap<ServerWebSocket<unknown>, Principal>();
+/** Principal key owning each live presence participant. */
+const participantPrincipals = new Map<string, string>();
+const authzDeps: AuthzDeps = {
+  roleOn: accessControl.roleOn,
+  locate: async (connectionId, target) =>
+    (await connectionManager
+      .readyRuntime(connectionId)
+      ?.topology.locate(target)) ?? null,
+  claimOf: (connectionId, paneId) =>
+    connectionManager.readyRuntime(connectionId)?.claims.get(paneId) ?? null,
+  principalOfParticipant: (participantId) =>
+    participantPrincipals.get(participantId) ?? null,
+};
+const passkeys = createPasskeyService({ store: accountStore });
+function accountRoutes(
+  listenerAuthenticator: typeof authenticator,
+  limiter: ReturnType<typeof createLoginRateLimiter>,
+) {
+  return createAuthRoutes({
+    store: accountStore,
+    authenticator: listenerAuthenticator,
+    passkeys,
+    limiter,
+    authzDeps,
+    connectionExists: (connectionId) =>
+      connectionProfiles.list().some((profile) => profile.id === connectionId),
+    onChange: () => {
+      accessControl.invalidate();
+      checkLiveSessions();
+    },
+    onSessionEnded: (idHash) =>
+      closeSockets(
+        (principal) =>
+          principal.kind === "user" && principal.session.idHash === idHash,
+        4001,
+        "Logged out",
+      ),
+    logger: logger.child("auth"),
+  });
+}
+const authRoutes = accountRoutes(authenticator, createLoginRateLimiter());
+const publicRoutes = accountRoutes(publicAuthenticator, publicLoginLimiter);
+/** Accounts and passkeys on the public listener. */
+const publicAuth: PublicAuthenticator = createPublicAuthenticator({
+  authenticator: publicAuthenticator,
+  routes: publicRoutes,
+});
+
+function closeSockets(
+  predicate: (principal: Principal) => boolean,
+  code: number,
+  reason: string,
+) {
+  for (const client of [...clients]) {
+    const principal = socketPrincipals.get(client);
+    if (!principal || !predicate(principal)) continue;
+    webSocketCleanup.cleanup(client);
+    client.close(code, reason);
+  }
+}
+
+/**
+ * Close browser sockets whose session ended (logout, revocation, expiry) or
+ * whose account's privileges changed (role, grants, disabled): they
+ * reconnect under current authority, or return to the login page. Runs when
+ * the account database changed, here or in the CLI, and once a minute.
+ */
+function checkLiveSessions(force = false) {
+  if (!accessControl.refresh() && !force) return;
+  for (const client of [...clients]) {
+    const principal = socketPrincipals.get(client);
+    if (principal?.kind !== "user") continue;
+    const session = accountStore.sessionByHash(principal.session.idHash);
+    const user = accountStore.getUser(principal.user.id);
+    if (!session || !user || user.disabled) {
+      webSocketCleanup.cleanup(client);
+      client.close(4001, "Session ended");
+    } else if (user.privilegeEpoch !== principal.user.privilegeEpoch) {
+      webSocketCleanup.cleanup(client);
+      client.close(4003, "Access changed");
+    }
+  }
+}
+setInterval(() => checkLiveSessions(), 1000).unref();
+setInterval(() => {
+  accountStore.pruneExpired();
+  checkLiveSessions(true);
+}, 60_000).unref();
+
+/** A viewer's role lookup on one connection, or null for admins (no filter). */
+function viewerRoles(ws: ServerWebSocket<unknown>, connectionId: string) {
+  const principal = socketPrincipals.get(ws);
+  if (!principal || isInstanceAdmin(principal)) return null;
+  return accessControl.roleOf(principal, connectionId);
+}
 
 const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   appVersion: APP_VERSION,
@@ -314,6 +459,11 @@ function leaveSocketPresence(ws: ServerWebSocket<unknown>) {
   const collaboration = socketPresence.get(ws);
   socketPresence.delete(ws);
   const participantId = participantIds.get(ws);
+  if (
+    participantId &&
+    ![...clients].some((other) => participantIds.get(other) === participantId)
+  )
+    participantPrincipals.delete(participantId);
   if (!collaboration || !participantId) return;
   // A page that already reconnected keeps its id on the new socket.
   for (const other of socketPresence.keys()) {
@@ -327,11 +477,8 @@ function leaveSocketPresence(ws: ServerWebSocket<unknown>) {
     });
 }
 const clientIds = new WeakMap<ServerWebSocket<unknown>, number>();
-const clientSessions = new WeakMap<ServerWebSocket<unknown>, string | null>();
 /** Presence participant ids are assigned by the bridge, one per socket. */
 const participantIds = new WeakMap<ServerWebSocket<unknown>, string>();
-/** RPC role of each socket, fixed at upgrade by its listener and principal. */
-const socketRoles = new WeakMap<ServerWebSocket<unknown>, RpcRole>();
 interface WebSocketCleanupSnapshot {
   client: string;
   viewedTerminals: string[];
@@ -637,8 +784,11 @@ function runtimeFactoryForProfile(
         config: profileConfig,
         logger: logger.child("connection"),
         safeSend,
+        // Host-wide notices (the Herdr popup) reach instance admins only.
         broadcast: (payload, context) => {
-          for (const ws of clients) safeSend(ws, payload, context);
+          for (const ws of clients)
+            if (isInstanceAdmin(socketPrincipals.get(ws)))
+              safeSend(ws, payload, context);
         },
         clientLabel,
         markRpcError,
@@ -668,6 +818,12 @@ function runtimeFactoryForProfile(
               runtimeGeneration: context.generation,
             },
             context.isCurrent,
+            (owner) =>
+              accessControl.subscriberSees(
+                owner,
+                identity.id,
+                event.workspaceId,
+              ),
           );
         },
         onEvent: (event, eventIdentity) => {
@@ -677,13 +833,51 @@ function runtimeFactoryForProfile(
             connection: eventIdentity.id,
             detail: summarizeHerdrEvent(event),
           });
+          const name = (event as { event?: unknown } | null)?.event;
+          if (name === "workspace.closed") {
+            const workspaceId = (event as { data?: { workspace_id?: unknown } })
+              .data?.workspace_id;
+            // Herdr may reuse the id of a closed workspace; its grants go.
+            if (
+              typeof workspaceId === "string" &&
+              accountStore.removeWorkspaceGrants(eventIdentity.id, workspaceId)
+                .length > 0
+            ) {
+              accessControl.invalidate();
+              checkLiveSessions();
+            }
+          }
           try {
             const line = serializeHerdrEventEnvelope(
               eventIdentity.id,
               event,
               context.generation,
             );
-            for (const ws of clients) safeSend(ws, line, "event");
+            // Each viewer sees only its workspaces' events.
+            const views = new Map<string, string | null>();
+            for (const ws of clients) {
+              const roles = viewerRoles(ws, eventIdentity.id);
+              if (!roles) {
+                safeSend(ws, line, "event");
+                continue;
+              }
+              const key = socketPrincipals.get(ws)?.key ?? "";
+              let view = views.get(key);
+              if (view === undefined) {
+                const filtered = filterEvent(event, roles);
+                view = !filtered
+                  ? null
+                  : serializeHerdrEventEnvelope(
+                      eventIdentity.id,
+                      "resync" in filtered
+                        ? { event: "session.resync_required", data: {} }
+                        : filtered.event,
+                      context.generation,
+                    );
+                views.set(key, view);
+              }
+              if (view) safeSend(ws, view, "event");
+            }
           } catch (error) {
             logger.warn("dropped invalid Herdr event", {
               connection: eventIdentity.id,
@@ -807,7 +1001,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     return;
   }
   const req = parsed as RpcRequest;
-  const { id, method, params } = req;
+  const { id, method } = req;
+  let params: Record<string, any> | undefined = req.params;
   let validationConnectionId: string | undefined;
   let connectionIdValidationFailed = false;
   if (Object.hasOwn(req, "connection_id")) {
@@ -854,12 +1049,9 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   // Deny by default: only methods in the policy table reach routing or any
   // handler, including the Herdr passthrough at the end.
-  const authorization = authorizeRpc(
-    method,
-    socketRoles.get(ws) ?? "anonymous",
-  );
-  if (!authorization.allowed) {
-    const message = authorization.message;
+  const known = lookupRpc(method);
+  if (!known.allowed) {
+    const message = known.message;
     markRpcError(ws, id, message);
     safeSend(
       ws,
@@ -937,6 +1129,71 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     markRpcError(ws, id, message);
     sendReply({ id, error: { message } }, context);
   };
+  // Authorize against the caller's account, grants and pane claims.
+  const principal = socketPrincipals.get(ws);
+  if (!principal) {
+    sendError("rpc-denied", new Error("not logged in"));
+    return;
+  }
+  const participantId = participantIds.get(ws) ?? null;
+  if (
+    route.scope === "connection" &&
+    method.startsWith("terminal.") &&
+    !(typeof params?.terminal_id === "string" && params.terminal_id)
+  ) {
+    // Terminal methods without terminal_id act on the socket's current one.
+    const current = route.runtime.terminalBridge.currentTerminalId(ws);
+    if (current) params = { ...(params ?? {}), terminal_id: current };
+  }
+  const authorization = await authorize(
+    { principal, method, params: params ?? {}, connectionId, participantId },
+    authzDeps,
+  );
+  if (!authorization.allowed) {
+    sendError("rpc-denied", new Error(authorization.message));
+    return;
+  }
+  params = authorization.params;
+  if (authorization.stub) {
+    sendReply({ id, result: authorization.stub.result }, "rpc-stub");
+    return;
+  }
+  const roles = connectionId ? viewerRoles(ws, connectionId) : null;
+  if (
+    authorization.autoClaim &&
+    authorization.paneId &&
+    participantId &&
+    route.scope === "connection"
+  ) {
+    // Input to an unclaimed pane claims it: one writer at a time.
+    const claimParams = {
+      participant_id: participantId,
+      pane_id: authorization.paneId,
+      protect_ms: TAKEOVER_PROTECTION_MS,
+    };
+    try {
+      const claimed = await route.runtime.collaboration.call(
+        "collaboration.claim",
+        claimParams,
+      );
+      route.runtime.claims.observeResult(
+        "collaboration.claim",
+        claimParams,
+        claimed,
+      );
+      if (claimed?.granted === false) {
+        sendError(
+          "rpc-denied",
+          new Error(
+            `${method}: another collaborator controls this pane; take control first`,
+          ),
+        );
+        return;
+      }
+    } catch {
+      // Presence is unavailable (no participant yet): nobody else holds it.
+    }
+  }
   if (method === "bridge.ping") {
     sendReply({ id, result: { ok: true } }, "bridge-ping");
     return;
@@ -954,31 +1211,49 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     return;
   }
   if (method === "bridge.status") {
+    const status = {
+      clients: clients.size,
+      devices: countDevices(clients),
+      terminals:
+        connectionManager
+          .defaultReadyRuntime()
+          ?.terminalBridge.statusTerminals() ?? [],
+      default_connection_id: connectionManager.defaultId(),
+      connections: connectionProfiles.list(),
+    };
+    const visible = accessControl.connectionsOf(principal);
     sendReply(
       {
         id,
-        result: {
-          clients: clients.size,
-          devices: countDevices(clients),
-          terminals:
-            connectionManager
-              .defaultReadyRuntime()
-              ?.terminalBridge.statusTerminals() ?? [],
-          default_connection_id: connectionManager.defaultId(),
-          connections: connectionProfiles.list(),
-        },
+        result: isInstanceAdmin(principal)
+          ? status
+          : filterBridgeStatus(
+              status,
+              (connection) =>
+                connection === status.default_connection_id ||
+                visible.has(connection),
+            ),
       },
       "bridge-status",
     );
     return;
   }
   if (method === "connections.list") {
+    const connections = connectionProfiles.list();
+    const visible = accessControl.connectionsOf(principal);
     sendReply(
       {
         id,
         result: {
           default_connection_id: connectionManager.defaultId(),
-          connections: connectionProfiles.list(),
+          connections: isInstanceAdmin(principal)
+            ? connections
+            : filterConnections(
+                connections,
+                (connection) =>
+                  connection === connectionManager.defaultId() ||
+                  visible.has(connection),
+              ),
         },
       },
       "connections-list",
@@ -1126,7 +1401,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       const result = await connection.agentSessions.listWithActivity(
         params ?? {},
       );
-      sendReply({ id, result }, "agent-list");
+      sendReply(
+        { id, result: roles ? filterListResult(result, roles) : result },
+        "agent-list",
+      );
     } catch (e) {
       sendError("agent-list-error", e);
     }
@@ -1260,6 +1538,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       method,
       params ?? {},
       requestIsCurrent,
+      roles ? (result) => filterDisplayOwners(result, roles) : undefined,
     );
   }
   if (method.startsWith("collaboration.")) {
@@ -1277,6 +1556,30 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         method === "collaboration.update"
           ? await clientIdentity.presenceParams(ws, validParams)
           : validParams;
+      if (
+        method === "collaboration.claim" &&
+        authorization.takeoverAnytime &&
+        callParams.takeover === true
+      ) {
+        // Workspace owners and admins take control during the protection.
+        const paneId = String(callParams.pane_id);
+        const holder = connection.claims.get(paneId);
+        if (
+          holder &&
+          holder.participantId !== participantId &&
+          (holder.protectedUntil ?? 0) > Date.now()
+        ) {
+          const releaseParams = {
+            participant_id: holder.participantId,
+            pane_id: paneId,
+          };
+          connection.claims.observeResult(
+            "collaboration.release",
+            releaseParams,
+            await collaboration.call("collaboration.release", releaseParams),
+          );
+        }
+      }
       if (method === "collaboration.leave") {
         clientIdentity.forgetParticipant(participantId);
         socketPresence.delete(ws);
@@ -1285,11 +1588,16 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         if (!clients.has(ws)) return;
         socketPresence.set(ws, collaboration);
       }
+      const raw = await collaboration.call(method, callParams);
+      connection.claims.observeResult(method, callParams, raw);
       const result = clientIdentity.annotateResult(
-        await collaboration.call(method, callParams),
+        raw,
         connection.presenceContext,
       );
-      sendReply({ id, result }, method);
+      sendReply(
+        { id, result: roles ? filterPresenceResult(result, roles) : result },
+        method,
+      );
     } catch (e) {
       sendError(`${method}-error`, e);
     }
@@ -1499,6 +1807,12 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         endpoint_availability: terminalBridge.endpointAvailability(),
       };
     }
+    if (authorization.entry.scope === "list")
+      result = roles
+        ? filterListResult(result, roles)
+        : method === "workspace.list"
+          ? annotateOwnerAccess(result)
+          : result;
     sendReply({ id, result }, method);
   } catch (e) {
     sendError(`${method}-error`, e);
@@ -1612,20 +1926,19 @@ async function handleConnectionHttpRequest(
 }
 
 type SocketData = {
-  sessionToken: string | null;
+  /** Fixed at upgrade: who the socket acts for on its listener. */
+  principal: Principal;
   client?: ClientContext;
   clientSession: string | null;
-  /** Fixed at upgrade by the listener and, on the public one, the principal. */
-  rpcRole: RpcRole;
 };
 
 type AuthenticatedRoute = {
   url: URL;
   requestPathname: string;
   access: RequestAccess;
-  /** Session cookie issued by this response (tailnet login). */
+  /** Session cookie issued by this response (new or rotated session). */
   issuedCookie: string | null;
-  rpcRole: RpcRole;
+  principal: Principal;
   /** The request and peer the identity service sees. */
   identityRequest: Request;
   identityPeer: string | null | undefined;
@@ -1654,12 +1967,19 @@ async function routeAuthenticated(
   server: Server<SocketData>,
   route: AuthenticatedRoute,
 ): Promise<Response | undefined> {
-  const { url, requestPathname, access, issuedCookie } = route;
+  const { url, requestPathname, issuedCookie, principal } = route;
   if (url.pathname === "/ws") {
     const upgrade = clientIdentity.upgradeContext(
       route.identityRequest,
       route.identityPeer,
     );
+    if (principal.kind === "user") {
+      // The account is the person, whatever the device.
+      upgrade.context.account = {
+        key: principal.key,
+        displayName: principal.user.displayName,
+      };
+    }
     const clientSession = url.searchParams.get("client_session");
     const upgradeHeaders = new Headers();
     if (upgrade.headers["set-cookie"] && !route.publicListener)
@@ -1672,15 +1992,12 @@ async function routeAuthenticated(
           ? { headers: upgradeHeaders }
           : {}),
         data: {
-          sessionToken: issuedCookie
-            ? cookieValue(issuedCookie)
-            : sessionToken(req),
+          principal,
           client: upgrade.context,
           clientSession:
             clientSession && CLIENT_SESSION_PATTERN.test(clientSession)
               ? clientSession
               : null,
-          rpcRole: route.rpcRole,
         },
       })
     )
@@ -1688,7 +2005,7 @@ async function routeAuthenticated(
     return new Response("websocket upgrade failed", { status: 400 });
   }
   if (url.pathname === "/api/notifications/push") {
-    return webPush.handle(req);
+    return webPush.handle(req, principal.key);
   }
   if (url.pathname === "/api/voice/status" && req.method === "GET") {
     return voice.status();
@@ -1704,13 +2021,15 @@ async function routeAuthenticated(
     return voice.cleanup(req);
   }
   if (url.pathname === "/api/health") {
-    return Response.json({
+    const health = Response.json({
       ok: true,
       version: APP_VERSION,
-      socket: config.socketPath,
-      // Whether this browser had to log in (shows Log out).
-      auth_required: config.authRequired || !access.local,
+      ...(isInstanceAdmin(principal) ? { socket: config.socketPath } : {}),
+      // Whether this browser logged in (shows Log out).
+      auth_required: principal.kind === "user",
+      principal: principalView(principal),
     });
+    return issuedCookie ? withSetCookie(health, issuedCookie) : health;
   }
   if (url.pathname === "/api/update/check" && req.method === "GET") {
     server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
@@ -1753,6 +2072,76 @@ async function routeAuthenticated(
         staticPage,
       );
   return issuedCookie ? withSetCookie(page, issuedCookie) : page;
+}
+
+/** The policy route of an HTTP request (null: none matches) and its connection. */
+function httpRoute(req: Request, url: URL, requestPathname: string) {
+  const connectionRoute = parseConnectionHttpRoute(requestPathname, req.method);
+  const routeId: HttpRouteId | null = connectionRoute
+    ? connectionRoute.kind === "connection"
+      ? connectionRouteId(connectionRoute.endpoint)
+      : "connection.invalid"
+    : matchHttpRoute(req.method, url.pathname);
+  const connectionId =
+    connectionRoute?.kind === "connection"
+      ? (connectionRoute.requestedConnectionId ?? connectionManager.defaultId())
+      : null;
+  return { routeId, connectionId };
+}
+
+/** Deny by default: a request no HTTP_POLICY route matches. */
+function unmatchedRoute(url: URL): Response {
+  return url.pathname.startsWith("/api/")
+    ? Response.json({ error: "not found" }, { status: 404 })
+    : new Response("method not allowed", { status: 405 });
+}
+
+/** Apply HTTP_POLICY; the refusal to send, or null when allowed. */
+async function refuseUnauthorized(
+  req: Request,
+  url: URL,
+  route: { routeId: HttpRouteId; connectionId: string | null },
+  principal: Principal | null,
+): Promise<Response | null> {
+  const decision = await authorizeHttp({
+    route: route.routeId,
+    principal,
+    connectionId: route.connectionId,
+    query: url.searchParams,
+    deps: authzDeps,
+    editsConnection: accessControl.editsConnection,
+  });
+  if (decision.ok) return null;
+  if (decision.status === 401) {
+    const accept = req.headers.get("accept") ?? "";
+    if (req.method === "GET" && accept.includes("text/html"))
+      return unauthenticatedLoginRedirect();
+    return new Response("unauthorized", {
+      status: 401,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+  logger.warn("rejected unauthorized request", {
+    route: route.routeId,
+    reason: decision.message,
+  });
+  return Response.json(
+    { error: decision.message },
+    { status: 403, headers: { "cache-control": "no-store" } },
+  );
+}
+
+/** Add a new or rotated session cookie unless the response already sets it. */
+function withSessionCookie(
+  response: Response | undefined,
+  setCookie: string | undefined,
+): Response | undefined {
+  if (!response || !setCookie || response.status === 101) return response;
+  return response.headers
+    .getSetCookie()
+    .some((cookie) => cookie.includes("thyra_session="))
+    ? response
+    : withSetCookie(response, setCookie);
 }
 
 /** The primary listener (`HOST`/`PORT`): `tailnet` or `local`. */
@@ -1802,81 +2191,68 @@ async function primaryFetch(
       return forbiddenResponse(decision.reason);
     }
   }
-  const authContext = {
-    local: access.local,
-    secure: access.secure,
-    clientKey: access.clientAddress,
-  };
+  const route = httpRoute(req, url, requestPathname);
+  if (!route.routeId) return unmatchedRoute(url);
+  const routeId = route.routeId;
 
-  const tokenLoginResponse = handleTokenLogin(req, authContext);
-  if (tokenLoginResponse) return tokenLoginResponse;
-
-  // Auth endpoints are always reachable.
-  if (url.pathname === "/api/login" && req.method === "POST") {
-    return handleLogin(req, authContext);
+  // Direct local use, the session cookie, or tailnet login. Bearer MCP,
+  // icons, the login script and logout never start a session.
+  const auth: AuthResult =
+    routeId === "mcp" ||
+    routeId === "login.icon" ||
+    routeId === "login.script" ||
+    routeId === "logout"
+      ? { principal: null }
+      : await authenticator.authenticate(req, access);
+  const principal = auth.principal;
+  const refused = await refuseUnauthorized(
+    req,
+    url,
+    { ...route, routeId },
+    principal,
+  );
+  if (refused) return refused;
+  if (routeId === "login.page" && principal) {
+    // Already logged in (or local): go to the app.
+    return withSessionCookie(
+      new Response(null, {
+        status: 303,
+        headers: { location: "/", "cache-control": "no-store" },
+      }),
+      auth.setCookie,
+    );
   }
-  if (url.pathname === "/login") {
-    return loginPage(req);
-  }
-  // The login page's logo and favicon must also work before login.
-  if (
-    url.pathname === "/thyra-icon-192.png" ||
-    url.pathname === "/thyra-icon.svg"
-  ) {
+  const accountResponse = await authRoutes.handle(
+    routeId,
+    req,
+    url,
+    access,
+    principal,
+  );
+  if (accountResponse)
+    return withSessionCookie(accountResponse, auth.setCookie);
+  if (routeId === "login.icon") {
     return serveStatic(req, config.publicDir);
   }
-  if (url.pathname === "/api/logout") {
-    const response = handleLogout(req, authContext);
-    const token = sessionToken(req);
-    if (response.ok && token) {
-      for (const client of clients) {
-        if (clientSessions.get(client) !== token) continue;
-        webSocketCleanup.cleanup(client);
-        client.close(4001, "Logged out");
-      }
-    }
-    return response;
-  }
-
   // MCP authenticates with its own bearer tokens, never the cookie.
-  if (url.pathname === "/mcp") {
+  if (routeId === "mcp") {
     server.timeout(req, 60);
     return mcp.handle(req, access.clientAddress ?? peer);
   }
-
-  // Everything else requires login, except direct local use of a
-  // loopback listener.
-  // Tailnet users behind a trusted proxy log in by Tailscale whois
-  // and receive the normal session cookie for later requests.
-  let issuedCookie: string | null = null;
-  if (!isAuthed(req, authContext)) {
-    const login = await tailnetLogin({
-      mode: tailnetAuth.mode,
+  if (!principal) return new Response("unauthorized", { status: 401 });
+  return withSessionCookie(
+    await routeAuthenticated(req, server, {
+      url,
+      requestPathname,
       access,
-      lookupUser: clientIdentity.tailnetUser,
-    });
-    if (login) {
-      issuedCookie = sessionCookie(authContext);
-      logger.info("tailnet login", { login: logDetail(login) });
-    } else {
-      const accept = req.headers.get("accept") ?? "";
-      if (req.method === "GET" && accept.includes("text/html")) {
-        return unauthenticatedLoginRedirect();
-      }
-      return new Response("unauthorized", { status: 401 });
-    }
-  }
-
-  return routeAuthenticated(req, server, {
-    url,
-    requestPathname,
-    access,
-    issuedCookie,
-    rpcRole: rpcRoleFor(primaryKind, null),
-    identityRequest: req,
-    identityPeer: peer,
-    publicListener: false,
-  });
+      issuedCookie: auth.setCookie ?? null,
+      principal,
+      identityRequest: req,
+      identityPeer: peer,
+      publicListener: false,
+    }),
+    auth.setCookie,
+  );
 }
 
 /**
@@ -1956,7 +2332,8 @@ async function publicRoute(
       config.publicDir,
     );
   }
-  const principal = await publicAuth.authenticate(req, context);
+  const auth = await publicAuth.authenticate(req, context);
+  const principal = auth.principal;
   if (!principal) {
     const accept = req.headers.get("accept") ?? "";
     if (
@@ -1975,37 +2352,52 @@ async function publicRoute(
   if (url.pathname === "/mcp") {
     return new Response("not found", { status: 404 });
   }
-  const rpcRole = rpcRoleFor("public", principal.role);
-  if (
-    rpcRole !== "owner" &&
-    (url.pathname === "/api" || url.pathname.startsWith("/api/"))
-  ) {
-    return forbiddenResponse("not available for this account");
-  }
-  return routeAuthenticated(req, server, {
+  const route = httpRoute(req, url, requestPathname);
+  if (!route.routeId) return unmatchedRoute(url);
+  const routeId = route.routeId;
+  const refused = await refuseUnauthorized(
+    req,
     url,
-    requestPathname,
+    { ...route, routeId },
+    principal,
+  );
+  if (refused) return refused;
+  const accountResponse = await publicRoutes.handle(
+    routeId,
+    req,
+    url,
     access,
-    issuedCookie: null,
-    rpcRole,
-    identityRequest: withoutForwardingHeaders(req),
-    identityPeer: access.clientAddress,
-    publicListener: true,
-  });
+    principal,
+  );
+  if (accountResponse)
+    return withSessionCookie(accountResponse, auth.setCookie);
+  return withSessionCookie(
+    await routeAuthenticated(req, server, {
+      url,
+      requestPathname,
+      access,
+      issuedCookie: auth.setCookie ?? null,
+      principal,
+      identityRequest: withoutForwardingHeaders(req),
+      identityPeer: access.clientAddress,
+      publicListener: true,
+    }),
+    auth.setCookie,
+  );
 }
 
 const websocketHandlers: WebSocketHandler<SocketData> = {
   perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
   open(ws) {
     clients.add(ws);
-    clientSessions.set(ws, ws.data.sessionToken);
-    socketRoles.set(ws, ws.data.rpcRole);
+    socketPrincipals.set(ws, ws.data.principal);
     clientIdentity.attach(ws, ws.data.client);
     const participantId = clientIdentity.participantId(
       ws,
       ws.data.clientSession,
     );
     participantIds.set(ws, participantId);
+    participantPrincipals.set(participantId, ws.data.principal.key);
     const label = assignClientId(ws);
     logger.debug("client connected", {
       client: label,
@@ -2016,7 +2408,10 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
       ws,
       JSON.stringify({
         hello: true,
-        socket: config.socketPath,
+        ...(isInstanceAdmin(ws.data.principal)
+          ? { socket: config.socketPath }
+          : {}),
+        principal: principalView(ws.data.principal),
         bridge_protocol_version: 2,
         default_connection_id: connectionManager.defaultId(),
         participant_id: participantId,
@@ -2198,13 +2593,16 @@ function main() {
     scope: config.authRequired
       ? "all requests"
       : "proxied and non-local requests",
-    mode: config.generatedAuthTokenPath ? "generated token" : "password",
-    ...(config.generatedAuthTokenPath
-      ? { path: config.generatedAuthTokenPath }
-      : {}),
+    mode: "passkeys",
+    accounts: accountStore.userCount(),
     public_base_url: publicBaseUrls.origins.join(",") || undefined,
     tailnet_auth: tailnetAuth.mode,
   });
+  if (accountStore.userCount() === 0 && tailnetAuth.mode === "off") {
+    logger.warn(
+      "no accounts yet: run `thyra user add <name> --admin` on this host for a passkey enrollment link",
+    );
+  }
   logger.debug("Herdr sockets configured", {
     control_socket: config.socketPath,
     client_socket: config.clientSocketPath,
@@ -2212,10 +2610,7 @@ function main() {
   });
   logger.info("browser URL", { url: publicBrowserUrl });
 
-  const browserUrl = withLoginToken(
-    publicBrowserUrl,
-    config.authRequired ? config.generatedAuthToken : undefined,
-  );
+  const browserUrl = publicBrowserUrl;
   if (isAnyHost(config.host)) {
     const lanUrls = getLanIPs().map((ip) =>
       browserUrlFor(ip, listeningPort, Boolean(config.tls)),

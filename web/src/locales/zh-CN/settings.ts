@@ -391,4 +391,24 @@ export default {
   "Tool output": "工具输出",
   "Session export started": "已开始导出会话",
   "Failed to export session": "导出会话失败",
+  // Account and sharing
+  Account: "账户",
+  "Unknown browser": "未知浏览器",
+  "{browser} on {os}": "{os} 上的 {browser}",
+  "This browser uses Thyra directly on the host, without an account. Create accounts with `thyra user add` on the host.":
+    "此浏览器直接在主机上使用 Thyra，不需要账户。请在主机上运行 `thyra user add` 创建账户。",
+  "Instance admin": "实例管理员",
+  Member: "成员",
+  Passkeys: "通行密钥",
+  "No passkeys yet. Add one to log in from outside the tailnet.":
+    "还没有通行密钥。添加一个即可在 tailnet 之外登录。",
+  Passkey: "通行密钥",
+  "Used {time}": "{time}使用过",
+  "Never used": "从未使用",
+  "Passkeys need HTTPS or localhost": "通行密钥需要 HTTPS 或 localhost",
+  "Add a passkey for {host}": "为 {host} 添加通行密钥",
+  "Login sessions": "登录会话",
+  "This browser": "此浏览器",
+  "Sign out": "退出",
+  "Request failed ({status})": "请求失败（{status}）",
 } satisfies Record<string, string>;

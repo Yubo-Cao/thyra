@@ -134,8 +134,6 @@ export default {
   "Another collaborator": "另一位协作者",
   "This pane is view only. Take control to send input.":
     "此窗格为只读。请接管控制后再发送输入。",
-  "Layout control is temporarily held by another collaborator. Try again when its protection ends.":
-    "布局控制权暂时由另一位协作者持有。请在其保护期结束后重试。",
 
   // Workspaces and tabs
   "Tab created, but naming failed": "标签页已创建，但命名失败",

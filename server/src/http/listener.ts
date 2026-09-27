@@ -25,7 +25,7 @@ export type ListenerKind = "tailnet" | "local" | "public";
 
 /** Kind of the primary (`HOST`/`PORT`) listener. */
 export function primaryListenerKind(tailnetAuth: TailnetAuthMode) {
-  return tailnetAuth === "admin" ? "tailnet" : "local";
+  return tailnetAuth === "off" ? "local" : "tailnet";
 }
 
 export type PublicListenerConfig = {

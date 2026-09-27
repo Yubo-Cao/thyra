@@ -1,39 +1,142 @@
+import type { WorkspaceRole } from "../accounts/store";
+
 /**
- * Deny-by-default authorization for WebSocket RPC methods.
+ * Deny-by-default authorization table for WebSocket RPC methods.
  *
  * Every method a browser may call must be listed in `RPC_POLICY`, whether the
  * bridge implements it or forwards it to Herdr. Anything else, including
  * Herdr methods the web client never uses, is rejected before dispatch.
- * Classes describe the authority a method exercises; roles map to the
- * classes they may use. The listener decides which roles can occur; see
- * `rpcRoleFor`.
+ *
+ * Each entry has a class (the authority it exercises) and a scope (what it
+ * acts on). `authorize()` in `./authorize.ts` combines them with the caller:
+ *
+ * - `admin` and `dangerous` classes, and the `host` scope, need an instance
+ *   admin (or direct local use).
+ * - `session` methods act only on the caller's own socket, presence or
+ *   profile; any logged-in principal may call them.
+ * - `workspace` methods name their target through `resolve(params)`; every
+ *   named workspace, tab, pane or terminal must resolve to a workspace where
+ *   the caller holds at least `minimum` (default: viewer for reads, editor
+ *   for writes).
+ * - `list` methods read across workspaces; results and events are filtered
+ *   to the caller's workspaces.
+ * - `writer` marks single-writer pane control: only the pane's claim holder
+ *   may send input (`input`, which also claims an unclaimed pane) or change
+ *   the pane's size and focus (`control`).
  */
 
-import type { ListenerKind } from "../http/listener";
-
 export type RpcClass = "read" | "write" | "admin" | "dangerous";
+export type RpcScope = "session" | "workspace" | "list" | "host";
+
+/** Identifiers a request names; every present one is authorized. */
+export type RpcTarget = {
+  workspace?: string;
+  tab?: string;
+  pane?: string;
+  terminal?: string;
+  /** The request reaches outside any workspace (host filesystem, repo). */
+  host?: boolean;
+};
 
 export type RpcPolicyEntry = {
   class: RpcClass;
+  scope: RpcScope;
   /** The bridge forwards the call to Herdr unchanged (after enrichment). */
   herdr?: true;
+  resolve?: (params: Record<string, unknown>) => RpcTarget;
+  /** Least workspace role; defaults by class. */
+  minimum?: WorkspaceRole;
+  writer?: "input" | "control";
+  /**
+   * Answer for callers the method is not allowed for, instead of an error,
+   * when the browser calls it routinely (host theme, popup state). Nothing
+   * is dispatched.
+   */
+  deniedResult?: unknown;
 };
 
-const read = { class: "read" } as const;
-const write = { class: "write" } as const;
-const admin = { class: "admin" } as const;
-const dangerous = { class: "dangerous" } as const;
-const herdrRead = { class: "read", herdr: true } as const;
-const herdrWrite = { class: "write", herdr: true } as const;
+function id(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+export const targetResolvers = {
+  workspace: (p: Record<string, unknown>): RpcTarget => ({
+    workspace: id(p.workspace_id),
+  }),
+  tab: (p: Record<string, unknown>): RpcTarget => ({
+    tab: id(p.tab_id),
+    workspace: id(p.workspace_id),
+  }),
+  pane: (p: Record<string, unknown>): RpcTarget => ({
+    pane: id(p.pane_id) ?? id(p.target_pane_id),
+    tab: id(p.tab_id),
+    workspace: id(p.workspace_id),
+  }),
+  terminal: (p: Record<string, unknown>): RpcTarget => ({
+    terminal: id(p.terminal_id),
+  }),
+  /** Workspace files; `scope: "filesystem"` browses the whole host. */
+  files: (p: Record<string, unknown>): RpcTarget =>
+    p.scope === "filesystem"
+      ? { host: true }
+      : { workspace: id(p.workspace_id) },
+  /** A workspace-scoped listing, or the host when no workspace is named. */
+  workspaceOrHost: (p: Record<string, unknown>): RpcTarget =>
+    id(p.workspace_id) ? { workspace: id(p.workspace_id) } : { host: true },
+  /** Creation inside a workspace, optionally from a browser source pane. */
+  creation: (p: Record<string, unknown>): RpcTarget => {
+    const source =
+      p.browser_source && typeof p.browser_source === "object"
+        ? (p.browser_source as Record<string, unknown>)
+        : {};
+    return {
+      workspace: id(p.workspace_id) ?? id(source.workspace_id),
+      pane: id(source.pane_id),
+      tab: id(source.tab_id),
+    };
+  },
+};
+
+const r = targetResolvers;
+
+const session = (cls: "read" | "write" = "read"): RpcPolicyEntry => ({
+  class: cls,
+  scope: "session",
+});
+const admin: RpcPolicyEntry = { class: "admin", scope: "host" };
+const dangerous: RpcPolicyEntry = { class: "dangerous", scope: "host" };
+const hostWrite: RpcPolicyEntry = { class: "write", scope: "host" };
+const list: RpcPolicyEntry = { class: "read", scope: "list" };
+const herdrList: RpcPolicyEntry = { ...list, herdr: true };
+const read = (resolve: RpcPolicyEntry["resolve"]): RpcPolicyEntry => ({
+  class: "read",
+  scope: "workspace",
+  resolve,
+});
+const write = (
+  resolve: RpcPolicyEntry["resolve"],
+  extra: Partial<RpcPolicyEntry> = {},
+): RpcPolicyEntry => ({
+  class: "write",
+  scope: "workspace",
+  resolve,
+  ...extra,
+});
+const herdr = (entry: RpcPolicyEntry): RpcPolicyEntry => ({
+  ...entry,
+  herdr: true,
+});
 
 export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // Bridge-global.
-  "bridge.ping": read,
-  "bridge.status": read,
-  "bridge.identity": read,
-  "bridge.identity_profile": write,
+  "bridge.ping": session(),
+  // Filtered: counts, the caller's connections, no host details.
+  "bridge.status": session(),
+  "bridge.identity": session(),
+  "bridge.identity_profile": session("write"),
   "bridge.pause_others": admin,
-  "connections.list": admin,
+  // Filtered for members: their connections, without profile details.
+  "connections.list": session(),
   "connections.set_default": admin,
   "connections.connect": admin,
   "connections.disconnect": admin,
@@ -44,50 +147,64 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "connections.test": dangerous,
 
   // Agent sessions and history.
-  "agent.list": read,
-  "agent_history.get": read,
-  "agent_history.entry": read,
-  "agent_session.get": read,
+  "agent.list": list,
+  "agent_history.get": read(r.pane),
+  "agent_history.entry": read(r.pane),
+  "agent_session.get": read(r.pane),
 
   // Workspace files and Git.
-  "file.list": read,
-  "file.resolve": read,
-  "file.read": read,
-  "file.write": write,
-  "file.mkdir": write,
-  "git.diff_summary": read,
-  "git.diff_file": read,
-  "git.pull": write,
-  "git.file_action": write,
-  "git.repo_action": write,
+  "file.list": read(r.files),
+  "file.resolve": read(r.files),
+  "file.read": read(r.files),
+  "file.write": write(r.files),
+  "file.mkdir": write(r.files),
+  "git.diff_summary": read(r.workspace),
+  "git.diff_file": read(r.workspace),
+  "git.pull": write(r.workspace),
+  "git.file_action": write(r.workspace),
+  "git.repo_action": write(r.workspace),
 
-  // Terminal streaming.
-  "terminal.attach": read,
-  "terminal.detach": read,
-  "terminal.watch_popup": read,
-  "terminal.frame_ack": read,
+  // Terminal streaming. Methods without terminal_id act on the socket's
+  // current terminal, which the bridge fills in before authorizing.
+  "terminal.attach": read(r.terminal),
+  "terminal.detach": session(),
+  "terminal.frame_ack": session(),
   // Thins only this browser's own frame stream.
-  "terminal.stream": read,
+  "terminal.stream": session(),
   // A pane's last lines as text, read through Herdr's passive snapshot path.
-  "terminal.preview_text": read,
-  "terminal.scroll": read,
-  "terminal.link.resolve": read,
-  // The bridge ignores focus, resize, and relay resize from devices other
-  // than a pane's display owner (see terminal.display).
-  "terminal.focus": write,
-  "terminal.input": write,
-  "terminal.resize": write,
-  "terminal.relay_resize": write,
-  "terminal.host_theme": write,
+  "terminal.preview_text": read(r.pane),
+  // Herdr's popup belongs to the host TUI; members see none.
+  "terminal.watch_popup": {
+    class: "read",
+    scope: "host",
+    deniedResult: { popup: null },
+  },
+  // Viewers and non-holders scroll history only (never input to the app).
+  "terminal.scroll": read(r.terminal),
+  "terminal.link.resolve": read(r.terminal),
+  // The terminal bridge also ignores focus, resize, and relay resize from
+  // devices other than a pane's display owner (see terminal.display).
+  "terminal.focus": write(r.terminal, { writer: "control" }),
+  "terminal.input": write(r.terminal, { writer: "input" }),
+  "terminal.resize": write(r.terminal, { writer: "control" }),
+  "terminal.relay_resize": write(
+    (p) => (id(p.pane_id) ? { pane: id(p.pane_id) } : { host: true }),
+    { writer: "control" },
+  ),
   // Pin a pane's size to this device, take it here, or release it.
-  "terminal.display": write,
+  "terminal.display": write(r.pane, { writer: "control" }),
+  // Recolors every terminal on the host; members' reports are ignored.
+  "terminal.host_theme": {
+    ...hostWrite,
+    deniedResult: { ok: true, ignored: true },
+  },
 
   // Presence and pane control. The bridge assigns participant ids.
-  "collaboration.list": read,
-  "collaboration.update": read,
-  "collaboration.leave": read,
-  "collaboration.claim": write,
-  "collaboration.release": write,
+  "collaboration.list": session(),
+  "collaboration.update": session(),
+  "collaboration.leave": session(),
+  "collaboration.claim": write(r.pane),
+  "collaboration.release": session("write"),
 
   // Settings.
   "settings.get": admin,
@@ -109,42 +226,44 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "launcher.pins.set": dangerous,
   "launcher.launch": dangerous,
 
-  // Worktrees (the bridge runs the configured repository hooks).
-  "worktree.list": herdrRead,
-  "worktree.create": write,
-  "worktree.open": write,
-  "worktree.remove": write,
+  // Worktrees: creation runs repository hooks and makes new workspaces.
+  "worktree.list": herdr(read(r.workspaceOrHost)),
+  "worktree.create": hostWrite,
+  "worktree.open": hostWrite,
+  "worktree.remove": hostWrite,
 
   // Herdr navigation and layout, forwarded to Herdr.
-  "session.appearance": herdrRead,
-  "workspace.list": herdrRead,
-  "workspace.create": herdrWrite,
-  "workspace.focus": herdrWrite,
-  "workspace.rename": herdrWrite,
-  "workspace.move": herdrWrite,
-  "workspace.close": herdrWrite,
-  "tab.list": herdrRead,
-  "tab.create": herdrWrite,
-  "tab.focus": herdrWrite,
-  "tab.rename": herdrWrite,
-  "tab.close": herdrWrite,
-  "pane.list": herdrRead,
-  "pane.get": herdrRead,
-  "pane.layout": herdrRead,
-  "pane.split": herdrWrite,
-  "pane.close": herdrWrite,
-  "pane.resize": herdrWrite,
-  "pane.zoom": herdrWrite,
-  "pane.focus_direction": herdrWrite,
-  "pane.send_input": herdrWrite,
-  "pane.send_text": herdrWrite,
-  "pane.send_key": herdrWrite,
-  "pane.send_keys": herdrWrite,
-  "pane.paste": herdrWrite,
-  "popup.close": herdrWrite,
-  "integration.list": { class: "admin", herdr: true },
+  "session.appearance": herdr(session()),
+  "workspace.list": herdrList,
+  // A new workspace has no grants; only instance admins create them.
+  "workspace.create": herdr(hostWrite),
+  "workspace.focus": herdr(write(r.tab)),
+  "workspace.rename": herdr(write(r.workspace, { minimum: "owner" })),
+  // Reorders every user's workspace list.
+  "workspace.move": herdr(hostWrite),
+  "workspace.close": herdr(write(r.workspace, { minimum: "owner" })),
+  "tab.list": herdrList,
+  "tab.create": herdr(write(r.creation)),
+  "tab.focus": herdr(write(r.tab)),
+  "tab.rename": herdr(write(r.tab)),
+  "tab.close": herdr(write(r.tab)),
+  "pane.list": herdrList,
+  "pane.get": herdr(read(r.pane)),
+  "pane.layout": herdr(read(r.pane)),
+  "pane.split": herdr(write(r.pane)),
+  "pane.close": herdr(write(r.pane)),
+  "pane.resize": herdr(write(r.pane)),
+  "pane.zoom": herdr(write(r.pane)),
+  "pane.focus_direction": herdr(write(r.pane)),
+  "pane.send_input": herdr(write(r.pane, { writer: "input" })),
+  "pane.send_text": herdr(write(r.pane, { writer: "input" })),
+  "pane.send_key": herdr(write(r.pane, { writer: "input" })),
+  "pane.send_keys": herdr(write(r.pane, { writer: "input" })),
+  "pane.paste": herdr(write(r.pane, { writer: "input" })),
+  "popup.close": herdr(hostWrite),
+  "integration.list": herdr(admin),
   // Plugin actions run plugin-defined code on the host.
-  "plugin.action.invoke": { class: "dangerous", herdr: true },
+  "plugin.action.invoke": herdr(dangerous),
 };
 
 /**
@@ -163,40 +282,12 @@ export const DENIED_RPC_METHODS: Readonly<Record<string, string>> = {
   "agent.prompt": "prompting agents through the bridge is not allowed",
 };
 
-/**
- * `owner` holds every class. `anonymous` holds none: it is the role of a
- * public-listener socket without an account principal, so a socket that
- * somehow skipped login still cannot call anything.
- */
-export type RpcRole = "owner" | "anonymous";
-
-const ROLE_CLASSES: Readonly<Record<RpcRole, ReadonlySet<RpcClass>>> = {
-  owner: new Set<RpcClass>(["read", "write", "admin", "dangerous"]),
-  anonymous: new Set<RpcClass>(),
-};
-
-/**
- * The RPC role of an authenticated socket. The private listeners (`tailnet`,
- * `local`) authenticate only the owner (password, token, tailnet login, or
- * direct local use). On the public listener the role comes solely from the
- * account principal, never from the listener or headers.
- */
-export function rpcRoleFor(
-  listener: ListenerKind,
-  principalRole: RpcRole | null,
-): RpcRole {
-  if (listener !== "public") return "owner";
-  return principalRole ?? "anonymous";
-}
-
-export type RpcDecision =
+export type RpcLookup =
   | { allowed: true; entry: RpcPolicyEntry }
   | { allowed: false; message: string };
 
-export function authorizeRpc(
-  method: string,
-  role: RpcRole = "owner",
-): RpcDecision {
+/** The policy entry for a method, or why the method is never allowed. */
+export function lookupRpc(method: string): RpcLookup {
   const denied = Object.hasOwn(DENIED_RPC_METHODS, method)
     ? DENIED_RPC_METHODS[method]
     : undefined;
@@ -212,11 +303,18 @@ export function authorizeRpc(
       message: `${method} is not allowed: the bridge does not expose this method`,
     };
   }
-  if (!ROLE_CLASSES[role].has(entry.class)) {
-    return {
-      allowed: false,
-      message: `${method} is not allowed for this session`,
-    };
-  }
   return { allowed: true, entry };
+}
+
+/** Whether the entry needs an instance admin regardless of grants. */
+export function requiresInstanceAdmin(entry: RpcPolicyEntry): boolean {
+  return (
+    entry.class === "admin" ||
+    entry.class === "dangerous" ||
+    entry.scope === "host"
+  );
+}
+
+export function minimumRole(entry: RpcPolicyEntry): WorkspaceRole {
+  return entry.minimum ?? (entry.class === "read" ? "viewer" : "editor");
 }

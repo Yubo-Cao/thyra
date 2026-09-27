@@ -24,6 +24,8 @@ export interface PushPreferences {
 interface Device {
   subscription: webpush.PushSubscription;
   preferences: PushPreferences;
+  /** Principal that registered it (`user:<id>` or `local`). */
+  owner?: string;
 }
 interface Registry {
   version: 1;
@@ -97,6 +99,10 @@ export function validatePushDevice(value: unknown): Device {
       completed: preferences.completed,
       blocked: preferences.blocked,
     },
+    ...(typeof input.owner === "string" &&
+    /^(local|user:[\w-]{1,64})$/.test(input.owner)
+      ? { owner: input.owner }
+      : {}),
   };
 }
 
@@ -168,6 +174,7 @@ export function createWebPushService(
     device: Device;
     task: PushTask;
     isCurrent: () => boolean;
+    sees: (owner: string | undefined) => boolean;
   }> = [];
   let active = 0;
 
@@ -241,7 +248,9 @@ export function createWebPushService(
       stopped ||
       !registry?.devices.includes(device) ||
       !isCurrent() ||
-      !device.preferences[task.kind]
+      !device.preferences[task.kind] ||
+      // Grants may have changed while the notification was queued.
+      !item.sees(device.owner)
     )
       return;
     const target = {
@@ -313,7 +322,8 @@ export function createWebPushService(
   }
 
   return {
-    async handle(req: Request): Promise<Response> {
+    /** Subscription requests; `owner` is the logged-in principal's key. */
+    async handle(req: Request, owner = "local"): Promise<Response> {
       const headers = { "Cache-Control": "no-store" };
       if (req.method === "GET")
         return Response.json(
@@ -350,7 +360,7 @@ export function createWebPushService(
       let endpoint: string;
       try {
         if (req.method === "POST") {
-          device = validatePushDevice(input);
+          device = { ...validatePushDevice(input), owner };
           endpoint = device.subscription.endpoint;
         } else
           endpoint = validatePushEndpoint(
@@ -381,15 +391,24 @@ export function createWebPushService(
       }
       return Response.json({ ok: true }, { headers });
     },
-    notify(task: PushTask, isCurrent: () => boolean) {
+    /**
+     * Queue a notification for every subscription whose owner may see the
+     * task's workspace (`sees`); subscriptions without an owner predate
+     * accounts and belong to the host owner.
+     */
+    notify(
+      task: PushTask,
+      isCurrent: () => boolean,
+      sees: (owner: string | undefined) => boolean = () => true,
+    ) {
       if (!registry || stopped || !isCurrent()) return;
       for (const device of registry.devices) {
-        if (!device.preferences[task.kind]) continue;
+        if (!device.preferences[task.kind] || !sees(device.owner)) continue;
         if (queue.length >= 256) {
           warn("Web Push queue is full; notification dropped.");
           break;
         }
-        queue.push({ device, task, isCurrent });
+        queue.push({ device, task, isCurrent, sees });
       }
       drain();
     },

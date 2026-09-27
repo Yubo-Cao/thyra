@@ -1,9 +1,9 @@
 /**
- * Per-client limit on failed login attempts. `limit` failures within
- * `windowMs` block the client for `windowMs`, doubling with each further
- * block up to `maxBlockMs`. While blocked, every attempt is refused
- * (including a correct password), so guessing gains nothing. A successful
- * login clears the client's record.
+ * Per-client limit on failed login attempts (passkey assertions and
+ * enrollment secrets). `limit` failures within `windowMs` block the client
+ * for `windowMs`, doubling with each further block up to `maxBlockMs`. While
+ * blocked, every attempt is refused (including a valid one), so guessing
+ * gains nothing. A successful login clears the client's record.
  */
 
 type Entry = {

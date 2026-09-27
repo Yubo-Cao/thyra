@@ -161,13 +161,15 @@ export function TerminalPaneHeader({
               tone="accent"
               icon={<MousePointer2 size={11} />}
               title={t(
-                "You control this pane's layout. Collaborators can still type.",
+                "You control this pane. Others watch until they take control.",
               )}
             >
-              {t("Layout")}
+              {t("In control")}
             </Token>
           ) : null}
-          {foreignDisplay && (!access.ownsLayout || access.viewOnly) ? (
+          {!access.readOnly &&
+          foreignDisplay &&
+          (!access.ownsLayout || access.viewOnly) ? (
             <Button
               variant={access.display?.active ? "primary" : "ghost"}
               disabled={control.busy || access.protectedUntil > Date.now()}
@@ -184,7 +186,8 @@ export function TerminalPaneHeader({
               <span>{t("Type here")}</span>
             </Button>
           ) : null}
-          {foreignDisplay &&
+          {!access.readOnly &&
+          foreignDisplay &&
           (!access.ownsLayout || access.viewOnly || access.inputOnly) ? (
             <Button
               variant={
@@ -200,21 +203,23 @@ export function TerminalPaneHeader({
               <span>{t("Resize here")}</span>
             </Button>
           ) : null}
-          {!foreignDisplay && (!access.ownsLayout || access.viewOnly) ? (
+          {!access.readOnly &&
+          !foreignDisplay &&
+          (!access.ownsLayout || access.viewOnly) ? (
             <Button
               disabled={control.busy || access.protectedUntil > Date.now()}
               onPointerDown={preventPaneActionFocus}
               onClick={control.takeControl}
               title={
                 access.protectedUntil > Date.now()
-                  ? t("Another collaborator has protected layout control")
+                  ? t("Another collaborator has protected control")
                   : access.ownerName
                     ? t(
-                        "{owner} controls layout. Take layout control for 15 seconds; collaborators can still type",
+                        "{owner} controls this pane. Take control; it stays yours for at least 15 seconds",
                         { owner: access.ownerName },
                       )
                     : t(
-                        "Take layout control for 15 seconds; collaborators can still type",
+                        "Take control of this pane; it stays yours for at least 15 seconds",
                       )
               }
             >
@@ -227,7 +232,7 @@ export function TerminalPaneHeader({
             aria-pressed={access.viewOnly}
             onPointerDown={preventPaneActionFocus}
             onClick={access.viewOnly ? control.takeControl : control.watch}
-            disabled={control.busy}
+            disabled={control.busy || access.readOnly}
             title={
               access.viewOnly
                 ? t("Stop viewing and take control")

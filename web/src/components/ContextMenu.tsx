@@ -19,6 +19,8 @@ import { workspaceDisplayName } from "../workspaceTreeBadges";
 import { copyTextFromUserGesture } from "../terminalClipboard";
 import { ContextMenu as MenuAtPoint } from "./ui/ContextMenu";
 import type { MenuItem } from "./ui/Menu";
+import { ShareWorkspaceDialog } from "./ShareWorkspaceDialog";
+import { useInstanceAdmin } from "../principal";
 
 export interface ContextMenuState {
   x: number;
@@ -36,7 +38,8 @@ type Opened = {
     | "open-worktree"
     | "worktree-hooks"
     | "auto-sync"
-    | "lifecycle";
+    | "lifecycle"
+    | "share";
   workspaceId: string;
   value: string;
 };
@@ -82,6 +85,12 @@ export function ContextMenu({
       target)
     : null;
   const isLinked = !!w?.worktree?.is_linked_worktree;
+  // The bridge enforces roles; hide what this caller cannot do. Worktrees
+  // and branch auto-update run host-side hooks: instance admins only.
+  const admin = useInstanceAdmin();
+  const role = w?.access ?? "owner";
+  const editor = role !== "viewer";
+  const owner = role === "owner";
 
   const sections = (() => {
     if (!w) return [];
@@ -108,41 +117,43 @@ export function ContextMenu({
           }),
       );
     };
-    const worktreeItems: MenuItem[] = [
-      ...(creationSource
-        ? [
-            {
-              id: "new-worktree",
-              label: t("New worktree…"),
-              onAction: () =>
-                open(
-                  "new-worktree",
-                  luckyWorktreeBranchName(),
-                  creationSource.workspace_id,
-                ),
-            },
-          ]
-        : []),
-      ...(w.worktree
-        ? [
-            {
-              id: "open-worktree",
-              label: t("Open worktree…"),
-              onAction: () => open("open-worktree"),
-            },
-            {
-              id: "lifecycle",
-              label: t("Worktree lifecycle…"),
-              onAction: () => open("lifecycle"),
-            },
-            {
-              id: "worktree-hooks",
-              label: t("Configure worktree hooks…"),
-              onAction: () => open("worktree-hooks"),
-            },
-          ]
-        : []),
-    ];
+    const worktreeItems: MenuItem[] = !admin
+      ? []
+      : [
+          ...(creationSource
+            ? [
+                {
+                  id: "new-worktree",
+                  label: t("New worktree…"),
+                  onAction: () =>
+                    open(
+                      "new-worktree",
+                      luckyWorktreeBranchName(),
+                      creationSource.workspace_id,
+                    ),
+                },
+              ]
+            : []),
+          ...(w.worktree
+            ? [
+                {
+                  id: "open-worktree",
+                  label: t("Open worktree…"),
+                  onAction: () => open("open-worktree"),
+                },
+                {
+                  id: "lifecycle",
+                  label: t("Worktree lifecycle…"),
+                  onAction: () => open("lifecycle"),
+                },
+                {
+                  id: "worktree-hooks",
+                  label: t("Configure worktree hooks…"),
+                  onAction: () => open("worktree-hooks"),
+                },
+              ]
+            : []),
+        ];
     return [
       {
         title: t("Inspect"),
@@ -173,11 +184,20 @@ export function ContextMenu({
                 : t("Pin workspace"),
             onAction: () => onPinnedChange(w, !pinned),
           },
-          {
-            id: "rename",
-            label: t("Rename workspace…"),
-            onAction: () => open("rename-workspace"),
-          },
+          ...(owner
+            ? [
+                {
+                  id: "share",
+                  label: t("Share workspace…"),
+                  onAction: () => open("share"),
+                },
+                {
+                  id: "rename",
+                  label: t("Rename workspace…"),
+                  onAction: () => open("rename-workspace"),
+                },
+              ]
+            : []),
           ...(w.worktree
             ? [
                 {
@@ -193,23 +213,31 @@ export function ContextMenu({
       {
         title: t("Source control"),
         items: [
-          {
-            id: "git-pull",
-            label: t("Pull from Git"),
-            onAction: () => void store.gitPullWorkspace(w.workspace_id),
-          },
-          {
-            id: "auto-sync",
-            label: t("Configure branch auto-update…"),
-            onAction: () => open("auto-sync"),
-          },
+          ...(editor
+            ? [
+                {
+                  id: "git-pull",
+                  label: t("Pull from Git"),
+                  onAction: () => void store.gitPullWorkspace(w.workspace_id),
+                },
+              ]
+            : []),
+          ...(admin
+            ? [
+                {
+                  id: "auto-sync",
+                  label: t("Configure branch auto-update…"),
+                  onAction: () => open("auto-sync"),
+                },
+              ]
+            : []),
         ],
       },
       {
         title: t("Close"),
         danger: true,
         items: [
-          ...(isLinked
+          ...(isLinked && admin
             ? [
                 {
                   id: "remove-worktree",
@@ -218,14 +246,18 @@ export function ContextMenu({
                 },
               ]
             : []),
-          {
-            id: "close-workspace",
-            label: t("Close workspace"),
-            onAction: () => open("close-workspace"),
-          },
+          ...(owner
+            ? [
+                {
+                  id: "close-workspace",
+                  label: t("Close workspace"),
+                  onAction: () => open("close-workspace"),
+                },
+              ]
+            : []),
         ],
       },
-    ];
+    ].filter((section) => section.items.length > 0);
   })();
 
   return (
@@ -314,6 +346,13 @@ export function ContextMenu({
           );
           store.closeWorkspace(opened.workspaceId);
         }}
+      />
+      <ShareWorkspaceDialog
+        open={opened?.kind === "share"}
+        connectionId={activeConnectionId}
+        workspaceId={openedId("share")}
+        workspaceName={opened?.value ?? ""}
+        onClose={close}
       />
       <WorktreeOpenDialog
         open={opened?.kind === "open-worktree"}
