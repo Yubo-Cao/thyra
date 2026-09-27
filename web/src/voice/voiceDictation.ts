@@ -79,11 +79,23 @@ async function transcribe(wav: Uint8Array, attempt = 0): Promise<string> {
     error?: string;
   };
   if (!response.ok)
-    throw new Error(
+    throw new TranscriptionError(
       body.error ??
         t("transcription failed ({status})", { status: response.status }),
+      response.status,
     );
   return body.text?.trim() ?? "";
+}
+
+/** A failed transcription request; 503 means voice input is unconfigured. */
+class TranscriptionError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "TranscriptionError";
+  }
 }
 
 /** Rewrite a finished dictation with the bridge's cleanup model. */
@@ -221,7 +233,8 @@ function capture(
           if (text) callbacks.onText(text);
         },
         (error: Error) => {
-          const fatal = /not configured/i.test(error.message);
+          const fatal =
+            error instanceof TranscriptionError && error.status === 503;
           callbacks.onError(error.message, fatal);
         },
       )

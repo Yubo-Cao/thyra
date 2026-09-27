@@ -5,6 +5,10 @@ import {
   logoutBrowserSession,
   parseConnectionSummary,
 } from "./api";
+import { BridgeError, type BridgeFailure } from "./bridgeError";
+import { installCatalog } from "./i18n";
+import zhCN from "./locales/zh-CN";
+import { isReconnectRetryableError } from "./reconnectRetry";
 
 const originalWebSocket = globalThis.WebSocket;
 const originalFetch = globalThis.fetch;
@@ -1241,6 +1245,54 @@ describe("bridge connection lifecycle", () => {
     expect(bridge.clientGeneration).toBe(generation + 1);
   });
 
+  for (const locale of ["en", "zh-CN"] as const) {
+    test(`reconnect failures carry typed codes in ${locale}`, async () => {
+      class OpeningWebSocket extends HangingWebSocket {
+        static instance: OpeningWebSocket;
+
+        constructor() {
+          super();
+          OpeningWebSocket.instance = this;
+          queueMicrotask(() => {
+            this.readyState = OpeningWebSocket.OPEN;
+            this.onopen?.();
+          });
+        }
+      }
+      installBrowserGlobals(OpeningWebSocket as unknown as typeof WebSocket);
+      installCatalog(locale, locale === "zh-CN" ? zhCN : {});
+      try {
+        const bridge = createTestBridge(50);
+        const offline = await bridge.call("bridge.ping").catch((e) => e);
+        expect(offline).toBeInstanceOf(BridgeError);
+        expect(offline.code).toBe("not_connected");
+        expect(offline.message).toBe(
+          locale === "zh-CN"
+            ? zhCN["not connected to bridge"]
+            : "not connected to bridge",
+        );
+        expect(isReconnectRetryableError(offline)).toBe(true);
+
+        bridge.connect();
+        await Bun.sleep(1);
+        sendHello(OpeningWebSocket.instance);
+        const pending = bridge.call("bridge.ping").catch((e) => e);
+        OpeningWebSocket.instance.onclose?.();
+        const dropped = await pending;
+        expect(dropped).toBeInstanceOf(BridgeError);
+        expect(dropped.code).toBe("disconnected");
+        expect(dropped.message).toBe(
+          locale === "zh-CN"
+            ? zhCN["bridge disconnected"]
+            : "bridge disconnected",
+        );
+        expect(isReconnectRetryableError(dropped)).toBe(true);
+      } finally {
+        installCatalog("en", {});
+      }
+    });
+  }
+
   test("handleDisconnect stays idempotent once the socket is fully torn down", async () => {
     class OpeningWebSocket extends HangingWebSocket {
       static instance: OpeningWebSocket;
@@ -1269,9 +1321,12 @@ describe("bridge connection lifecycle", () => {
     // generation-scoped clients captured the first advance and would never
     // learn a second one.
     const internals = bridge as unknown as {
-      handleDisconnect(ws: WebSocket | null, reason: string): void;
+      handleDisconnect(ws: WebSocket | null, reason: BridgeFailure): void;
     };
-    internals.handleDisconnect(null, "stale repeated teardown");
+    internals.handleDisconnect(null, {
+      code: "disconnected",
+      message: "stale repeated teardown",
+    });
     expect(bridge.clientGeneration).toBe(generation + 1);
   });
 
