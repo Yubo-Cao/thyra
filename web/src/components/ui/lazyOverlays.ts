@@ -37,11 +37,15 @@ export const LazyToastRegion = toastRegion.Component;
 /**
  * Fetch the overlay chunk ahead of use (trigger hover/focus, idle time). A
  * failed prefetch stays silent; only an overlay that renders retries with a
- * reload.
+ * reload. The promise settles once the chunk loaded or failed, so the idle
+ * prefetch queue can wait for it.
  */
-export function preloadOverlays(): void {
-  for (const panel of [dialog, menu, select, popover, tooltip, toastRegion])
-    void panel.preload();
+export function preloadOverlays(): Promise<void> {
+  return Promise.all(
+    [dialog, menu, select, popover, tooltip, toastRegion].map((panel) =>
+      panel.preload(),
+    ),
+  ).then(() => undefined);
 }
 
 /**

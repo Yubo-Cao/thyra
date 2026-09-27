@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom";
 import { listenForTaskNotificationActivation } from "./taskNotifications";
 import { useReviewAnnotationDraft } from "./useReviewAnnotationDraft";
 import {
@@ -24,16 +23,12 @@ import {
 import { t } from "./i18n";
 import { SHORTCUT_NUMBERS } from "./shortcutBindings";
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   FileDiff,
   FolderOpen,
   FolderTree,
   History,
-  Info,
-  LoaderCircle,
   MessageSquareText,
   Minimize2,
   MoreHorizontal,
@@ -70,7 +65,6 @@ import {
 } from "./appearance";
 import { AgentIcon } from "./components/AgentIcon";
 import { paneHasAgentHistory } from "./components/agentSession";
-import { CloseButton } from "./components/CloseButton";
 import { focusIfUnchanged } from "./components/dialogFocus";
 import { CommandMenu, commandComboboxPanel } from "./components/CommandMenu";
 import {
@@ -82,7 +76,6 @@ import {
   connectionSwitcherPanel,
   LazyConnectionSwitcher,
 } from "./components/ConnectionSwitcherTrigger";
-import { themedSelectPanel } from "./components/LazyThemedSelect";
 import {
   annotationComposerPanel,
   createWorkspaceDialog,
@@ -104,6 +97,11 @@ import {
 } from "./components/fileExplorerResources";
 import { type ActiveFilePreviewSelection } from "./components/FilePreviewContent";
 import { GlobalTooltip } from "./components/GlobalTooltip";
+import { themedSelectPanel } from "./components/LazyThemedSelect";
+import { textInputDialogPanel } from "./components/ModalDialogs";
+import { Button } from "./components/ui/Button";
+import { IconButton } from "./components/ui/IconButton";
+import { preloadOverlays } from "./components/ui/lazyOverlays";
 import { requestClosePane, requestCloseTab, TabBar } from "./components/TabBar";
 import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
 import {
@@ -211,7 +209,6 @@ import {
 import "./styles/layout/app.css";
 import "./styles/layout/topbar.css";
 import "./styles/layout/sidebar.css";
-import "./styles/layout/toast.css";
 import "./styles/layout/mobile-nav.css";
 
 const workspaceInspectorPanel = lazyPanel("workspace-inspector", () =>
@@ -232,6 +229,11 @@ const mobileTabSheet = lazyPanel("mobile-tab-sheet", () =>
   import("./components/MobileTabSheet").then((module) => module.MobileTabSheet),
 );
 const MobileTabSheet = mobileTabSheet.Component;
+// The notice/update toasts and their queue load with the first notice.
+const noticeToastsPanel = lazyPanel("notice-toasts", () =>
+  import("./components/NoticeToasts").then((module) => module.NoticeToasts),
+);
+const NoticeToasts = noticeToastsPanel.Component;
 
 // Once the terminal has output, fetch the surfaces people open next, most
 // likely first, one chunk per idle period (skipped under Data Saver and 2G).
@@ -243,7 +245,9 @@ function idlePrefetchLoaders(mobile: boolean) {
     configMenuPanel.preload,
     connectionSwitcherPanel.preload,
     workspaceContextMenu.preload,
+    preloadOverlays,
     themedSelectPanel.preload,
+    textInputDialogPanel.preload,
     annotationComposerPanel.preload,
     terminalFileLinkMenuPanel.preload,
     createWorkspaceDialog.preload,
@@ -253,6 +257,17 @@ function idlePrefetchLoaders(mobile: boolean) {
     annotationPanel.preload,
   ];
 }
+
+// While a dialog, menu, or picker is open, window shortcuts stand down.
+// Legacy classes cover screens not yet on the ui/ overlays.
+const BLOCKING_OVERLAY_SELECTOR = [
+  ".ui-dialog-backdrop",
+  ".ui-menu-popover",
+  ".ui-select-popover",
+  ".modal-backdrop",
+  ".command-popover",
+  ".context-menu",
+].join(", ");
 
 const MIN_SIDEBAR = 180;
 const MAX_SIDEBAR = 560;
@@ -333,43 +348,6 @@ function TerminalView(props: TerminalViewProps) {
     <Suspense fallback={<TerminalLoadingFallback />}>
       <LazyTerminalView {...props} />
     </Suspense>
-  );
-}
-
-function NoticeDetail({ notice }: { notice: Notice }) {
-  if (!notice.detail) return null;
-  if (notice.detailMode === "output") {
-    return (
-      <div className="toast-output">
-        {notice.detailTitle ? (
-          <div className="toast-output-title">{notice.detailTitle}</div>
-        ) : null}
-        <pre>{notice.detail}</pre>
-      </div>
-    );
-  }
-  return <p>{notice.detail}</p>;
-}
-
-function ToastMark({
-  kind,
-  loading = false,
-}: {
-  kind: Notice["kind"];
-  loading?: boolean;
-}) {
-  const Mark = loading
-    ? LoaderCircle
-    : kind === "success"
-      ? CheckCircle2
-      : kind === "error"
-        ? CircleAlert
-        : Info;
-
-  return (
-    <span className="toast-mark" aria-hidden="true">
-      <Mark size={16} strokeWidth={2.1} />
-    </span>
   );
 }
 
@@ -1101,16 +1079,14 @@ function TerminalPaneLayout({
         aria-label={t("Terminal pane switcher")}
       >
         <div className="pane-switcher">
-          <button
-            type="button"
+          <IconButton
             className="pane-switcher-button"
-            aria-label={t("Previous pane")}
+            label={t("Previous pane")}
+            icon={<ChevronLeft size={15} aria-hidden="true" />}
             tabIndex={-1}
             onPointerDown={blurActiveInput}
             onClick={() => void store.focusPane(previousPane.pane_id)}
-          >
-            <ChevronLeft size={15} />
-          </button>
+          />
           <div className="pane-switcher-label">
             <strong>
               {t("Pane {index} / {count}", {
@@ -1120,16 +1096,14 @@ function TerminalPaneLayout({
             </strong>
             <span>{paneTitle(activePaneId, s.panes)}</span>
           </div>
-          <button
-            type="button"
+          <IconButton
             className="pane-switcher-button"
-            aria-label={t("Next pane")}
+            label={t("Next pane")}
+            icon={<ChevronRight size={15} aria-hidden="true" />}
             tabIndex={-1}
             onPointerDown={blurActiveInput}
             onClick={() => void store.focusPane(nextPane.pane_id)}
-          >
-            <ChevronRight size={15} />
-          </button>
+          />
         </div>
         <TerminalView
           key={mountKeyForPane(activePaneId)}
@@ -2910,9 +2884,7 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
       if (
-        document.querySelector(
-          ".modal-backdrop, .command-popover, .context-menu",
-        ) ||
+        document.querySelector(BLOCKING_OVERLAY_SELECTOR) ||
         document.getElementById(CONFIG_MENU_ID)
       )
         return;
@@ -3011,9 +2983,7 @@ export default function App() {
       if (e.key === "Escape") {
         if (
           document.getElementById(CONFIG_MENU_ID) ||
-          document.querySelector(
-            ".context-menu, .command-popover, .modal-backdrop",
-          )
+          document.querySelector(BLOCKING_OVERLAY_SELECTOR)
         ) {
           return;
         }
@@ -3401,6 +3371,7 @@ export default function App() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
   const notice = s.notice;
+  const hasToast = !!notice || !!s.updateInfo?.update_available;
   useEffect(() => {
     if (!notice) return;
     const dismissDelay = noticeAutoDismissDelay(notice);
@@ -3648,16 +3619,15 @@ export default function App() {
       </header>
 
       {zenMode && !mobile ? (
-        <button
-          type="button"
+        <Button
           className="zen-island"
-          title={shortcutTitle(t("Exit Zen mode"), "zen.toggle")}
+          data-tooltip={shortcutTitle(t("Exit Zen mode"), "zen.toggle")}
           aria-label={shortcutTitle(t("Exit Zen mode"), "zen.toggle")}
           onClick={() => applyZenMode(false)}
         >
-          <Minimize2 size={13} />
+          <Minimize2 size={13} aria-hidden="true" />
           <span>{t("Exit Zen")}</span>
-        </button>
+        </Button>
       ) : null}
 
       <nav
@@ -3665,65 +3635,59 @@ export default function App() {
         aria-label={t("Workspace view switcher")}
         aria-hidden={mobileControlsCollapsed}
       >
-        <button
-          type="button"
+        <IconButton
           className={
             mobileView === "session" && !agentHistoryOpen ? "active" : ""
           }
           title={t("Session")}
-          aria-label={t("Show terminal session")}
+          label={t("Show terminal session")}
+          icon={<SquareTerminal size={16} aria-hidden="true" />}
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={activateTerminalSurface}
-        >
-          <SquareTerminal size={16} />
-          <span className="mobile-nav-label">{t("Session")}</span>
-        </button>
-        <button
-          type="button"
+        />
+        <IconButton
           className={mobileView === "files" ? "active" : ""}
           title={shortcutTitle(t("Files"), "files.toggle")}
-          aria-label={t("Show workspace files")}
+          label={t("Show workspace files")}
+          icon={<FolderTree size={16} aria-hidden="true" />}
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={() => openFileExplorer()}
-        >
-          <FolderTree size={16} />
-          <span className="mobile-nav-label">{t("Files")}</span>
-        </button>
-        <button
-          type="button"
+        />
+        <IconButton
           className={mobileView === "changes" ? "active" : ""}
           title={shortcutTitle(t("Changes"), "diff.toggle")}
-          aria-label={t("Show workspace changes")}
+          label={t("Show workspace changes")}
+          icon={<FileDiff size={16} aria-hidden="true" />}
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={() => openDiffViewer()}
-        >
-          <FileDiff size={16} />
-          <span className="mobile-nav-label">{t("Changes")}</span>
-        </button>
-        <button
-          type="button"
+        />
+        <IconButton
           className={mobileView === "annotations" ? "active" : ""}
           title={shortcutTitle(t("Annotations"), "annotations.toggle")}
-          aria-label={t("Show review annotations")}
+          label={t("Show review annotations")}
+          icon={
+            <>
+              <MessageSquareText size={16} aria-hidden="true" />
+              {annotations.length > 0 ? (
+                <span className="mobile-nav-badge" aria-hidden="true">
+                  {annotations.length}
+                </span>
+              ) : null}
+            </>
+          }
           aria-pressed={annotationsOpen}
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={toggleAnnotations}
-        >
-          <MessageSquareText size={16} />
-          <span className="mobile-nav-label">
-            {t("Annotations")}
-            {annotations.length > 0 ? ` ${annotations.length}` : ""}
-          </span>
-        </button>
-        <button
-          type="button"
+        />
+        <IconButton
           className={mobileView === "history" ? "active" : ""}
           title={
             activePaneHasAgent || historyInspectorOpen
               ? t("History")
               : t("Select an agent pane to view History")
           }
-          aria-label={t("Show agent message history")}
+          label={t("Show agent message history")}
+          icon={<History size={16} aria-hidden="true" />}
           aria-pressed={historyInspectorOpen}
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           disabled={!activePaneHasAgent && !historyInspectorOpen}
@@ -3734,10 +3698,7 @@ export default function App() {
               setAgentHistoryInspectorOpen(!historyInspectorOpen);
             }
           }}
-        >
-          <History size={16} />
-          <span className="mobile-nav-label">{t("History")}</span>
-        </button>
+        />
       </nav>
       {projectLauncherOpen ? (
         <LazyBoundary fallback={<LazyPendingStatus />}>
@@ -3754,17 +3715,17 @@ export default function App() {
           onShowSession={activateTerminalSurface}
         />
       </Latched>
-      <button
-        type="button"
+      <IconButton
         className={`mobile-workspace-shortcut ${
           mobileView === "workspaces" ? "is-active" : ""
         }`}
         title={shortcutTitle(t("Workspaces"), "workspaces.open")}
-        aria-label={
+        label={
           mobileView === "workspaces"
             ? t("Hide workspaces")
             : t("Show workspaces")
         }
+        icon={<PanelTop size={17} aria-hidden="true" />}
         aria-pressed={mobileView === "workspaces"}
         aria-hidden={mobileControlsCollapsed}
         tabIndex={mobileControlsCollapsed ? -1 : 0}
@@ -3772,9 +3733,7 @@ export default function App() {
         onClick={
           mobileView === "workspaces" ? activateTerminalSurface : openWorkspaces
         }
-      >
-        <PanelTop size={17} />
-      </button>
+      />
       <div className="mobile-terminal-controls">
         <nav
           className="mobile-nav mobile-terminal-tools"
@@ -3785,49 +3744,46 @@ export default function App() {
           }
           aria-hidden={mobileControlsCollapsed}
         >
-          <button
-            type="button"
+          <IconButton
             title={t("Launch agent")}
-            aria-label={t("Launch agent in a folder")}
+            label={t("Launch agent in a folder")}
+            icon={<FolderOpen size={16} aria-hidden="true" />}
             tabIndex={mobileControlsCollapsed ? -1 : 0}
             onPointerDown={blurActiveInput}
             onClick={() => {
               setMobileTabSheetOpen(false);
               setProjectLauncherOpen(true);
             }}
-          >
-            <FolderOpen size={16} />
-            <span className="mobile-nav-label">{t("Launch")}</span>
-          </button>
-          <button
-            type="button"
+          />
+          <IconButton
             className={mobileTabSheetOpen ? "active" : ""}
             title={t("Tabs")}
-            aria-label={t("Show tabs")}
+            label={t("Show tabs")}
+            icon={
+              <>
+                <SquareStack size={16} aria-hidden="true" />
+                {focusedWorkspaceTabCount > 0 ? (
+                  <span className="mobile-nav-badge" aria-hidden="true">
+                    {focusedWorkspaceTabCount}
+                  </span>
+                ) : null}
+              </>
+            }
             aria-pressed={mobileTabSheetOpen}
             tabIndex={mobileControlsCollapsed ? -1 : 0}
             disabled={!focusedWorkspace}
             onPointerDown={blurActiveInput}
             onClick={() => setMobileTabSheetOpen((open) => !open)}
-          >
-            <SquareStack size={16} />
-            {focusedWorkspaceTabCount > 0 ? (
-              <span className="mobile-nav-badge" aria-hidden="true">
-                {focusedWorkspaceTabCount}
-              </span>
-            ) : null}
-            <span className="mobile-nav-label">{t("Tabs")}</span>
-          </button>
+          />
           {activeTerminalComposerDraftKey ? (
-            <button
-              type="button"
+            <IconButton
               className={terminalComposerOpen ? "active" : ""}
               title={
                 terminalComposerOpen
                   ? t("Close terminal composer")
                   : t("Open terminal composer")
               }
-              aria-label={
+              label={
                 terminalComposerHasDraft
                   ? terminalComposerOpen
                     ? t("Close terminal composer, unsent draft")
@@ -3835,6 +3791,17 @@ export default function App() {
                   : terminalComposerOpen
                     ? t("Close terminal composer")
                     : t("Open terminal composer")
+              }
+              icon={
+                <>
+                  <SquarePen size={16} aria-hidden="true" />
+                  {terminalComposerHasDraft && !terminalComposerOpen ? (
+                    <span
+                      className="mobile-composer-draft-dot"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </>
               }
               aria-pressed={terminalComposerOpen}
               tabIndex={mobileControlsCollapsed ? -1 : 0}
@@ -3847,138 +3814,32 @@ export default function App() {
                 }
                 setTerminalComposerOpen(open);
               }}
-            >
-              <SquarePen size={16} />
-              {terminalComposerHasDraft && !terminalComposerOpen ? (
-                <span
-                  className="mobile-composer-draft-dot"
-                  aria-hidden="true"
-                />
-              ) : null}
-              <span className="mobile-nav-label">{t("Composer")}</span>
-            </button>
+            />
           ) : null}
         </nav>
-        <button
-          type="button"
+        <IconButton
           className="mobile-controls-toggle"
-          aria-label={
+          label={
             mobileControlsCollapsed
-              ? "Show mobile controls"
-              : "Hide mobile controls"
+              ? t("Show mobile controls")
+              : t("Hide mobile controls")
           }
-          title={
-            mobileControlsCollapsed
-              ? "Show mobile controls"
-              : "Hide mobile controls"
+          icon={
+            mobileControlsCollapsed ? (
+              <MoreHorizontal size={17} aria-hidden="true" />
+            ) : (
+              <X size={17} aria-hidden="true" />
+            )
           }
           aria-pressed={mobileControlsCollapsed}
           onPointerDown={blurActiveInput}
           onClick={() => setMobileControlsCollapsed((value) => !value)}
-        >
-          {mobileControlsCollapsed ? (
-            <MoreHorizontal size={17} />
-          ) : (
-            <X size={17} />
-          )}
-        </button>
+        />
       </div>
 
-      {s.updateInfo?.update_available || s.notice
-        ? createPortal(
-            <div className="toast-viewport" aria-live="polite">
-              {s.updateInfo?.update_available ? (
-                <div
-                  className={`app-toast toast-info ${
-                    s.updateInstalling ? "toast-loading" : ""
-                  }`}
-                  role="status"
-                >
-                  <ToastMark kind="info" loading={s.updateInstalling} />
-                  <div className="toast-content">
-                    <strong>
-                      {t("Thyra {version} is available", {
-                        version: s.updateInfo.latest_version ?? "",
-                      })}
-                    </strong>
-                    <p>
-                      {t("Current {version}", {
-                        version: s.updateInfo.current_version ?? "",
-                      })}
-                      {s.updateInfo.can_auto_update
-                        ? ` · ${t("ready to update and restart")}`
-                        : s.updateInfo.reason
-                          ? ` · ${s.updateInfo.reason}`
-                          : ""}
-                    </p>
-                    <div className="toast-actions">
-                      {s.updateInfo.can_auto_update ? (
-                        <button
-                          type="button"
-                          className="toast-action primary"
-                          onClick={() => store.installUpdate()}
-                          disabled={s.updateInstalling}
-                        >
-                          {s.updateInstalling
-                            ? t("Updating...")
-                            : t("Update & restart")}
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="toast-action"
-                        onClick={() => store.dismissUpdate()}
-                        disabled={s.updateInstalling}
-                      >
-                        {t("Dismiss")}
-                      </button>
-                    </div>
-                  </div>
-                  <CloseButton
-                    variant="toast"
-                    label={t("Dismiss update notification")}
-                    onClick={() => store.dismissUpdate()}
-                    disabled={s.updateInstalling}
-                  />
-                </div>
-              ) : null}
-              {s.notice ? (
-                <div
-                  className={`app-toast toast-${s.notice.kind} ${
-                    s.notice.loading ? "toast-loading" : ""
-                  }`}
-                  role={s.notice.kind === "error" ? "alert" : "status"}
-                >
-                  <ToastMark kind={s.notice.kind} loading={s.notice.loading} />
-                  <div className="toast-content">
-                    <strong>{s.notice.message}</strong>
-                    <NoticeDetail notice={s.notice} />
-                    {s.notice.actionLabel &&
-                    (s.notice.actionPaneId ||
-                      s.notice.actionWorkspaceId ||
-                      s.notice.actionClipboardText !== undefined) ? (
-                      <div className="toast-actions">
-                        <button
-                          type="button"
-                          className="toast-action primary"
-                          onClick={() => handleNoticeAction(s.notice!)}
-                        >
-                          {s.notice.actionLabel}
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                  <CloseButton
-                    variant="toast"
-                    label={t("Dismiss notification")}
-                    onClick={() => store.clearNotice()}
-                  />
-                </div>
-              ) : null}
-            </div>,
-            document.body,
-          )
-        : null}
+      <Latched open={hasToast} fallback={null}>
+        <NoticeToasts onNoticeAction={handleNoticeAction} />
+      </Latched>
 
       <div
         className={`body mobile-view-${mobileView}`}

@@ -13,6 +13,7 @@ import {
 } from "react-aria-components/Menu";
 import type { MenuFocusTarget, MenuHeader, MenuPlacement } from "../Menu";
 import {
+  checkedMenuKeys,
   disabledMenuKeys,
   findMenuItem,
   menuHasChecks,
@@ -36,6 +37,8 @@ export type MenuPopoverProps = {
   focusTarget: MenuFocusTarget;
   onAction?: (id: string) => void;
 };
+
+const noop = () => {};
 
 // React Aria Menu in a Popover, with HeroUI Dropdown/Menu classes.
 export function MenuPopover({
@@ -147,15 +150,27 @@ export function MenuPopover({
                   data-slot="separator"
                 />
               ) : null}
-              {section.title ? (
+              {section.title || section.selectionMode ? (
+                // A section with checked items owns a selection so React
+                // Aria announces them as menuitemcheckbox/radio with
+                // aria-checked; the caller's `checked` stays the source of
+                // truth, and the menu still closes after the action.
                 <MenuSection
                   id={section.id}
                   data-slot="menu-section"
                   className="menu-section ui-menu-section"
+                  selectionMode={section.selectionMode}
+                  selectedKeys={
+                    section.selectionMode ? checkedMenuKeys(section) : undefined
+                  }
+                  onSelectionChange={section.selectionMode ? noop : undefined}
+                  shouldCloseOnSelect={section.selectionMode ? true : undefined}
                 >
-                  <Header className="ui-menu-section-title">
-                    {section.title}
-                  </Header>
+                  {section.title ? (
+                    <Header className="ui-menu-section-title">
+                      {section.title}
+                    </Header>
+                  ) : null}
                   {section.items.map(renderItem)}
                 </MenuSection>
               ) : (

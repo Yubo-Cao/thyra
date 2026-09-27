@@ -1,9 +1,5 @@
-import { Check } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import { Command, CommandItem, CommandList } from "./ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
-import { ThemedSelectTrigger } from "./LazyThemedSelect";
-import "./ThemedSelect.css";
+import type { ReactNode } from "react";
+import { Select } from "./ui/Select";
 
 export type ThemedSelectOption = {
   value: string;
@@ -15,6 +11,7 @@ export type ThemedSelectProps = {
   options: ThemedSelectOption[];
   onChange: (value: string) => void;
   icon?: ReactNode;
+  /** Styles the select wrapper (ui/Select). */
   className?: string;
   align?: "start" | "center" | "end";
   "aria-label"?: string;
@@ -23,71 +20,11 @@ export type ThemedSelectProps = {
   defaultOpen?: boolean;
 };
 
-// Themed replacement for the native <select>: cmdk provides arrow/Home/End/
-// Enter keyboard support and the popover handles Escape and outside clicks,
-// so the dropdown matches the command menu instead of the OS popup.
-export function ThemedSelect({
-  value,
-  options,
-  onChange,
-  icon,
-  className,
-  align = "start",
-  "aria-label": ariaLabel,
-  title,
-  defaultOpen = false,
-}: ThemedSelectProps) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [highlighted, setHighlighted] = useState(value);
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) setHighlighted(value);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <ThemedSelectTrigger
-          value={value}
-          options={options}
-          icon={icon}
-          className={className}
-          aria-label={ariaLabel}
-          title={title}
-        />
-      </PopoverTrigger>
-      <PopoverContent className="themed-select-content" align={align}>
-        <Command
-          loop
-          shouldFilter={false}
-          value={highlighted}
-          onValueChange={setHighlighted}
-          aria-label={ariaLabel}
-        >
-          <CommandList>
-            {options.map((option) => (
-              <CommandItem
-                key={option.value}
-                value={option.value}
-                onSelect={() => {
-                  setOpen(false);
-                  onChange(option.value);
-                }}
-              >
-                <span className="command-item-icon">
-                  {option.value === value ? (
-                    <Check size={14} aria-hidden="true" />
-                  ) : null}
-                </span>
-                <span className="command-item-text">
-                  <span className="command-item-title">{option.label}</span>
-                </span>
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
+/**
+ * Older name for ui/Select, kept for existing callers: the trigger is eager
+ * and the listbox loads with the overlay chunk on first open. Icon-only
+ * selects use the ghost toolbar look.
+ */
+export function ThemedSelect(props: ThemedSelectProps) {
+  return <Select {...props} variant={props.icon ? "ghost" : "field"} />;
 }

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { X } from "lucide-react";
 import { bridge } from "../api";
 import { t } from "../i18n";
 import { store, useStoreSelector, type PopupInfo } from "../store";
@@ -16,6 +15,8 @@ import { isMobileLayout } from "../layoutPreferences";
 import { terminalPushMatches } from "../terminalConnection";
 import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
 import { attachTerminalRenderer } from "../terminalRenderer";
+import { CloseButton } from "./ui/CloseButton";
+import "./PopupOverlay.css";
 
 const RESIZE_DEBOUNCE_MS = 150;
 
@@ -304,15 +305,6 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
   return (
     <div
       className="popup-overlay-backdrop"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0, 0, 0, 0.25)",
-      }}
       onPointerDown={(e) => {
         // Click outside the popup body closes it; inside, let it through.
         if (e.target === e.currentTarget) void store.closePopup();
@@ -323,46 +315,17 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
         style={{
           width: cssSizeFrom(popup.width, 85, "1ch"),
           height: cssSizeFrom(popup.height, 80, "1.4em"),
-          maxWidth: "96vw",
-          maxHeight: "92vh",
-          display: "flex",
-          flexDirection: "column",
-          borderRadius: 0,
-          overflow: "hidden",
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)",
-          background: "#1e1e1e",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "4px 8px",
-            fontSize: 12,
-            color: "#ccc",
-            background: "#2a2a2a",
-          }}
-        >
-          <span>{popup.title}</span>
-          <button
-            type="button"
-            aria-label={t("Close popup")}
+        <div className="ui-bar popup-overlay-bar">
+          <span className="ui-bar-title">{popup.title}</span>
+          <span className="ui-bar-spacer" />
+          <CloseButton
+            label={t("Close popup")}
             onClick={() => void store.closePopup()}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#ccc",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              padding: 2,
-            }}
-          >
-            <X size={14} />
-          </button>
+          />
         </div>
-        <div ref={containerRef} style={{ flex: 1, minHeight: 0 }} />
+        <div ref={containerRef} className="popup-overlay-terminal" />
       </div>
     </div>
   );

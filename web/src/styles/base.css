@@ -161,20 +161,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   position: relative;
 }
 
-.errorbar {
-  background: var(--danger-soft);
-  color: var(--danger-text);
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--danger-border);
-  font-size: 13px;
-}
-
-@keyframes toast-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Sidebar sections are flush regions separated by single dividers. */
 .panel {
   min-height: 0;
@@ -212,23 +198,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-}
-
-.panel-action {
-  height: var(--ui-control-height);
-  padding: 0 7px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.panel-action:hover {
-  background: var(--panel-2);
-  color: var(--text);
 }
 
 .panel-add {
@@ -501,22 +470,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   color: var(--text);
   font-size: 14px;
   line-height: 1.45;
-}
-
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 14px;
-  color: var(--text);
-  font-size: 13px;
-}
-
-.check-row input {
-  width: 15px;
-  height: 15px;
-  padding: 0;
-  margin: 0;
 }
 
 .settings-switch {

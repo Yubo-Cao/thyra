@@ -91,23 +91,9 @@
   -webkit-touch-callout: none;
 }
 
-.tabbar-id {
-  font-family: var(--mono-font);
-  font-size: 10.5px;
-}
-
 .tabbar-close {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  --button-height: var(--ui-token-height);
+  flex: 0 0 auto;
   opacity: 0;
 }
 
@@ -117,28 +103,10 @@
   opacity: 1;
 }
 
-.tabbar-close:hover {
-  background: var(--danger-soft);
-  color: var(--danger-text);
-}
-
 .tabbar-add {
-  width: var(--ui-bar-height);
-  height: auto;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 18px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tabbar-add:hover {
-  background: var(--panel-2);
-  color: var(--text);
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0 4px;
 }
 
 .tabbar-spacer {
@@ -157,24 +125,11 @@
   background: var(--shell-panel);
 }
 
-.tabbar-utilities button {
-  height: var(--ui-control-height);
-  min-height: var(--ui-control-height);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--ui-font-size-sm);
-}
-
-.tabbar-utilities button:hover,
-.tabbar-utilities button.is-active {
-  border-color: transparent;
-  background: var(--accent-soft);
-  color: var(--text-strong);
+/* Open panels read like pressed toggles (the buttons keep aria-expanded). */
+.tabbar-utilities .button[aria-expanded="true"] {
+  --button-bg: var(--accent-soft);
+  --button-bg-hover: var(--accent-soft-hover);
+  --button-fg: var(--accent);
 }
 
 /* Keep mobile styling in sync with the saved layout and URL override. */
@@ -187,6 +142,7 @@
   }
 
   .tabbar-close {
+    --button-height: 20px;
     opacity: 1;
   }
 
@@ -194,18 +150,6 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .tabbar-close {
-    width: 20px;
-    height: 20px;
-    flex: 0 0 auto;
-  }
-
-  .tabbar-add {
-    width: 28px;
-    height: 28px;
-    flex: 0 0 auto;
   }
 
   .tabbar-utilities {

@@ -77,15 +77,6 @@
   font-size: var(--ui-font-size-sm);
 }
 
-.topbar-button.icon-button {
-  width: var(--ui-control-height);
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-}
-
 .topbar-button:hover,
 .topbar-button.is-active {
   background: var(--topbar-control-hover-bg);
@@ -104,52 +95,31 @@
   background: var(--topbar-control-active-bg);
 }
 
-.view-switcher {
-  display: flex;
-  align-items: center;
-}
-
-.view-switcher button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-color: transparent;
-  background: transparent;
-  color: var(--topbar-control-text);
-}
-
-.view-switcher button:hover {
-  border-color: transparent;
-  background: var(--topbar-control-hover-bg);
-  color: var(--text-strong);
-}
-
-.view-switcher button.is-active {
-  border-color: var(--topbar-control-active-border);
-  background: var(--topbar-control-active-bg);
-  color: var(--text-strong);
-}
-
-.topbar-view-switcher {
-  justify-self: center;
-  gap: 2px;
-  padding: 3px;
-  border: 0;
-  background: var(--topbar-control-bg);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 28%, transparent);
-}
-
 .config-menu {
   position: relative;
   flex: 0 0 auto;
   margin-left: auto;
 }
 
+/* ui/ ghost buttons take the topbar's control tones. */
+@layer thyra {
+  .topbar .button--ghost {
+    --button-fg: var(--topbar-control-text);
+    --button-bg-hover: var(--topbar-control-hover-bg);
+  }
+  @media (hover: hover) {
+    .topbar .button--ghost:hover {
+      --button-fg: var(--text-strong);
+    }
+  }
+  .topbar .button--ghost:is(.is-active, [aria-expanded="true"]) {
+    --button-bg: var(--topbar-control-active-bg);
+    --button-fg: var(--text-strong);
+  }
+}
+
 /* A topbar menu whose content chunk is still downloading. */
-.topbar-button[aria-busy="true"] {
+.topbar :is(.topbar-button, .button)[aria-busy="true"] {
   cursor: progress;
 }
 
@@ -227,22 +197,9 @@
     padding: 0 9px;
   }
 
-  .topbar-button.icon-button {
-    width: 28px;
-    padding: 0;
-  }
-
-  .topbar-view-switcher {
-    display: none;
-  }
-
   .topbar-start,
   .topbar-actions {
     gap: 8px;
-  }
-
-  .topbar-time {
-    display: none;
   }
 }
 

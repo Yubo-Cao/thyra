@@ -1,4 +1,4 @@
-import { msg, t } from "../i18n";
+import { t } from "../i18n";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
 import {
   shallowEqual,
@@ -8,7 +8,7 @@ import {
 } from "../store";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MessageSquareText, PanelRight } from "lucide-react";
+import { MessageSquareText, PanelRight, Plus, X } from "lucide-react";
 import type { Tab } from "../types";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
@@ -18,6 +18,9 @@ import {
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
 import { summarizeTabAgents } from "./agentSession";
+import { Button } from "./ui/Button";
+import { ContextMenu } from "./ui/ContextMenu";
+import { IconButton } from "./ui/IconButton";
 import "./TabBar.css";
 
 const LONG_PRESS_MS = 550;
@@ -153,22 +156,48 @@ export function TabBar({
     };
   }, []);
 
+  // The menu keeps its last tab while it animates closed.
+  const shownMenu = useRef(menu);
+  if (menu) shownMenu.current = menu;
+  const menuTab = shownMenu.current?.tab;
+
   if (!focusedWs) return null;
 
   const overlays = (
     <>
-      <TabContextMenu
-        state={menu}
+      <ContextMenu
+        position={menu}
         onClose={() => setMenu(null)}
-        onFocus={(tab) => {
-          store.focusTab(tab.tab_id);
-        }}
-        onRename={(tab) => setPendingRenameTab(tab)}
-        onCloseTab={(tab) => setPendingCloseTabId(tab.tab_id)}
-        createReason={createReason}
-        onCreateTab={() => {
-          store.createTab(focusedWs.workspace_id);
-        }}
+        aria-label={menuTab ? tabName(menuTab) : t("Tabs")}
+        items={
+          menuTab
+            ? [
+                {
+                  id: "focus",
+                  label: t("Focus tab"),
+                  onAction: () => store.focusTab(menuTab.tab_id),
+                },
+                {
+                  id: "rename",
+                  label: t("Rename tab..."),
+                  onAction: () => setPendingRenameTab(menuTab),
+                },
+                {
+                  id: "create",
+                  label: t("Create tab"),
+                  description: createReason ?? undefined,
+                  disabled: !!createReason,
+                  onAction: () => store.createTab(focusedWs.workspace_id),
+                },
+                {
+                  id: "close",
+                  label: t("Close tab"),
+                  danger: true,
+                  onAction: () => setPendingCloseTabId(menuTab.tab_id),
+                },
+              ]
+            : []
+        }
       />
       <ConfirmDialog
         open={!!pendingCloseTabId}
@@ -285,34 +314,32 @@ export function TabBar({
                 >
                   <span className="tabbar-name">{name}</span>
                 </TabLongPressTarget>
-                <button
+                <IconButton
                   className="tabbar-close"
+                  tone="danger"
+                  label={t("Close tab")}
+                  icon={<X size={13} strokeWidth={2.2} aria-hidden="true" />}
                   onClick={(e) => {
                     e.stopPropagation();
                     setPendingCloseTabId(tab.tab_id);
                   }}
-                  title={t("Close tab")}
-                >
-                  ×
-                </button>
+                />
               </div>
             );
           })}
-          <button
+          <IconButton
             className="tabbar-add"
+            label={t("New tab")}
+            tooltip={createReason ?? shortcutTitle(t("New tab"), "tab.create")}
+            icon={<Plus size={16} aria-hidden="true" />}
             onClick={() => {
               store.createTab(focusedWs.workspace_id);
             }}
             disabled={!!createReason}
-            title={createReason ?? shortcutTitle(t("New tab"), "tab.create")}
-          >
-            +
-          </button>
+          />
           <span className="tabbar-spacer" />
           <div className="tabbar-utilities">
-            <button
-              type="button"
-              className={inspectorOpen ? "is-active" : ""}
+            <Button
               aria-expanded={inspectorOpen}
               title={shortcutTitle(
                 inspectorOpen
@@ -327,10 +354,8 @@ export function TabBar({
               {changedCount > 0 ? (
                 <span className="tabbar-change-count">{changedCount}</span>
               ) : null}
-            </button>
-            <button
-              type="button"
-              className={annotationsOpen ? "is-active" : ""}
+            </Button>
+            <Button
               aria-expanded={annotationsOpen}
               title={shortcutTitle(
                 annotationsOpen
@@ -345,7 +370,7 @@ export function TabBar({
               {annotationCount > 0 ? (
                 <span className="tabbar-change-count">{annotationCount}</span>
               ) : null}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -412,93 +437,5 @@ function TabLongPressTarget({
     >
       {children}
     </span>
-  );
-}
-
-function TabContextMenu({
-  state,
-  onClose,
-  onFocus,
-  onRename,
-  onCloseTab,
-  onCreateTab,
-  createReason,
-}: {
-  state: TabMenuState | null;
-  onClose: () => void;
-  onFocus: (tab: Tab) => void;
-  onRename: (tab: Tab) => void;
-  onCloseTab: (tab: Tab) => void;
-  onCreateTab: () => void;
-  createReason: string | null;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Keep the floating menu tied to the current interaction.
-  useEffect(() => {
-    if (!state) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const timer = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-      window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", onClose, true);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onClose, true);
-    };
-  }, [state, onClose]);
-
-  if (!state) return null;
-
-  const items = [
-    { label: msg("Focus tab"), action: () => onFocus(state.tab) },
-    { label: msg("Rename tab..."), action: () => onRename(state.tab) },
-    { label: msg("Create tab"), action: onCreateTab, reason: createReason },
-    {
-      label: msg("Close tab"),
-      danger: true,
-      action: () => onCloseTab(state.tab),
-    },
-  ];
-  const menuMargin = 8;
-  const menuWidth = 200;
-  const style: React.CSSProperties = {
-    position: "fixed",
-    left: Math.max(
-      menuMargin,
-      Math.min(state.x, window.innerWidth - menuWidth - menuMargin),
-    ),
-    top: Math.max(
-      menuMargin,
-      Math.min(state.y, window.innerHeight - items.length * 34 - menuMargin),
-    ),
-    zIndex: 1000,
-  };
-
-  return (
-    <div ref={ref} className="context-menu" style={style}>
-      {items.map((item) => (
-        <button
-          key={item.label}
-          disabled={!!item.reason}
-          title={item.reason ?? undefined}
-          className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
-          onClick={() => {
-            onClose();
-            item.action();
-          }}
-        >
-          {t(item.label)}
-        </button>
-      ))}
-    </div>
   );
 }

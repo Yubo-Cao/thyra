@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { t } from "../i18n";
 import type { Workspace } from "../types";
 import { store, useStoreSelector } from "../store";
@@ -17,8 +17,8 @@ import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWo
 import { isWorkspacePinned } from "../workspacePins";
 import { workspaceDisplayName } from "../workspaceTreeBadges";
 import { copyTextFromUserGesture } from "../terminalClipboard";
-import { observeClampedContextMenu } from "./contextMenuPosition";
-import "./ContextMenu.css";
+import { ContextMenu as MenuAtPoint } from "./ui/ContextMenu";
+import type { MenuItem } from "./ui/Menu";
 
 export interface ContextMenuState {
   x: number;
@@ -26,40 +26,22 @@ export interface ContextMenuState {
   workspace: Workspace;
 }
 
-interface Item {
-  label: string;
-  danger?: boolean;
-  action: () => void;
-}
+/** The prompt or panel a menu item opened; `value` is its initial text. */
+type Opened = {
+  kind:
+    | "new-worktree"
+    | "rename-workspace"
+    | "remove-worktree"
+    | "close-workspace"
+    | "open-worktree"
+    | "worktree-hooks"
+    | "auto-sync"
+    | "lifecycle";
+  workspaceId: string;
+  value: string;
+};
 
-interface ItemGroup {
-  label: string;
-  items: Item[];
-  danger?: boolean;
-}
-
-type DialogState =
-  | {
-      type: "new-worktree";
-      workspaceId: string;
-      branch: string;
-    }
-  | {
-      type: "rename-workspace";
-      workspaceId: string;
-      label: string;
-    }
-  | {
-      type: "remove-worktree";
-      workspaceId: string;
-      label: string;
-    }
-  | {
-      type: "close-workspace";
-      workspaceId: string;
-      label: string;
-    };
-
+/** The workspace right-click / long-press menu and the dialogs it opens. */
 export function ContextMenu({
   state,
   pinnedWorkspaceKeys,
@@ -83,377 +65,276 @@ export function ContextMenu({
     (state) => state.connectionGeneration,
   );
   const panes = useStoreSelector((state) => state.panes);
-  const ref = useRef<HTMLDivElement>(null);
-  const [dialog, setDialog] = useState<DialogState | null>(null);
-  const [openWorktreeWorkspaceId, setOpenWorktreeWorkspaceId] = useState<
-    string | null
-  >(null);
-  const [worktreeHooksWorkspaceId, setWorktreeHooksWorkspaceId] = useState<
-    string | null
-  >(null);
-  const [autoSyncWorkspaceId, setAutoSyncWorkspaceId] = useState<string | null>(
-    null,
-  );
-  const [lifecycleWorkspaceId, setLifecycleWorkspaceId] = useState<
-    string | null
-  >(null);
+  const [opened, setOpened] = useState<Opened | null>(null);
+  const close = () => setOpened(null);
+  const openedId = (kind: Opened["kind"]) =>
+    opened?.kind === kind ? opened.workspaceId : null;
+  const closingPaneIds = panes
+    .filter((pane) => pane.workspace_id === openedId("close-workspace"))
+    .map((pane) => pane.pane_id);
 
-  useEffect(() => {
-    if (!state) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const onScroll = (e: Event) => {
-      const target = e.target;
-      if (target instanceof Node && ref.current?.contains(target)) return;
-      onClose();
-    };
-    // Defer so the triggering contextmenu event doesn't immediately close it.
-    const timer = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-      window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", onScroll, true);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [state, onClose]);
+  // The menu keeps its last workspace while it animates closed.
+  const shown = useRef(state);
+  if (state) shown.current = state;
+  const target = shown.current?.workspace;
+  const w = target
+    ? (workspaces.find((each) => each.workspace_id === target.workspace_id) ??
+      target)
+    : null;
+  const isLinked = !!w?.worktree?.is_linked_worktree;
 
-  useLayoutEffect(() => {
-    const menu = ref.current;
-    if (!state || !menu) return;
-    return observeClampedContextMenu(menu, {
-      left: state.x,
-      top: state.y,
-    });
-  }, [state]);
-
-  const dialogs = (
-    <>
-      <TextInputDialog
-        open={dialog?.type === "new-worktree"}
-        title={t("New Worktree")}
-        label={t("Branch")}
-        initialValue={dialog?.type === "new-worktree" ? dialog.branch : ""}
-        placeholder={t("Branch name")}
-        submitLabel={t("Create")}
-        onClose={() => setDialog(null)}
-        onSubmit={(branch) => {
-          const value = branch.trim();
-          if (dialog?.type === "new-worktree" && value) {
-            store.createWorktree(dialog.workspaceId, value);
-            setDialog(null);
-          }
-        }}
-      />
-      <TextInputDialog
-        open={dialog?.type === "rename-workspace"}
-        title={t("Rename Workspace")}
-        label={t("Name")}
-        initialValue={dialog?.type === "rename-workspace" ? dialog.label : ""}
-        submitLabel={t("Rename")}
-        onClose={() => setDialog(null)}
-        onSubmit={(label) => {
-          const value = label.trim();
-          if (dialog?.type === "rename-workspace" && value) {
-            if (value !== dialog.label) {
-              store.renameWorkspace(dialog.workspaceId, value);
-            }
-            setDialog(null);
-          }
-        }}
-      />
-      <ConfirmDialog
-        open={dialog?.type === "remove-worktree"}
-        title={t("Remove Worktree")}
-        message={
-          dialog?.type === "remove-worktree"
-            ? t('Remove worktree "{name}"?', { name: dialog.label })
-            : ""
-        }
-        confirmLabel={t("Remove")}
-        danger
-        onClose={() => setDialog(null)}
-        onConfirm={() => {
-          if (dialog?.type === "remove-worktree") {
-            store.removeWorktree(dialog.workspaceId, false);
-          }
-        }}
-      />
-      <ConfirmDialog
-        open={dialog?.type === "close-workspace"}
-        title={t("Close Workspace")}
-        message={
-          dialog?.type === "close-workspace"
-            ? t('Close workspace "{name}"?{warning}', {
-                name: dialog.label,
-                warning: terminalComposerCloseWarning(
-                  terminalComposerDraftPaneIds(
-                    activeConnectionId,
-                    connectionGeneration,
-                    panes
-                      .filter(
-                        (pane) => pane.workspace_id === dialog.workspaceId,
-                      )
-                      .map((pane) => pane.pane_id),
-                  ).length,
+  const sections = (() => {
+    if (!w) return [];
+    const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
+    const creationSource = worktreeCreationSource(workspaces, w);
+    const open = (kind: Opened["kind"], value = w.label, id = w.workspace_id) =>
+      setOpened({ kind, workspaceId: id, value });
+    const copyCheckoutPath = () => {
+      const path = w.worktree?.checkout_path;
+      if (!path) return;
+      void copyTextFromUserGesture(path).then(
+        () =>
+          store.notify({
+            kind: "success",
+            message: t("Checkout path copied"),
+            detail: path,
+            autoDismissMs: 5000,
+          }),
+        (error) =>
+          store.notify({
+            kind: "error",
+            message: t("Failed to copy checkout path"),
+            detail: error instanceof Error ? error.message : String(error),
+          }),
+      );
+    };
+    const worktreeItems: MenuItem[] = [
+      ...(creationSource
+        ? [
+            {
+              id: "new-worktree",
+              label: t("New worktree…"),
+              onAction: () =>
+                open(
+                  "new-worktree",
+                  luckyWorktreeBranchName(),
+                  creationSource.workspace_id,
                 ),
-              })
-            : ""
-        }
-        confirmLabel={t("Close")}
-        danger
-        onClose={() => setDialog(null)}
-        onConfirm={() => {
-          if (dialog?.type === "close-workspace") {
-            clearTerminalComposerDrafts(
-              activeConnectionId,
-              connectionGeneration,
-              panes
-                .filter((pane) => pane.workspace_id === dialog.workspaceId)
-                .map((pane) => pane.pane_id),
-            );
-            store.closeWorkspace(dialog.workspaceId);
-          }
-        }}
-      />
-    </>
-  );
-
-  const openWorktreeDialog = (
-    <WorktreeOpenDialog
-      open={!!openWorktreeWorkspaceId}
-      workspaceId={openWorktreeWorkspaceId}
-      onClose={() => setOpenWorktreeWorkspaceId(null)}
-    />
-  );
-  const worktreeHooksDialog = (
-    <WorktreeHooksDialog
-      open={!!worktreeHooksWorkspaceId}
-      workspaceId={worktreeHooksWorkspaceId ?? undefined}
-      onClose={() => setWorktreeHooksWorkspaceId(null)}
-    />
-  );
-  const autoSyncDialog = (
-    <WorkspaceAutoSyncDialog
-      open={!!autoSyncWorkspaceId}
-      workspaceId={autoSyncWorkspaceId ?? undefined}
-      onClose={() => setAutoSyncWorkspaceId(null)}
-    />
-  );
-  const lifecycleDialog = (
-    <WorktreeLifecycleDialog
-      open={!!lifecycleWorkspaceId}
-      workspaceId={lifecycleWorkspaceId}
-      onClose={() => setLifecycleWorkspaceId(null)}
-    />
-  );
-  if (!state) {
-    return (
-      <>
-        {dialogs}
-        {openWorktreeDialog}
-        {worktreeHooksDialog}
-        {autoSyncDialog}
-        {lifecycleDialog}
-      </>
-    );
-  }
-  const w =
-    workspaces.find(
-      (workspace) => workspace.workspace_id === state.workspace.workspace_id,
-    ) ?? state.workspace;
-  const isLinked = !!w.worktree?.is_linked_worktree;
-  const displayName = workspaceDisplayName(w);
-  const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
-  const creationSource = worktreeCreationSource(workspaces, w);
-
-  const inspectItems: Item[] = [
-    {
-      label: t("Browse files"),
-      action: () => onBrowseFiles?.(w),
-    },
-    {
-      label: t("Review changes"),
-      action: () => onReviewChanges?.(w),
-    },
-  ];
-  const pinLabel = pinned
-    ? isLinked
-      ? t("Unpin worktree")
-      : t("Unpin workspace")
-    : isLinked
-      ? t("Pin worktree")
-      : t("Pin workspace");
-  const organizeItems: Item[] = [
-    {
-      label: pinLabel,
-      action: () => onPinnedChange(w, !pinned),
-    },
-    {
-      label: t("Rename workspace…"),
-      action: () => {
-        setDialog({
-          type: "rename-workspace",
-          workspaceId: w.workspace_id,
-          label: w.label,
-        });
-      },
-    },
-  ];
-  const worktreeItems: Item[] = [];
-  if (w.worktree) {
-    organizeItems.push({
-      label: t("Copy checkout path"),
-      action: () => {
-        const path = w.worktree?.checkout_path;
-        if (!path) return;
-        void copyTextFromUserGesture(path).then(
-          () =>
-            store.notify({
-              kind: "success",
-              message: t("Checkout path copied"),
-              detail: path,
-              autoDismissMs: 5000,
-            }),
-          (error) =>
-            store.notify({
-              kind: "error",
-              message: t("Failed to copy checkout path"),
-              detail: error instanceof Error ? error.message : String(error),
-            }),
-        );
-      },
-    });
-    worktreeItems.push(
+            },
+          ]
+        : []),
+      ...(w.worktree
+        ? [
+            {
+              id: "open-worktree",
+              label: t("Open worktree…"),
+              onAction: () => open("open-worktree"),
+            },
+            {
+              id: "lifecycle",
+              label: t("Worktree lifecycle…"),
+              onAction: () => open("lifecycle"),
+            },
+            {
+              id: "worktree-hooks",
+              label: t("Configure worktree hooks…"),
+              onAction: () => open("worktree-hooks"),
+            },
+          ]
+        : []),
+    ];
+    return [
       {
-        label: t("Open worktree…"),
-        action: () => setOpenWorktreeWorkspaceId(w.workspace_id),
+        title: t("Inspect"),
+        items: [
+          {
+            id: "browse-files",
+            label: t("Browse files"),
+            onAction: () => onBrowseFiles?.(w),
+          },
+          {
+            id: "review-changes",
+            label: t("Review changes"),
+            onAction: () => onReviewChanges?.(w),
+          },
+        ],
       },
       {
-        label: t("Worktree lifecycle…"),
-        action: () => setLifecycleWorkspaceId(w.workspace_id),
+        title: t("Organize"),
+        items: [
+          {
+            id: "pin",
+            label: pinned
+              ? isLinked
+                ? t("Unpin worktree")
+                : t("Unpin workspace")
+              : isLinked
+                ? t("Pin worktree")
+                : t("Pin workspace"),
+            onAction: () => onPinnedChange(w, !pinned),
+          },
+          {
+            id: "rename",
+            label: t("Rename workspace…"),
+            onAction: () => open("rename-workspace"),
+          },
+          ...(w.worktree
+            ? [
+                {
+                  id: "copy-checkout-path",
+                  label: t("Copy checkout path"),
+                  onAction: copyCheckoutPath,
+                },
+              ]
+            : []),
+        ],
+      },
+      { title: t("Worktrees"), items: worktreeItems },
+      {
+        title: t("Source control"),
+        items: [
+          {
+            id: "git-pull",
+            label: t("Pull from Git"),
+            onAction: () => void store.gitPullWorkspace(w.workspace_id),
+          },
+          {
+            id: "auto-sync",
+            label: t("Configure branch auto-update…"),
+            onAction: () => open("auto-sync"),
+          },
+        ],
       },
       {
-        label: t("Configure worktree hooks…"),
-        action: () => setWorktreeHooksWorkspaceId(w.workspace_id),
+        title: t("Close"),
+        danger: true,
+        items: [
+          ...(isLinked
+            ? [
+                {
+                  id: "remove-worktree",
+                  label: t("Remove worktree"),
+                  onAction: () => open("remove-worktree"),
+                },
+              ]
+            : []),
+          {
+            id: "close-workspace",
+            label: t("Close workspace"),
+            onAction: () => open("close-workspace"),
+          },
+        ],
       },
-    );
-  }
-  if (creationSource) {
-    worktreeItems.unshift({
-      label: t("New worktree…"),
-      action: () => {
-        setDialog({
-          type: "new-worktree",
-          workspaceId: creationSource.workspace_id,
-          branch: luckyWorktreeBranchName(),
-        });
-      },
-    });
-  }
-  const sourceControlItems: Item[] = [
-    {
-      label: t("Pull from Git"),
-      action: () => {
-        void store.gitPullWorkspace(w.workspace_id);
-      },
-    },
-    {
-      label: t("Configure branch auto-update…"),
-      action: () => setAutoSyncWorkspaceId(w.workspace_id),
-    },
-  ];
-  const closeItems: Item[] = [];
-  if (isLinked) {
-    closeItems.push({
-      label: t("Remove worktree"),
-      danger: true,
-      action: () => {
-        setDialog({
-          type: "remove-worktree",
-          workspaceId: w.workspace_id,
-          label: w.label,
-        });
-      },
-    });
-  }
-  closeItems.push({
-    label: t("Close workspace"),
-    danger: true,
-    action: () => {
-      setDialog({
-        type: "close-workspace",
-        workspaceId: w.workspace_id,
-        label: w.label,
-      });
-    },
-  });
-  const groups: ItemGroup[] = [
-    { label: t("Inspect"), items: inspectItems },
-    { label: t("Organize"), items: organizeItems },
-    { label: t("Worktrees"), items: worktreeItems },
-    { label: t("Source control"), items: sourceControlItems },
-    { label: t("Close"), items: closeItems, danger: true },
-  ].filter((group) => group.items.length > 0);
-
-  const style: React.CSSProperties = {
-    position: "fixed",
-    left: state.x,
-    top: state.y,
-    zIndex: 1000,
-  };
+    ];
+  })();
 
   return (
     <>
-      <div
-        ref={ref}
-        className="context-menu context-menu--grouped"
-        style={style}
-      >
-        <div className="context-menu-header">
-          <span>{t("Workspace")}</span>
-          <strong title={displayName}>{displayName}</strong>
-          <small>
-            {isLinked
-              ? t("Linked worktree")
-              : w.worktree
-                ? t("Git workspace")
-                : t("Workspace")}
-          </small>
-        </div>
-        {groups.map((group) => (
-          <div
-            key={group.label}
-            className={`context-menu-group ${group.danger ? "is-danger" : ""}`}
-          >
-            <div className="context-menu-group-title">{group.label}</div>
-            {group.items.map((item) => (
-              <button
-                key={item.label}
-                className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
-                onClick={() => {
-                  onClose();
-                  item.action();
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-      {dialogs}
-      {openWorktreeDialog}
-      {worktreeHooksDialog}
-      {autoSyncDialog}
-      {lifecycleDialog}
+      <MenuAtPoint
+        position={state ? { x: state.x, y: state.y } : null}
+        onClose={onClose}
+        items={sections}
+        aria-label={t("Workspace")}
+        header={
+          w
+            ? {
+                title: workspaceDisplayName(w),
+                subtitle: isLinked
+                  ? t("Linked worktree")
+                  : w.worktree
+                    ? t("Git workspace")
+                    : t("Workspace"),
+              }
+            : undefined
+        }
+      />
+      <TextInputDialog
+        open={opened?.kind === "new-worktree"}
+        title={t("New Worktree")}
+        label={t("Branch")}
+        initialValue={opened?.value}
+        placeholder={t("Branch name")}
+        submitLabel={t("Create")}
+        onClose={close}
+        onSubmit={(branch) => {
+          const value = branch.trim();
+          if (!opened || !value) return;
+          store.createWorktree(opened.workspaceId, value);
+          close();
+        }}
+      />
+      <TextInputDialog
+        open={opened?.kind === "rename-workspace"}
+        title={t("Rename Workspace")}
+        label={t("Name")}
+        initialValue={opened?.value}
+        submitLabel={t("Rename")}
+        onClose={close}
+        onSubmit={(label) => {
+          const value = label.trim();
+          if (!opened || !value) return;
+          if (value !== opened.value)
+            store.renameWorkspace(opened.workspaceId, value);
+          close();
+        }}
+      />
+      <ConfirmDialog
+        open={opened?.kind === "remove-worktree"}
+        title={t("Remove Worktree")}
+        message={t('Remove worktree "{name}"?', { name: opened?.value ?? "" })}
+        confirmLabel={t("Remove")}
+        danger
+        onClose={close}
+        onConfirm={() => {
+          if (opened) store.removeWorktree(opened.workspaceId, false);
+        }}
+      />
+      <ConfirmDialog
+        open={opened?.kind === "close-workspace"}
+        title={t("Close Workspace")}
+        message={t('Close workspace "{name}"?{warning}', {
+          name: opened?.value ?? "",
+          warning: terminalComposerCloseWarning(
+            terminalComposerDraftPaneIds(
+              activeConnectionId,
+              connectionGeneration,
+              closingPaneIds,
+            ).length,
+          ),
+        })}
+        confirmLabel={t("Close")}
+        danger
+        onClose={close}
+        onConfirm={() => {
+          if (!opened) return;
+          clearTerminalComposerDrafts(
+            activeConnectionId,
+            connectionGeneration,
+            closingPaneIds,
+          );
+          store.closeWorkspace(opened.workspaceId);
+        }}
+      />
+      <WorktreeOpenDialog
+        open={opened?.kind === "open-worktree"}
+        workspaceId={openedId("open-worktree")}
+        onClose={close}
+      />
+      <WorktreeHooksDialog
+        open={opened?.kind === "worktree-hooks"}
+        workspaceId={openedId("worktree-hooks") ?? undefined}
+        onClose={close}
+      />
+      <WorkspaceAutoSyncDialog
+        open={opened?.kind === "auto-sync"}
+        workspaceId={openedId("auto-sync") ?? undefined}
+        onClose={close}
+      />
+      <WorktreeLifecycleDialog
+        open={opened?.kind === "lifecycle"}
+        workspaceId={openedId("lifecycle")}
+        onClose={close}
+      />
     </>
   );
 }

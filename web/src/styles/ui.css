@@ -32,6 +32,11 @@
 .ui-bar-spacer {
   flex: 1 1 auto;
 }
+/* LazyThemedSelect's placeholder trigger until ui/Select loads. */
+.lazy-select {
+  display: inline-flex;
+  min-width: 0;
+}
 
 @layer thyra {
   /* Focus: one inset 2px accent outline for every HeroUI control, so it is
@@ -246,23 +251,6 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-.collaboration-popover {
-  z-index: 200;
-  max-width: calc(100vw - 16px);
-  padding: 8px;
-  border: 0;
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: var(--shadow-lg);
-}
-.collaboration-popover .collaboration-editor {
-  align-items: center;
-}
-.collaboration-editor input {
-  min-width: 0;
-  width: 170px;
-  height: var(--ui-control-height);
 }
 .pane-control {
   display: flex;

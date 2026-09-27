@@ -30,39 +30,15 @@
     backdrop-filter: blur(14px);
   }
 
-  .mobile-nav button {
-    position: relative;
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
+  .mobile-nav .button {
+    --button-height: 32px;
     flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: transparent;
-    padding: 0;
-    color: var(--muted);
   }
 
-  .mobile-nav-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-  }
-
-  .mobile-nav button.active {
-    background: var(--accent-soft);
-    color: var(--text-strong);
-  }
-
-  .mobile-nav button:disabled {
-    color: var(--muted);
-    opacity: 0.38;
-    cursor: default;
+  .mobile-nav .button.active {
+    --button-bg: var(--accent-soft);
+    --button-bg-hover: var(--accent-soft-hover);
+    --button-fg: var(--text-strong);
   }
 
   .mobile-nav-badge {
@@ -185,14 +161,5 @@
     opacity: 0;
     pointer-events: none;
     transform: translate3d(10px, 0, 0) scale(0.72);
-  }
-
-  @media (hover: none) and (pointer: coarse) and (forced-colors: none) {
-    .mobile-terminal-controls
-      button:hover:not(:disabled):not(.active):not(:active) {
-      border-color: transparent;
-      background: transparent;
-      box-shadow: none;
-    }
   }
 }

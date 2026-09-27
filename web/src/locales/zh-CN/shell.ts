@@ -56,6 +56,8 @@ export default {
   Workspaces: "工作区",
   "Hide workspaces": "隐藏工作区",
   "Show workspaces": "显示工作区",
+  "Show mobile controls": "显示移动端控件",
+  "Hide mobile controls": "隐藏移动端控件",
   "Tabs and terminal composer": "标签页和终端输入框",
   Tabs: "标签页",
   "Show tabs": "显示标签页",

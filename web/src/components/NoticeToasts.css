@@ -1,0 +1,38 @@
+/* Command output inside a notice toast (ui/Toast description), e.g. a
+   failed git pull. The toast itself is styled by the ui/ overlay chunk. */
+.toast-output {
+  display: block;
+  max-height: 180px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--input-bg) 92%, black 8%);
+  color: var(--text);
+}
+
+.toast-output-title {
+  display: block;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--muted);
+  font: 11px / 1.3 var(--mono-font);
+}
+
+.toast-output pre {
+  max-height: 140px;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  color: inherit;
+  font: 12px / 1.45 var(--mono-font);
+  white-space: pre;
+}
+
+:where(html[data-layout="mobile"]) {
+  .toast-output {
+    max-height: 126px;
+  }
+
+  .toast-output pre {
+    max-height: 90px;
+  }
+}

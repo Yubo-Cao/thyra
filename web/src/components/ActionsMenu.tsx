@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { observeClampedContextMenu } from "./contextMenuPosition";
+import { useMemo } from "react";
+import { t } from "../i18n";
+import { ContextMenu } from "./ui/ContextMenu";
+import type { MenuSection } from "./ui/Menu";
 
 export type ActionsMenuItem = {
   key: string;
@@ -16,9 +18,12 @@ export type ActionsMenuGroup = {
   danger?: boolean;
 };
 
-// Shared anchored popup menu (right-click, long-press, keyboard, toolbar).
-// Mirrors the file explorer menu behavior: outside click / Escape / scroll
-// closes, arrows navigate, focus returns to the trigger on close.
+/**
+ * Grouped action menu at a point (right-click, long-press, keyboard, or a
+ * toolbar button's corner), rendered by the shared ui/ ContextMenu: Escape,
+ * outside presses, arrows, typeahead, viewport flipping, and focus return
+ * come from React Aria. Mount it while open; `onClose` unmounts it.
+ */
 export function ActionsMenu({
   x,
   y,
@@ -32,109 +37,32 @@ export function ActionsMenu({
   groups: ActionsMenuGroup[];
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const close = () => onCloseRef.current();
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Tab") {
-        e.preventDefault();
-        close();
-        return;
-      }
-      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-      const buttons = Array.from(
-        ref.current?.querySelectorAll<HTMLButtonElement>(
-          "[role='menuitem']:not(:disabled)",
-        ) ?? [],
-      );
-      const currentIndex = buttons.indexOf(
-        document.activeElement as HTMLButtonElement,
-      );
-      if (!buttons.length || currentIndex < 0) return;
-      e.preventDefault();
-      const nextIndex =
-        e.key === "Home"
-          ? 0
-          : e.key === "End"
-            ? buttons.length - 1
-            : e.key === "ArrowDown"
-              ? (currentIndex + 1) % buttons.length
-              : (currentIndex - 1 + buttons.length) % buttons.length;
-      buttons[nextIndex]?.focus();
-    };
-    const t = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-      window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", close, true);
-      ref.current
-        ?.querySelector<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
-        ?.focus();
-    }, 0);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-      if (previousFocus?.isConnected) {
-        previousFocus.focus({ preventScroll: true });
-      }
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    const menu = ref.current;
-    if (!menu) return;
-    return observeClampedContextMenu(menu, { left: x, top: y });
-  }, [x, y]);
-
+  const position = useMemo(() => ({ x, y }), [x, y]);
+  const sections = useMemo<MenuSection[]>(
+    () =>
+      groups.map((group) => ({
+        id: group.label,
+        // A single group needs no heading, as before.
+        title: groups.length > 1 ? group.label : undefined,
+        danger: group.danger,
+        items: group.items.map((item) => ({
+          id: item.key,
+          label: item.label,
+          description: item.detail,
+          danger: item.danger,
+          disabled: item.disabled,
+          onAction: item.action,
+        })),
+      })),
+    [groups],
+  );
   return (
-    <div
-      ref={ref}
-      className={`context-menu ${header ? "context-menu--grouped" : ""}`}
-      style={{ position: "fixed", left: x, top: y, zIndex: 1000 }}
-      role="menu"
-    >
-      {header ? (
-        <div className="context-menu-header">
-          <strong title={header.title}>{header.title}</strong>
-          {header.subtitle ? <small>{header.subtitle}</small> : null}
-        </div>
-      ) : null}
-      {groups.map((group) => (
-        <div
-          key={group.label}
-          className={`context-menu-group ${group.danger ? "is-danger" : ""}`}
-        >
-          {groups.length > 1 ? (
-            <div className="context-menu-group-title">{group.label}</div>
-          ) : null}
-          {group.items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
-              role="menuitem"
-              disabled={item.disabled}
-              onClick={() => {
-                onClose();
-                item.action();
-              }}
-            >
-              <span className="context-menu-item-label">{item.label}</span>
-              {item.detail ? (
-                <span className="context-menu-item-detail">{item.detail}</span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ))}
-    </div>
+    <ContextMenu
+      position={position}
+      onClose={onClose}
+      items={sections}
+      aria-label={header?.title ?? t("Actions")}
+      header={header}
+    />
   );
 }

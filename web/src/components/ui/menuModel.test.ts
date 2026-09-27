@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  checkedMenuKeys,
   disabledMenuKeys,
   findMenuItem,
   menuHasChecks,
@@ -60,5 +61,26 @@ describe("menu model", () => {
     expect(disabledMenuKeys(sections)).toEqual(["b"]);
     expect(menuHasChecks(sections)).toBe(true);
     expect(menuHasChecks(normalizeMenu([{ id: "a", label: "A" }]))).toBe(false);
+  });
+
+  test("sections with checked items get a selection mode", () => {
+    const [loose, radio, plain] = normalizeMenu([
+      { id: "wrap", label: "Wrap", checked: true },
+      { id: "mini", label: "Minimap", checked: false },
+      {
+        title: "Sort",
+        selectionMode: "single",
+        items: [
+          { id: "name", label: "Name", checked: true },
+          { id: "date", label: "Date", checked: false },
+        ],
+      },
+      { title: "Actions", items: [{ id: "copy", label: "Copy" }] },
+    ]);
+    expect(loose.selectionMode).toBe("multiple");
+    expect(checkedMenuKeys(loose)).toEqual(["wrap"]);
+    expect(radio.selectionMode).toBe("single");
+    expect(checkedMenuKeys(radio)).toEqual(["name"]);
+    expect(plain.selectionMode).toBeUndefined();
   });
 });

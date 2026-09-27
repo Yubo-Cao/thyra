@@ -25,14 +25,24 @@ export type MenuSection = {
   title?: string;
   /** Tint every item in the section as destructive. */
   danger?: boolean;
+  /**
+   * How `checked` items are announced: `multiple` (default) as
+   * menuitemcheckbox, `single` as menuitemradio for mutually exclusive
+   * choices.
+   */
+  selectionMode?: MenuSelectionMode;
   items: readonly MenuItem[];
 };
+
+export type MenuSelectionMode = "single" | "multiple";
 
 export type MenuEntry = MenuItem | MenuSection;
 
 export type NormalizedMenuSection = {
   id: string;
   title?: string;
+  /** Set when an item has `checked`: its items get checkbox/radio roles. */
+  selectionMode?: MenuSelectionMode;
   items: MenuItem[];
 };
 
@@ -66,6 +76,9 @@ export function normalizeMenu(
       sections.push({
         id: entry.id ?? `section-${sections.length}`,
         title: entry.title,
+        selectionMode: hasChecks(items)
+          ? (entry.selectionMode ?? "multiple")
+          : undefined,
         items,
       });
       continue;
@@ -77,8 +90,18 @@ export function normalizeMenu(
       sections.push(loose);
     }
     loose.items.push(kept);
+    if (kept.checked !== undefined) loose.selectionMode = "multiple";
   }
   return sections;
+}
+
+function hasChecks(items: readonly MenuItem[]) {
+  return items.some((item) => item.checked !== undefined);
+}
+
+/** Ids of the checked items in a section, for aria-checked. */
+export function checkedMenuKeys(section: NormalizedMenuSection): string[] {
+  return section.items.filter((item) => item.checked).map((item) => item.id);
 }
 
 export function findMenuItem(
@@ -104,7 +127,5 @@ export function disabledMenuKeys(
 export function menuHasChecks(
   sections: readonly NormalizedMenuSection[],
 ): boolean {
-  return sections.some((section) =>
-    section.items.some((item) => item.checked !== undefined),
-  );
+  return sections.some((section) => hasChecks(section.items));
 }

@@ -9,6 +9,7 @@ import { t } from "../i18n";
 import { lazyPanel } from "../lazyWithReload";
 import { shallowEqual, useStoreSelector } from "../store";
 import { LazyBoundary } from "./LazyBoundary";
+import { Button } from "./ui/Button";
 import "./ConnectionSwitcherTrigger.css";
 
 // The connection menu and manager (Radix popover, profile forms) load on the
@@ -61,12 +62,11 @@ export const ConnectionSwitcherTrigger = forwardRef<
       ? t("Browser disconnected from bridge")
       : null;
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       className={`connection-switcher-trigger ${open ? "is-active" : ""} ${browserWarning ? "has-browser-warning" : ""}`}
       aria-label={`${active.label}, ${connectionTypeLabel(active)}, ${connectionLifecycleLabel(active.state)}${browserWarning ? `, ${browserWarning}` : ""}`}
-      title={browserWarning ?? undefined}
+      data-tooltip={browserWarning ?? undefined}
       aria-haspopup="menu"
       aria-expanded={open}
       {...props}
@@ -83,8 +83,8 @@ export const ConnectionSwitcherTrigger = forwardRef<
       <span className="connection-switcher-meta">
         {connectionTypeLabel(active)} / {connectionLifecycleLabel(active.state)}
       </span>
-      <ChevronDown size={13} />
-    </button>
+      <ChevronDown size={13} aria-hidden="true" />
+    </Button>
   );
 });
 

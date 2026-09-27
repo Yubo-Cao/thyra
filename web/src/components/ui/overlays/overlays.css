@@ -21,6 +21,15 @@
     padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
       env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   }
+  /* React Aria reports --visual-viewport-height in visual px; under the UI
+     scale's <html> zoom it must be divided back into CSS px. */
+  .ui-dialog-backdrop,
+  .ui-dialog-container {
+    height: calc(
+      var(--visual-viewport-height, 100dvh) *
+      var(--popover-portal-zoom, calc(1 / var(--ui-scale, 1)))
+    );
+  }
   .ui-dialog-container {
     width: 100%;
     padding: 18px;
@@ -178,6 +187,35 @@
     width: 0;
     height: 0;
     pointer-events: none;
+  }
+
+  /* UI scale: <html> carries CSS zoom (80-150%), but React Aria positions
+     overlays from getBoundingClientRect (visual px) and pointer events
+     report visual px, which a zoomed element would multiply again. Cancel
+     the zoom on the positioned element and restore it on its content. App
+     measures both ratios (--popover-portal-zoom, --popover-content-zoom);
+     the fallbacks cover engines that behave like today's WebKit/Blink. */
+  .ui-menu-point,
+  .ui-menu-popover,
+  .ui-select-popover,
+  .ui-popover,
+  .ui-tooltip {
+    zoom: var(--popover-portal-zoom, calc(1 / var(--ui-scale, 1)));
+  }
+  .ui-menu-popover > *,
+  .ui-select-popover > *,
+  .ui-popover > *,
+  .ui-tooltip > * {
+    zoom: var(--popover-content-zoom, var(--ui-scale, 1));
+  }
+  .ui-menu-popover {
+    min-width: calc(220px * var(--popover-content-zoom, var(--ui-scale, 1)));
+  }
+  .ui-select-popover {
+    min-width: max(
+      var(--trigger-width, 0px),
+      calc(140px * var(--popover-content-zoom, var(--ui-scale, 1)))
+    );
   }
   .ui-menu-header {
     display: grid;

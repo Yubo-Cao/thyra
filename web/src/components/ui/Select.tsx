@@ -44,6 +44,8 @@ export type SelectProps<T extends string = string> = {
   disabled?: boolean;
   title?: string;
   className?: string;
+  /** Open on mount, e.g. when a lazily loaded select replaces its placeholder trigger. */
+  defaultOpen?: boolean;
 };
 
 /**
@@ -65,10 +67,11 @@ export function Select<T extends string>({
   disabled = false,
   title,
   className,
+  defaultOpen = false,
 }: SelectProps<T>) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const labelId = useId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const mounted = useOpenedOnce(open);
   const current = options.find((option) => option.value === value);
 

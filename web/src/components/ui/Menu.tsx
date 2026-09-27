@@ -19,7 +19,12 @@ import {
 import type { MenuEntry } from "./menuModel";
 import { chainHandlers, mergeRefs } from "./mergeRefs";
 
-export type { MenuEntry, MenuItem, MenuSection } from "./menuModel";
+export type {
+  MenuEntry,
+  MenuItem,
+  MenuSection,
+  MenuSelectionMode,
+} from "./menuModel";
 
 export type MenuPlacement =
   | "bottom start"

@@ -122,11 +122,11 @@ The overlay chunk renders React Aria components with HeroUI's class names instea
 | `SearchField` | `value`, `onValueChange`, leading icon, clear button; Escape clears, then propagates when empty. |
 | `Tabs` | `value`, `onChange(id)`, `items` (`id`, `label`, `icon`, `disabled`), `aria-label`, optional panel `children`. Arrows, Home, and End select. |
 | `Select` | Superset of `ThemedSelect`: `value`, `options` (`label`, `description`, `icon`, `disabled`), `onChange(value)`, `aria-label` or `label`, `icon`, `align`, `variant="ghost"`. |
-| `Menu` (`DropdownMenu`) | `trigger` (a `Button`/`IconButton`), `items`: `MenuItem` (`id`, `label`, `icon`, `shortcut`, `description`, `danger`, `disabled`, `checked`, `onAction`) or sections (`title`, `danger`, `items`), `header`, `placement`, `onAction(id)`, optional `open`/`onOpenChange`. |
+| `Menu` (`DropdownMenu`) | `trigger` (a `Button`/`IconButton`), `items`: `MenuItem` (`id`, `label`, `icon`, `shortcut`, `description`, `danger`, `disabled`, `checked`, `onAction`) or sections (`title`, `danger`, `selectionMode`, `items`); items with `checked` are announced as `menuitemcheckbox` (or `menuitemradio` with `selectionMode: "single"`), `header`, `placement`, `onAction(id)`, optional `open`/`onOpenChange`. |
 | `ContextMenu` | Same items; `position` (`{x, y}` from the event, `null` closes), `onClose`. Flips and shifts into the viewport and restores focus. |
 | `Popover` | `trigger`, `children` (or `(close) => children`), `aria-label`, `placement`; a non-modal panel with role `dialog`. |
 | `Dialog` | `open`, `onOpenChange`, `title`, `description`, children (body), `footer`, `size` (`sm`, `md`, `lg`, `full`), `dismissable`, `keyboardDismissable`, `closeButton`, `onSubmit` (wraps body and footer in a form, default prevented), `headerStart`, `headerActions`, `placement="side"` (full-height end panel, a drawer), `busy`. A bottom sheet in the mobile layout. |
-| `ConfirmDialog` | `open`, `onOpenChange`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone="danger"`, `onConfirm` (may return a promise; a rejection keeps it open). |
+| `ConfirmDialog` | `open`, `onOpenChange`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone="danger"`, `onConfirm` (may return a promise; a rejection keeps it open), `initialFocus` (`cancel` default, or `confirm`). |
 | `ToastRegion`, `toast` | Render `<ToastRegion />` once. `toast.show({title, description, tone, loading, action})`, `toast.info/success/warning/danger(title, content?, options?)`, `toast.update(id, patch, {timeout})`, `toast.close(id)`. `ui/toastQueue.ts` has no React runtime, so the store can call it. |
 
 Conventions:
@@ -142,7 +142,7 @@ Conventions:
 Migrating a screen:
 
 1. A raw `<button>` becomes `Button`: the default filled look is `variant="secondary"`, `.ghost` is the default `ghost`, `.danger` is `danger-soft`, and a dialog's primary action is `variant="primary" size="md"`. Icon-only buttons become `IconButton` with a `label`; drop their `title`.
-2. Hand-written `.modal-backdrop`/`.modal` markup with manual Escape, focus, and backdrop handling becomes `Dialog` or `ConfirmDialog`; delete the listeners and the `dialogFocus`/`dialogKeyboard` calls it replaces.
+2. Hand-written `.modal-backdrop`/`.modal` markup with manual Escape, focus, and backdrop handling becomes `Dialog` or `ConfirmDialog`; delete the listeners and the `dialogFocus` calls it replaces.
 3. Floating menus (`ActionsMenu`, `.context-menu`, file menus) become `Menu` or `ContextMenu` with item objects; delete outside-click, arrow-key, and viewport-clamping code.
 4. `.settings-switch` buttons become `Switch`, `.check-row` inputs `Checkbox`, `ThemedSelect` `Select` (same props), hand-rolled tab strips `Tabs`, and `.form-field` inputs `TextField`.
 5. Remove the replaced CSS rules, then verify in the gallery and the app.

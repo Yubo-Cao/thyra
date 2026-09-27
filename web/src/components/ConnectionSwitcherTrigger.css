@@ -6,28 +6,19 @@
 }
 
 .connection-switcher-trigger {
-  width: fit-content;
   min-width: 0;
   max-width: 100%;
-  height: var(--ui-control-height);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-color: transparent;
-  background: var(--topbar-control-bg);
-  color: var(--topbar-control-text);
+  --button-bg: var(--topbar-control-bg);
+  --button-bg-hover: var(--topbar-control-active-bg);
 }
 
-.connection-switcher-trigger:hover,
 .connection-switcher-trigger.is-active {
-  border-color: transparent;
-  background: var(--topbar-control-active-bg);
-  color: var(--text-strong);
+  --button-bg: var(--topbar-control-active-bg);
+  --button-fg: var(--text-strong);
 }
 
 .connection-switcher-trigger.has-browser-warning {
-  background: var(--warning-soft);
+  --button-bg: var(--warning-soft);
 }
 
 .connection-switcher-warning {
@@ -80,10 +71,6 @@
 :where(html[data-layout="mobile"]) {
   .connection-switcher {
     max-width: min(220px, 42vw);
-  }
-
-  .connection-switcher-trigger {
-    height: 28px;
   }
 
   .connection-switcher-meta {

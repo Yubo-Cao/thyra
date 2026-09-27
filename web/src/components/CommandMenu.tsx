@@ -10,6 +10,7 @@ import { lazyPanel } from "../lazyWithReload";
 import { shortcutMatches, shortcutTitle } from "../shortcutPreferences";
 import type { CommandComboboxProps } from "./CommandCombobox";
 import { LazyBoundary } from "./LazyBoundary";
+import { Button } from "./ui/Button";
 // The trigger's styles (.command-trigger) live with the command primitives.
 import "./ui/command.css";
 
@@ -30,7 +31,9 @@ export function isCommandMenuShortcut(e: KeyboardEvent) {
   // shortcut. Both handlers run on window, so listener order cannot decide.
   if (
     e.defaultPrevented ||
-    document.querySelector(".modal-backdrop, .pane-jump-backdrop")
+    document.querySelector(
+      ".ui-dialog-backdrop, .modal-backdrop, .pane-jump-backdrop",
+    )
   )
     return false;
   if (!shortcutMatches(e, "command.menu") || e.repeat) return false;
@@ -45,18 +48,17 @@ export const CommandMenuTrigger = forwardRef<
   ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean }
 >(function CommandMenuTrigger({ active, className, ...props }, ref) {
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
-      className={`topbar-button command-trigger ${active ? "is-active" : ""}${className ? ` ${className}` : ""}`}
+      className={`command-trigger ${active ? "is-active" : ""}${className ? ` ${className}` : ""}`}
       aria-label={t("Open command menu")}
-      title={shortcutTitle(t("Open command menu"), "command.menu")}
+      data-tooltip={shortcutTitle(t("Open command menu"), "command.menu")}
       {...props}
     >
-      <Keyboard size={15} />
+      <Keyboard size={15} aria-hidden="true" />
       <span>{t("Actions")}</span>
-      <ChevronsUpDown size={14} />
-    </button>
+      <ChevronsUpDown size={14} aria-hidden="true" />
+    </Button>
   );
 });
 

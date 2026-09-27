@@ -48,27 +48,6 @@
   background: var(--terminal-bg);
 }
 
-.main-diff-mode {
-  gap: 0;
-}
-
-.main-view {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.main-view.is-hidden {
-  display: none;
-}
-
-.main-diff-mode .main-view {
-  gap: 0;
-}
-
 .workspace-stage {
   position: relative;
   min-width: 0;
@@ -137,28 +116,16 @@
    handle for the hidden topbar (see topbar.css) and floats above the
    revealed topbar, whose center column is empty. */
 .zen-island {
+  --button-bg: color-mix(in srgb, var(--panel) 90%, transparent);
   position: fixed;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
   z-index: 121;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px 6px;
-  border: 0;
-  border-top: 0;
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
-  color: var(--muted);
-  font-size: 11px;
+  padding-inline: 12px;
+  font-size: var(--ui-font-size-xs);
   font-weight: 600;
-  line-height: 1;
   box-shadow: var(--shadow-lg);
-}
-
-.zen-island:hover,
-.zen-island:focus-visible {
-  color: var(--text);
 }
 
 .pane-jump-backdrop {
@@ -302,7 +269,6 @@
 .pane-jump-title-line > strong,
 .pane-jump-tab,
 .pane-jump-cwd,
-.pane-jump-agent-name,
 .pane-jump-agent-status {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -356,12 +322,6 @@
   box-shadow: 0 0 0 2px var(--panel);
 }
 
-.pane-jump-agent-name {
-  max-width: 25%;
-  color: var(--text);
-  font-weight: 650;
-}
-
 .pane-jump-agent-status {
   flex: 0 0 auto;
   margin-left: auto;
@@ -382,18 +342,6 @@
 }
 
 /* ===== terminal (xterm.js) ===== */
-.main-view > .terminal-shell {
-  flex: 1 1 auto;
-}
-
-.main-view > .pane-layout {
-  flex: 1 1 auto;
-}
-
-.main-view > .pane-switcher-layout {
-  flex: 1 1 auto;
-}
-
 .pane-layout {
   position: relative;
   min-height: 0;
@@ -413,12 +361,6 @@
 
 .pane-switcher {
   display: none;
-}
-
-.pane-switcher-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .pane-switcher-label {
@@ -568,24 +510,19 @@
     --mobile-floating-controls-lift: 112px;
   }
 
-  .mobile-controls-toggle {
-    position: relative;
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    flex: 0 0 auto;
+  .mobile-controls-toggle.button {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: transparent;
-    padding: 0;
-    color: var(--muted);
+    --button-height: 32px;
+    --button-fg: var(--text-strong);
+    --button-bg-pressed: var(--accent-soft);
+    flex: 0 0 auto;
   }
 
-  .mobile-controls-toggle:active {
-    background: var(--accent-soft);
-    color: var(--text-strong);
+  /* Collapsed is a state, not a highlighted choice. */
+  .mobile-controls-toggle.button[aria-pressed="true"] {
+    --button-bg: transparent;
+    --button-bg-hover: var(--panel-2);
+    --button-fg: var(--text-strong);
   }
 
   .mobile-workspace-shortcut {
@@ -597,15 +534,9 @@
       env(safe-area-inset-bottom, 0px)
     );
     z-index: 73;
-    width: 42px;
-    height: 42px;
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border: 0;
-    background: color-mix(in srgb, var(--panel) 76%, transparent);
-    color: var(--muted);
+    --button-height: 42px;
+    --button-bg: color-mix(in srgb, var(--panel) 76%, transparent);
     box-shadow: var(--shadow-lg);
     transform: translate3d(0, 0, 0) scale(1);
     transform-origin: right bottom;
@@ -619,27 +550,17 @@
     backdrop-filter: blur(14px);
   }
 
-  .mobile-workspace-shortcut svg {
-    width: 32px;
-    height: 32px;
-    padding: 7px;
-  }
-
-  .mobile-workspace-shortcut.is-active,
-  .mobile-workspace-shortcut:active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-    color: var(--text-strong);
+  .mobile-workspace-shortcut.button[aria-pressed="true"],
+  .mobile-workspace-shortcut.button:active {
+    --button-bg: var(--accent-soft);
+    --button-bg-pressed: var(--accent-soft);
+    --button-fg: var(--text-strong);
   }
 
   .mobile-controls-collapsed .mobile-workspace-shortcut {
     opacity: 0;
     pointer-events: none;
     transform: translate3d(0, 50px, 0) scale(0.72);
-  }
-
-  .mobile-controls-toggle {
-    color: var(--text-strong);
   }
 
   /* While the on-screen keyboard is open the floating controls cover too
@@ -689,9 +610,8 @@
   }
 
   .pane-switcher-button {
+    --button-height: 30px;
     width: 34px;
-    height: 30px;
-    padding: 0;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
@@ -720,20 +640,6 @@
 
 /* Keep mobile styling in sync with the saved layout and URL override. */
 :where(html[data-layout="mobile"]) {
-  @media (hover: none) and (pointer: coarse) and (forced-colors: none) {
-    .mobile-workspace-shortcut:hover:not(:disabled):not(.is-active):not(
-        :active
-      ) {
-      border-color: color-mix(in srgb, var(--border) 72%, transparent);
-      background: color-mix(in srgb, var(--panel) 76%, transparent);
-      box-shadow: var(--shadow-lg);
-      color: var(--muted);
-    }
-  }
-}
-
-/* Keep mobile styling in sync with the saved layout and URL override. */
-:where(html[data-layout="mobile"]) {
   .pane-layout {
     display: flex;
     flex-direction: column;
@@ -754,10 +660,6 @@
 
   .pane-resize-handle {
     display: none;
-  }
-
-  .layout-pane-head {
-    font-size: 12px;
   }
 }
 

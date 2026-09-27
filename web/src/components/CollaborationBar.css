@@ -10,13 +10,7 @@
   gap: 4px;
 }
 .collaboration-avatar {
-  display: inline-flex;
-  width: var(--ui-control-height);
-  height: var(--ui-control-height);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
+  --button-fg: var(--text);
 }
 .collaboration-avatar.is-self {
   outline: 1px solid var(--accent);
@@ -37,7 +31,12 @@
 }
 .collaboration-editor {
   display: flex;
+  align-items: center;
   gap: 4px;
+}
+.collaboration-name-field {
+  width: 170px;
+  min-width: 0;
 }
 @media (max-width: 768px) {
   .collaboration-live,

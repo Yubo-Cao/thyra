@@ -1,8 +1,9 @@
 import "./CollaborationBar.css";
 import { Check, Pencil, Users, X } from "lucide-react";
-import * as Popover from "@radix-ui/react-popover";
 import { Avatar, AvatarFallback } from "./ui/Avatar";
-import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { Popover } from "./ui/Popover";
+import { TextField } from "./ui/TextField";
 import {
   useEffect,
   useRef,
@@ -115,58 +116,50 @@ export function CollaborationBar() {
   };
 
   return (
-    <Popover.Root open={editing} onOpenChange={setEditing}>
-      <div className="collaboration-bar">
-        <div
-          className="collaboration-roster"
-          aria-label={t("Live collaborators")}
-        >
-          <Users size={14} aria-hidden="true" />
-          <span className="collaboration-count">
-            {participants.length || 1}
-          </span>
-          <div className="collaboration-avatars">
-            {[...visibleParticipants]
-              .sort(
-                (a, b) =>
-                  Number(b.participant_id === profile.participantId) -
-                  Number(a.participant_id === profile.participantId),
-              )
-              .slice(0, 3)
-              .map((participant) => {
-                const isSelf =
-                  participant.participant_id === profile.participantId;
-                const isTyping = participantIsTyping(participant);
-                const avatarButton = (
-                  <button
-                    type="button"
-                    className={`collaboration-avatar activity-${participant.activity} ${isSelf ? "is-self" : ""} ${isTyping ? "is-typing" : ""}`}
-                    style={
-                      {
-                        "--participant-color": participant.color,
-                      } as CSSProperties
-                    }
-                    title={
-                      isTyping
-                        ? t("{name} · typing", {
+    <div className="collaboration-bar">
+      <div
+        className="collaboration-roster"
+        aria-label={t("Live collaborators")}
+      >
+        <Users size={14} aria-hidden="true" />
+        <span className="collaboration-count">{participants.length || 1}</span>
+        <div className="collaboration-avatars">
+          {[...visibleParticipants]
+            .sort(
+              (a, b) =>
+                Number(b.participant_id === profile.participantId) -
+                Number(a.participant_id === profile.participantId),
+            )
+            .slice(0, 3)
+            .map((participant) => {
+              const isSelf =
+                participant.participant_id === profile.participantId;
+              const isTyping = participantIsTyping(participant);
+              const avatarButton = (
+                <IconButton
+                  className={`collaboration-avatar activity-${participant.activity} ${isSelf ? "is-self" : ""} ${isTyping ? "is-typing" : ""}`}
+                  style={
+                    {
+                      "--participant-color": participant.color,
+                    } as CSSProperties
+                  }
+                  tooltip={
+                    isTyping
+                      ? t("{name} · typing", {
+                          name: participant.display_name,
+                        })
+                      : participant.pane_id
+                        ? t("{name} · viewing a pane", {
                             name: participant.display_name,
                           })
-                        : participant.pane_id
-                          ? t("{name} · viewing a pane", {
-                              name: participant.display_name,
-                            })
-                          : participant.display_name
-                    }
-                    aria-label={
-                      isSelf
-                        ? t("{name} (you)", { name: participant.display_name })
                         : participant.display_name
-                    }
-                    onClick={() => {
-                      if (!isSelf && participant.pane_id)
-                        void store.focusPane(participant.pane_id);
-                    }}
-                  >
+                  }
+                  label={
+                    isSelf
+                      ? t("{name} (you)", { name: participant.display_name })
+                      : participant.display_name
+                  }
+                  icon={
                     <Avatar>
                       <AvatarFallback>
                         {participant.display_name
@@ -178,64 +171,66 @@ export function CollaborationBar() {
                           .toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                  </button>
-                );
-                return isSelf ? (
-                  <Popover.Trigger asChild key={participant.participant_id}>
-                    {avatarButton}
-                  </Popover.Trigger>
-                ) : (
-                  <span
-                    className="collaboration-peer"
-                    key={participant.participant_id}
-                  >
-                    {avatarButton}
-                  </span>
-                );
+                  }
+                  onClick={() => {
+                    if (!isSelf && participant.pane_id)
+                      void store.focusPane(participant.pane_id);
+                  }}
+                />
+              );
+              return isSelf ? (
+                <Popover
+                  key={participant.participant_id}
+                  trigger={avatarButton}
+                  aria-label={t("Your collaboration display name")}
+                  open={editing}
+                  onOpenChange={setEditing}
+                  className="collaboration-popover"
+                >
+                  <form className="collaboration-editor" onSubmit={submitName}>
+                    <Pencil size={13} aria-hidden="true" />
+                    <TextField
+                      className="collaboration-name-field"
+                      autoFocus
+                      value={name}
+                      maxLength={80}
+                      aria-label={t("Your collaboration display name")}
+                      onValueChange={setName}
+                    />
+                    <IconButton
+                      type="submit"
+                      label={t("Save display name")}
+                      icon={<Check size={14} aria-hidden="true" />}
+                    />
+                    <IconButton
+                      label={t("Cancel")}
+                      icon={<X size={14} aria-hidden="true" />}
+                      onClick={() => setEditing(false)}
+                    />
+                  </form>
+                </Popover>
+              ) : (
+                <span
+                  className="collaboration-peer"
+                  key={participant.participant_id}
+                >
+                  {avatarButton}
+                </span>
+              );
+            })}
+          {visibleParticipants.length > 3 ? (
+            <span
+              className="collaboration-overflow"
+              title={t("{count} collaborators", {
+                count: visibleParticipants.length,
               })}
-            {visibleParticipants.length > 3 ? (
-              <span
-                className="collaboration-overflow"
-                title={t("{count} collaborators", {
-                  count: visibleParticipants.length,
-                })}
-              >
-                +{visibleParticipants.length - 3}
-              </span>
-            ) : null}
-          </div>
-          <span className="collaboration-live">{t("Live")}</span>
+            >
+              +{visibleParticipants.length - 3}
+            </span>
+          ) : null}
         </div>
-        <Popover.Portal>
-          <Popover.Content
-            className="collaboration-popover"
-            sideOffset={8}
-            align="start"
-            collisionPadding={8}
-          >
-            <form className="collaboration-editor" onSubmit={submitName}>
-              <Pencil size={13} />
-              <input
-                autoFocus
-                value={name}
-                maxLength={80}
-                aria-label={t("Your collaboration display name")}
-                onChange={(event) => setName(event.target.value)}
-              />
-              <Button type="submit" icon aria-label={t("Save display name")}>
-                <Check size={14} />
-              </Button>
-              <Button
-                icon
-                aria-label={t("Cancel")}
-                onClick={() => setEditing(false)}
-              >
-                <X size={14} />
-              </Button>
-            </form>
-          </Popover.Content>
-        </Popover.Portal>
+        <span className="collaboration-live">{t("Live")}</span>
       </div>
-    </Popover.Root>
+    </div>
   );
 }
