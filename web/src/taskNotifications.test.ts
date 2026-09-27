@@ -417,7 +417,7 @@ describe("notification service worker clicks", () => {
       { data: null },
     ]);
   });
-  test("focuses an app window or opens a same-origin pane link without caching", async () => {
+  test("focuses an app window or opens a same-origin pane link", async () => {
     const listeners: Record<string, (event: any) => void> = {};
     const postMessage = mock();
     const focus = mock(async () => {
@@ -445,7 +445,10 @@ describe("notification service worker clicks", () => {
       },
     );
     expect(Object.keys(listeners).sort()).toEqual([
+      "activate",
+      "fetch",
       "install",
+      "message",
       "notificationclick",
       "push",
     ]);

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { assetManifestPlugin, vendorChunk } from "./vite.chunks";
 
 // Monaco's package exports append `.js` to every subpath, which cannot reach
 // its CSS or worker sources; alias its ESM tree directly instead.
@@ -14,7 +15,7 @@ const monacoEsmRoot = realpathSync(
 // In dev, the web app talks to the bridge through Vite's proxy so the
 // frontend can use a relative /ws URL (same origin, no hardcoded port).
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), assetManifestPlugin()],
   resolve: {
     alias: [
       {
@@ -39,12 +40,13 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Group small grammars into lazy chunks to keep expanded highlighting
-        // within the embedded server's asset-count budget.
-        manualChunks(id) {
+        // within the embedded server's asset-count budget, and split stable
+        // vendor code from app code (see vite.chunks.ts).
+        manualChunks(id, meta) {
           const language = id.match(
             /@shikijs\/langs\/dist\/([^/]+)\.mjs$/,
           )?.[1];
-          if (!language) return;
+          if (!language) return vendorChunk(id, meta);
           if (
             [
               "awk",

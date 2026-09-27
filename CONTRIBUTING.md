@@ -66,6 +66,7 @@ tests does not establish browser behavior or real-user-experience acceptance.
 Workspace types: `bun run --filter thyra-web typecheck` or
 `bun run --filter thyra-server typecheck` (builds web assets first).
 Frontend changes also need `bun run build:web`; bundling needs `bun run build`.
+For load-time work, `bun scripts/measure-first-load.ts` (not in CI) loads the built app in Chromium and WebKit through a throttled link against a throwaway Herdr server and reports time to the agent list and to terminal output, cold and warm.
 Releases must package/inspect every supported archive/checksum; see
 [builds](docs/DEPLOYMENT.md#build-a-standalone-executable) and
 [release policy](AGENTS.md#release-notes).

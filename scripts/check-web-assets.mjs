@@ -1,13 +1,16 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, constants as zlib, gzipSync } from "node:zlib";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 // Lazy Monaco and voice-capture chunks (worklet, VAD, transport) add files,
 // as do per-surface lazy chunks and the small shared chunks Rollup splits
-// between them (single lucide icons, ui primitives).
-const maxFileCount = 240;
+// between them (single lucide icons, ui primitives), plus the stable vendor
+// chunks and thyra-assets.json. Grouping the tiny shared chunks would pin
+// them (or their dependencies) into the entry; over HTTP/2 they load in
+// parallel for a few hundred bytes of headers each.
+const maxFileCount = 260;
 // The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB.
 const maxTotalBytes = 16 * 1024 * 1024;
 // The entry holds the app shell and switchers (workspace tree, agent list,
@@ -133,8 +136,16 @@ async function checkAssets() {
     let jsBytes = 0;
     let jsGzipBytes = 0;
     let cssBytes = 0;
+    let brotliBytes = 0;
     for (const file of files) {
       const content = await readFile(`${publicRoot}/${file}`);
+      // What a phone downloads: the server sends quality-11 Brotli.
+      brotliBytes += brotliCompressSync(content, {
+        params: {
+          [zlib.BROTLI_PARAM_QUALITY]: zlib.BROTLI_MAX_QUALITY,
+          [zlib.BROTLI_PARAM_SIZE_HINT]: content.length,
+        },
+      }).length;
       if (file.endsWith(".js")) {
         jsBytes += content.length;
         jsGzipBytes += gzipSync(content).length;
@@ -142,13 +153,16 @@ async function checkAssets() {
         cssBytes += content.length;
       }
     }
-    return { jsBytes, jsGzipBytes, cssBytes };
+    return { jsBytes, jsGzipBytes, cssBytes, brotliBytes };
   };
-  const { jsBytes, jsGzipBytes, cssBytes } = await measure(
-    initialAssetFiles(manifest),
-  );
+  const initial = await measure(initialAssetFiles(manifest));
+  const { jsBytes, jsGzipBytes, cssBytes } = initial;
   const firstScreen = await measure(
     initialAssetFiles(manifest, firstScreenEntries(manifest)),
+  );
+  // Informational: transfer sizes of the JS+CSS the first screen waits for.
+  process.stdout.write(
+    `web asset brotli transfer: initial ${(initial.brotliBytes / 1024).toFixed(1)} KiB, first screen ${(firstScreen.brotliBytes / 1024).toFixed(1)} KiB\n`,
   );
   const checks = [
     ["files", fileCount, maxFileCount, 1, "files"],

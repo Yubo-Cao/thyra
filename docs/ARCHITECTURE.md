@@ -425,6 +425,29 @@ Bun/Node.js. Builds use the `thyra` release identity across binaries, archives,
 checksums, and manifests. Missing or invalid manifests fail closed without archive
 discovery. Publication requires exactly the six platform asset sets.
 
+## Web delivery and caching
+
+Everything under `/assets/` is content-addressed (Vite output and the sliced terminal font) and is served `private, max-age=31536000, immutable`; never write an unfingerprinted file there.
+`index.html`, `/manifest.json`, the service worker and `/thyra-assets.json` are served `no-cache, must-revalidate` with a strong per-encoding `ETag`, so revalidation costs a `304`.
+Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip, compressed once per file version off the event loop.
+At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure and font stylesheet) before the first request.
+Zstandard and compression dictionaries are not offered: WebKit supports neither, and quality-11 Brotli is smaller than zstd for these bundles.
+
+The build splits long-lived vendor code into `vendor-react`, `vendor-xterm`, `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
+Chunks that import from the entry still change with it.
+It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, and the `boot` list.
+
+Production pages that are not yet controlled register one service worker, `/task-notifications-sw.js` at scope `/`, after the `load` event and the first terminal output (`startupGate.ts`); it also handles Web Push, so there is never a second worker.
+Once active it claims open pages, and the page asks it to copy the assets it loaded before control (normally from the HTTP cache).
+- `/assets/*` GETs without a query or `Range` are cache-first in `thyra-assets-v1`; only `200` same-origin, non-redirected, non-HTML responses marked `immutable` are stored.
+- Navigations to `/` or `/index.html` without a query are network-first: the network response (including login redirects and errors) is returned unchanged, and the cached shell in `thyra-shell-v1` answers only when the network fails or has not answered within 4 seconds.
+  Only `200` same-origin, non-redirected HTML is stored as the shell.
+- Every other request (API routes, `/ws`, `/login`, token-login queries, file previews, non-GET methods) bypasses the worker.
+- When a stored shell changes, the worker fetches `/thyra-assets.json` and deletes cached assets used by neither the new nor the previous build, so a page started from a stale shell can finish loading.
+  Activation deletes every other `thyra-*` cache; bump the cache names when the stored format or strategy changes.
+
+A stale shell can therefore run one load after a deploy when the network is slower than the fallback timeout; the refreshed shell is used on the next load.
+
 ## Trust boundary
 
 Thyra is trusted single-user administration, not a sandbox or multi-user

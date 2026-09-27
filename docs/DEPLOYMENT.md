@@ -611,5 +611,7 @@ Release packaging/publishing follows [AGENTS.md](../AGENTS.md#release-notes).
 | Another device cannot open the page | Check bind, token URL, network/firewall, and [private access setup](./TUTORIAL.md#networking). |
 | SSH connects locally | Remove explicit socket flags/`HERDR_SOCKET_PATH`/`HERDR_CLIENT_SOCKET_PATH`; they override tunnel paths. |
 | Want automatic browser launch | Use `thyra --open` or `OPEN_BROWSER=1`. |
+| Slow first load behind a reverse proxy | Pass Thyra's `Content-Encoding`, `ETag`, and `Cache-Control` through unchanged; Thyra already sends quality-11 Brotli. Repeat loads are served from the browser's service-worker cache only on trusted HTTPS or `localhost`; see [web delivery](./ARCHITECTURE.md#web-delivery-and-caching). |
+| A page still shows the previous version after an update | Reload once: on a very slow link the cached app shell answers first and the new one is used on the next load. Clearing the site's data resets the cache. |
 
 For step-by-step diagnosis, see [the tutorial](./TUTORIAL.md#troubleshooting).

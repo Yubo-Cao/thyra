@@ -9,6 +9,7 @@ import "./styles/vendor.css";
 import "./styles/ui.css";
 import "./styles/heroui.css";
 import App from "./App";
+import { registerAppServiceWorker } from "./appServiceWorker";
 import { OverlayScrollbarLayer } from "./components/OverlayScrollbarLayer";
 
 class ErrorBoundary extends React.Component<
@@ -42,6 +43,9 @@ class ErrorBoundary extends React.Component<
 
 initializeLayoutPreferences();
 initializeShortcutPreferences();
+// Cache the shell and fingerprinted assets so repeat visits on slow links only
+// fetch what a deploy changed (web/public/task-notifications-sw.js).
+if (import.meta.env.PROD) registerAppServiceWorker();
 
 // Load the interface catalog before the first render so no text flips language.
 void initLocale().then(() => {

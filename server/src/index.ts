@@ -78,7 +78,7 @@ import { createShutdownController } from "./connections/shutdown";
 import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
 import { createAuthHandlers, unauthenticatedLoginRedirect } from "./http/auth";
-import { serveStatic } from "./http/static-files";
+import { prewarmStaticCompression, serveStatic } from "./http/static-files";
 import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
@@ -1622,6 +1622,12 @@ function main() {
     websocket: "/ws",
     log_level: config.logLevel,
   });
+  // Maximum-quality Brotli for the first-visit files, off the request path.
+  void prewarmStaticCompression(config.publicDir).catch((error) =>
+    logger.debug("static compression prewarm failed", {
+      error: (error as Error).message,
+    }),
+  );
   if (config.authRequired) {
     if (config.generatedAuthTokenPath) {
       logger.info("authentication required", {

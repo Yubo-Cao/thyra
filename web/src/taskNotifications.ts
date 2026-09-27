@@ -2,7 +2,7 @@ import { t } from "./i18n";
 
 export const TASK_NOTIFICATION_ACTIVATE_EVENT =
   "thyra:task-notification-activate";
-const NOTIFICATION_WORKER = "/task-notifications-sw.js";
+export const NOTIFICATION_WORKER = "/task-notifications-sw.js";
 const NOTIFICATION_HASH = "#thyra-task=";
 
 export interface TaskNotificationTarget {
