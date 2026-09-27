@@ -5,6 +5,10 @@ import { rename, rm, writeFile } from "node:fs/promises";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
 import { serverLogger } from "../utils/logger";
 import { sourceCheckoutPath as workspaceSourceCheckoutPath } from "../workspace/utils";
+import {
+  type LauncherSettings,
+  normalizeLauncherSettingsMap,
+} from "../launcher/folders";
 
 export type GuiRepoSettings = {
   worktree_hooks_enabled?: boolean;
@@ -33,6 +37,8 @@ export type GuiSettings = {
   repositories: Record<string, GuiRepoSettings>;
   workspace_auto_sync: Record<string, GuiWorkspaceAutoSyncSettings>;
   terminal_transport?: Record<string, { surface_codecs: boolean }>;
+  /** Project launcher pins, commands, and history per connection ID. */
+  launcher?: Record<string, LauncherSettings>;
   custom: Record<string, unknown>;
 };
 
@@ -52,6 +58,7 @@ function defaultGuiSettings(): GuiSettings {
     repositories: {},
     workspace_auto_sync: {},
     terminal_transport: {},
+    launcher: {},
     custom: {},
   };
 }
@@ -137,6 +144,7 @@ function normalizeGuiSettings(raw: unknown): GuiSettings {
           : [],
       ),
     ),
+    launcher: normalizeLauncherSettingsMap(obj.launcher),
     custom:
       obj.custom && typeof obj.custom === "object"
         ? (obj.custom as Record<string, unknown>)

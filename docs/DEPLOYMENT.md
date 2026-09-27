@@ -389,6 +389,27 @@ Explicit socket flags/environment variables override automatic tunnel paths.
 See [isolation](./ARCHITECTURE.md#connection-isolation) and
 [SSH lifecycle](./ARCHITECTURE.md#ssh-transport).
 
+## Project launcher
+
+The [project launcher](../FEATURES.md#project-launcher) stores its state in the Thyra `settings.json` (`~/.config/thyra/settings.json`, or `%APPDATA%\thyra\settings.json` on Windows) under `launcher.<connection profile ID>`:
+
+```json
+{
+  "launcher": {
+    "local": {
+      "pinned": ["/home/me/code/thyra"],
+      "commands": { "claude": "c", "codex": "x" },
+      "history": [{ "path": "/home/me/code/thyra", "count": 3, "last_used_at": 1790000000000 }]
+    }
+  }
+}
+```
+
+`commands` overrides the defaults `claude` and `codex`; each command is one line of at most 256 characters, typed into the new pane's shell on the connection's host, so it can be an alias or a script on that host's `PATH`.
+Edit it from the launcher's settings button or **Configuration > Connection** rather than by hand while Thyra runs.
+Pinned paths must be existing directories when added; `history` keeps the 60 most recent launch folders.
+Recent folders also use `zoxide query --list --score` when `zoxide` is on the bridge user's `PATH` (local) or the SSH login shell's `PATH` (remote).
+
 ## Worktree hooks
 
 Configure [Paseo hooks](https://paseo.sh/docs/worktrees) in `paseo.json`:

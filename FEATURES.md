@@ -18,7 +18,8 @@ Endpoint connections use **Local navigation** per browser/connection; legacy
 connections use **Shared navigation**. Reconnect preserves selections; reload
 starts from Herdr's selection. Same-tab pane focus, topology, and terminal sizes
 remain shared. Creation preserves Herdr's cwd policy and requires a connected
-source terminal, except for the first workspace in an empty session.
+source terminal, except for the first workspace in an empty session and the
+[project launcher](#project-launcher), which always names its folder.
 See [compatibility](docs/DEPLOYMENT.md#herdr-compatibility).
 
 ### Recent Pane Switcher
@@ -41,6 +42,17 @@ it stays open while typing. K (including with the opening modifiers held) or
 `Alt+K` inside the recent switcher converts it in place without opening the
 command menu. The current pane stays listed for context, but selection starts on
 the first pane a jump can reach.
+
+### Project Launcher
+
+Start Claude or Codex in a frequently used folder without typing `cd`: tap the folder button in the phone's floating controls (or run **Launch agent in folder** from the command menu), pick a folder, and tap **Claude** or **Codex**.
+The folder list comes from the connected host, local or SSH: **Pinned** folders you add, remove, and reorder (**Edit**), then **Recent** folders ranked from your earlier launches, directories open in Herdr (workspace checkouts and pane working directories), and `zoxide query` when zoxide is installed on that host.
+Duplicates, missing directories, the home directory, and `/` are left out of Recent; a pinned folder that disappears stays listed as missing until you unpin it.
+Type a filter, an absolute or `~/` path, or browse the host's folders.
+If an open workspace already works in that folder, the agent opens in a new tab there; otherwise a new workspace opens rooted at the folder.
+Thyra focuses the new tab after the shell draws its prompt and types the configured command followed by Enter.
+Commands default to `claude` and `codex` and are edited under the launcher's settings button or **Configuration > Connection**; pins, commands, and launch history are saved on the Thyra server per connection, so every device shares them.
+The browser only chooses an agent, never the command text.
 
 ## Full Browser Terminal
 

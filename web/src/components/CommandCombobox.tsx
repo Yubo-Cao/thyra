@@ -255,10 +255,12 @@ export function CommandCombobox({
   onOpenFileExplorer,
   onOpenFile,
   onOpenDiffViewer,
+  onOpenProjectLauncher,
 }: {
   onOpenFileExplorer?: (workspaceId?: string) => void;
   onOpenFile?: (workspaceId: string, entry: FileExplorerEntry) => void;
   onOpenDiffViewer?: (workspaceId?: string) => void;
+  onOpenProjectLauncher?: () => void;
 }) {
   useShortcutPreferences();
   const s = useStoreSelector(
@@ -606,6 +608,17 @@ export function CommandCombobox({
       : [];
 
   const workspaceActions: ActionDefinition[] = [
+    ...(onOpenProjectLauncher
+      ? [
+          {
+            key: "launch-agent",
+            icon: <FolderOpen size={15} />,
+            title: msg("Launch agent in folder"),
+            keywords: ["launcher", "project", "claude", "codex", "start agent"],
+            run: onOpenProjectLauncher,
+          },
+        ]
+      : []),
     {
       key: "create-workspace",
       icon: <FolderPlus size={15} />,

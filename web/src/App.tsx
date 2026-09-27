@@ -29,6 +29,7 @@ import {
   ChevronRight,
   CircleAlert,
   FileDiff,
+  FolderOpen,
   FolderTree,
   History,
   Info,
@@ -207,6 +208,11 @@ const ZEN_MODE_KEY = "zenMode";
 const LazyTerminalView = lazyWithReload("terminal-view", () =>
   import("./components/TerminalView").then((module) => ({
     default: module.TerminalView,
+  })),
+);
+const LazyProjectLauncher = lazyWithReload("project-launcher", () =>
+  import("./components/ProjectLauncher").then((module) => ({
+    default: module.ProjectLauncher,
   })),
 );
 const LazyCollaborationBar = lazyWithReload("collaboration-bar", () =>
@@ -1306,6 +1312,7 @@ export default function App() {
   const sidebarBeforeZenRef = useRef(false);
   const [mobileControlsCollapsed, setMobileControlsCollapsed] = useState(false);
   const [mobileTabSheetOpen, setMobileTabSheetOpen] = useState(false);
+  const [projectLauncherOpen, setProjectLauncherOpen] = useState(false);
   const terminalComposerScopeKey = JSON.stringify([
     s.activeConnectionId,
     s.connectionGeneration,
@@ -3533,6 +3540,7 @@ export default function App() {
               onOpenFileExplorer={openFileExplorer}
               onOpenFile={openFileExplorerFile}
               onOpenDiffViewer={openDiffViewer}
+              onOpenProjectLauncher={() => setProjectLauncherOpen(true)}
             />
             <ConfigMenu
               key={`${resourceUiKey}:config`}
@@ -3653,6 +3661,14 @@ export default function App() {
           <span className="mobile-nav-label">{t("History")}</span>
         </button>
       </nav>
+      {projectLauncherOpen ? (
+        <Suspense fallback={null}>
+          <LazyProjectLauncher
+            onClose={() => setProjectLauncherOpen(false)}
+            onLaunched={activateTerminalSurface}
+          />
+        </Suspense>
+      ) : null}
       <MobileTabSheet
         open={mobile && mobileTabSheetOpen}
         onClose={() => setMobileTabSheetOpen(false)}
@@ -3689,6 +3705,20 @@ export default function App() {
           }
           aria-hidden={mobileControlsCollapsed}
         >
+          <button
+            type="button"
+            title={t("Launch agent")}
+            aria-label={t("Launch agent in a folder")}
+            tabIndex={mobileControlsCollapsed ? -1 : 0}
+            onPointerDown={blurActiveInput}
+            onClick={() => {
+              setMobileTabSheetOpen(false);
+              setProjectLauncherOpen(true);
+            }}
+          >
+            <FolderOpen size={16} />
+            <span className="mobile-nav-label">{t("Launch")}</span>
+          </button>
           <button
             type="button"
             className={mobileTabSheetOpen ? "active" : ""}

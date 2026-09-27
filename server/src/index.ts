@@ -178,6 +178,7 @@ const IMPORTANT_RPC_METHODS = new Set([
   "git.file_action",
   "git.pull",
   "git.repo_action",
+  "launcher.launch",
   "settings.update_repo",
   "settings.workspace_auto_sync.get",
   "settings.workspace_auto_sync.list",
@@ -1023,6 +1024,21 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method.startsWith("settings.")) {
     return handleSettingsRpc(ws, id, method, params ?? {}, requestIsCurrent);
+  }
+  if (method.startsWith("launcher.")) {
+    try {
+      const result = await connection.launcher.call(
+        method,
+        params ?? {},
+        requestIsCurrent,
+      );
+      const paneId = (result as { pane_id?: unknown }).pane_id;
+      if (typeof paneId === "string") terminalBridge.notePaneInput(ws, paneId);
+      sendReply({ id, result }, method);
+    } catch (e) {
+      sendError(`${method}-error`, e);
+    }
+    return;
   }
   if (method === "worktree.create") {
     try {

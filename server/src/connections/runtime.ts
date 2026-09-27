@@ -16,6 +16,7 @@ import { createSettingsRpcHandler } from "../bridge/settings-rpc";
 import {
   readGuiSettings,
   terminalSurfaceCodecsEnabled,
+  updateGuiSettings,
 } from "../config/gui-settings";
 import {
   createSshTunnelManager,
@@ -26,6 +27,11 @@ import { dropCoalescedMessage } from "../bridge/websocket-send";
 import { createTerminalBridge } from "../bridge/terminal-bridge";
 import { createHerdrInfoHandler } from "../http/herdr-info";
 import { createImageUploadHandler } from "../http/image-upload";
+import {
+  createLocalLauncherHost,
+  createSshLauncherHost,
+} from "../launcher/host";
+import { createLauncherService } from "../launcher/service";
 import {
   createRecoveryReporter,
   type Logger,
@@ -233,6 +239,21 @@ export function createLegacyConnectionRuntime(args: {
     shQuote,
   });
   const handleImageUpload = createImageUploadHandler({ sshHost });
+  const launcher = createLauncherService({
+    connectionId: identity.id,
+    host: config.sshHost
+      ? createSshLauncherHost({
+          host: config.sshHost,
+          runProcessWithCodeTimeout,
+          shQuote,
+        })
+      : createLocalLauncherHost(runProcessWithCodeTimeout),
+    herdrCall: (method, params, timeoutMs) =>
+      herdr.call(method, params, timeoutMs),
+    navigationMode: () => terminalBridge.navigationMode(),
+    readSettings: readGuiSettings,
+    updateSettings: updateGuiSettings,
+  });
   const sshTunnel = createSshTunnelManager({
     connectionId: identity.id,
     logger: logger.child("ssh"),
@@ -589,6 +610,7 @@ export function createLegacyConnectionRuntime(args: {
     handleHerdrInfo,
     handleImageUpload,
     handleSettingsRpc,
+    launcher,
     files,
     status,
     workspaceAutoSync,

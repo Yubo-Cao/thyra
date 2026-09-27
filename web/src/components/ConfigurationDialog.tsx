@@ -59,6 +59,7 @@ import { AutoSyncRepositoriesDialog } from "./AutoSyncRepositoriesDialog";
 import { CloseButton } from "./CloseButton";
 import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 import { TerminalTransportSettings } from "./TerminalTransportSettings";
+import { ProjectLauncherSettings } from "./ProjectLauncherSettings";
 import { ConfigurationLoadingDialog } from "./ConfigurationLoadingDialog";
 import { MobileSheetHandle } from "./MobileSheetHandle";
 import { ThemedSelect } from "./ThemedSelect";
@@ -696,6 +697,17 @@ export function ConfigurationDialog({
                     connectionClient.serverRuntimeGeneration,
                   )}
                 />
+              ) : null}
+              {tab === "Connection" ? (
+                <div className="configuration-launcher-settings">
+                  <ProjectLauncherSettings
+                    heading
+                    key={connectionClientScopeKey(
+                      connectionClient,
+                      connectionClient.serverRuntimeGeneration,
+                    )}
+                  />
+                </div>
               ) : null}
               <button
                 type="button"

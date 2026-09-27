@@ -228,6 +228,12 @@ retry when topology becomes nonempty. A 20-second admission deadline covers
 readiness, validation, and queuing: expired undispatched mutations never execute;
 dispatched timeouts report uncertain completion, requiring inspection before retry.
 
+The project launcher's `launcher.launch { path, agent }` is the one other control-API creation.
+It always passes an explicit cwd, so no source terminal or `terminal.new_cwd` policy is involved, and it uses `focus: false` under browser-local navigation (the initiating browser then selects the returned pane).
+The bridge accepts only a known agent ID, expands `~` with the runtime host's home, and checks that the path is a directory on that host before creating anything.
+It adds a tab to the workspace whose checkout (or, failing that, most panes) is that folder, or creates a workspace there, waits up to three seconds for the shell to draw output, then sends the server-configured command with `pane.send_input` and Enter.
+A failed send is returned as `start_error` next to the created tab rather than hiding it.
+
 ## Workspace resource ownership
 
 A **checkout** owns Files/Changes; a workspace supplies routing, a tab a return
