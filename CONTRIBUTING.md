@@ -75,19 +75,17 @@ Releases must package/inspect every supported archive/checksum; see
 | Path under `web/src/` | Responsibility |
 | --- | --- |
 | `styles/tokens.css` | Theme variables and the geometry scale (`--ui-bar-height`, `--ui-row-height`, `--ui-control-height`, `--ui-token-height`) |
-| `styles/ui.css` | Styles for the shared primitives in `components/ui/` |
+| `styles/heroui.css` | Tailwind v4 theme, HeroUI base and eager component styles, HeroUI-to-token variable mapping |
+| `styles/ui.css` | `.ui-bar` and `@layer thyra` tuning of the eager primitives in `components/ui/`; other wrappers co-locate their sheet (`ui/fields.css`, `ui/overlays/overlays.css`) |
 | `styles/base.css` | Resets/shared primitives: modals, forms, badges, statuses, panels, loading |
 | `styles/vendor.css` | Vendor overrides the first screen needs; syntax/diff overrides load with their lazy consumers (e.g. `components/syntaxHighlighting.css`) |
 | `styles/layout/*.css` | App-shell regions, imported once by `App.tsx` |
 | `components/<Name>.css` | Component-owned styles, imported/deleted with the component; same for `components/ui/` |
 
 The UI is square and borderless: no rounded corners and no boxed outlines.
-Surfaces separate by tone, with a single 1px divider only where two surfaces of
-the same tone meet; fields and buttons read through fill, not borders.
-`scripts/check-web-style.test.ts` enforces this. Build chrome from
-`components/ui/` (`Button`, `IconButton`, `SegmentedControl`, `Token`, and the
-`.ui-bar` header) instead of new per-component control CSS; every bar uses
-`--ui-bar-height` and every chip is a `Token`.
+Surfaces separate by tone, with a single 1px divider only where two surfaces of the same tone meet; fields and buttons read through fill, not borders.
+`scripts/check-web-style.test.ts` enforces this, including Tailwind classes in `.tsx` (`rounded-*`, `shadow-*`, `border`/`border-<n>`, `ring-*`, `outline-<n>`; only the `-none`/`-0` forms pass).
+Build chrome from [`components/ui/`](#ui-components) instead of new per-component control CSS; every bar uses `--ui-bar-height` and every chip is a `Token`.
 
 Prefix classes with the component name; keep media queries beside their rules,
 not in a separate mobile stylesheet. Shell/Suspense fallback styles must load
@@ -98,6 +96,56 @@ co-located CSS is valid when static imports cover every rendering path.
 The first screen (app shell, switchers, active terminal) is budgeted by `scripts/check-web-assets.mjs`.
 Menus, dialogs, pickers and panels load on first use through `lazyPanel` (`web/src/lazyWithReload.ts`) behind `LazyBoundary`/`Latched` (`components/LazyBoundary.tsx`); their triggers and the styles those need stay eager.
 Add likely-next surfaces to the idle prefetch list in `App.tsx`.
+
+## UI Components
+
+`web/src/components/ui/` is the only place for controls, overlays, and chips.
+It uses HeroUI v3's design system (component CSS in `styles/heroui.css`, themed from `styles/tokens.css`) with React Aria for behaviour, in two tiers chosen for first-load size:
+
+- **Inline controls are native elements with HeroUI classes.** They load no React Aria runtime, so they are free in the always-loaded shell (HeroUI's React `Button` alone adds about 26 KiB gzip to the entry).
+- **Overlays use React Aria and load lazily.** Each wrapper is a small eager shell; the implementation and its CSS live in one lazy chunk (`ui/overlays/`, loaded by `ui/lazyOverlays.ts`) fetched when an overlay first opens, or prefetched when its trigger is hovered or focused.
+
+The overlay chunk renders React Aria components with HeroUI's class names instead of importing `@heroui/react`: HeroUI's React layer pulls `tailwind-variants` with a bundled tailwind-merge (about 12 KiB gzip) for no styling benefit here.
+
+| Component | API summary |
+| --- | --- |
+| `Button` | Native `<button>`. `variant`: `ghost` (default), `secondary`, `primary`, `danger`, `danger-soft`; `size`: `sm` (`--ui-control-height`, default), `md` (dialog actions); `icon`; `fullWidth`; `aria-pressed` shows the toggled state. |
+| `IconButton` | `label` (required: aria-label and tooltip), `icon`, `tone="danger"`, `tooltip` (string or `false`). The delegated `GlobalTooltip` shows the tooltip through `data-tooltip`. |
+| `CloseButton` | `IconButton` with an X; `label` defaults to `t("Close")`. |
+| `Tooltip` | `content` (ReactNode), one ref-forwarding child, `placement`. Hover after a shared delay or keyboard focus, never touch. For rich tooltips; plain text on buttons goes through `IconButton`/`data-tooltip`. |
+| `SegmentedControl` | `value`, `options`, `onChange(value)`, `aria-label`, `stretch`. |
+| `Token` | `tone` (`neutral`, `accent`, `info`, `success`, `warning`, `danger`), `code`, `icon`, `as="button"` for pressable tokens. |
+| `Kbd`, `Spinner` | `<Kbd>Ctrl+K</Kbd>`; `<Spinner size tone label>` (`label` makes it a status). |
+| `Switch` | `checked`, `onChange(checked)`, children label or `aria-label`, `description`, `disabled`, `labelPosition="start"` for settings rows. |
+| `Checkbox` | `checked`, `onChange(checked)`, `indeterminate`, `invalid`, `description`. |
+| `TextField`, `TextArea` | Every native input/textarea prop plus `label`, `description`, `error` (message or `true`), `fullWidth`, `onValueChange(value)`. `className` styles the wrapper; the ref is the native element. |
+| `SearchField` | `value`, `onValueChange`, leading icon, clear button; Escape clears, then propagates when empty. |
+| `Tabs` | `value`, `onChange(id)`, `items` (`id`, `label`, `icon`, `disabled`), `aria-label`, optional panel `children`. Arrows, Home, and End select. |
+| `Select` | Superset of `ThemedSelect`: `value`, `options` (`label`, `description`, `icon`, `disabled`), `onChange(value)`, `aria-label` or `label`, `icon`, `align`, `variant="ghost"`. |
+| `Menu` (`DropdownMenu`) | `trigger` (a `Button`/`IconButton`), `items`: `MenuItem` (`id`, `label`, `icon`, `shortcut`, `description`, `danger`, `disabled`, `checked`, `onAction`) or sections (`title`, `danger`, `items`), `header`, `placement`, `onAction(id)`, optional `open`/`onOpenChange`. |
+| `ContextMenu` | Same items; `position` (`{x, y}` from the event, `null` closes), `onClose`. Flips and shifts into the viewport and restores focus. |
+| `Popover` | `trigger`, `children` (or `(close) => children`), `aria-label`, `placement`; a non-modal panel with role `dialog`. |
+| `Dialog` | `open`, `onOpenChange`, `title`, `description`, children (body), `footer`, `size` (`sm`, `md`, `lg`, `full`), `dismissable`, `keyboardDismissable`, `closeButton`, `onSubmit` (wraps body and footer in a form, default prevented), `headerStart`, `headerActions`, `placement="side"` (full-height end panel, a drawer), `busy`. A bottom sheet in the mobile layout. |
+| `ConfirmDialog` | `open`, `onOpenChange`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone="danger"`, `onConfirm` (may return a promise; a rejection keeps it open). |
+| `ToastRegion`, `toast` | Render `<ToastRegion />` once. `toast.show({title, description, tone, loading, action})`, `toast.info/success/warning/danger(title, content?, options?)`, `toast.update(id, patch, {timeout})`, `toast.close(id)`. `ui/toastQueue.ts` has no React runtime, so the store can call it. |
+
+Conventions:
+
+- **Events.** Native-element components keep DOM props and events (`onClick`, `onKeyDown`, `onChange(event)`), so `stopPropagation()` and `preventDefault()` work as before; nothing exposes React Aria's `onPress`. Components that pick a value report the value: `onChange(value)` for `SegmentedControl`, `Switch`, `Checkbox`, `Select`, and `Tabs`; `onAction` for menu items; `onValueChange` on text fields.
+- **Refs.** `Button`, `IconButton`, `CloseButton`, `TextField`, `TextArea`, and `SearchField` forward refs to the native element. `Menu`, `Popover`, and `Tooltip` clone their trigger and merge its `ref`, `onClick`, `onKeyDown`, `onFocus`, and pointer handlers, so a trigger must be one element that forwards its ref and spreads DOM props.
+- **State.** Values are controlled. Overlays take `open` and `onOpenChange` (`ContextMenu`: `position` and `onClose`); `Menu` and `Popover` may also run uncontrolled.
+- **Text.** Callers pass translated strings; wrappers add only `t()` defaults (Close, Cancel, Clear search, Notifications, Dismiss notification).
+- **Lazy loading.** Import overlays from anywhere; they cost a few hundred bytes until opened. Import `react-aria-components` only inside `ui/overlays/`, and do not import `@heroui/react` in new code. Check `bun run build:web` (initial JS gzip, initial CSS, file count) when adding a wrapper.
+- **CSS.** HeroUI rules live in `@layer components`; Thyra tuning goes in `@layer thyra`, above components and below Tailwind utilities. `tokens.css` declares the layer order first, so lazily loaded sheets slot in correctly. A wrapper that needs another HeroUI stylesheet imports it from its own sheet, which starts with `@reference` to `styles/heroui.css`. `@reference` emits no theme variables, so add any `var(--...)` the new sheet needs to the `@theme static` block in `heroui.css`. Unlayered legacy rules beat every layer: delete a screen's per-control CSS when migrating it.
+- **Gallery.** Run `bun run dev:web` and open `/ui-gallery.html?theme=light&layout=mobile&accent=teal` (`web/src/uiGallery.tsx`, dev-only). Check both themes and both layouts.
+
+Migrating a screen:
+
+1. A raw `<button>` becomes `Button`: the default filled look is `variant="secondary"`, `.ghost` is the default `ghost`, `.danger` is `danger-soft`, and a dialog's primary action is `variant="primary" size="md"`. Icon-only buttons become `IconButton` with a `label`; drop their `title`.
+2. Hand-written `.modal-backdrop`/`.modal` markup with manual Escape, focus, and backdrop handling becomes `Dialog` or `ConfirmDialog`; delete the listeners and the `dialogFocus`/`dialogKeyboard` calls it replaces.
+3. Floating menus (`ActionsMenu`, `.context-menu`, file menus) become `Menu` or `ContextMenu` with item objects; delete outside-click, arrow-key, and viewport-clamping code.
+4. `.settings-switch` buttons become `Switch`, `.check-row` inputs `Checkbox`, `ThemedSelect` `Select` (same props), hand-rolled tab strips `Tabs`, and `.form-field` inputs `TextField`.
+5. Remove the replaced CSS rules, then verify in the gallery and the app.
 
 ## Pages Website and Tutorial
 

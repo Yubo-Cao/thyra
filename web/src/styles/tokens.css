@@ -1,3 +1,8 @@
+/* Cascade layer order for HeroUI (styles/heroui.css). Declared in the first
+   stylesheet so ui.css and lazily loaded sheets can use @layer thyra before
+   heroui.css loads. Unlayered legacy rules still win over every layer. */
+@layer theme, base, components, thyra, utilities;
+
 :root {
   color-scheme: dark;
   /* One geometry scale for every bar, row, control, and token. The design

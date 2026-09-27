@@ -1,0 +1,57 @@
+/* Tabs: HeroUI secondary tabs (accent underline on one 1px divider). */
+@reference "../../styles/heroui.css";
+
+@import "@heroui/styles/components/tabs.css" layer(components);
+
+@layer thyra {
+  .ui-tabs {
+    gap: 0;
+    min-width: 0;
+  }
+  .ui-tabs > .tabs__list-container {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ui-tabs .tabs__list[data-orientation="horizontal"] {
+    min-width: 100%;
+  }
+  .ui-tabs .tabs__tab {
+    width: auto;
+    height: var(--ui-bar-height);
+    gap: 6px;
+    padding-inline: 10px;
+    color: var(--muted);
+    font-size: var(--ui-font-size-sm);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .ui-tabs .tabs__tab[data-selected="true"] {
+    color: var(--text-strong);
+  }
+  @media (hover: hover) {
+    .ui-tabs .tabs__tab:not([data-selected="true"]):not(:disabled):hover {
+      opacity: 1;
+      color: var(--text);
+      background: var(--panel-2);
+    }
+  }
+  .ui-tabs .tabs__tab:focus-visible {
+    box-shadow: none;
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+  .ui-tabs .tabs__tab svg {
+    flex: 0 0 auto;
+  }
+  .ui-tabs .tabs__indicator {
+    z-index: 0;
+  }
+  .ui-tabs[data-orientation="vertical"] .tabs__tab {
+    height: var(--ui-row-height);
+    justify-content: flex-start;
+  }
+  .ui-tabs .tabs__panel {
+    margin: 0;
+    padding: 0;
+  }
+}

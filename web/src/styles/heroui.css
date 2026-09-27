@@ -2,9 +2,15 @@
  *
  * Tailwind's preflight is left out on purpose: screens that still use plain
  * elements (Markdown preview, legacy dialogs) rely on browser defaults. The
- * small reset below covers only React Aria elements, which carry data-rac.
- * base.css scopes its element rules to :where(:not([data-rac])) for the same
- * reason, so the two styling systems never style the same element.
+ * small reset below covers only HeroUI-styled elements: React Aria elements
+ * carry data-rac, and HeroUI parts and the native primitives in
+ * components/ui carry data-slot. base.css scopes its element rules to
+ * :where(:not([data-rac], [data-slot])) for the same reason, so the two
+ * styling systems never style the same element.
+ *
+ * Other stylesheets that use @apply or HeroUI component CSS start with
+ * `@reference "<path>/styles/heroui.css";` so they resolve this theme without
+ * emitting it again (see components/ui/fields.css).
  */
 @layer theme, base, components, thyra, utilities;
 
@@ -13,57 +19,24 @@
 @import "tw-animate-css";
 
 @import "@heroui/styles/base" layer(base);
-/* Only the components wrapped in components/ui; add a line when wrapping more,
- * keeping HeroUI's order (components/index.css): shared parts come first. */
+/* Eager component styles: only the always-loaded primitives in components/ui
+ * (Button, IconButton, CloseButton, Token, SegmentedControl). Every other
+ * wrapper imports its own sheet (ui/fields.css, ui/tabs.css, ui/misc.css,
+ * ui/overlays/overlays.css), so its CSS ships in the chunk that uses it. Keep
+ * HeroUI's order (components/index.css): shared parts come first. */
 @import "@heroui/styles/components/close-button.css" layer(components);
-@import "@heroui/styles/components/description.css" layer(components);
-@import "@heroui/styles/components/error-message.css" layer(components);
-@import "@heroui/styles/components/field-error.css" layer(components);
-@import "@heroui/styles/components/label.css" layer(components);
-@import "@heroui/styles/components/tabs.css" layer(components);
 @import "@heroui/styles/components/button.css" layer(components);
-@import "@heroui/styles/components/button-group.css" layer(components);
 @import "@heroui/styles/components/toggle-button.css" layer(components);
 @import "@heroui/styles/components/toggle-button-group.css" layer(components);
-@import "@heroui/styles/components/dropdown.css" layer(components);
-@import "@heroui/styles/components/list-box-item.css" layer(components);
-@import "@heroui/styles/components/list-box-section.css" layer(components);
-@import "@heroui/styles/components/list-box.css" layer(components);
-@import "@heroui/styles/components/menu-item.css" layer(components);
-@import "@heroui/styles/components/menu-section.css" layer(components);
-@import "@heroui/styles/components/menu.css" layer(components);
-@import "@heroui/styles/components/switch.css" layer(components);
 @import "@heroui/styles/components/chip.css" layer(components);
-@import "@heroui/styles/components/spinner.css" layer(components);
-@import "@heroui/styles/components/toast.css" layer(components);
-@import "@heroui/styles/components/checkbox.css" layer(components);
-@import "@heroui/styles/components/fieldset.css" layer(components);
-@import "@heroui/styles/components/input.css" layer(components);
-@import "@heroui/styles/components/input-group.css" layer(components);
-@import "@heroui/styles/components/number-field.css" layer(components);
-@import "@heroui/styles/components/radio-group.css" layer(components);
-@import "@heroui/styles/components/radio.css" layer(components);
-@import "@heroui/styles/components/textfield.css" layer(components);
-@import "@heroui/styles/components/search-field.css" layer(components);
-@import "@heroui/styles/components/textarea.css" layer(components);
-@import "@heroui/styles/components/header.css" layer(components);
-@import "@heroui/styles/components/separator.css" layer(components);
-@import "@heroui/styles/components/surface.css" layer(components);
-@import "@heroui/styles/components/alert-dialog.css" layer(components);
-@import "@heroui/styles/components/drawer.css" layer(components);
-@import "@heroui/styles/components/modal.css" layer(components);
-@import "@heroui/styles/components/popover.css" layer(components);
-@import "@heroui/styles/components/tooltip.css" layer(components);
-@import "@heroui/styles/components/combo-box.css" layer(components);
-@import "@heroui/styles/components/select.css" layer(components);
-@import "@heroui/styles/components/kbd.css" layer(components);
-@import "@heroui/styles/components/scroll-shadow.css" layer(components);
 @import "@heroui/styles/themes/default";
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
 
-/* Square geometry and the Thyra type scale for every utility and component. */
-@theme {
+/* Square geometry and the Thyra type scale for every utility and component.
+ * `static` emits every variable even when this compilation does not use it:
+ * sheets that @reference this file get the theme but emit no variables. */
+@theme static {
   --radius-xs: 0px;
   --radius-sm: 0px;
   --radius-md: 0px;
@@ -88,16 +61,35 @@
   --font-mono: var(--mono-font);
 }
 
+/* Theme variables used only by the split component sheets (ui/fields.css,
+ * ui/overlays/overlays.css). Without them `border-width:
+ * var(--border-width-field)` falls back to `medium` (3px outlines). When a
+ * wrapper imports another HeroUI stylesheet, check its var() references are
+ * defined in the built CSS. */
+@theme static {
+  --border-width-field: var(--field-border-width, var(--border-width));
+  --color-field-border-invalid: var(--danger);
+  --ease-linear: linear;
+  --ease-out-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+  --color-black: #000;
+  --color-white: #fff;
+  --blur-md: 12px;
+  --container-xs: 20rem;
+  --container-sm: 24rem;
+  --container-md: 28rem;
+  --container-lg: 32rem;
+}
+
 @layer base {
-  :where([data-rac]),
-  :where([data-rac])::before,
-  :where([data-rac])::after {
+  :where([data-rac], [data-slot]),
+  :where([data-rac], [data-slot])::before,
+  :where([data-rac], [data-slot])::after {
     box-sizing: border-box;
     margin: 0;
     border: 0 solid;
   }
 
-  :where(button, input, textarea, select)[data-rac] {
+  :where(button, input, textarea, select):where([data-rac], [data-slot]) {
     font: inherit;
     letter-spacing: inherit;
     color: inherit;

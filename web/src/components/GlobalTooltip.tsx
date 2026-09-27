@@ -15,11 +15,16 @@ const VIEWPORT_PADDING = 12;
 const MAX_TOOLTIP_WIDTH = 360;
 const MIN_TOOLTIP_WIDTH = 44;
 
+// Components in components/ui (IconButton) set data-tooltip, which needs no
+// title juggling; plain elements may still use a title attribute.
+function tooltipText(element: HTMLElement) {
+  return (element.dataset.tooltip ?? element.getAttribute("title"))?.trim();
+}
+
 function tooltipTarget(start: EventTarget | null): HTMLElement | null {
   if (!(start instanceof Element)) return null;
-  const target = start.closest<HTMLElement>("[title]");
-  const title = target?.getAttribute("title")?.trim();
-  return title ? target : null;
+  const target = start.closest<HTMLElement>("[data-tooltip], [title]");
+  return target && tooltipText(target) ? target : null;
 }
 
 // matches() throws a SyntaxError for :focus-visible on browsers without the
@@ -100,11 +105,13 @@ export function GlobalTooltip() {
     const showFor = (element: HTMLElement) => {
       if (activeElementRef.current === element) return;
       hide();
-      const text = element.getAttribute("title")?.trim();
+      const text = tooltipText(element);
       if (!text) return;
       activeElementRef.current = element;
-      element.dataset.herdrTooltipTitle = text;
-      element.removeAttribute("title");
+      if (element.dataset.tooltip === undefined) {
+        element.dataset.herdrTooltipTitle = text;
+        element.removeAttribute("title");
+      }
       timerRef.current = window.setTimeout(() => {
         if (activeElementRef.current !== element) return;
         setTooltip({

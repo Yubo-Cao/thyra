@@ -1,44 +1,10 @@
-/* Project launcher: a HeroUI drawer (bottom sheet on mobile, right panel on
-   desktop) listing pinned and recent folders with inline agent buttons. */
-.project-launcher-backdrop {
-  background: var(--modal-backdrop);
-}
-
-.drawer__dialog.project-launcher {
-  gap: 0;
-  padding: 0;
+/* Project launcher: a side Dialog (bottom sheet on mobile) listing pinned
+   and recent folders with inline agent buttons. */
+.ui-dialog.project-launcher {
   background: var(--panel);
-  color: var(--text);
-  box-shadow: var(--shadow-modal);
 }
 
-.drawer__dialog.project-launcher[data-placement="right"] {
-  width: min(420px, 92vw);
-  max-width: 92vw;
-}
-
-.drawer__dialog.project-launcher[data-placement="bottom"] {
-  max-height: min(86dvh, 720px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.project-launcher-head {
-  flex: 0 0 auto;
-}
-
-.project-launcher-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--text-strong);
-  font-size: var(--ui-font-size);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.drawer__body.project-launcher-body {
+.ui-dialog .project-launcher-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -59,30 +25,8 @@
   min-width: 0;
 }
 
-.project-launcher-query input,
-.project-launcher-command input {
-  width: 100%;
-  height: 32px;
-  padding: 0 10px;
-  background: var(--field-bg);
-  color: var(--text);
-  font-family: inherit;
-  font-size: var(--ui-font-size);
-}
-
 .project-launcher-command input {
   font-family: var(--mono-font);
-}
-
-.project-launcher-query input:hover,
-.project-launcher-command input:hover {
-  background: var(--field-bg-hover);
-}
-
-.project-launcher-query input:focus-visible,
-.project-launcher-command input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 
 .project-launcher-section {
@@ -201,7 +145,7 @@
   gap: 6px;
 }
 
-.ui-button.project-launcher-agent {
+.button.project-launcher-agent {
   justify-content: flex-start;
   gap: 8px;
   height: 44px;
@@ -279,9 +223,8 @@
   text-align: left;
 }
 
-.drawer__footer.project-launcher-footer {
+.ui-dialog.project-launcher .ui-dialog-footer {
   display: block;
-  margin: 0;
   padding: 0 10px 10px;
   border-top: 1px solid var(--border);
   background: var(--panel);
@@ -321,17 +264,6 @@
   gap: 4px;
 }
 
-.project-launcher-command label {
-  color: var(--text-strong);
-  font-size: var(--ui-font-size-sm);
-  font-weight: 600;
-}
-
-.project-launcher-command [slot="description"] {
-  color: var(--muted);
-  font-size: var(--ui-font-size-xs);
-}
-
 .project-launcher-settings-actions {
   display: flex;
   align-items: center;
@@ -343,17 +275,11 @@
 
 /* Touch targets: 40px controls in the phone layout. */
 :where(html[data-layout="mobile"]) {
-  .project-launcher .ui-button-icon {
-    width: 40px;
-    height: 40px;
-    min-height: 40px;
+  .project-launcher .button--icon-only {
+    --button-height: 40px;
   }
 
-  .project-launcher-query input {
-    height: 40px;
-    font-size: 16px;
-  }
-
+  .project-launcher-query input,
   .project-launcher-command input {
     height: 40px;
     font-size: 16px;

@@ -487,11 +487,11 @@ export function FilesystemBrowser({
       </div>
       <div className="filesystem-places" aria-label={t("Locations")}>
         {places.map((place) => (
-          <button
-            type="button"
+          <Token
+            as="button"
             key={place.key}
-            className="ui-token filesystem-place"
-            data-tone={
+            className="filesystem-place"
+            tone={
               normalizeFilesystemPath(place.path) ===
               normalizeFilesystemPath(currentPath)
                 ? "accent"
@@ -499,12 +499,14 @@ export function FilesystemBrowser({
             }
             title={place.title}
             onClick={() => navigate(place.path)}
+            icon={
+              place.key === "workspace" || place.key.startsWith("cwd:") ? (
+                <Folder size={11} />
+              ) : null
+            }
           >
-            {place.key === "workspace" || place.key.startsWith("cwd:") ? (
-              <Folder size={11} />
-            ) : null}
             {place.label}
-          </button>
+          </Token>
         ))}
       </div>
       <div className="ui-bar filesystem-tools">

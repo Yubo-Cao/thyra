@@ -1,0 +1,26 @@
+/* Kbd and Spinner: HeroUI styles, loaded with whichever chunk uses them. */
+@reference "../../styles/heroui.css";
+
+@import "@heroui/styles/components/kbd.css" layer(components);
+@import "@heroui/styles/components/spinner.css" layer(components);
+
+@layer thyra {
+  .kbd {
+    height: var(--ui-token-height);
+    padding: 0 5px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-family: var(--mono-font);
+    font-size: var(--ui-font-size-xs);
+    word-spacing: normal;
+  }
+  .ui-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ui-spinner svg {
+    width: 100%;
+    height: 100%;
+  }
+}

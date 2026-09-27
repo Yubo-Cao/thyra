@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Command, CommandItem, CommandList } from "./ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
 import { ThemedSelectTrigger } from "./LazyThemedSelect";
 import "./ThemedSelect.css";
 

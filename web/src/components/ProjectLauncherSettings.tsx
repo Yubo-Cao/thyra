@@ -1,8 +1,8 @@
-import { Description, Input, Label, TextField } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
 import { useConnectionClient } from "../useConnectionClient";
 import { Button } from "./ui/Button";
+import { TextField } from "./ui/TextField";
 import "./ProjectLauncher.css";
 
 export type LauncherAgent = {
@@ -121,23 +121,21 @@ export function ProjectLauncherSettings({
         <TextField
           key={agent.id}
           className="project-launcher-command"
+          label={t("{agent} command", { agent: agent.label })}
+          description={t("Default: {command}", {
+            command: agent.default_command,
+          })}
           value={drafts[agent.id] ?? ""}
-          onChange={(value) =>
+          onValueChange={(value) =>
             setDrafts((current) => ({ ...current, [agent.id]: value }))
           }
-          isDisabled={saving}
-        >
-          <Label>{t("{agent} command", { agent: agent.label })}</Label>
-          <Input
-            placeholder={agent.default_command}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <Description>
-            {t("Default: {command}", { command: agent.default_command })}
-          </Description>
-        </TextField>
+          disabled={saving}
+          placeholder={agent.default_command}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          fullWidth
+        />
       ))}
       {error ? (
         <p className="project-launcher-error" role="alert">

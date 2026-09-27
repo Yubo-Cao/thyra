@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Info, RefreshCw, Trash2 } from "lucide-react";
 import { msg, t } from "../i18n";
 import { AgentIcon } from "./AgentIcon";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
 import {
   connectionClientScopeKey,
   useConnectionClient,

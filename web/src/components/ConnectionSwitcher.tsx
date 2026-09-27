@@ -36,7 +36,7 @@ import { browserTransportPresentation } from "./browserTransport";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 import { ConfirmDialog } from "./ModalDialogs";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
 import {
   ConnectionSwitcherTrigger,
   type MenuFocus,

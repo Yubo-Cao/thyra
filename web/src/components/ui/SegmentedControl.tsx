@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "../../utils";
 
 export type SegmentedOption<T extends string> = {
   value: T;
@@ -9,12 +10,16 @@ export type SegmentedOption<T extends string> = {
   disabled?: boolean;
 };
 
-/** One exclusive choice among a few peers, e.g. view modes or scopes. */
+/**
+ * One exclusive choice among a few peers, e.g. view modes or scopes. HeroUI
+ * ToggleButtonGroup styling on native toggle buttons (aria-pressed marks the
+ * choice), so it stays free of React Aria in the shell.
+ */
 export function SegmentedControl<T extends string>({
   value,
   options,
   onChange,
-  className = "",
+  className,
   stretch = false,
   "aria-label": ariaLabel,
 }: {
@@ -30,12 +35,18 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className={`ui-segmented ${stretch ? "is-stretched" : ""} ${className}`}
+      className={cn(
+        "toggle-button-group ui-segmented",
+        stretch && "toggle-button-group--full-width",
+        className,
+      )}
     >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
+          data-slot="toggle-button"
+          className="toggle-button"
           aria-pressed={option.value === value}
           aria-label={option.ariaLabel}
           title={option.title}

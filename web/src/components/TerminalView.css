@@ -535,16 +535,16 @@
 }
 .terminal-pane-id:hover,
 .terminal-pane-id:focus-visible {
-  --token-bg: color-mix(in srgb, var(--text) 13%, transparent);
+  --chip-bg: color-mix(in srgb, var(--text) 13%, transparent);
   color: var(--text);
   outline: none;
 }
-.terminal-pane-head .ui-button.is-active {
+.terminal-pane-head .button.is-active {
   background: var(--accent-soft);
   color: var(--accent);
 }
 @container workspace-stage (max-width: 720px) {
-  .pane-control .ui-button > span {
+  .pane-control .button > span {
     display: none;
   }
 }
@@ -552,7 +552,7 @@
   .terminal-pane-head {
     padding: 0 2px 0 8px;
   }
-  .pane-control .ui-button > span,
+  .pane-control .button > span,
   .terminal-pane-id {
     display: none;
   }

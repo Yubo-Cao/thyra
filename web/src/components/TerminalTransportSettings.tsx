@@ -3,7 +3,7 @@ import { Info, Wifi } from "lucide-react";
 import { bridge } from "../api";
 import { msg, t } from "../i18n";
 import { useConnectionClient } from "../useConnectionClient";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
 
 const TRANSPORT_DESCRIPTION = msg(
   "Reduces Herdr-to-Thyra traffic when the server supports delta and reuse frames. Saved on the Thyra server for this connection and shared by all viewers. Changes briefly reconnect terminal displays; running tasks are not stopped. Older Herdr servers keep their existing transport.",

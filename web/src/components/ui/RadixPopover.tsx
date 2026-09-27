@@ -2,7 +2,11 @@ import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 
 import { cn } from "../../utils";
-import "./popover.css";
+import "./RadixPopover.css";
+
+// Legacy Radix popover kept for its cmdk-based users (CommandCombobox,
+// ThemedSelect, settings pickers). New code uses ui/Popover (React Aria,
+// lazily loaded); migrate these callers and then delete this file.
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;

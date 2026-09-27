@@ -1,0 +1,71 @@
+/* Select trigger (eager) and HeroUI's select popover base; the listbox
+ * items are styled in overlays/overlays.css with the lazy chunk. */
+@reference "../../styles/heroui.css";
+
+@import "@heroui/styles/components/select.css" layer(components);
+
+@layer thyra {
+  .ui-select {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ui-select > .label {
+    color: var(--muted);
+    font-size: var(--ui-font-size-sm);
+    white-space: nowrap;
+  }
+  .ui-select .select__trigger {
+    align-items: center;
+    gap: 6px;
+    height: var(--ui-control-height);
+    min-height: var(--ui-control-height);
+    min-width: 0;
+    padding: 0 26px 0 8px;
+    color: var(--text);
+    font-size: var(--ui-font-size-sm);
+    line-height: 1;
+  }
+  .ui-select .select__value {
+    overflow: hidden;
+    font-size: var(--ui-font-size-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ui-select .select__indicator {
+    width: 13px;
+    height: 13px;
+    color: var(--muted);
+  }
+  .ui-select--ghost .select__trigger {
+    background: transparent;
+    color: var(--muted);
+  }
+  @media (hover: hover) {
+    .ui-select--ghost .select__trigger:hover {
+      background: var(--panel-2);
+      color: var(--text-strong);
+    }
+  }
+  .ui-select .select__trigger.ui-select-trigger--icon {
+    width: var(--ui-control-height);
+    justify-content: center;
+    padding: 0;
+  }
+  .ui-select .select__trigger:focus-visible {
+    box-shadow: none;
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+  .ui-select .select__trigger[aria-expanded="true"] {
+    background: var(--field-bg-hover);
+  }
+  @media (pointer: coarse) {
+    .ui-select .select__trigger::after {
+      content: "";
+      position: absolute;
+      inset: min(0px, calc(50% - 20px));
+    }
+  }
+}

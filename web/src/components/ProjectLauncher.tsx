@@ -1,4 +1,3 @@
-import { Drawer, Input, Spinner, TextField } from "@heroui/react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -22,7 +21,10 @@ import {
   ProjectLauncherSettings,
 } from "./ProjectLauncherSettings";
 import { Button } from "./ui/Button";
+import { Dialog } from "./ui/Dialog";
 import { IconButton } from "./ui/IconButton";
+import { Spinner } from "./ui/Spinner";
+import { TextField } from "./ui/TextField";
 import { Token } from "./ui/Token";
 import "./ProjectLauncher.css";
 
@@ -75,9 +77,6 @@ export function ProjectLauncher({
   onLaunched?: () => void;
 }) {
   const client = useConnectionClient();
-  const mobile =
-    typeof document !== "undefined" &&
-    document.documentElement.dataset.layout === "mobile";
   const [data, setData] = useState<LauncherData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -231,7 +230,7 @@ export function ProjectLauncher({
             onClick={() => void launch(path, agent)}
           >
             {busy === `launch:${agent.id}` ? (
-              <Spinner size="sm" color="current" />
+              <Spinner size="sm" />
             ) : (
               <AgentIcon agent={agent.id} />
             )}
@@ -324,36 +323,28 @@ export function ProjectLauncher({
     );
   };
 
-  const header = (
-    <div className="project-launcher-head ui-bar">
-      {view !== "folders" ? (
-        <IconButton
-          label={t("Back")}
-          icon={<ArrowLeft size={16} />}
-          onClick={() => setView("folders")}
-        />
-      ) : null}
-      <Drawer.Heading className="project-launcher-title">
-        {view === "settings"
-          ? t("Launcher settings")
-          : view === "browse"
-            ? t("Choose folder")
-            : t("Launch agent")}
-      </Drawer.Heading>
-      {view === "folders" ? (
-        <IconButton
-          label={t("Launcher settings")}
-          icon={<Settings2 size={16} />}
-          onClick={() => setView("settings")}
-        />
-      ) : null}
+  const title =
+    view === "settings"
+      ? t("Launcher settings")
+      : view === "browse"
+        ? t("Choose folder")
+        : t("Launch agent");
+  const headerStart =
+    view !== "folders" ? (
       <IconButton
-        label={t("Close launcher")}
-        icon={<X size={16} />}
-        onClick={onClose}
+        label={t("Back")}
+        icon={<ArrowLeft size={16} />}
+        onClick={() => setView("folders")}
       />
-    </div>
-  );
+    ) : null;
+  const headerActions =
+    view === "folders" ? (
+      <IconButton
+        label={t("Launcher settings")}
+        icon={<Settings2 size={16} />}
+        onClick={() => setView("settings")}
+      />
+    ) : null;
 
   const foldersView = (
     <>
@@ -362,15 +353,13 @@ export function ProjectLauncher({
           aria-label={t("Filter folders or type a path")}
           className="project-launcher-query"
           value={query}
-          onChange={setQuery}
-        >
-          <Input
-            placeholder={t("Filter or type a path")}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </TextField>
+          onValueChange={setQuery}
+          placeholder={t("Filter or type a path")}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          fullWidth
+        />
         <IconButton
           label={t("Browse folders")}
           icon={<FolderSearch size={16} />}
@@ -384,14 +373,14 @@ export function ProjectLauncher({
       ) : null}
       {!data && !loadError ? (
         <div className="project-launcher-loading">
-          <Spinner size="sm" color="current" />
+          <Spinner size="sm" />
           <span>{t("Loading folders...")}</span>
         </div>
       ) : null}
       {loadError ? (
         <div className="project-launcher-error" role="alert">
           <span>{loadError}</span>
-          <Button variant="outline" onClick={() => void load()}>
+          <Button variant="secondary" onClick={() => void load()}>
             {t("Retry")}
           </Button>
         </div>
@@ -520,7 +509,7 @@ export function ProjectLauncher({
         </ul>
       ) : !browseError ? (
         <div className="project-launcher-loading">
-          <Spinner size="sm" color="current" />
+          <Spinner size="sm" />
         </div>
       ) : null}
     </>
@@ -547,40 +536,34 @@ export function ProjectLauncher({
   ) : null;
 
   return (
-    <Drawer.Backdrop
-      isOpen
+    <Dialog
+      open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      className="project-launcher-backdrop"
+      title={title}
+      placement="side"
+      headerStart={headerStart}
+      headerActions={headerActions}
+      closeLabel={t("Close launcher")}
+      busy={busy !== null}
+      className="project-launcher"
+      bodyClassName="project-launcher-body"
+      footer={
+        view === "browse" && browseFooter ? (
+          <div className="project-launcher-footer">{browseFooter}</div>
+        ) : undefined
+      }
     >
-      <Drawer.Content placement={mobile ? "bottom" : "right"}>
-        <Drawer.Dialog className="project-launcher" aria-busy={busy !== null}>
-          {header}
-          <Drawer.Body className="project-launcher-body">
-            {view === "folders"
-              ? foldersView
-              : view === "browse"
-                ? browseView
-                : null}
-            {view === "settings" ? (
-              <ProjectLauncherSettings
-                agents={data?.agents}
-                onSaved={(agents) =>
-                  setData((current) =>
-                    current ? { ...current, agents } : current,
-                  )
-                }
-              />
-            ) : null}
-          </Drawer.Body>
-          {view === "browse" && browseFooter ? (
-            <Drawer.Footer className="project-launcher-footer">
-              {browseFooter}
-            </Drawer.Footer>
-          ) : null}
-        </Drawer.Dialog>
-      </Drawer.Content>
-    </Drawer.Backdrop>
+      {view === "folders" ? foldersView : view === "browse" ? browseView : null}
+      {view === "settings" ? (
+        <ProjectLauncherSettings
+          agents={data?.agents}
+          onSaved={(agents) =>
+            setData((current) => (current ? { ...current, agents } : current))
+          }
+        />
+      ) : null}
+    </Dialog>
   );
 }

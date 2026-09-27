@@ -50,7 +50,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "./ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
 import { canCreateWorktree, worktreeCreationSource } from "../worktree";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
 import { CommandMenuTrigger, isCommandMenuShortcut } from "./CommandMenu";

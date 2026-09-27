@@ -185,4 +185,8 @@ export default {
   "Reconnect browser": "重新连接浏览器",
   // Lazily loaded surfaces
   "Could not load this part of Thyra": "无法加载 Thyra 的这一部分",
+
+  // Shared UI components (components/ui)
+  Notifications: "通知",
+  "Clear search": "清除搜索",
 } satisfies Record<string, string>;

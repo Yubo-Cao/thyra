@@ -135,9 +135,6 @@
 .filesystem-filter input:focus {
   box-shadow: none;
 }
-.filesystem-tools .ui-button[aria-pressed="true"] {
-  color: var(--accent);
-}
 .filesystem-message {
   display: flex;
   align-items: center;

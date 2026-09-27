@@ -1,0 +1,452 @@
+/* Overlay chunk styles: Dialog, Menu/ContextMenu, Select popover, Popover,
+ * Tooltip, and Toast. Loaded with the lazy overlay chunk; the layer order is
+ * declared eagerly in tokens.css, so these rules slot in above HeroUI's
+ * components layer. Overlays float on --panel-2 over the --panel/--bg shell:
+ * tone separates them, never a border or a shadow. */
+@reference "../../../styles/heroui.css";
+
+@import "@heroui/styles/components/list-box-item.css" layer(components);
+@import "@heroui/styles/components/list-box.css" layer(components);
+@import "@heroui/styles/components/menu-item.css" layer(components);
+@import "@heroui/styles/components/menu-section.css" layer(components);
+@import "@heroui/styles/components/menu.css" layer(components);
+@import "@heroui/styles/components/dropdown.css" layer(components);
+@import "@heroui/styles/components/popover.css" layer(components);
+@import "@heroui/styles/components/tooltip.css" layer(components);
+@import "@heroui/styles/components/modal.css" layer(components);
+
+@layer thyra {
+  /* ---- Dialog ---------------------------------------------------------- */
+  .ui-dialog-backdrop {
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+      env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+  .ui-dialog-container {
+    width: 100%;
+    padding: 18px;
+  }
+  .ui-dialog {
+    --ui-dialog-width: 560px;
+    width: min(var(--ui-dialog-width), 100%);
+    max-width: none;
+    max-height: min(760px, 100%);
+    padding: 0;
+    background: var(--shell-panel);
+    color: var(--text);
+    font-size: var(--ui-font-size);
+  }
+  .ui-dialog[data-size="sm"] {
+    --ui-dialog-width: 420px;
+  }
+  .ui-dialog[data-size="lg"] {
+    --ui-dialog-width: 760px;
+  }
+  .ui-dialog[data-size="full"] {
+    width: 100%;
+    max-height: none;
+    height: 100%;
+  }
+  .modal__container--full.ui-dialog-container {
+    padding: 0;
+  }
+  .ui-dialog-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--ui-bar-height);
+    padding: 12px 12px 0 18px;
+  }
+  .ui-dialog-titles {
+    display: grid;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .ui-dialog-title {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .ui-dialog-description {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--ui-font-size-sm);
+    line-height: 1.4;
+  }
+  .ui-dialog-form {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .ui-dialog .ui-dialog-body {
+    margin: 0;
+    padding: 12px 18px 18px;
+    color: var(--text);
+    font-size: var(--ui-font-size);
+    line-height: 1.45;
+  }
+  .ui-dialog .modal__header + .ui-dialog-body,
+  .ui-dialog .modal__header + .ui-dialog-form > .ui-dialog-body {
+    margin-top: 0;
+  }
+  .ui-dialog .ui-dialog-footer {
+    margin-top: 0;
+    gap: 8px;
+    padding: 12px 18px;
+    background: var(--panel-2);
+  }
+  .ui-dialog .ui-dialog-body + .ui-dialog-footer {
+    margin-top: 0;
+  }
+  .ui-dialog .modal__header + .ui-dialog-footer,
+  .ui-dialog .modal__header + .ui-dialog-form > .ui-dialog-footer {
+    margin-top: 12px;
+  }
+
+  /* placement="side": a full-height panel at the end edge (drawer). */
+  .ui-dialog-container[data-placement="side"] {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .ui-dialog[data-placement="side"] {
+    --ui-dialog-width: 420px;
+    width: min(var(--ui-dialog-width), 92vw);
+    height: 100%;
+    max-height: none;
+    margin: 0;
+  }
+
+  /* Mobile layout: dialogs are bottom sheets; `full` covers the viewport. */
+  :where(html[data-layout="mobile"]) .ui-dialog-container {
+    justify-content: flex-end;
+    padding: 0;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+  :where(html[data-layout="mobile"]) .ui-dialog {
+    width: 100%;
+    max-height: 100%;
+    margin-top: auto;
+    margin-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  :where(html[data-layout="mobile"]) .ui-dialog[data-placement="side"] {
+    width: 100%;
+    height: auto;
+    max-height: min(86dvh, 720px);
+  }
+  :where(html[data-layout="mobile"]) .ui-dialog[data-size="full"] {
+    height: 100%;
+  }
+  :where(html[data-layout="mobile"]) .ui-dialog-footer .button {
+    --button-height: 40px;
+    flex: 1 1 0;
+  }
+
+  /* ---- Popover surfaces (menus, selects, popovers) --------------------- */
+  .ui-menu-popover,
+  .ui-select-popover,
+  .ui-popover {
+    min-width: 180px;
+    max-width: min(420px, calc(100vw - 16px));
+    max-height: min(480px, var(--visual-viewport-max-height, 80vh));
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: var(--ui-font-size);
+  }
+  /* WebKit under-measures the max-content width of these flex rows, so
+     menus get HeroUI's fixed 220px floor and grow up to 420px. */
+  .ui-menu-popover,
+  .ui-select-popover {
+    width: max-content;
+  }
+  .ui-menu-popover {
+    min-width: 220px;
+  }
+  .ui-select-popover {
+    min-width: max(var(--trigger-width, 0px), 140px);
+  }
+  .ui-popover-dialog {
+    padding: 10px;
+    outline: none;
+  }
+  .ui-menu-point {
+    position: fixed;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+  .ui-menu-header {
+    display: grid;
+    gap: 1px;
+    padding: 8px 10px 6px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .ui-menu-header strong {
+    overflow: hidden;
+    color: var(--text-strong);
+    font-size: var(--ui-font-size);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ui-menu-header small {
+    color: var(--muted);
+    font-size: var(--ui-font-size-xs);
+  }
+  .ui-menu,
+  .ui-select-list {
+    gap: 0;
+    padding: 4px 0;
+    outline: none;
+  }
+  .ui-select-list > * + * {
+    margin-top: 0;
+  }
+  .ui-menu-section {
+    width: 100%;
+    align-items: stretch;
+  }
+  .ui-menu-section-title {
+    padding: 6px 10px 2px;
+    color: var(--muted);
+    font-size: var(--ui-font-size-xs);
+    font-weight: 600;
+  }
+  .ui-menu-separator {
+    width: auto;
+    height: 1px;
+    margin: 4px 0;
+    margin-inline: 0;
+    background: var(--border-soft);
+  }
+  .ui-menu-item,
+  .ui-select-item {
+    gap: 8px;
+    min-height: var(--ui-row-height);
+    padding: 0 10px;
+    color: var(--text);
+    font-size: var(--ui-font-size);
+    transform: none;
+  }
+  .ui-menu-item:active,
+  .ui-menu-item[data-pressed="true"],
+  .ui-select-item:active,
+  .ui-select-item[data-pressed="true"] {
+    transform: none;
+  }
+  .ui-menu-item[data-focused="true"],
+  .ui-select-item[data-focused="true"],
+  .ui-menu-item[data-hovered="true"],
+  .ui-select-item[data-hovered="true"] {
+    background: var(--field-bg-hover);
+    color: var(--text-strong);
+  }
+  .ui-menu-item[data-focus-visible="true"],
+  .ui-select-item[data-focus-visible="true"] {
+    box-shadow: none;
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+  .ui-menu-item.menu-item--danger {
+    color: var(--danger-text);
+  }
+  .ui-menu-item.menu-item--danger[data-focused="true"],
+  .ui-menu-item.menu-item--danger[data-hovered="true"] {
+    background: var(--danger-soft);
+    color: var(--danger-text);
+  }
+  .ui-menu-item.menu-item--danger [data-slot="label"] {
+    color: inherit;
+  }
+  .ui-menu-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ui-menu-description {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--ui-font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ui-menu-icon,
+  .ui-menu-check {
+    display: inline-flex;
+    flex: 0 0 14px;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+  }
+  .ui-menu-check {
+    color: var(--accent);
+  }
+  .menu-item--danger .ui-menu-icon {
+    color: inherit;
+  }
+  .ui-menu-shortcut {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    padding-inline-start: 12px;
+    color: var(--muted);
+    font-family: var(--mono-font);
+    font-size: var(--ui-font-size-xs);
+  }
+  .ui-select-check {
+    display: inline-flex;
+    flex: 0 0 14px;
+    margin-inline-start: auto;
+    color: var(--accent);
+  }
+  .ui-menu-item[data-disabled="true"],
+  .ui-select-item[data-disabled="true"] {
+    opacity: 0.45;
+  }
+  @media (pointer: coarse) {
+    .ui-menu-item,
+    .ui-select-item {
+      min-height: 40px;
+    }
+  }
+  :where(html[data-layout="mobile"]) :is(.ui-menu-item, .ui-select-item) {
+    min-height: 40px;
+  }
+
+  /* ---- Tooltip --------------------------------------------------------- */
+  /* Same surface as the delegated GlobalTooltip that IconButton uses. */
+  .ui-tooltip {
+    max-width: min(360px, calc(100vw - 24px));
+    padding: 6px 9px;
+    background: var(--shell-panel);
+    color: var(--text-strong);
+    box-shadow: var(--shadow-tooltip);
+    font-size: var(--ui-font-size-sm);
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+
+  /* ---- Toast (React Aria region; Thyra layout) ----------------------- */
+  .ui-toast-region {
+    position: fixed;
+    z-index: var(--z-index-toast);
+    top: calc(var(--ui-bar-height) + 26px);
+    right: 16px;
+    width: min(420px, calc(100vw - 32px));
+    outline: none;
+  }
+  .ui-toast-region:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  .ui-toast-region > ol {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ui-toast {
+    --toast-tone: var(--muted);
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 8px 10px 12px;
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: var(--ui-font-size);
+    outline: none;
+    animation: ui-toast-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .ui-toast:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+  .ui-toast::before {
+    content: "";
+    position: absolute;
+    inset-block: 8px;
+    inset-inline-start: 0;
+    width: 3px;
+    background: var(--toast-tone);
+  }
+  .ui-toast:is([data-tone="info"]) {
+    --toast-tone: var(--accent);
+  }
+  .ui-toast[data-tone="success"] {
+    --toast-tone: var(--green);
+  }
+  .ui-toast[data-tone="warning"] {
+    --toast-tone: var(--yellow);
+  }
+  .ui-toast[data-tone="danger"] {
+    --toast-tone: var(--red);
+  }
+  .ui-toast-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    padding-top: 2px;
+    color: var(--toast-tone);
+  }
+  .ui-toast-content {
+    display: grid;
+    flex: 1 1 auto;
+    gap: 3px;
+    min-width: 0;
+    padding-top: 1px;
+  }
+  .ui-toast-title {
+    color: var(--text-strong);
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .ui-toast-description {
+    color: var(--muted);
+    font-size: var(--ui-font-size-sm);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .ui-toast-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .ui-toast-actions .button {
+    --button-bg: var(--accent-soft);
+    --button-bg-hover: var(--accent-soft-hover);
+    --button-fg: var(--accent);
+  }
+  .ui-toast-close {
+    margin: -4px 0 0;
+  }
+  @keyframes ui-toast-in {
+    from {
+      opacity: 0;
+      transform: translate3d(12px, 0, 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-toast {
+      animation: none;
+    }
+  }
+  :where(html[data-layout="mobile"]) .ui-toast-region {
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    width: auto;
+  }
+}

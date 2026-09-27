@@ -43,7 +43,7 @@ body {
     sans-serif;
 }
 
-button:where(:not([data-rac])) {
+button:where(:not([data-rac], [data-slot])) {
   border: 0;
   background: var(--panel-2);
   color: var(--text);
@@ -61,48 +61,48 @@ button:where(:not([data-rac])) {
     transform 140ms ease;
 }
 
-button:where(:not([data-rac])):hover:not(:disabled) {
+button:where(:not([data-rac], [data-slot])):hover:not(:disabled) {
   background: var(--field-bg-hover);
 }
 
-button:where(:not([data-rac])):focus-visible {
+button:where(:not([data-rac], [data-slot])):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
 @media (forced-colors: active) {
-  button:where(:not([data-rac])):focus-visible {
+  button:where(:not([data-rac], [data-slot])):focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 2px;
   }
 }
 
-button:where(:not([data-rac])):disabled {
+button:where(:not([data-rac], [data-slot])):disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-button:where(:not([data-rac])).ghost {
+button:where(:not([data-rac], [data-slot])).ghost {
   border-color: transparent;
   background: transparent;
   padding: 4px 7px;
 }
 
-button:where(:not([data-rac])).ghost:hover:not(:disabled) {
+button:where(:not([data-rac], [data-slot])).ghost:hover:not(:disabled) {
   background: var(--panel-2);
 }
 
-button:where(:not([data-rac])).danger {
+button:where(:not([data-rac], [data-slot])).danger {
   background: var(--danger-soft);
   color: var(--danger-text);
 }
 
-button:where(:not([data-rac])).danger:hover:not(:disabled) {
+button:where(:not([data-rac], [data-slot])).danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--red) 22%, transparent);
 }
 
-input:where(:not([data-rac])),
-textarea:where(:not([data-rac])) {
+input:where(:not([data-rac], [data-slot])),
+textarea:where(:not([data-rac], [data-slot])) {
   border: 0;
   background: var(--field-bg);
   color: var(--text);
@@ -117,8 +117,8 @@ textarea:where(:not([data-rac])) {
     background-color 140ms ease;
 }
 
-input:where(:not([data-rac])):focus,
-textarea:where(:not([data-rac])):focus {
+input:where(:not([data-rac], [data-slot])):focus,
+textarea:where(:not([data-rac], [data-slot])):focus {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 

@@ -819,11 +819,11 @@ export function FilePreviewContent({
             <div className="file-editor-conflict" role="alert">
               {saveConflict}.
               <span className="file-editor-conflict-actions">
-                <Button variant="outline" onClick={reloadAfterConflict}>
+                <Button variant="secondary" onClick={reloadAfterConflict}>
                   {t("Reload")}
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   disabled={saving}
                   onClick={() => void saveDraft(true)}
                 >
