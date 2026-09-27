@@ -7,6 +7,7 @@ import {
 import { EndpointCreationDeadline } from "./endpoint-creation";
 import { frameToAnsi } from "./frame-to-ansi";
 import type { FrameData } from "./thin-client";
+import type { OwnShellClients } from "./own-shell-clients";
 import type { Logger } from "../utils/logger";
 import { silentLogger } from "../utils/logger";
 import { MOUSE_KIND, VtInputClassifier } from "./vt-input-classifier";
@@ -93,9 +94,14 @@ export class EndpointTerminalSession extends EventEmitter {
     private logger: Logger = silentLogger,
     private firstSurfaceWaitMs = FIRST_SURFACE_WAIT_MS,
     surfaceCodecsEnabled = true,
+    ownShellClients?: OwnShellClients,
   ) {
     super();
-    this.client = new EndpointClient(socketPath, surfaceCodecsEnabled);
+    this.client = new EndpointClient(
+      socketPath,
+      surfaceCodecsEnabled,
+      ownShellClients,
+    );
     this.client.on("surface", (s) => this.onSurface(s));
     this.client.on("clipboard", (clipboard) => {
       if (!this.closed && this.paneId) this.emit("clipboard", clipboard);

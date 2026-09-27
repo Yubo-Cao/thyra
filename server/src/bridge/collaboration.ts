@@ -27,6 +27,27 @@ const LEASE_TTL_MS = 45_000;
 const TYPING_TTL_MS = 3_000;
 const MAX_CONTROL_PROTECTION_MS = 60_000;
 
+function filterResultSnapshot(
+  result: unknown,
+  filter: <T>(snapshot: T) => T,
+): unknown {
+  if (!result || typeof result !== "object") return result;
+  const snapshot = (result as { snapshot?: unknown }).snapshot;
+  if (!snapshot || typeof snapshot !== "object") return result;
+  return { ...result, snapshot: filter(snapshot) };
+}
+
+/** Apply `filter` to the snapshot of a `collaboration_updated` event. */
+export function filterCollaborationEvent(
+  event: unknown,
+  filter: <T>(snapshot: T) => T,
+): unknown {
+  if (!event || typeof event !== "object") return event;
+  const data = (event as { data?: unknown }).data;
+  const filtered = filterResultSnapshot(data, filter);
+  return filtered === data ? event : { ...event, data: filtered };
+}
+
 export function createCollaborationService(args: {
   herdrCall: (method: string, params?: Record<string, unknown>) => Promise<any>;
   onSnapshot?: (snapshot: {
@@ -34,6 +55,8 @@ export function createCollaborationService(args: {
     pane_claims: Claim[];
     lease_ttl_ms: number;
   }) => void;
+  /** Applied to snapshots returned by the Herdr collaboration API. */
+  filterSnapshot?: <T>(snapshot: T) => T;
   now?: () => number;
 }) {
   const participants = new Map<string, Participant>();
@@ -206,7 +229,10 @@ export function createCollaborationService(args: {
   async function call(method: string, params: Record<string, unknown> = {}) {
     if (useFallback) return fallbackCall(method, params);
     try {
-      return await args.herdrCall(method, params);
+      const result = await args.herdrCall(method, params);
+      return args.filterSnapshot
+        ? filterResultSnapshot(result, args.filterSnapshot)
+        : result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const normalized = message.toLowerCase();

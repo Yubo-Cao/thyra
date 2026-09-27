@@ -406,6 +406,10 @@ a bridge-local lease map with the same response shape. If a stock direct client
 or another bridge already controls the terminal, the browser falls back to
 observe mode and does not evict it until the user chooses **Take control**.
 
+Herdr lists every client-socket shell as a `tui:<client id>` participant, including the bridge's own endpoint shells (terminal sessions and the popup observer).
+Herdr does not tell a shell its id, so the bridge brackets each of its handshakes with `collaboration.list` calls and records the new `tui:` id; a window claims ids only when there are no more of them than its concurrent bridge handshakes, so a real client attaching at the same moment stays visible.
+Recorded ids are shared by every profile using the same client socket, reset when the endpoint boot ID changes, and removed from forwarded events and collaboration RPC results, so browsers see only other browsers and real Herdr clients.
+
 ## SSH transport
 
 Each runtime supervises one OpenSSH process forwarding both sockets into a private

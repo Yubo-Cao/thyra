@@ -14,6 +14,7 @@ import { ThinClient } from "./thin-client";
 import { thyraEnv } from "../config/environment";
 import { isTerminalHelloProtocol } from "./protocol-compat";
 import { EndpointTerminalSession } from "./endpoint-terminal-session";
+import type { OwnShellClients } from "./own-shell-clients";
 import {
   EndpointClient,
   type EndpointHostTheme,
@@ -110,6 +111,8 @@ export function createTerminalBridge(args: {
   /** Popup surfaces follow this connection's focused Space, not the shell default. */
   focusedWorkspaceId?: () => Promise<string | null>;
   surfaceCodecsEnabled?: () => Promise<boolean>;
+  /** Endpoint shells this bridge opens are hidden from collaboration presence. */
+  ownShellClients?: OwnShellClients;
   validateCreationSource?: (source: EndpointCreationSource) => Promise<void>;
   createEmptyWorkspace?: (
     params: Record<string, unknown>,
@@ -360,7 +363,11 @@ export function createTerminalBridge(args: {
       if ((await navigationMode()) !== "browser-local") return;
       const codecs = await (args.surfaceCodecsEnabled?.() ?? true);
       if (disposed || popupObserver) return;
-      const observer = new EndpointClient(args.clientSocketPath, codecs);
+      const observer = new EndpointClient(
+        args.clientSocketPath,
+        codecs,
+        args.ownShellClients,
+      );
       observer.setHostTheme(hostTheme);
       popupObserver = observer;
       observer.on("surface", (surface: SurfaceBaseline) => {
@@ -735,6 +742,7 @@ export function createTerminalBridge(args: {
             logger,
             undefined,
             surfaceCodecsEnabled,
+            args.ownShellClients,
           )
         : new ThinClient(args.clientSocketPath, args.herdrProtocol);
     if (thin instanceof EndpointTerminalSession) thin.setHostTheme(hostTheme);

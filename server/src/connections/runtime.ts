@@ -10,7 +10,11 @@ import type { ServerWebSocket } from "bun";
 import { createAgentSessionHandlers } from "../agent/agent-sessions";
 import { createAgentSessionFileAccess } from "../agent/session-file-access";
 import { HerdrClient } from "../bridge/herdr-client";
-import { createCollaborationService } from "../bridge/collaboration";
+import {
+  createCollaborationService,
+  filterCollaborationEvent,
+} from "../bridge/collaboration";
+import { acquireOwnShellClients } from "../bridge/own-shell-clients";
 import { assertSupportedHerdrProtocol } from "../bridge/protocol-compat";
 import { createSettingsRpcHandler } from "../bridge/settings-rpc";
 import {
@@ -160,20 +164,40 @@ export function createLegacyConnectionRuntime(args: {
   const clientSocketPath = config.clientSocketPath;
   const sshHost = () => config.sshHost;
   const herdr = new HerdrClient(socketPath);
+  const ownShellClientsLease = acquireOwnShellClients(
+    clientSocketPath,
+    () => herdr.call("collaboration.list", {}),
+    logger.child("presence"),
+  );
+  const ownShellClients = ownShellClientsLease.clients;
   // Herdr republishes the whole presence snapshot on every keystroke (typing
   // timestamps). Forward at most one per interval, always the newest, so
   // typing on a slow link does not also download a snapshot per key.
   const collaborationForward = createTrailingThrottle(
     COLLABORATION_FORWARD_INTERVAL_MS,
-    (event: unknown) => args.onEvent(event, identity),
+    (event: unknown) =>
+      args.onEvent(
+        filterCollaborationEvent(event, ownShellClients.filterSnapshot),
+        identity,
+      ),
   );
   const collaboration = createCollaborationService({
     herdrCall: (method, params) => herdr.call(method, params),
+    filterSnapshot: ownShellClients.filterSnapshot,
     onSnapshot: (snapshot) =>
       collaborationForward.push({
         event: "collaboration.updated",
         data: { type: "collaboration_updated", snapshot },
       }),
+  });
+  // Presence already sent to browsers may list a shell learned only now.
+  const stopOwnShellUpdates = ownShellClients.onChange((result) => {
+    const snapshot = (result as { snapshot?: unknown } | null)?.snapshot;
+    if (!snapshot) return;
+    collaborationForward.push({
+      event: "collaboration_updated",
+      data: { type: "collaboration_updated", snapshot },
+    });
   });
   const agentSessionFiles = createAgentSessionFileAccess({
     sshHost: config.sshHost,
@@ -293,6 +317,7 @@ export function createLegacyConnectionRuntime(args: {
     connectionGeneration: args.connectionGeneration,
     formatError: sanitizeConnectionError,
     clientSocketPath,
+    ownShellClients,
     surfaceCodecsEnabled: async () =>
       terminalSurfaceCodecsEnabled(await readGuiSettings(), identity.id),
     herdrProtocol: async () => {
@@ -571,6 +596,8 @@ export function createLegacyConnectionRuntime(args: {
     if (disposed) return Promise.resolve();
     disposed = true;
     collaborationForward.cancel();
+    stopOwnShellUpdates();
+    ownShellClientsLease.release();
     backgroundStarted = false;
     herdr.off("event", onHerdrEvent);
     herdr.off("error", onHerdrError);

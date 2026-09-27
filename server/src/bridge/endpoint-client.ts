@@ -15,6 +15,7 @@ import {
 
 import { type PaneInputEvent, encodePaneInput } from "./vt-input-classifier";
 import { isTerminalClipboardPayload } from "./terminal-clipboard";
+import type { OwnShellClients } from "./own-shell-clients";
 
 const HANDSHAKE_TIMEOUT_MS = 8_000;
 
@@ -155,6 +156,8 @@ export class EndpointClient extends EventEmitter {
   constructor(
     private socketPath: string,
     private surfaceCodecsEnabled = true,
+    /** Registers this shell so presence does not list it as a collaborator. */
+    private ownShellClients?: OwnShellClients,
   ) {
     super();
   }
@@ -188,6 +191,16 @@ export class EndpointClient extends EventEmitter {
   }
 
   async connect(cols: number, rows: number): Promise<void> {
+    if (this.sock) throw new Error("endpoint client is already connected");
+    if (this.closed) throw new Error("endpoint client is closed");
+    if (!this.ownShellClients) return this.open(cols, rows);
+    await this.ownShellClients.track(async () => {
+      await this.open(cols, rows);
+      return this.bootId || undefined;
+    });
+  }
+
+  private async open(cols: number, rows: number): Promise<void> {
     if (this.sock) throw new Error("endpoint client is already connected");
     if (this.closed) throw new Error("endpoint client is closed");
     await new Promise<void>((resolve, reject) => {
