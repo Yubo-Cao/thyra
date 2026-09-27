@@ -177,21 +177,3 @@ export function migrateLegacyConnectionStorage(
   storage.setItem(LEGACY_MIGRATION_MARKER_KEY, "1");
   return true;
 }
-
-export function transitionConnectionResourceSelection(
-  storage: StorageWriter,
-  outgoingConnectionId: string,
-  outgoingSelection: {
-    fileExplorerWorkspaceId?: string;
-    filePreview?: StoredFilePreview | null;
-    diffViewerWorkspaceId?: string;
-  },
-  targetConnectionId: string,
-): ConnectionResourceSelection {
-  writeConnectionResourceSelection(
-    storage,
-    outgoingConnectionId,
-    outgoingSelection,
-  );
-  return readConnectionResourceSelection(storage, targetConnectionId);
-}

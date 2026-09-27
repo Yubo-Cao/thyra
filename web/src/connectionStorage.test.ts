@@ -6,7 +6,6 @@ import {
   LEGACY_DEFAULT_CONNECTION_ID,
   migrateLegacyConnectionStorage,
   readConnectionResourceSelection,
-  transitionConnectionResourceSelection,
   writeConnectionResourceSelection,
 } from "./connectionStorage";
 import { WORKSPACE_PINS_STORAGE_KEY } from "./workspacePins";
@@ -232,20 +231,16 @@ describe("connection resource storage", () => {
       diffViewerWorkspaceId: "beta-diff",
     });
 
-    const restoredBeta = transitionConnectionResourceSelection(
-      storage,
-      "alpha",
-      {
-        fileExplorerWorkspaceId: "alpha-workspace",
-        filePreview: {
-          workspaceId: "alpha-workspace",
-          path: "alpha.md",
-          name: "alpha.md",
-        },
-        diffViewerWorkspaceId: "alpha-diff",
+    writeConnectionResourceSelection(storage, "alpha", {
+      fileExplorerWorkspaceId: "alpha-workspace",
+      filePreview: {
+        workspaceId: "alpha-workspace",
+        path: "alpha.md",
+        name: "alpha.md",
       },
-      "beta",
-    );
+      diffViewerWorkspaceId: "alpha-diff",
+    });
+    const restoredBeta = readConnectionResourceSelection(storage, "beta");
 
     expect(readConnectionResourceSelection(storage, "alpha")).toEqual({
       fileExplorerWorkspaceId: "alpha-workspace",

@@ -137,17 +137,6 @@ export interface PaneLayout {
   splits: LayoutSplit[];
 }
 
-export interface PaneRead {
-  pane_id: string;
-  workspace_id: string;
-  tab_id: string;
-  source: string;
-  format: string;
-  text: string;
-  revision: number;
-  truncated: boolean;
-}
-
 export interface FileExplorerEntry {
   name: string;
   path: string;
@@ -228,20 +217,4 @@ export interface GitDiffFile {
   kind: GitDiffKind;
   diff: string;
   truncated: boolean;
-}
-
-// Raw list responses
-export interface WorkspaceList {
-  type: "workspace_list";
-  /** Thyra bridge metadata, absent on older bridges (shared navigation). */
-  navigation_mode?: "browser-local" | "shared";
-  workspaces: Workspace[];
-}
-export interface TabList {
-  type: "tab_list";
-  tabs: Tab[];
-}
-export interface PaneList {
-  type: "pane_list";
-  panes: Pane[];
 }
