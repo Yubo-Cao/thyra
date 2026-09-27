@@ -11,6 +11,7 @@ import {
   acceptCollaborationEvent,
   type CollaborationIdentityMatch,
   type CollaborationSnapshot,
+  collaborationFocusIds,
   collaborationProfile,
   collaborationSelfIdentity,
   saveCollaborationDisplayName,
@@ -24,12 +25,20 @@ import {
   collaboratorGroups,
   collaboratorLabel,
   deviceSummary,
+  type PresenceSelf,
 } from "../collaborationGroups";
 import { bridge } from "../api";
+import { useFollowController } from "../followController";
+import { useFollowTarget } from "../followState";
 import { t } from "../i18n";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import { store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import { usePresenceSelf } from "../usePanePresence";
+import {
+  FollowChip,
+  FollowersIndicator,
+  PersonFocusActions,
+} from "./CollaborationFollow";
 
 const HEARTBEAT_MS = 12_000;
 
@@ -53,73 +62,54 @@ function matchDescription(
   return t("Recognized by this browser");
 }
 
+/** Each person with their devices, where they look, Jump and Follow. */
 function CollaboratorList({
   people,
-  onFocusPane,
+  snapshot,
+  self,
+  onDone,
 }: {
   people: Collaborator[];
-  onFocusPane: (paneId: string) => void;
+  snapshot: CollaborationSnapshot | null;
+  self: PresenceSelf;
+  /** Close the popover after Jump or Follow. */
+  onDone: () => void;
 }) {
   return (
     <ul className="collaboration-people">
-      {people.map((person) => {
-        const paneId = person.isSelf
-          ? undefined
-          : person.participants.find((participant) => participant.pane_id)
-              ?.pane_id;
-        const content = (
-          <>
-            <Avatar
-              name={person.name}
-              color={person.color}
-              src={person.avatarUrl}
-            />
-            <span className="collaboration-person-text">
-              <span className="collaboration-person-name">
-                {person.isSelf
-                  ? t("{name} (you)", { name: person.name })
-                  : person.typing
-                    ? t("{name} · typing", { name: person.name })
-                    : person.name}
-              </span>
-              <span className="collaboration-person-devices">
-                {deviceSummary(person.devices)}
-              </span>
+      {people.map((person) => (
+        <li key={person.key} className="collaboration-person">
+          <Avatar
+            name={person.name}
+            color={person.color}
+            src={person.avatarUrl}
+          />
+          <span className="collaboration-person-text">
+            <span className="collaboration-person-name">
+              {person.isSelf
+                ? t("{name} (you)", { name: person.name })
+                : person.typing
+                  ? t("{name} · typing", { name: person.name })
+                  : person.name}
             </span>
-          </>
-        );
-        return (
-          <li key={person.key}>
-            {paneId ? (
-              <Button
-                fullWidth
-                className="collaboration-person"
-                onClick={() => onFocusPane(paneId)}
-              >
-                {content}
-              </Button>
-            ) : (
-              <span className="collaboration-person">{content}</span>
-            )}
-          </li>
-        );
-      })}
+            <span className="collaboration-person-devices">
+              {deviceSummary(person.devices)}
+            </span>
+            <PersonFocusActions
+              person={person}
+              snapshot={snapshot}
+              self={self}
+              onDone={onDone}
+            />
+          </span>
+        </li>
+      ))}
     </ul>
   );
 }
 
 export function CollaborationBar() {
-  const session = useStoreSelector(
-    (state) => ({
-      status: state.status,
-      workspaces: state.workspaces,
-      tabs: state.tabs,
-      panes: state.panes,
-      selectedPaneId: state.selectedPaneId,
-      layout: state.layout,
-    }),
-    shallowEqual,
-  );
+  const status = useStoreSelector((state) => state.status);
   const client = useConnectionClient();
   const self = usePresenceSelf();
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(null);
@@ -127,9 +117,9 @@ export function CollaborationBar() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(() => collaborationProfile().displayName);
   const profile = collaborationProfile();
-  const latestSession = useRef(session);
-  latestSession.current = session;
   const refreshRef = useRef<() => void>(() => {});
+  const following = useFollowTarget();
+  useFollowController(client, self);
 
   useEffect(() => {
     startCollaborationIdentity();
@@ -156,10 +146,10 @@ export function CollaborationBar() {
   );
 
   useEffect(() => {
-    if (session.status !== "connected" || !client.isCurrent()) return;
+    if (status !== "connected" || !client.isCurrent()) return;
     let disposed = false;
     const refresh = () => {
-      void updateCollaborationPresence(client, latestSession.current)
+      void updateCollaborationPresence(client, store.get())
         .then((next) => {
           if (!disposed && client.isCurrent()) setSnapshot(next);
         })
@@ -180,11 +170,26 @@ export function CollaborationBar() {
     };
   }, [
     client,
-    session.layout?.focused_pane_id,
-    session.layout?.tab_id,
-    session.selectedPaneId,
-    session.status,
+    status,
+    // Followers are announced with presence, so the followed person sees them.
+    following?.key,
   ]);
+
+  // Announce a new focus from the store update itself, not after React
+  // renders the switch: followers move sooner.
+  useEffect(() => {
+    const focusKey = () => JSON.stringify(collaborationFocusIds(store.get()));
+    let last = focusKey();
+    const unsubscribe = store.subscribe(() => {
+      const next = focusKey();
+      if (next === last) return;
+      last = next;
+      refreshRef.current();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const grouped = collaboratorGroups(snapshot, self);
   const people: Collaborator[] = grouped.some((person) => person.isSelf)
@@ -236,7 +241,12 @@ export function CollaborationBar() {
             aria-label={t("Live collaborators: {people}", { people: names })}
             data-tooltip={names}
           >
-            <AvatarGroup people={people} />
+            <AvatarGroup
+              people={people.map((person) => ({
+                ...person,
+                followed: person.key === following?.key,
+              }))}
+            />
           </Button>
         }
         aria-label={t("Live collaborators")}
@@ -278,13 +288,14 @@ export function CollaborationBar() {
           </p>
           <CollaboratorList
             people={people}
-            onFocusPane={(paneId) => {
-              setOpen(false);
-              void store.focusPane(paneId);
-            }}
+            snapshot={snapshot}
+            self={self}
+            onDone={() => setOpen(false)}
           />
         </div>
       </Popover>
+      <FollowersIndicator snapshot={snapshot} self={self} />
+      <FollowChip snapshot={snapshot} self={self} />
     </div>
   );
 }

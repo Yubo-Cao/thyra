@@ -106,6 +106,7 @@ export function AgentRow({
         nested ? { paddingLeft: 18 + depth * TREE_DEPTH_INDENT } : undefined
       }
       role={nested ? "treeitem" : "button"}
+      data-pane-id={pane.pane_id}
       draggable={!!drag}
       onDragStart={drag?.onDragStart}
       onDragOver={drag?.onDragOver}

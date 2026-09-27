@@ -58,3 +58,97 @@
   color: var(--muted);
   font-size: var(--ui-font-size-xs);
 }
+.collaboration-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.collaboration-followers {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--accent);
+  font-size: var(--ui-font-size-xs);
+}
+/* Jump and Follow sit beside the name; "Viewing: ..." gets its own line. */
+.collaboration-person:has(.collaboration-focus) .collaboration-person-text {
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 2px;
+}
+.collaboration-focus {
+  display: contents;
+}
+.collaboration-focus > .button {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.collaboration-focus > .collaboration-jump-button {
+  grid-column: 2;
+}
+.collaboration-focus > .collaboration-follow-button {
+  grid-column: 3;
+}
+.collaboration-focus-where {
+  display: flex;
+  grid-row: 3;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--ui-font-size-xs);
+}
+.collaboration-focus-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collaboration-focus-pane {
+  flex: 0 0 auto;
+}
+/* "Following Yubo (iPhone) - Stop": slim, square, accent-tinted. */
+.follow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(280px, 40vw);
+  height: var(--ui-control-height);
+  padding-inline: 8px 2px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+  font-size: var(--ui-font-size-xs);
+}
+.follow-chip > svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.follow-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.follow-chip-stop {
+  --button-height: calc(var(--ui-control-height) - 4px);
+  flex: 0 0 auto;
+  gap: 3px;
+  padding-inline: 6px;
+}
+@media (max-width: 768px) {
+  .follow-chip {
+    max-width: 46vw;
+  }
+  .follow-chip-stop-text {
+    display: none;
+  }
+}
+.collaboration-person-text > .collaboration-person-name {
+  grid-row: 1;
+  grid-column: 1;
+}
+.collaboration-person-text > .collaboration-person-devices {
+  grid-row: 2;
+  grid-column: 1;
+}

@@ -88,6 +88,13 @@
     outline: 1px solid var(--accent);
     outline-offset: -1px;
   }
+  .ui-avatar-group-item[data-followed]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   .ui-avatar-group-item[data-more] {
     width: auto;
     min-width: var(--avatar-size);

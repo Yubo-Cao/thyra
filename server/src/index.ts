@@ -220,6 +220,32 @@ const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   scheduleProcessExit: scheduleManagedShutdown,
 });
 const clients = new Set<ServerWebSocket<unknown>>();
+/**
+ * The collaboration service holding each browser socket's presence, so a
+ * closed page leaves at once instead of lingering until its lease expires
+ * (and followers stop following it).
+ */
+const socketPresence = new Map<
+  ServerWebSocket<unknown>,
+  LegacyConnectionRuntime["collaboration"]
+>();
+
+function leaveSocketPresence(ws: ServerWebSocket<unknown>) {
+  const collaboration = socketPresence.get(ws);
+  socketPresence.delete(ws);
+  const participantId = participantIds.get(ws);
+  if (!collaboration || !participantId) return;
+  // A page that already reconnected keeps its id on the new socket.
+  for (const other of socketPresence.keys()) {
+    if (participantIds.get(other) === participantId) return;
+  }
+  clientIdentity.forgetParticipant(participantId);
+  void collaboration
+    .call("collaboration.leave", { participant_id: participantId })
+    .catch(() => {
+      // The runtime may be gone; its lease expires on its own.
+    });
+}
 const clientIds = new WeakMap<ServerWebSocket<unknown>, number>();
 const clientSessions = new WeakMap<ServerWebSocket<unknown>, string | null>();
 /** Presence participant ids are assigned by the bridge, one per socket. */
@@ -632,6 +658,7 @@ const webSocketCleanup = new WebSocketCleanupTracker<
     viewedTerminals,
   };
   clients.delete(ws);
+  leaveSocketPresence(ws);
   clientIdentity.detach(ws);
   notifyBrowserClientCount();
   return snapshot;
@@ -1144,8 +1171,14 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         method === "collaboration.update"
           ? await clientIdentity.presenceParams(ws, validParams)
           : validParams;
-      if (method === "collaboration.leave")
+      if (method === "collaboration.leave") {
         clientIdentity.forgetParticipant(participantId);
+        socketPresence.delete(ws);
+      } else if (method === "collaboration.update") {
+        // A page that closed meanwhile has already left; do not revive it.
+        if (!clients.has(ws)) return;
+        socketPresence.set(ws, collaboration);
+      }
       const result = clientIdentity.annotateResult(
         await collaboration.call(method, callParams),
         connection.presenceContext,

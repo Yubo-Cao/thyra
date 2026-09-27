@@ -1,5 +1,6 @@
 import { bridge, type ConnectionClient, type HerdrEventMsg } from "./api";
 import { thyraLocalStorage } from "./browserStorage";
+import { followTarget } from "./followState";
 import { t } from "./i18n";
 import type { State } from "./store";
 
@@ -20,7 +21,23 @@ export type CollaborationParticipant = {
   /** Opaque bridge-assigned ids; keys of the snapshot's people/devices. */
   person_id?: string;
   device_id?: string;
+  /** Bridge-stamped: last focus change, typing, or return to the page. */
+  active_at_unix_ms?: number;
+  /** Presence key (person id or `participant:<id>`) this page follows. */
+  following?: string;
 };
+
+/** A `collaboration.focus` event: one participant moved (ids only). */
+export type CollaborationFocus = Pick<
+  CollaborationParticipant,
+  | "participant_id"
+  | "workspace_id"
+  | "tab_id"
+  | "pane_id"
+  | "activity"
+  | "following"
+  | "active_at_unix_ms"
+>;
 
 /** How the bridge recognized a device (see docs/ARCHITECTURE.md). */
 export type CollaborationIdentityMatch =
@@ -393,10 +410,74 @@ export function subscribeCollaborationSnapshot(
   };
 }
 
+/**
+ * Apply a `collaboration.focus` event to the latest snapshot. Unknown
+ * participants wait for the next (throttled) snapshot.
+ */
+export function applyCollaborationFocus(
+  snapshot: CollaborationSnapshot,
+  focus: CollaborationFocus,
+): CollaborationSnapshot | null {
+  const index = snapshot.participants.findIndex(
+    (participant) => participant.participant_id === focus.participant_id,
+  );
+  if (index < 0) return null;
+  const previous = snapshot.participants[index];
+  const participant: CollaborationParticipant = {
+    ...previous,
+    activity: focus.activity ?? previous.activity,
+    workspace_id: focus.workspace_id,
+    tab_id: focus.tab_id,
+    pane_id: focus.pane_id,
+    following: focus.following,
+    active_at_unix_ms: focus.active_at_unix_ms ?? previous.active_at_unix_ms,
+  };
+  const participants = [...snapshot.participants];
+  participants[index] = participant;
+  return { ...snapshot, participants };
+}
+
+function parseFocus(value: unknown): CollaborationFocus | null {
+  const focus = value as Partial<CollaborationFocus> | null;
+  if (!focus || typeof focus !== "object") return null;
+  if (typeof focus.participant_id !== "string") return null;
+  const id = (field: unknown) =>
+    typeof field === "string" && field ? field : undefined;
+  const activity =
+    focus.activity === "idle" || focus.activity === "away"
+      ? focus.activity
+      : "active";
+  return {
+    participant_id: focus.participant_id,
+    workspace_id: id(focus.workspace_id),
+    tab_id: id(focus.tab_id),
+    pane_id: id(focus.pane_id),
+    following: id(focus.following),
+    activity,
+    ...(typeof focus.active_at_unix_ms === "number"
+      ? { active_at_unix_ms: focus.active_at_unix_ms }
+      : {}),
+  };
+}
+
 export function acceptCollaborationEvent(
   client: ConnectionClient,
   event: HerdrEventMsg,
 ): boolean {
+  if (
+    event.event === "collaboration.focus" &&
+    event.connection_id === client.connectionId &&
+    client.isCurrent() &&
+    client.acceptsServerGeneration(event.connection_generation)
+  ) {
+    const scope = collaborationScope(client);
+    const current = snapshots.get(scope);
+    const focus = parseFocus(event.data.focus);
+    const next = current && focus && applyCollaborationFocus(current, focus);
+    if (!next) return false;
+    publishCollaborationSnapshot(client, next);
+    return true;
+  }
   if (
     (event.event !== "collaboration.updated" &&
       event.event !== "collaboration_updated") ||
@@ -430,14 +511,13 @@ export function shouldTakeOverPaneFromMouse(event: {
   return event.button === 0 && event.shiftKey;
 }
 
-export function collaborationPresenceParams(
-  snapshot: Pick<
-    State,
-    "workspaces" | "tabs" | "panes" | "selectedPaneId" | "layout"
-  >,
-  typing = false,
-) {
-  const profile = collaborationProfile();
+type PresenceState = Pick<
+  State,
+  "workspaces" | "tabs" | "panes" | "selectedPaneId" | "layout"
+>;
+
+/** The workspace, tab and pane this page shows, as presence reports them. */
+export function collaborationFocusIds(snapshot: PresenceState) {
   const workspace = snapshot.workspaces.find((entry) => entry.focused);
   const tab = snapshot.tabs.find(
     (entry) =>
@@ -448,6 +528,19 @@ export function collaborationPresenceParams(
     snapshot.layout?.focused_pane_id ??
     snapshot.panes.find((entry) => entry.focused)?.pane_id;
   return {
+    workspaceId: workspace?.workspace_id,
+    tabId: tab?.tab_id,
+    paneId,
+  };
+}
+
+export function collaborationPresenceParams(
+  snapshot: PresenceState,
+  typing = false,
+) {
+  const profile = collaborationProfile();
+  const { workspaceId, tabId, paneId } = collaborationFocusIds(snapshot);
+  return {
     participant_id: profile.participantId,
     display_name: profile.displayName,
     color: profile.color,
@@ -455,8 +548,9 @@ export function collaborationPresenceParams(
     activity: document.visibilityState === "hidden" ? "away" : "active",
     surface: "web",
     typing,
-    ...(workspace ? { workspace_id: workspace.workspace_id } : {}),
-    ...(tab ? { tab_id: tab.tab_id } : {}),
+    ...(followTarget() ? { following: followTarget()?.key } : {}),
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
+    ...(tabId ? { tab_id: tabId } : {}),
     ...(paneId ? { pane_id: paneId } : {}),
   };
 }

@@ -372,7 +372,8 @@ export function handleHerdrEvent(event: HerdrEventMsg) {
     // arrive while anyone types; they never change workspace metadata.
     if (
       event.event === "collaboration.updated" ||
-      event.event === "collaboration_updated"
+      event.event === "collaboration_updated" ||
+      event.event === "collaboration.focus"
     )
       return;
     scheduleRefresh();
