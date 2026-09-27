@@ -26,7 +26,7 @@ const XTERM_PACKAGES = new Set([
   "@xterm/addon-clipboard",
 ]);
 const UI_PACKAGE =
-  /^(?:@radix-ui\/.+|@floating-ui\/.+|cmdk|react-remove-scroll(?:-bar)?|react-style-singleton|use-callback-ref|use-sidecar|aria-hidden|detect-node-es|get-nonce|tslib|@heroui\/.+|react-aria|react-aria-components|react-stately|@react-aria\/.+|@react-stately\/.+|@react-types\/.+|@internationalized\/.+|@swc\/helpers|tailwind-variants|tailwind-merge|clsx|client-only)$/;
+  /^(?:@floating-ui\/.+|tslib|@heroui\/.+|react-aria|react-aria-components|react-stately|@react-aria\/.+|@react-stately\/.+|@react-types\/.+|@internationalized\/.+|@swc\/helpers|tailwind-variants|tailwind-merge|clsx|client-only)$/;
 
 // React Aria is large and shared by every lazily loaded overlay; outside the
 // entry it gets one lazy chunk of its own so overlay code changes do not

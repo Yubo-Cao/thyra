@@ -13,7 +13,7 @@ import { Button } from "./ui/Button";
 import "./ConnectionSwitcherTrigger.css";
 import { useShallow } from "zustand/react/shallow";
 
-// The connection menu and manager (Radix popover, profile forms) load on the
+// The connection menu and manager (profile forms) load on the
 // first open; the trigger shows connection state from the first paint.
 export const connectionSwitcherPanel = lazyPanel("connection-switcher", () =>
   import("./ConnectionSwitcher").then((module) => module.ConnectionSwitcher),

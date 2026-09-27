@@ -2,6 +2,7 @@
 // classes, and their stylesheet. Only ui/lazyOverlays.ts imports this.
 import "./overlays.css";
 
+export { CommandList } from "./CommandList";
 export { DialogImpl } from "./DialogImpl";
 export { MenuPopover } from "./MenuPopover";
 export { PopoverImpl } from "./PopoverImpl";

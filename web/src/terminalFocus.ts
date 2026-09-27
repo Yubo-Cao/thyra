@@ -1,15 +1,15 @@
 /**
  * Guards the terminal's frame-driven refocusing. Terminal frames refocus the
  * xterm textarea so keyboard input keeps working, but doing so while an
- * overlay owns focus dismisses it: Radix's DismissableLayer treats focusin
- * outside its content as an outside interaction and closes the popover. The
+ * overlay owns focus dismisses it: a non-modal popover closes when focus
+ * leaves it. The
  * Workspace Inspector likewise owns keyboard focus while browsing resources,
  * as does the pane switcher while its search field is open. Streaming output
  * must not steal focus from any of those surfaces.
  */
 const TERMINAL_FOCUS_OVERLAY_SELECTOR =
-  '[data-radix-popper-content-wrapper], .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, .pane-jump-backdrop, .popup-overlay-backdrop, [role="dialog"], [role="menu"]';
-const RADIX_POPPER_CONTENT_WRAPPER = "[data-radix-popper-content-wrapper]";
+  '.ui-popover, .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, .pane-jump-backdrop, .popup-overlay-backdrop, [role="dialog"], [role="menu"]';
+const OPEN_POPOVER = ".ui-popover";
 
 type FocusableLike = Pick<Element, "closest">;
 type DocumentLike = Pick<Document, "querySelector">;
@@ -52,11 +52,10 @@ export function terminalFocusBlockedByOverlay(
   activeElement: FocusableLike | null,
   doc: DocumentLike,
 ): boolean {
-  // An open Radix popover mounts its content in a portal wrapper. Block even
-  // before focus lands inside the content (the open-animation frame), so a
-  // terminal frame cannot win that race and dismiss the popover. Closed
-  // popovers unmount their content, so a mounted wrapper means "open".
-  if (doc.querySelector(RADIX_POPPER_CONTENT_WRAPPER)) return true;
+  // An open popover is mounted in a portal. Block even before focus lands
+  // inside it (the open-animation frame), so a terminal frame cannot win that
+  // race and dismiss the popover. Closed popovers unmount.
+  if (doc.querySelector(OPEN_POPOVER)) return true;
   if (!activeElement) return false;
   return Boolean(activeElement.closest(TERMINAL_FOCUS_OVERLAY_SELECTOR));
 }

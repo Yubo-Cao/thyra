@@ -33,8 +33,8 @@ function graph(
 }
 
 test("vendor groups keep lazy-only UI code out of the initial chunk", () => {
-  const eagerUi = `${store}/@radix-ui+react-dialog/node_modules/@radix-ui/react-dialog/dist/index.mjs`;
-  const lazyUi = `${store}/@radix-ui+react-avatar/node_modules/@radix-ui/react-avatar/dist/index.mjs`;
+  const eagerUi = `${store}/@floating-ui+dom/node_modules/@floating-ui/dom/dist/index.mjs`;
+  const lazyUi = `${store}/@heroui+react/node_modules/@heroui/react/dist/index.mjs`;
   const react = `${store}/react/node_modules/react/index.js`;
   const xterm = `${store}/@xterm+xterm/node_modules/@xterm/xterm/lib/xterm.mjs`;
   const webgl = `${store}/@xterm+addon-webgl/node_modules/@xterm/addon-webgl/lib/addon-webgl.mjs`;

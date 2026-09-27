@@ -15,7 +15,7 @@ import { Button } from "./ui/Button";
 // The trigger's styles (.command-trigger) live with the command primitives.
 import "./ui/command.css";
 
-// The command menu (cmdk, Radix popover, action dialogs) loads on the first
+// The command menu (its actions and dialogs) loads on the first
 // open; this shell owns the trigger and the shortcut until then.
 export const commandComboboxPanel = lazyPanel("command-menu", () =>
   import("./CommandCombobox").then((module) => module.CommandCombobox),

@@ -26,6 +26,9 @@ const tooltip = lazyPanel("ui-overlays", () =>
 const toastRegion = lazyPanel("ui-overlays", () =>
   overlays().then((module) => module.ToastRegionImpl),
 );
+const commandList = lazyPanel("ui-overlays", () =>
+  overlays().then((module) => module.CommandList),
+);
 
 export const LazyDialog = dialog.Component;
 export const LazyMenuPopover = menu.Component;
@@ -33,6 +36,7 @@ export const LazySelectPopover = select.Component;
 export const LazyPopover = popover.Component;
 export const LazyTooltipPopup = tooltip.Component;
 export const LazyToastRegion = toastRegion.Component;
+export const LazyCommandList = commandList.Component;
 
 /**
  * Fetch the overlay chunk ahead of use (trigger hover/focus, idle time). A
@@ -42,8 +46,8 @@ export const LazyToastRegion = toastRegion.Component;
  */
 export function preloadOverlays(): Promise<void> {
   return Promise.all(
-    [dialog, menu, select, popover, tooltip, toastRegion].map((panel) =>
-      panel.preload(),
+    [dialog, menu, select, popover, tooltip, toastRegion, commandList].map(
+      (panel) => panel.preload(),
     ),
   ).then(() => undefined);
 }

@@ -205,7 +205,7 @@ export function useAppearance(
     } else {
       root.style.setProperty("--ui-scale", String(uiScale / 100));
     }
-    // Radix positions popovers using getBoundingClientRect. Some engines
+    // React Aria positions popovers using getBoundingClientRect. Some engines
     // return pre-zoom layout px instead of visual viewport px under CSS
     // zoom, which breaks the static 1/zoom portal compensation. Measure the
     // actual ratio and compensate with it so anchoring works either way.

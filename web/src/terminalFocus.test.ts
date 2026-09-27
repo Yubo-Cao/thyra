@@ -9,9 +9,7 @@ import {
 function docWithOpenPopper(open: boolean) {
   return {
     querySelector: (selector: string) =>
-      open && selector === "[data-radix-popper-content-wrapper]"
-        ? ({} as Element)
-        : null,
+      open && selector === ".ui-popover" ? ({} as Element) : null,
   } as Pick<Document, "querySelector">;
 }
 
@@ -23,7 +21,7 @@ function elementMatching(matching: string[] | null) {
 }
 
 describe("terminalFocusBlockedByOverlay", () => {
-  test("blocks refocusing whenever a Radix popover is mounted", () => {
+  test("blocks refocusing whenever a popover is mounted", () => {
     const doc = docWithOpenPopper(true);
     expect(terminalFocusBlockedByOverlay(null, doc)).toBe(true);
     // Covers the open-animation frame where focus still sits on the trigger.
@@ -37,7 +35,7 @@ describe("terminalFocusBlockedByOverlay", () => {
     expect(
       terminalFocusBlockedByOverlay(
         elementMatching([
-          '[data-radix-popper-content-wrapper], .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, .pane-jump-backdrop, .popup-overlay-backdrop, [role="dialog"], [role="menu"]',
+          '.ui-popover, .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, .pane-jump-backdrop, .popup-overlay-backdrop, [role="dialog"], [role="menu"]',
         ]),
         doc,
       ),

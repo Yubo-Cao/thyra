@@ -2,7 +2,6 @@ import {
   shortcutMatches,
   shortcutLabel,
   useShortcutPreferences,
-  getShortcutSnapshot,
 } from "../shortcutPreferences";
 import { SHORTCUT_NUMBERS, type ShortcutNumber } from "../shortcutBindings";
 import { endpointCreationReason } from "../store";
@@ -41,16 +40,8 @@ import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
 import { WorktreeHooksDialog } from "./WorktreeHooksDialog";
 import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
 import { AgentIcon } from "./AgentIcon";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandShortcut,
-} from "./ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
+import { CommandList, type CommandListItem } from "./ui/command";
+import { Popover } from "./ui/Popover";
 import { canCreateWorktree, worktreeCreationSource } from "../worktree";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
 import { CommandMenuTrigger, isCommandMenuShortcut } from "./CommandMenu";
@@ -167,12 +158,6 @@ function actionDisplaySignature(action: ActionDefinition) {
   );
 }
 
-function actionCommandValue(action: ActionDefinition) {
-  return [actionTitle(action), action.detail, action.shortcut, action.key]
-    .filter(Boolean)
-    .join(" ");
-}
-
 function rankAction(action: ActionDefinition, search: string) {
   return commandFilter(actionSearchValue(action), search, action.keywords);
 }
@@ -275,8 +260,6 @@ export function CommandCombobox({
   );
   const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
-  const [selectedActionValue, setSelectedActionValue] = useState("");
-  const [selectedActionSearch, setSelectedActionSearch] = useState("");
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
   const [openWorktreeWorkspaceId, setOpenWorktreeWorkspaceId] = useState<
     string | null
@@ -987,31 +970,6 @@ export function CommandCombobox({
   const numberShortcutIndexByKey = new Map(
     numberedActions.map((action, index) => [action.key, index]),
   );
-  const firstDisplayedActionValue = displayedActionGroups[0]?.actions[0]
-    ? actionCommandValue(displayedActionGroups[0].actions[0])
-    : "";
-  const displayedActionValues = new Set(
-    displayedActionGroups.flatMap((group) =>
-      group.actions.map((action) => actionCommandValue(action)),
-    ),
-  );
-  const commandSelectedValue =
-    selectedActionSearch === normalizedSearch &&
-    selectedActionValue &&
-    displayedActionValues.has(selectedActionValue)
-      ? selectedActionValue
-      : firstDisplayedActionValue;
-
-  useEffect(() => {
-    if (!open) {
-      setSelectedActionValue("");
-      setSelectedActionSearch("");
-      return;
-    }
-    setSelectedActionValue(firstDisplayedActionValue);
-    setSelectedActionSearch(normalizedSearch);
-  }, [firstDisplayedActionValue, normalizedSearch, open]);
-
   const setCommandOpen = (next: boolean) => {
     setOpen(next);
     if (!next) setSearch("");
@@ -1019,13 +977,15 @@ export function CommandCombobox({
 
   return (
     <>
-      <Popover open={open} onOpenChange={setCommandOpen}>
-        <PopoverTrigger asChild>
-          <CommandMenuTrigger active={open} />
-        </PopoverTrigger>
-        <PopoverContent
-          className="command-popover"
-          align="end"
+      <Popover
+        open={open}
+        onOpenChange={setCommandOpen}
+        aria-label={t("Actions")}
+        placement="bottom end"
+        className="command-popover"
+        trigger={<CommandMenuTrigger active={open} />}
+      >
+        <div
           onKeyDownCapture={(event) => {
             runCommandNumberShortcut(
               event,
@@ -1034,48 +994,25 @@ export function CommandCombobox({
             );
           }}
         >
-          <Command
-            loop
-            shouldFilter={false}
-            value={commandSelectedValue}
-            onValueChange={(value) => {
-              setSelectedActionValue(value);
-              setSelectedActionSearch(normalizedSearch);
+          <CommandList
+            search={search}
+            onSearchChange={setSearch}
+            placeholder={t("Search actions or enter file path...")}
+            emptyText={t("No actions found.")}
+            sections={displayedActionGroups.map((group) => ({
+              heading: group.heading,
+              items: group.actions.map((action) =>
+                commandItem(action, numberShortcutIndexByKey.get(action.key)),
+              ),
+            }))}
+            onAction={(key) => {
+              const action = displayedActionGroups
+                .flatMap((group) => group.actions)
+                .find((candidate) => candidate.key === key);
+              if (action && !action.disabledReason) run(action.run);
             }}
-          >
-            <CommandInput
-              value={search}
-              onValueChange={setSearch}
-              placeholder={t("Search actions or enter file path...")}
-            />
-            <CommandList>
-              <CommandEmpty>{t("No actions found.")}</CommandEmpty>
-              {displayedActionGroups.map((group) => (
-                <CommandGroup key={group.heading} heading={group.heading}>
-                  {group.actions.map((action) => (
-                    <ActionItem
-                      key={action.key}
-                      value={actionCommandValue(action)}
-                      icon={action.icon}
-                      title={actionTitle(action)}
-                      detail={action.detail}
-                      shortcut={action.shortcut}
-                      numberShortcutIndex={numberShortcutIndexByKey.get(
-                        action.key,
-                      )}
-                      keywords={action.keywords}
-                      danger={action.danger}
-                      disabledReason={action.disabledReason}
-                      onSelect={() => {
-                        if (!action.disabledReason) run(action.run);
-                      }}
-                    />
-                  ))}
-                </CommandGroup>
-              ))}
-            </CommandList>
-          </Command>
-        </PopoverContent>
+          />
+        </div>
       </Popover>
 
       <CreateWorkspaceDialog
@@ -1214,63 +1151,36 @@ export function CommandCombobox({
   );
 }
 
-function ActionItem({
-  value,
-  icon,
-  title,
-  detail,
-  shortcut,
-  numberShortcutIndex,
-  keywords,
-  danger,
-  onSelect,
-  disabledReason,
-}: {
-  value: string;
-  icon: React.ReactNode;
-  title: string;
-  detail?: string;
-  shortcut?: string;
-  numberShortcutIndex?: number;
-  keywords?: string[];
-  danger?: boolean;
-  onSelect: () => void;
-  disabledReason?: string | null;
-}) {
-  useShortcutPreferences();
-  const id =
+function commandItem(
+  action: ActionDefinition,
+  numberShortcutIndex?: number,
+): CommandListItem {
+  const title = actionTitle(action);
+  const numberShortcut =
     numberShortcutIndex === undefined
       ? null
-      : (`command.${numberShortcutIndex + 1}` as `command.${ShortcutNumber}`);
-  const numberShortcut = id ? shortcutLabel(id) : null;
-  return (
-    <CommandItem
-      value={value}
-      disabled={!!disabledReason}
-      title={disabledReason ?? undefined}
-      keywords={keywords}
-      onSelect={onSelect}
-      className={danger ? "is-danger" : undefined}
-      aria-keyshortcuts={
-        id
-          ? getShortcutSnapshot()
-              .preset.bindings[id].map((key) => key.replace("Ctrl", "Control"))
-              .join(" ") || undefined
-          : undefined
-      }
-    >
-      <span className="command-item-icon">{icon}</span>
-      <span className="command-item-text">
-        <span className="command-item-title">{title}</span>
-        {disabledReason || detail ? (
-          <span className="command-item-detail">
-            {disabledReason ?? detail}
-          </span>
-        ) : null}
-      </span>
-      {numberShortcut || shortcut ? (
-        <CommandShortcut>{numberShortcut ?? shortcut}</CommandShortcut>
-      ) : null}
-    </CommandItem>
-  );
+      : shortcutLabel(
+          `command.${numberShortcutIndex + 1}` as `command.${ShortcutNumber}`,
+        );
+  const detail = action.disabledReason ?? action.detail;
+  const shortcut = numberShortcut ?? action.shortcut;
+  return {
+    id: action.key,
+    textValue: title,
+    disabled: !!action.disabledReason,
+    danger: action.danger,
+    tooltip: action.disabledReason ?? undefined,
+    children: (
+      <>
+        <span className="command-item-icon">{action.icon}</span>
+        <span className="command-item-text">
+          <span className="command-item-title">{title}</span>
+          {detail ? (
+            <span className="command-item-detail">{detail}</span>
+          ) : null}
+        </span>
+        {shortcut ? <span className="command-shortcut">{shortcut}</span> : null}
+      </>
+    ),
+  };
 }

@@ -17,14 +17,7 @@ import {
 } from "../mobileTerminalShortcuts";
 import { cn } from "../utils";
 import { Button } from "./ui/Button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "./ui/command";
+import { CommandList, subsequenceFilter } from "./ui/command";
 import { Dialog } from "./ui/Dialog";
 import { Kbd } from "./ui/Kbd";
 import { Popover } from "./ui/Popover";
@@ -103,24 +96,19 @@ function ShortcutKeySelect({
   openRequest: number;
   onChange: (action: MobileTerminalShortcutAction) => void;
 }) {
-  const valueRef = useRef(value);
-  valueRef.current = value;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [activeValue, setActiveValue] = useState(() => String(value));
   const currentOption = mobileTerminalShortcutOption(value);
 
   const setSelectorOpen = (next: boolean) => {
     setOpen(next);
     setSearch("");
-    if (next) setActiveValue(valueRef.current);
   };
 
   useEffect(() => {
     if (openRequest === 0) return;
     setOpen(true);
     setSearch("");
-    setActiveValue(valueRef.current);
   }, [openRequest]);
 
   return (
@@ -144,8 +132,6 @@ function ShortcutKeySelect({
         value={value}
         search={search}
         onSearchChange={setSearch}
-        activeValue={activeValue}
-        onActiveValueChange={setActiveValue}
         onSelect={(action) => {
           onChange(action);
           setSelectorOpen(false);
@@ -160,77 +146,54 @@ function ShortcutKeyList({
   value,
   search,
   onSearchChange,
-  activeValue,
-  onActiveValueChange,
   onSelect,
 }: {
   value: MobileTerminalShortcutAction;
   search: string;
   onSearchChange: (search: string) => void;
-  activeValue: string;
-  onActiveValueChange: (value: string) => void;
   onSelect: (action: MobileTerminalShortcutAction) => void;
 }) {
-  const currentItemRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const focus = () => currentItemRef.current?.focus({ preventScroll: false });
-    focus();
-    const frame = requestAnimationFrame(focus);
-    return () => cancelAnimationFrame(frame);
-  }, []);
   return (
-    <Command
+    <CommandList
       className="mobile-shortcut-key-command"
-      loop
-      value={activeValue}
-      onValueChange={onActiveValueChange}
-    >
-      <CommandInput
-        value={search}
-        onValueChange={onSearchChange}
-        placeholder={t("Search keys...")}
-        aria-label={t("Search terminal keys")}
-      />
-      <CommandList>
-        <CommandEmpty>{t("No matching keys.")}</CommandEmpty>
-        {OPTION_GROUPS.map((group) => (
-          <CommandGroup heading={t(OPTION_GROUP_LABELS[group])} key={group}>
-            {MOBILE_TERMINAL_SHORTCUT_OPTIONS.filter(
-              (option) => option.group === group,
-            ).map((option) => {
-              const current = option.id === value;
-              return (
-                <CommandItem
-                  ref={current ? currentItemRef : undefined}
-                  tabIndex={current ? 0 : -1}
-                  className="mobile-shortcut-key-option"
-                  value={option.id}
-                  keywords={[
-                    option.label,
-                    t(option.label),
-                    option.defaultButtonLabel,
-                    group,
-                    t(OPTION_GROUP_LABELS[group]),
-                  ]}
-                  data-current={current ? "true" : "false"}
-                  aria-label={
-                    current
-                      ? t("{key}, selected", { key: t(option.label) })
-                      : t(option.label)
-                  }
-                  key={option.id}
-                  onSelect={() => onSelect(option.id)}
-                >
-                  <span>{t(option.label)}</span>
-                  <Kbd>{option.defaultButtonLabel}</Kbd>
-                  <Check size={13} aria-hidden="true" />
-                </CommandItem>
-              );
-            })}
-          </CommandGroup>
-        ))}
-      </CommandList>
-    </Command>
+      search={search}
+      onSearchChange={onSearchChange}
+      placeholder={t("Search keys...")}
+      inputLabel={t("Search terminal keys")}
+      emptyText={t("No matching keys.")}
+      filter={subsequenceFilter}
+      focusCurrent
+      onAction={(id) => onSelect(id as MobileTerminalShortcutAction)}
+      sections={OPTION_GROUPS.map((group) => ({
+        heading: t(OPTION_GROUP_LABELS[group]),
+        items: MOBILE_TERMINAL_SHORTCUT_OPTIONS.filter(
+          (option) => option.group === group,
+        ).map((option) => ({
+          id: option.id,
+          textValue: [
+            option.id,
+            option.label,
+            t(option.label),
+            option.defaultButtonLabel,
+            group,
+            t(OPTION_GROUP_LABELS[group]),
+          ].join(" "),
+          current: option.id === value,
+          className: "mobile-shortcut-key-option",
+          "aria-label":
+            option.id === value
+              ? t("{key}, selected", { key: t(option.label) })
+              : t(option.label),
+          children: (
+            <>
+              <span>{t(option.label)}</span>
+              <Kbd>{option.defaultButtonLabel}</Kbd>
+              <Check size={13} aria-hidden="true" />
+            </>
+          ),
+        })),
+      }))}
+    />
   );
 }
 

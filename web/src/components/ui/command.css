@@ -1,9 +1,14 @@
-.command-popover {
-  /* The scaled trigger can sit less than sideOffset above the topbar edge. */
+.ui-popover.command-popover {
+  /* The scaled trigger can sit less than the offset above the topbar edge. */
   z-index: 130;
+  max-width: none;
+  overflow: hidden;
+}
+
+/* Sized inside the popover's zoom correction, like its content. */
+.command-popover .ui-popover-dialog {
   width: min(560px, calc(100vw / var(--ui-scale, 1) - 24px));
   padding: 0;
-  overflow: hidden;
 }
 
 .command {
@@ -24,17 +29,10 @@
 }
 
 .command-list {
-  max-height: min(
-    540px,
-    calc(100dvh / var(--ui-scale, 1) - 132px),
-    calc(
-      var(--radix-popover-content-available-height) /
-      var(--ui-scale, 1) -
-      54px
-    )
-  );
+  max-height: min(540px, calc(100dvh / var(--ui-scale, 1) - 132px));
   overflow: auto;
   padding: 6px;
+  outline: none;
 }
 
 .command-empty {
@@ -48,7 +46,7 @@
   padding: 4px 0;
 }
 
-.command-group [cmdk-group-heading] {
+.command-group-heading {
   padding: 6px 8px 5px;
   color: var(--muted);
   font-size: 11px;
@@ -69,7 +67,7 @@
   outline: none;
 }
 
-.command-item[aria-selected="true"] {
+.command-item[data-focused] {
   background: var(--accent-soft);
 }
 
@@ -78,7 +76,7 @@
   color: var(--danger-text);
 }
 
-.command-item.is-danger[aria-selected="true"] {
+.command-item.is-danger[data-focused] {
   background: var(--danger-soft);
 }
 
@@ -132,15 +130,7 @@
 }
 
 .mobile-shortcut-key-command .command-list {
-  max-height: min(
-    330px,
-    calc(100dvh / var(--ui-scale, 1) - 108px),
-    calc(
-      var(--radix-popover-content-available-height) /
-      var(--ui-scale, 1) -
-      50px
-    )
-  );
+  max-height: min(330px, calc(100dvh / var(--ui-scale, 1) - 108px));
   padding: 5px;
 }
 
@@ -148,7 +138,7 @@
   padding: 2px 0;
 }
 
-.mobile-shortcut-key-command .command-group [cmdk-group-heading] {
+.mobile-shortcut-key-command .command-group-heading {
   padding: 6px 7px 4px;
   font-size: 10px;
 }
@@ -159,19 +149,11 @@
     display: none;
   }
 
-  .command-popover {
+  .command-popover .ui-popover-dialog {
     width: calc(100vw / var(--ui-scale, 1) - 16px);
   }
 
   .command-list {
-    max-height: min(
-      calc(70dvh / var(--ui-scale, 1)),
-      520px,
-      calc(
-        var(--radix-popover-content-available-height) /
-        var(--ui-scale, 1) -
-        54px
-      )
-    );
+    max-height: min(calc(70dvh / var(--ui-scale, 1)), 520px);
   }
 }

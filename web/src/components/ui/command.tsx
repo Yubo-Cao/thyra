@@ -1,91 +1,60 @@
-import * as React from "react";
-import { Command as CommandPrimitive } from "cmdk";
-
-import { cn } from "../../utils";
+import { type ReactNode, Suspense } from "react";
+import { LazyCommandList } from "./lazyOverlays";
 import "./command.css";
 
-const Command = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive ref={ref} className={cn("command", className)} {...props} />
-));
-Command.displayName = CommandPrimitive.displayName;
-
-const CommandInput = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.Input>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.Input
-    ref={ref}
-    className={cn("command-input", className)}
-    {...props}
-  />
-));
-CommandInput.displayName = CommandPrimitive.Input.displayName;
-
-const CommandList = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.List
-    ref={ref}
-    className={cn("command-list", className)}
-    {...props}
-  />
-));
-CommandList.displayName = CommandPrimitive.List.displayName;
-
-const CommandEmpty = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.Empty>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.Empty
-    ref={ref}
-    className={cn("command-empty", className)}
-    {...props}
-  />
-));
-CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
-
-const CommandGroup = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.Group>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Group>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.Group
-    ref={ref}
-    className={cn("command-group", className)}
-    {...props}
-  />
-));
-CommandGroup.displayName = CommandPrimitive.Group.displayName;
-
-const CommandItem = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.Item
-    ref={ref}
-    className={cn("command-item", className)}
-    {...props}
-  />
-));
-CommandItem.displayName = CommandPrimitive.Item.displayName;
-
-const CommandShortcut = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLSpanElement>) => {
-  return <span className={cn("command-shortcut", className)} {...props} />;
+export type CommandListItem = {
+  id: string;
+  /** Plain text of the option, for filtering and type-to-select. */
+  textValue: string;
+  children: ReactNode;
+  disabled?: boolean;
+  danger?: boolean;
+  /** The current choice (`data-current`); `focusCurrent` lists start on it. */
+  current?: boolean;
+  /** Shown by the global tooltip, e.g. why the option is disabled. */
+  tooltip?: string;
+  "aria-label"?: string;
+  className?: string;
 };
-CommandShortcut.displayName = "CommandShortcut";
 
-export {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandShortcut,
+export type CommandListSection = { heading: string; items: CommandListItem[] };
+
+export type CommandListProps = {
+  sections: CommandListSection[];
+  search: string;
+  onSearchChange: (search: string) => void;
+  onAction: (id: string) => void;
+  placeholder: string;
+  /** Accessible name of the input and list; defaults to `placeholder`. */
+  inputLabel?: string;
+  emptyText: string;
+  /** Hides options whose `textValue` does not match; omit for pre-filtered sections. */
+  filter?: (textValue: string, search: string) => boolean;
+  /** Focus the current option instead of the input. */
+  focusCurrent?: boolean;
+  className?: string;
 };
+
+/** Case-insensitive match of the search's characters, in order. */
+export function subsequenceFilter(textValue: string, search: string) {
+  const text = textValue.toLowerCase();
+  let index = 0;
+  for (const char of search.trim().toLowerCase()) {
+    index = text.indexOf(char, index) + 1;
+    if (!index) return false;
+  }
+  return true;
+}
+
+/**
+ * A search field over a sectioned option list with keyboard navigation
+ * (arrows, Home/End, Enter). Renders nothing until the overlay chunk loads,
+ * so use it inside overlays (Popover, Dialog), which load that chunk.
+ */
+export function CommandList(props: CommandListProps) {
+  return (
+    <Suspense fallback={null}>
+      <LazyCommandList {...props} />
+    </Suspense>
+  );
+}
