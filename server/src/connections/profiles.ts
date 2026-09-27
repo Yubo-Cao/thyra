@@ -15,7 +15,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { defaultDataFile, publishDataFile } from "../config/data-paths";
+import { defaultDataFile } from "../config/data-paths";
 import { dirname, isAbsolute, join, win32 } from "node:path";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { nativeSocketPath } from "../config/server-config";
@@ -426,13 +426,6 @@ export class ConnectionProfileStore {
       }
       assertNotSymlink(this.path);
       if (!existsSync(this.path)) return;
-      if (
-        this.options.path === undefined &&
-        thyraEnv("CONNECTIONS_PATH") === undefined
-      ) {
-        // Clearing saved profiles must not restore the old registry next launch.
-        publishDataFile(`${this.path}.legacy-cleared`, "1\n");
-      }
       unlinkSync(this.path);
       try {
         const parentFd = openSync(

@@ -1,28 +1,17 @@
 import { afterEach, expect, test } from "bun:test";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
-  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  dataRoot,
-  defaultDataFile,
-  legacyDataRoot,
-  migrateDataFile,
-  migratedDataFile,
-  publishDataFile,
-  roamgateDataRoot,
-} from "./data-paths";
-import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
+import { dataRoot, defaultDataFile, publishDataFile } from "./data-paths";
 
 const roots: string[] = [];
 function home() {
@@ -53,73 +42,41 @@ test("fresh Unix and Windows data roots respect APPDATA", () => {
   ).toBeFalse();
 });
 
-for (const platform of ["linux", "win32"]) {
-  test(`copies all legacy data without resetting credentials (${platform})`, () => {
-    const root = home();
-    const appData = join(root, "AppData", "Roaming");
-    const token = "c".repeat(64);
-    const legacyToken = join(
-      legacyDataRoot(root, platform, appData),
-      "auth-token",
-    );
-    write(legacyToken, `${token}\n`, 0o400);
-    for (const name of ["settings.json", "connections.json"] as const) {
-      const legacy = join(root, ".config", "herdr-gui", name);
-      write(legacy, '{"version":1}\n');
-      const target = defaultDataFile(name, root, platform, appData);
-      expect(target).toBe(join(dataRoot(root, platform, appData), name));
-      expect(readFileSync(target, "utf8")).toBe(readFileSync(legacy, "utf8"));
-      expect(defaultDataFile(name, root, platform, appData)).toBe(target);
-    }
-    const target = defaultAuthTokenPath(
-      root,
-      platform as NodeJS.Platform,
-      appData,
-    );
-    expect(readFileSync(target, "utf8")).toBe(`${token}\n`);
-    if (process.platform !== "win32")
-      expect(statSync(target).mode & 0o777).toBe(0o400);
-    expect(loadOrCreateAuthToken(target)).toBe(token);
-    expect(readFileSync(legacyToken, "utf8")).toBe(`${token}\n`);
-    if (process.platform !== "win32")
-      expect(statSync(legacyToken).mode & 0o777).toBe(0o400);
-  });
-}
-
-test("new values win, including empty files and malformed data", () => {
+test("data files never read other product directories", () => {
   const root = home();
-  const legacy = join(root, ".config", "herdr-gui", "settings.json");
-  const target = join(dataRoot(root), "settings.json");
-  write(legacy, "old");
-  write(target, "");
-  migrateDataFile(target, legacy);
-  expect(readFileSync(target, "utf8")).toBe("");
-  write(target, "new");
-  migrateDataFile(target, legacy);
-  expect(readFileSync(target, "utf8")).toBe("new");
-  expect(readFileSync(legacy, "utf8")).toBe("old");
+  for (const product of ["roamgate", "herdr-gui"]) {
+    for (const name of ["auth-token", "settings.json", "connections.json"]) {
+      write(join(root, ".config", product, name), '{"version":1}\n');
+    }
+  }
+  for (const name of [
+    "auth-token",
+    "settings.json",
+    "connections.json",
+  ] as const) {
+    const target = defaultDataFile(name, root, "linux");
+    expect(target).toBe(join(root, ".config", "thyra", name));
+    expect(existsSync(target)).toBeFalse();
+  }
+  expect(existsSync(dataRoot(root, "linux"))).toBeFalse();
 });
 
-test("refuses legacy file/directory symlinks and permits a safe retry", () => {
+test("refuses symlinked data directories and files", () => {
   const root = home();
-  const legacy = join(root, ".config", "herdr-gui", "auth-token");
-  const target = join(dataRoot(root), "auth-token");
-  const secret = join(root, "secret");
-  write(secret, "d".repeat(64));
-  mkdirSync(dirname(legacy), { recursive: true });
-  symlinkSync(secret, legacy);
-  expect(() => migrateDataFile(target, legacy)).toThrow("symlink");
-  expect(existsSync(target)).toBeFalse();
-  rmSync(legacy);
-  write(legacy, "e".repeat(64));
-  migrateDataFile(target, legacy);
-  expect(readFileSync(target, "utf8")).toBe("e".repeat(64));
-  expect(readFileSync(secret, "utf8")).toBe("d".repeat(64));
-  const other = join(root, "other", "settings.json");
-  symlinkSync(dirname(legacy), dirname(other));
-  expect(() =>
-    migrateDataFile(join(dataRoot(root), "settings.json"), other),
-  ).toThrow("symlink");
+  const elsewhere = join(root, "elsewhere");
+  mkdirSync(elsewhere);
+  mkdirSync(join(root, ".config"));
+  symlinkSync(elsewhere, dataRoot(root, "linux"));
+  expect(() => defaultDataFile("settings.json", root, "linux")).toThrow(
+    "symlink",
+  );
+  rmSync(dataRoot(root, "linux"));
+  mkdirSync(dataRoot(root, "linux"));
+  symlinkSync(
+    join(elsewhere, "token"),
+    join(dataRoot(root, "linux"), "auth-token"),
+  );
+  expect(() => defaultDataFile("auth-token", root, "linux")).toThrow("symlink");
 });
 
 test("failed publication leaves no partial target and retries without overwriting", () => {
@@ -134,53 +91,15 @@ test("failed publication leaves no partial target and retries without overwritin
   expect(readdirSync(dirname(target))).toEqual(["settings.json"]);
 });
 
-test("concurrent first use publishes one complete legacy token", async () => {
+test("settings caller saves privately; clearing profiles stays cleared on next launch", async () => {
   const root = home();
-  const legacy = join(root, ".config", "herdr-gui", "auth-token");
-  write(legacy, `${"f".repeat(64)}\n`);
-  const script = `import {defaultDataFile} from ${JSON.stringify(join(import.meta.dir, "data-paths.ts"))}; defaultDataFile("auth-token", process.argv[1], "linux");`;
-  const children = Array.from({ length: 6 }, () =>
-    Bun.spawn([process.execPath, "-e", script, root], {
-      stdout: "ignore",
-      stderr: "pipe",
-    }),
+  const current = dataRoot(
+    root,
+    process.platform,
+    join(root, "AppData", "Roaming"),
   );
-  for (const child of children) expect(await child.exited).toBe(0);
-  expect(readFileSync(join(dataRoot(root), "auth-token"), "utf8")).toBe(
-    `${"f".repeat(64)}\n`,
-  );
-  expect(readdirSync(dataRoot(root))).toEqual(["auth-token"]);
-});
-
-test("unreadable legacy credentials fail rather than generate a new token", () => {
-  if (process.platform === "win32" || process.getuid?.() === 0) return;
-  const root = home();
-  const legacy = join(legacyDataRoot(root), "auth-token");
-  write(legacy, "a".repeat(64));
-  chmodSync(legacy, 0);
-  try {
-    expect(() => defaultDataFile("auth-token", root)).toThrow();
-  } finally {
-    chmodSync(legacy, 0o600);
-  }
-  expect(existsSync(join(dataRoot(root), "auth-token"))).toBeFalse();
-});
-
-test("invalid legacy settings stop migration without publishing a reset", () => {
-  const root = home();
-  const legacy = join(root, ".config", "herdr-gui", "settings.json");
-  write(legacy, "{broken");
-  for (let retry = 0; retry < 2; retry++) {
-    expect(() => defaultDataFile("settings.json", root)).toThrow();
-    expect(existsSync(join(dataRoot(root), "settings.json"))).toBeFalse();
-  }
-  expect(readFileSync(legacy, "utf8")).toBe("{broken");
-});
-
-test("settings caller migrates and saves privately; clearing profiles stays cleared on next launch", async () => {
-  const root = home();
   write(
-    join(root, ".config", "herdr-gui", "settings.json"),
+    join(current, "settings.json"),
     JSON.stringify({ version: 1, custom: { saved: "kept" } }),
   );
   const registry = JSON.stringify({
@@ -197,7 +116,8 @@ test("settings caller migrates and saves privately; clearing profiles stays clea
       },
     ],
   });
-  write(join(root, ".config", "herdr-gui", "connections.json"), registry);
+  const connections = join(current, "connections.json");
+  write(connections, registry);
   const script = `
     import { readGuiSettings, updateGuiSettings, guiSettingsPath } from ${JSON.stringify(join(import.meta.dir, "gui-settings.ts"))};
     import { ConnectionProfileStore } from ${JSON.stringify(join(import.meta.dir, "../connections/profiles.ts"))};
@@ -209,7 +129,7 @@ test("settings caller migrates and saves privately; clearing profiles stays clea
     const store = new ConnectionProfileStore();
     if (!store.load()) throw new Error("lost profiles");
     await store.clear();
-    if (new ConnectionProfileStore().load() !== null) throw new Error("legacy profiles resurrected");
+    if (new ConnectionProfileStore().load() !== null) throw new Error("profiles resurrected");
   `;
   const child = Bun.spawn([process.execPath, "-e", script], {
     env: {
@@ -218,7 +138,6 @@ test("settings caller migrates and saves privately; clearing profiles stays clea
       USERPROFILE: root,
       APPDATA: join(root, "AppData", "Roaming"),
       THYRA_CONNECTIONS_PATH: undefined,
-      HERDR_GUI_CONNECTIONS_PATH: undefined,
     },
     stdout: "ignore",
     stderr: "pipe",
@@ -226,12 +145,8 @@ test("settings caller migrates and saves privately; clearing profiles stays clea
   const stderr = await new Response(child.stderr).text();
   expect(stderr).toBe("");
   expect(await child.exited).toBe(0);
-  expect(
-    readFileSync(
-      join(root, ".config", "herdr-gui", "connections.json"),
-      "utf8",
-    ),
-  ).toBe(registry);
+  expect(existsSync(connections)).toBeFalse();
+  expect(readdirSync(current)).toEqual(["settings.json"]);
 });
 
 test("concurrent fresh authentication returns the same complete token", async () => {
@@ -257,11 +172,11 @@ test("concurrent fresh authentication returns the same complete token", async ()
   expect(readdirSync(dirname(target))).toEqual(["auth-token"]);
 });
 
-test("plugin URL reads legacy files without migrating and prefers new paths", async () => {
+test("plugin URL reads only the Thyra env file and token", async () => {
   const root = home();
   const appData = join(root, "AppData", "Roaming");
-  const legacy = legacyDataRoot(root, process.platform, appData);
   const current = dataRoot(root, process.platform, appData);
+  const legacy = join(dirname(current), "herdr-gui");
   write(join(legacy, "herdr-gui.env"), "HOST=0.0.0.0\nPORT=8890\n");
   write(join(legacy, "auth-token"), `${"c".repeat(64)}\n`);
   const script = `import { computeUrl } from ${JSON.stringify(join(import.meta.dir, "../../..", "scripts/studio-plugin.ts"))}; console.log(computeUrl());`;
@@ -276,47 +191,8 @@ test("plugin URL reads legacy files without migrating and prefers new paths", as
     expect(await child.exited).toBe(0);
     return value;
   };
-  expect(await invoke()).toBe(`http://localhost:8890/?token=${"c".repeat(64)}`);
-  expect(existsSync(current)).toBeFalse();
-  write(join(current, "thyra.env"), "HOST=127.0.0.1\nPORT=8891\n");
-  expect(await invoke()).toBe("http://127.0.0.1:8891");
-  expect(readFileSync(join(legacy, "herdr-gui.env"), "utf8")).toBe(
-    "HOST=0.0.0.0\nPORT=8890\n",
-  );
-});
-
-test("Roamgate data wins over herdr-gui data and copies once", () => {
-  const root = home();
-  const roamgate = roamgateDataRoot(root, "linux");
-  expect(roamgate).toBe(join(root, ".config", "roamgate"));
-  write(join(roamgate, "settings.json"), '{"from":"roamgate"}\n');
-  write(
-    join(root, ".config", "herdr-gui", "settings.json"),
-    '{"from":"gui"}\n',
-  );
-  write(join(roamgate, "web-push.json"), "{}\n");
-  const settings = defaultDataFile("settings.json", root, "linux");
-  expect(readFileSync(settings, "utf8")).toBe('{"from":"roamgate"}\n');
-  expect(
-    readFileSync(migratedDataFile("web-push.json", root, "linux"), "utf8"),
-  ).toBe("{}\n");
-  write(join(roamgate, "settings.json"), '{"from":"later"}\n');
-  expect(
-    readFileSync(defaultDataFile("settings.json", root, "linux"), "utf8"),
-  ).toBe('{"from":"roamgate"}\n');
-});
-
-test("a Roamgate cleared marker skips herdr-gui connections", () => {
-  const root = home();
-  write(
-    join(roamgateDataRoot(root, "linux"), "connections.json.legacy-cleared"),
-    "1\n",
-  );
-  write(
-    join(root, ".config", "herdr-gui", "connections.json"),
-    '{"version":1}\n',
-  );
-  expect(
-    existsSync(defaultDataFile("connections.json", root, "linux")),
-  ).toBeFalse();
+  expect(await invoke()).toBe("http://127.0.0.1:8787");
+  write(join(current, "thyra.env"), "HOST=0.0.0.0\nPORT=8891\n");
+  write(join(current, "auth-token"), `${"d".repeat(64)}\n`);
+  expect(await invoke()).toBe(`http://localhost:8891/?token=${"d".repeat(64)}`);
 });

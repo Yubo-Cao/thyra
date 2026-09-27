@@ -217,7 +217,7 @@ test("production dispatcher isolates two local profiles and profile CRUD", async
     ...process.env,
     HOST: "127.0.0.1",
     PORT: "0",
-    HERDR_GUI_CONNECTIONS_PATH: registryPath,
+    THYRA_CONNECTIONS_PATH: registryPath,
   };
   delete env.HERDR_SOCKET_PATH;
   delete env.HERDR_CLIENT_SOCKET_PATH;
@@ -490,7 +490,7 @@ for (const { protocol, welcomeProtocol, accepted } of [
       ...process.env,
       HOST: "127.0.0.1",
       PORT: "0",
-      HERDR_GUI_CONNECTIONS_PATH: join(root, "connections.json"),
+      THYRA_CONNECTIONS_PATH: join(root, "connections.json"),
       HERDR_SOCKET_PATH: profile.control_socket_path,
       HERDR_CLIENT_SOCKET_PATH: profile.client_socket_path,
     };
@@ -592,7 +592,7 @@ test("production routing bootstraps only a verified empty session and serializes
     ...process.env,
     HOST: "127.0.0.1",
     PORT: "0",
-    HERDR_GUI_CONNECTIONS_PATH: registryPath,
+    THYRA_CONNECTIONS_PATH: registryPath,
   };
   for (const key of [
     "HERDR_SOCKET_PATH",

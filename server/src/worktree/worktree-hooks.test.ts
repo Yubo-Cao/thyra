@@ -58,11 +58,8 @@ describe("worktree hook runner", () => {
             setup:
               'printf \'%s|%s|%s\' "$PASEO_HOOK" "$PASEO_CHECKOUT_PATH" "$PASEO_SOURCE_CHECKOUT_PATH"' +
               ' && test "$THYRA_HOOK_EVENT" = "worktree.created"' +
-              ' && test "$THYRA_HOOK_EVENT" = "$HERDR_GUI_HOOK_EVENT"' +
               ' && test "$THYRA_HOOK_CHECKOUT_PATH" = "$PASEO_CHECKOUT_PATH"' +
-              ' && test "$THYRA_HOOK_CHECKOUT_PATH" = "$HERDR_GUI_HOOK_CHECKOUT_PATH"' +
-              ' && test "$THYRA_HOOK_SOURCE_CHECKOUT_PATH" = "$PASEO_SOURCE_CHECKOUT_PATH"' +
-              ' && test "$THYRA_HOOK_SOURCE_CHECKOUT_PATH" = "$HERDR_GUI_HOOK_SOURCE_CHECKOUT_PATH"',
+              ' && test "$THYRA_HOOK_SOURCE_CHECKOUT_PATH" = "$PASEO_SOURCE_CHECKOUT_PATH"',
           },
         }),
       );

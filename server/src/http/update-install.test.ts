@@ -90,7 +90,7 @@ function createUpdateFixture({ badDigest = false } = {}) {
 function installRequest() {
   return new Request("http://localhost/api/update/install", {
     method: "POST",
-    headers: { "x-herdr-gui-update": "1" },
+    headers: { "x-thyra-update": "1" },
   });
 }
 
@@ -110,8 +110,8 @@ describe("automatic update installation", () => {
           argv: [fixture.installPath],
         },
         environment: {
-          HERDR_GUI_UPDATE_BASE_URL: fixture.baseUrl,
-          HERDR_GUI_RESTART_SUPERVISOR: "1",
+          THYRA_UPDATE_BASE_URL: fixture.baseUrl,
+          THYRA_RESTART_SUPERVISOR: "1",
         },
         scheduleProcessExit: () => {
           exitScheduled = true;
@@ -158,8 +158,8 @@ describe("automatic update installation", () => {
           argv: [fixture.installPath],
         },
         environment: {
-          HERDR_GUI_UPDATE_BASE_URL: fixture.baseUrl,
-          HERDR_GUI_RESTART_SUPERVISOR: "1",
+          THYRA_UPDATE_BASE_URL: fixture.baseUrl,
+          THYRA_RESTART_SUPERVISOR: "1",
         },
         scheduleProcessExit: () => {
           exitScheduled = true;

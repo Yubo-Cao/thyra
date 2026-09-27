@@ -121,7 +121,7 @@ Service actions:
   uninstall                   stop and remove the service definition
   Run \`thyra service --help\` for service details.
 
-Options (flags override env vars; THYRA_* overrides HERDR_GUI_*):
+Options (flags override env vars):
   --host <addr>              listen address        (env HOST,            default 127.0.0.1)
   --port <n>                 listen port           (env PORT,            default 8787)
   --password <pw>            fixed login password  (env THYRA_PASSWORD; otherwise a token is generated)

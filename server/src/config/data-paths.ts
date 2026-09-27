@@ -3,13 +3,11 @@ import {
   closeSync,
   constants,
   fchmodSync,
-  fstatSync,
   fsyncSync,
   linkSync,
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -29,23 +27,6 @@ export function dataRoot(
   );
 }
 
-/** Where the same files lived before the split from Roamgate. */
-export function roamgateDataRoot(
-  homeDir = homedir(),
-  platform: string = process.platform,
-  appDataDir = process.env.APPDATA,
-): string {
-  return join(dirname(dataRoot(homeDir, platform, appDataDir)), "roamgate");
-}
-
-export function legacyDataRoot(
-  homeDir = homedir(),
-  platform: string = process.platform,
-  appDataDir = process.env.APPDATA,
-): string {
-  return join(dirname(dataRoot(homeDir, platform, appDataDir)), "herdr-gui");
-}
-
 function statIfPresent(path: string) {
   try {
     return lstatSync(path);
@@ -56,7 +37,7 @@ function statIfPresent(path: string) {
 }
 
 // Check the configuration parent, product directory and file; never follow a
-// legacy symlink, including dangling links. Explicit override paths do not migrate.
+// symlink, including dangling links.
 export function assertSafeDataPath(path: string): void {
   for (const entry of [dirname(dirname(path)), dirname(path), path]) {
     const stat = statIfPresent(entry);
@@ -102,78 +83,13 @@ export function publishDataFile(
   }
 }
 
-/** Copy only missing files. Originals and concurrent/new values always win. */
-export function migrateDataFile(
-  path: string,
-  legacyPath: string,
-  validate?: (contents: Buffer) => void,
-): string {
-  assertSafeDataPath(path);
-  if (statIfPresent(path)) return path;
-  assertSafeDataPath(legacyPath);
-  if (!statIfPresent(legacyPath)) return path;
-  const fd = openSync(
-    legacyPath,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
-  );
-  try {
-    const stat = fstatSync(fd);
-    if (!stat.isFile())
-      throw new Error(`legacy data is not a regular file: ${legacyPath}`);
-    const contents = readFileSync(fd);
-    validate?.(contents);
-    publishDataFile(path, contents, stat.mode & 0o600);
-  } finally {
-    closeSync(fd);
-  }
-  return path;
-}
-
 export function defaultDataFile(
   name: "auth-token" | "settings.json" | "connections.json",
   homeDir = homedir(),
   platform: string = process.platform,
   appDataDir = process.env.APPDATA,
 ): string {
-  // Settings and connections historically used ~/.config on Windows too.
-  const legacyRoot =
-    name === "auth-token"
-      ? legacyDataRoot(homeDir, platform, appDataDir)
-      : join(homeDir, ".config", "herdr-gui");
   const path = join(dataRoot(homeDir, platform, appDataDir), name);
-  const roamgatePath = join(
-    roamgateDataRoot(homeDir, platform, appDataDir),
-    name,
-  );
-  const validate =
-    name === "settings.json"
-      ? (contents: Buffer) => {
-          JSON.parse(contents.toString("utf8"));
-        }
-      : undefined;
-  if (name === "connections.json") {
-    // A cleared marker means the herdr-gui profiles were dismissed on purpose.
-    const cleared = `${path}.legacy-cleared`;
-    const roamgateCleared = `${roamgatePath}.legacy-cleared`;
-    assertSafeDataPath(cleared);
-    assertSafeDataPath(roamgateCleared);
-    if (statIfPresent(cleared)) return path;
-    if (statIfPresent(roamgateCleared))
-      return migrateDataFile(path, roamgatePath, validate);
-  }
-  migrateDataFile(path, roamgatePath, validate);
-  return migrateDataFile(path, join(legacyRoot, name), validate);
-}
-
-/** A file under the data root, copied once from the Roamgate data root. */
-export function migratedDataFile(
-  name: string,
-  homeDir = homedir(),
-  platform: string = process.platform,
-  appDataDir = process.env.APPDATA,
-): string {
-  return migrateDataFile(
-    join(dataRoot(homeDir, platform, appDataDir), name),
-    join(roamgateDataRoot(homeDir, platform, appDataDir), name),
-  );
+  assertSafeDataPath(path);
+  return path;
 }

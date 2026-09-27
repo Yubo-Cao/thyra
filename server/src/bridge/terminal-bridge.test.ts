@@ -1280,7 +1280,7 @@ describe("terminal bridge sharing", () => {
 });
 
 test("navigation mode uses exactly the terminal backend decision", async () => {
-  const disabled = process.env.HERDR_GUI_DISABLE_ENDPOINT;
+  const disabled = process.env.THYRA_DISABLE_ENDPOINT;
   try {
     for (const [protocol, lookup, disable, expected] of [
       [22, true, false, "browser-local"],
@@ -1288,8 +1288,8 @@ test("navigation mode uses exactly the terminal backend decision", async () => {
       [22, false, false, "shared"],
       [20, true, false, "shared"],
     ] as const) {
-      if (disable) process.env.HERDR_GUI_DISABLE_ENDPOINT = "1";
-      else delete process.env.HERDR_GUI_DISABLE_ENDPOINT;
+      if (disable) process.env.THYRA_DISABLE_ENDPOINT = "1";
+      else delete process.env.THYRA_DISABLE_ENDPOINT;
       const bridge = createTerminalBridge({
         clientSocketPath: "/unused",
         herdrProtocol: async () => protocol,
@@ -1302,8 +1302,8 @@ test("navigation mode uses exactly the terminal backend decision", async () => {
       bridge.dispose();
     }
   } finally {
-    if (disabled === undefined) delete process.env.HERDR_GUI_DISABLE_ENDPOINT;
-    else process.env.HERDR_GUI_DISABLE_ENDPOINT = disabled;
+    if (disabled === undefined) delete process.env.THYRA_DISABLE_ENDPOINT;
+    else process.env.THYRA_DISABLE_ENDPOINT = disabled;
   }
 });
 

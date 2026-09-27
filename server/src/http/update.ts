@@ -45,10 +45,7 @@ const UPDATE_CHECK_CACHE_MS = 5 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 15000;
 const UPDATE_INSTALL_TIMEOUT_MS = 120000;
 function hasUpdateConfirmation(req: Request): boolean {
-  return (
-    (req.headers.get("x-thyra-update") ??
-      req.headers.get("x-herdr-gui-update")) === "1"
-  );
+  return req.headers.get("x-thyra-update") === "1";
 }
 export const UPDATE_HTTP_IDLE_TIMEOUT_SECONDS =
   Math.ceil((UPDATE_CHECK_TIMEOUT_MS + UPDATE_INSTALL_TIMEOUT_MS) / 1000) + 15;
@@ -375,7 +372,7 @@ export function createUpdateHandlers({
       ],
       UPDATE_CHECK_TIMEOUT_MS,
     );
-    // Every Thyra release has a manifest. Never probe legacy archives.
+    // Every release has a manifest; never guess an archive without one.
     if (manifestResult.code !== 0) {
       throw processFailure(manifestResult, "update manifest download");
     }
@@ -425,8 +422,7 @@ export function createUpdateHandlers({
         current_version: appVersion,
         update_available: false,
         can_auto_update: false,
-        reason:
-          "Update checks are disabled by THYRA_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
+        reason: "Update checks are disabled by THYRA_DISABLE_UPDATE_CHECK.",
         platform: updateTarget.platform,
         ...sourceDetails(),
       };

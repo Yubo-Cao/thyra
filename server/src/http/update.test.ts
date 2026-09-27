@@ -25,7 +25,7 @@ const linuxRuntime = {
 };
 
 const launchdEnvironment = {
-  XPC_SERVICE_NAME: "dev.herdr.herdr-gui",
+  XPC_SERVICE_NAME: "dev.thyra",
 };
 const systemdEnvironment = {
   INVOCATION_ID: "invocation-id",
@@ -60,14 +60,14 @@ function updateManifest(
 
 function updateCheckRequest() {
   return new Request("http://localhost/api/update/check", {
-    headers: { "x-herdr-gui-update": "1" },
+    headers: { "x-thyra-update": "1" },
   });
 }
 
 function updateInstallRequest(headers: Record<string, string> = {}) {
   return new Request("http://localhost/api/update/install", {
     method: "POST",
-    headers: { "x-herdr-gui-update": "1", ...headers },
+    headers: { "x-thyra-update": "1", ...headers },
   });
 }
 
@@ -77,7 +77,7 @@ describe("update helpers", () => {
     expect(UPDATE_HTTP_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 
-  test("parses bounded Thyra manifests and rejects legacy identities", () => {
+  test("parses bounded Thyra manifests and rejects other product identities", () => {
     expect(parseUpdateManifest(updateManifest("0.2.17", "linux-x64"))).toEqual({
       schema: 1,
       name: "thyra",
@@ -94,10 +94,10 @@ describe("update helpers", () => {
       "invalid update manifest",
     );
 
-    for (const legacy of ["herdr-gui", "herdr-studio"]) {
+    for (const name of ["roamgate", "herdr-gui"]) {
       expect(() =>
         parseUpdateManifest(
-          updateManifest("9.8.7", "linux-x64").replaceAll("thyra", legacy),
+          updateManifest("9.8.7", "linux-x64").replaceAll("thyra", name),
         ),
       ).toThrow("invalid update manifest");
     }
@@ -171,7 +171,7 @@ describe("update helpers", () => {
     ).toBe(true);
     expect(
       isSupervisorManagedEnvironment({
-        XPC_SERVICE_NAME: "dev.herdr.herdr-gui",
+        XPC_SERVICE_NAME: "dev.thyra",
       }),
     ).toBe(true);
     expect(isSupervisorManagedEnvironment({ XPC_SERVICE_NAME: "0" })).toBe(
@@ -180,12 +180,12 @@ describe("update helpers", () => {
     expect(
       isSupervisorManagedEnvironment({
         INVOCATION_ID: "invocation-id",
-        HERDR_GUI_RESTART_SUPERVISOR: "0",
+        THYRA_RESTART_SUPERVISOR: "0",
       }),
     ).toBe(false);
     expect(
       isSupervisorManagedEnvironment({
-        HERDR_GUI_RESTART_SUPERVISOR: "1",
+        THYRA_RESTART_SUPERVISOR: "1",
       }),
     ).toBe(true);
   });
@@ -272,7 +272,7 @@ describe("update helpers", () => {
       runtime: linuxRuntime,
       environment: {
         ...systemdEnvironment,
-        HERDR_GUI_UPDATE_BASE_URL: "https://downloads.example.com/herdr/",
+        THYRA_UPDATE_BASE_URL: "https://downloads.example.com/herdr/",
       },
     });
 
@@ -350,7 +350,7 @@ describe("update helpers", () => {
     expect(commands[0].join(" ")).not.toContain(".tar.xz");
   });
 
-  test("rejects malformed manifests instead of treating them as legacy", async () => {
+  test("rejects malformed manifests", async () => {
     let callCount = 0;
     const handlers = createUpdateHandlers({
       appVersion: "0.2.16",
@@ -381,7 +381,7 @@ describe("update helpers", () => {
       runtime: linuxRuntime,
       environment: {
         ...systemdEnvironment,
-        HERDR_GUI_UPDATE_BASE_URL: credentialBearingUpdateBaseUrl(),
+        THYRA_UPDATE_BASE_URL: credentialBearingUpdateBaseUrl(),
       },
     });
 
@@ -766,7 +766,6 @@ describe("update helpers", () => {
       shQuote,
       environment: {
         THYRA_DISABLE_UPDATE_CHECK: "1",
-        HERDR_GUI_DISABLE_UPDATE_CHECK: "0",
       },
     });
     const response = await handlers.handleUpdateCheck(updateCheckRequest());
@@ -775,8 +774,7 @@ describe("update helpers", () => {
       current_version: "0.2.6",
       update_available: false,
       can_auto_update: false,
-      reason:
-        "Update checks are disabled by THYRA_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
+      reason: "Update checks are disabled by THYRA_DISABLE_UPDATE_CHECK.",
     });
   });
 
@@ -797,7 +795,7 @@ describe("update helpers", () => {
   });
 });
 
-test("Thyra and legacy confirmation headers share the same update boundary", async () => {
+test("only the Thyra confirmation header crosses the update boundary", async () => {
   const handlers = createUpdateHandlers({
     appVersion: "0.7.0",
     runtime: linuxRuntime,
@@ -809,20 +807,13 @@ test("Thyra and legacy confirmation headers share the same update boundary", asy
       stderr: "",
     }),
   });
-  for (const header of ["x-thyra-update", "x-herdr-gui-update"]) {
-    const response = await handlers.handleUpdateCheck(
-      new Request("http://localhost/api/update/check", {
-        headers: { [header]: "1" },
-      }),
+  const check = (headers: Record<string, string>) =>
+    handlers.handleUpdateCheck(
+      new Request("http://localhost/api/update/check", { headers }),
     );
-    expect(response.status).toBe(200);
-    const denied = await handlers.handleUpdateCheck(
-      new Request("http://localhost/api/update/check", {
-        headers: { [header]: "0" },
-      }),
-    );
-    expect(denied.status).toBe(403);
-  }
+  expect((await check({ "x-thyra-update": "1" })).status).toBe(200);
+  expect((await check({ "x-thyra-update": "0" })).status).toBe(403);
+  expect((await check({ "x-herdr-gui-update": "1" })).status).toBe(403);
   const denied = new Request("http://localhost/api/update/install", {
     method: "POST",
     headers: { "x-thyra-update": "", "x-herdr-gui-update": "1" },

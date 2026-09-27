@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import webpush from "web-push";
 import {
   assertSafeDataPath,
-  migratedDataFile,
+  dataRoot,
   publishDataFile,
 } from "../config/data-paths";
 import { thyraEnv } from "../config/environment";
@@ -137,7 +137,7 @@ export function createWebPushService(
   const path =
     options.path ??
     thyraEnv("WEB_PUSH_PATH") ??
-    migratedDataFile("web-push.json");
+    join(dataRoot(), "web-push.json");
   const send: typeof webpush.sendNotification =
     options.send ??
     (async (subscription, payload, settings) => {

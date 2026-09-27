@@ -29,11 +29,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  dataRoot,
-  legacyDataRoot,
-  assertSafeDataPath,
-} from "../server/src/config/data-paths";
+import { assertSafeDataPath, dataRoot } from "../server/src/config/data-paths";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BINARY_CANDIDATES =
@@ -230,17 +226,11 @@ function configDir(): string {
   return dataRoot();
 }
 
-// URL/status are read-only: prefer the new file, but do not migrate on inspection.
+// URL/status are read-only and never follow a symlinked data path.
 function readableConfigFile(dir: string, name: string): string {
   const path = join(dir, name);
   assertSafeDataPath(path);
-  if (existsSync(path) || dir !== configDir()) return path;
-  const legacy = join(
-    legacyDataRoot(),
-    name === "thyra.env" ? "herdr-gui.env" : name,
-  );
-  assertSafeDataPath(legacy);
-  return legacy;
+  return path;
 }
 
 // Mirrors the server's service env parser: leading whitespace, an optional
@@ -277,11 +267,7 @@ export function computeUrl(dir = configDir()): string {
     host = readServiceEnv(contents, "HOST") ?? host;
     port = readServiceEnv(contents, "PORT") ?? port;
     usesFixedPassword =
-      (
-        readServiceEnv(contents, "THYRA_PASSWORD") ??
-        readServiceEnv(contents, "HERDR_GUI_PASSWORD") ??
-        ""
-      ).length > 0;
+      (readServiceEnv(contents, "THYRA_PASSWORD") ?? "").length > 0;
   }
   const anyHost = host === "0.0.0.0" || host === "::";
   const browserHost = anyHost ? "localhost" : host;

@@ -7,14 +7,12 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import legacyDefinitions from "./service-legacy-definitions.test.json";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  runServiceCommand as runServiceCommandWithLegacyCheck,
+  runServiceCommand as runServiceCommandUnmocked,
   queryWindowsTask,
   SERVICE_COMMAND_CONTINUE,
 } from "./service-manager";
@@ -23,32 +21,18 @@ import {
   renderSystemdService,
   renderWindowsTaskDefinition,
   resolveServicePaths,
-  resolveLegacyServicePaths,
-  escapeSystemdExecPath,
 } from "./service-definitions";
 
-// Existing lifecycle cases model a host without legacy services. Dedicated
-// migration cases below exercise the real preflight command/error paths.
+// Never let a test reach the real service manager by accident.
 function runServiceCommand(
   args: string[],
-  dependencies: Parameters<typeof runServiceCommandWithLegacyCheck>[1] = {},
+  dependencies: Parameters<typeof runServiceCommandUnmocked>[1] = {},
 ) {
-  return runServiceCommandWithLegacyCheck(args, {
-    ...dependencies,
-    runCommand: (argv, options) => {
-      if (argv.includes("herdr-gui.service")) return 4;
-      if (
-        argv[0] === "launchctl" &&
-        argv[1] === "print" &&
-        /^gui\/\d+$/.test(argv[2] ?? "")
-      )
-        return 0;
-      if (argv.join(" ").includes("dev.herdr.herdr-gui"))
-        return argv[0] === "powershell.exe" ? 3 : 113;
-      if (!dependencies.runCommand)
-        throw new Error("native commands must be mocked");
-      return dependencies.runCommand(argv, options);
+  return runServiceCommandUnmocked(args, {
+    runCommand: () => {
+      throw new Error("native commands must be mocked");
     },
+    ...dependencies,
   });
 }
 
@@ -58,36 +42,6 @@ function tempHome(): string {
   const path = mkdtempSync(join(tmpdir(), "thyra-service-"));
   tempDirs.push(path);
   return path;
-}
-
-// Golden templates captured from tag v0.7.0, independent of current renderers.
-function publishedLegacyDefinition(
-  platform: keyof typeof legacyDefinitions,
-  homeDir: string,
-  binary = join(homeDir, "thyra"),
-): string {
-  const paths = resolveLegacyServicePaths(platform, homeDir);
-  const values: Record<string, string> = {
-    BINARY_PATH: resolve(binary),
-    CONFIG_PATH: paths.config,
-    TASK_NAME: paths.taskName ?? "",
-    STDOUT_PATH: join(homeDir, "Library", "Logs", "herdr-gui.stdout.log"),
-    STDERR_PATH: join(homeDir, "Library", "Logs", "herdr-gui.stderr.log"),
-  };
-  return legacyDefinitions[platform].replace(
-    /BINARY_PATH|CONFIG_PATH|TASK_NAME|STDOUT_PATH|STDERR_PATH/g,
-    (key) => {
-      const value = values[key];
-      if (platform === "systemd") return escapeSystemdExecPath(value);
-      if (platform === "windows-task") return value.replaceAll("'", "''");
-      return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&apos;");
-    },
-  );
 }
 
 function isWindowsTaskQuery(argv: string[]): boolean {
@@ -370,7 +324,7 @@ describe("service commands", () => {
     const homeDir = tempHome();
     const configPath = join(homeDir, ".config", "thyra", "thyra.env");
     mkdirSync(join(homeDir, ".config", "thyra"), { recursive: true });
-    writeFileSync(configPath, "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=secret\n");
+    writeFileSync(configPath, "HOST=0.0.0.0\nTHYRA_PASSWORD=secret\n");
     chmodSync(configPath, 0o644);
 
     const code = runServiceCommand(["service", "install"], {
@@ -386,7 +340,7 @@ describe("service commands", () => {
 
     expect(code).toBe(0);
     expect(readFileSync(configPath, "utf8")).toBe(
-      "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=secret\n",
+      "HOST=0.0.0.0\nTHYRA_PASSWORD=secret\n",
     );
     if (process.platform !== "win32") {
       expect(statSync(configPath).mode & 0o777).toBe(0o600);
@@ -895,7 +849,6 @@ describe("service commands", () => {
       "HOST",
       "PORT",
       "HERDR_SESSION",
-      "HERDR_GUI_RESTART_SUPERVISOR",
       "THYRA_RESTART_SUPERVISOR",
     ] as const;
     const previous = new Map(keys.map((key) => [key, process.env[key]]));
@@ -1030,674 +983,67 @@ describe("service commands", () => {
   });
 });
 
-describe("management after a 0.7.0 in-place update", () => {
-  for (const platform of ["linux", "darwin", "win32"]) {
-    for (const action of ["status", "restart", "reload", "uninstall"]) {
-      test(`${platform} ${action} manages the generated legacy service without migrating it`, () => {
-        const homeDir = tempHome();
-        const servicePlatform =
-          platform === "linux"
-            ? "systemd"
-            : platform === "darwin"
-              ? "launchd"
-              : "windows-task";
-        const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
-        const current = resolveServicePaths(servicePlatform, homeDir);
-        mkdirSync(dirname(legacy.definition), { recursive: true });
-        mkdirSync(dirname(legacy.config), { recursive: true });
-        const definition = publishedLegacyDefinition(servicePlatform, homeDir);
-        writeFileSync(legacy.definition, definition);
-        writeFileSync(legacy.config, "HOST=127.0.0.1\nPORT=8899\n");
-        const tokenPath = join(dirname(legacy.config), "auth-token");
-        writeFileSync(tokenPath, "a".repeat(64), { mode: 0o600 });
-        const commands: string[][] = [];
-        const logs: string[] = [];
-        expect(
-          runServiceCommandWithLegacyCheck(["service", "install", "--force"], {
-            runtime: {
-              platform,
-              homeDir,
-              execPath: join(homeDir, "thyra"),
-              argv: [],
-              uid: 501,
-            },
-            runCommand: () => {
-              throw new Error("must not activate a new service");
-            },
-            error: () => undefined,
-          }),
-        ).toBe(1);
-        const code = runServiceCommandWithLegacyCheck(["service", action], {
-          runtime: {
-            platform,
-            homeDir,
-            execPath: join(homeDir, "thyra"),
-            argv: [],
-            uid: 501,
-          },
-          runCommand: (argv) => {
-            commands.push(argv);
-            if (argv.includes("thyra.service")) return 4;
-            if (argv.includes("gui/501/dev.thyra")) return 113;
-            if (
-              isWindowsTaskQuery(argv) &&
-              argv.at(-1)?.includes(current.taskName!)
-            )
-              return 3;
-            return 0;
-          },
-          log: (message) => logs.push(message),
-        });
-        expect(code).toBe(0);
-        const last = commands.at(-1)!;
-        if (action === "uninstall") {
-          expect(
-            commands.some(
-              (argv) =>
-                argv.includes("disable") ||
-                argv.includes("bootout") ||
-                argv.includes("/Delete"),
-            ),
-          ).toBeTrue();
-          expect(existsSync(legacy.definition)).toBeFalse();
-        } else {
-          expect(last.join(" ")).toContain("herdr-gui");
-          expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
-        }
-        // Probes may inspect the new identity, but no mutation may target it.
-        for (const argv of commands) {
-          if (
-            argv.includes("status") ||
-            argv[1] === "print" ||
-            isWindowsTaskQuery(argv)
-          )
-            continue;
-          if (argv.includes("daemon-reload")) continue;
-          expect(argv.join(" ")).toContain("herdr-gui");
-        }
-        expect(readFileSync(legacy.config, "utf8")).toBe(
-          "HOST=127.0.0.1\nPORT=8899\n",
-        );
-        expect(readFileSync(tokenPath, "utf8")).toBe("a".repeat(64));
-        expect(existsSync(current.definition)).toBeFalse();
-        expect(existsSync(current.config)).toBeFalse();
-        expect(logs.join("\n")).toContain("legacy service");
-      });
-    }
-  }
-});
-
-describe("legacy management safety", () => {
-  for (const platform of ["linux", "darwin", "win32"]) {
-    const servicePlatform =
-      platform === "linux"
-        ? "systemd"
-        : platform === "darwin"
-          ? "launchd"
-          : "windows-task";
-    for (const state of [
-      "both definitions",
-      "current loaded",
-      "query failure",
-      "custom legacy",
-      "custom generated identity",
-      "custom generated script",
-      "another binary",
-      "legacy loaded only",
-    ]) {
-      test(`${platform} refuses ambiguous or unverified management: ${state}`, () => {
-        const homeDir = tempHome();
-        const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
-        const current = resolveServicePaths(servicePlatform, homeDir);
-        let definition = publishedLegacyDefinition(
-          servicePlatform,
-          homeDir,
-          state === "another binary" ? "/other/thyra" : "/opt/thyra",
-        );
-        if (state === "custom legacy") definition = "custom definition";
-        if (state === "custom generated identity") {
-          definition =
-            platform === "linux"
-              ? definition.replace("ExecStart=", "ExecStart=/custom/wrapper ")
-              : platform === "darwin"
-                ? definition.replace(
-                    "<string>dev.herdr.herdr-gui</string>",
-                    "<string>dev.thyra</string>",
-                  )
-                : definition.replace(
-                    "$taskName = ",
-                    "$taskName = 'custom'; # ",
-                  );
-        }
-        if (state === "custom generated script")
-          definition += "\nWrite-Output 'custom command'\n";
-        if (state !== "legacy loaded only") {
-          mkdirSync(dirname(legacy.definition), { recursive: true });
-          writeFileSync(legacy.definition, definition);
-        }
-        if (state === "both definitions") {
-          mkdirSync(dirname(current.definition), { recursive: true });
-          writeFileSync(
-            current.definition,
-            "# Generated by thyra service install.\n",
-          );
-        }
-        const customized =
-          state.startsWith("custom") || state === "another binary";
-        for (const action of ["status", "restart", "reload", "uninstall"]) {
-          const commands: string[][] = [];
-          expect(
-            runServiceCommandWithLegacyCheck(["service", action], {
-              runtime: {
-                platform,
-                homeDir,
-                execPath: "/opt/thyra",
-                argv: [],
-                uid: 501,
-              },
-              runCommand: (argv) => {
-                commands.push(argv);
-                if (argv[0] === "launchctl" && argv[2] === "gui/501") return 0;
-                if (customized) {
-                  if (argv.includes("thyra.service")) return 4;
-                  if (argv.includes("gui/501/dev.thyra")) return 113;
-                  if (
-                    isWindowsTaskQuery(argv) &&
-                    argv.at(-1)?.includes(current.taskName!)
-                  )
-                    return 3;
-                }
-                return state === "query failure" ? 5 : 0;
-              },
-              log: () => undefined,
-              error: () => undefined,
-            }),
-          ).toBe(1);
-          expect(
-            commands.every(
-              (argv) =>
-                argv.includes("status") ||
-                argv[1] === "print" ||
-                isWindowsTaskQuery(argv),
-            ),
-          ).toBeTrue();
-          if (customized) expect(commands).toHaveLength(0);
-          expect(existsSync(legacy.definition)).toBe(
-            state !== "legacy loaded only",
-          );
-          if (state !== "legacy loaded only")
-            expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
-          expect(existsSync(current.definition)).toBe(
-            state === "both definitions",
-          );
-        }
-      });
-    }
-
-    test(`${platform} preserves the legacy definition when stopping fails`, () => {
-      const homeDir = tempHome();
-      const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
-      const current = resolveServicePaths(servicePlatform, homeDir);
-      mkdirSync(dirname(legacy.definition), { recursive: true });
-      const definition = publishedLegacyDefinition(
-        servicePlatform,
-        homeDir,
-        "/opt/thyra",
-      );
-      writeFileSync(legacy.definition, definition);
-      const commands: string[][] = [];
-      expect(
-        runServiceCommandWithLegacyCheck(["service", "uninstall"], {
-          runtime: {
-            platform,
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: [],
-            uid: 501,
-          },
-          runCommand: (argv) => {
-            commands.push(argv);
-            if (argv.includes("thyra.service")) return 4;
-            if (argv.includes("gui/501/dev.thyra")) return 113;
-            if (
-              isWindowsTaskQuery(argv) &&
-              argv.at(-1)?.includes(current.taskName!)
-            )
-              return 3;
-            if (
-              argv.includes("disable") ||
-              argv.includes("bootout") ||
-              isWindowsTaskWait(argv)
-            )
-              return 7;
-            return 0;
-          },
-          log: () => undefined,
-        }),
-      ).toBe(7);
-      expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
-      expect(commands.some((argv) => argv.includes("/Delete"))).toBeFalse();
-    });
-  }
-
-  test("restores the original systemd definition and permissions if daemon-reload fails", () => {
-    const homeDir = tempHome();
-    const legacy = resolveLegacyServicePaths("systemd", homeDir);
-    const definition = publishedLegacyDefinition(
-      "systemd",
-      homeDir,
-      "/opt/thyra",
-    );
-    mkdirSync(dirname(legacy.definition), { recursive: true });
-    mkdirSync(dirname(legacy.config), { recursive: true });
-    writeFileSync(legacy.definition, definition);
-    // Explicit, so a restrictive umask cannot turn 0640 into 0600.
-    chmodSync(legacy.definition, 0o640);
-    writeFileSync(legacy.config, "HOST=127.0.0.1\n");
-    const tokenPath = join(dirname(legacy.config), "auth-token");
-    writeFileSync(tokenPath, "a".repeat(64));
-    for (const throws of [false, true]) {
-      expect(
-        runServiceCommandWithLegacyCheck(["service", "uninstall"], {
-          runtime: {
-            platform: "linux",
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: [],
-          },
-          runCommand: (argv) => {
-            if (argv.includes("thyra.service")) return 4;
-            if (argv.includes("daemon-reload")) {
-              expect(existsSync(legacy.definition)).toBeFalse();
-              if (throws) throw new Error("daemon-reload failed");
-              return 7;
-            }
-            return 0;
-          },
-          log: () => undefined,
-          error: () => undefined,
-        }),
-      ).toBe(throws ? 1 : 7);
-      expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
-      if (process.platform !== "win32")
-        expect(statSync(legacy.definition).mode & 0o777).toBe(0o640);
-      expect(readFileSync(legacy.config, "utf8")).toBe("HOST=127.0.0.1\n");
-      expect(readFileSync(tokenPath, "utf8")).toBe("a".repeat(64));
-      expect(
-        existsSync(`${legacy.definition}.uninstall-${process.pid}`),
-      ).toBeFalse();
-    }
-  });
-
-  test("refuses symlinked legacy definitions without touching the target", () => {
-    if (process.platform === "win32") return;
-    const homeDir = tempHome();
-    const legacy = resolveLegacyServicePaths("systemd", homeDir);
-    const target = join(homeDir, "other.service");
-    writeFileSync(target, "# Generated by herdr-gui service install.\n");
-    mkdirSync(dirname(legacy.definition), { recursive: true });
-    symlinkSync(target, legacy.definition);
-    for (const action of ["status", "restart", "reload", "uninstall"]) {
-      expect(
-        runServiceCommandWithLegacyCheck(["service", action], {
-          runtime: {
-            platform: "linux",
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: [],
-          },
-          runCommand: () => {
-            throw new Error("must not call native commands");
-          },
-          error: () => undefined,
-        }),
-      ).toBe(1);
-      expect(readFileSync(target, "utf8")).toContain("Generated by herdr-gui");
-    }
-  });
-
-  test("keeps the legacy launchd definition on query errors during uninstall or reload", () => {
-    const homeDir = tempHome();
-    const legacy = resolveLegacyServicePaths("launchd", homeDir);
-    mkdirSync(dirname(legacy.definition), { recursive: true });
-    writeFileSync(
-      legacy.definition,
-      publishedLegacyDefinition("launchd", homeDir, "/opt/thyra"),
-    );
-    for (const action of ["uninstall", "reload"]) {
-      const commands: string[][] = [];
-      expect(
-        runServiceCommandWithLegacyCheck(["service", action], {
-          runtime: {
-            platform: "darwin",
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: [],
-            uid: 501,
-          },
-          runCommand: (argv) => {
-            commands.push(argv);
-            if (argv[2] === "gui/501/dev.thyra") return 113;
-            return argv[2] === "gui/501/dev.herdr.herdr-gui" ? 5 : 0;
-          },
-          log: () => undefined,
-        }),
-      ).toBe(5);
-      expect(commands.every((argv) => argv[1] === "print")).toBeTrue();
-      expect(existsSync(legacy.definition)).toBeTrue();
-    }
-  });
-});
-
-describe("legacy service activation preflight", () => {
-  for (const platform of ["linux", "darwin", "win32"]) {
-    for (const action of ["install", "restart", "reload"]) {
-      test(`refuses an installed legacy ${platform} definition before ${action}, even with force`, () => {
-        const homeDir = tempHome();
-        const servicePlatform =
-          platform === "linux"
-            ? "systemd"
-            : platform === "darwin"
-              ? "launchd"
-              : "windows-task";
-        const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
-        const current = resolveServicePaths(servicePlatform, homeDir);
-        mkdirSync(dirname(legacy.definition), { recursive: true });
-        writeFileSync(legacy.definition, "custom old definition");
-        const errors: string[] = [];
-        let commands = 0;
-        const code = runServiceCommandWithLegacyCheck(
-          ["service", action, ...(action === "install" ? ["--force"] : [])],
-          {
-            runtime: {
-              platform,
-              homeDir,
-              execPath: "/opt/thyra",
-              argv: ["/opt/thyra"],
-              uid: 501,
-            },
-            runCommand: () => {
-              commands++;
-              return 0;
-            },
-            error: (message) => errors.push(message),
-          },
-        );
-        expect(code).toBe(1);
-        expect(commands).toBe(0);
-        expect(existsSync(current.config)).toBeFalse();
-        expect(existsSync(current.definition)).toBeFalse();
-        expect(readFileSync(legacy.definition, "utf8")).toBe(
-          "custom old definition",
-        );
-        expect(errors.join("\n")).toContain(
-          "previous binary's service uninstall",
-        );
-      });
-    }
-  }
-
-  for (const platform of ["linux", "darwin", "win32"]) {
-    test(`detects loaded legacy ${platform} service without its on-disk definition`, () => {
-      const homeDir = tempHome();
-      const commands: string[][] = [];
-      expect(
-        runServiceCommandWithLegacyCheck(["service", "install", "--force"], {
-          runtime: {
-            platform,
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: ["/opt/thyra"],
-            uid: 501,
-          },
-          runCommand: (argv) => {
-            commands.push(argv);
-            return 0;
-          },
-          error: () => undefined,
-        }),
-      ).toBe(1);
-      expect(commands.at(-1)?.join(" ")).toContain("herdr-gui");
-      expect(existsSync(join(homeDir, ".config", "thyra"))).toBeFalse();
-    });
-  }
-
-  for (const args of [
-    ["service", "install"],
-    ["service", "install", "--force"],
-    ["service", "restart"],
-    ["service", "reload"],
-  ]) {
-    for (const existing of [false, true]) {
-      for (const queryCode of [1, 2, 5]) {
-        test(`launchd query error ${queryCode} blocks ${args.join(" ")} with ${existing ? "existing" : "no"} current files`, () => {
-          const homeDir = tempHome();
-          const current = resolveServicePaths("launchd", homeDir);
-          const tokenPath = join(dirname(current.config), "auth-token");
-          const files = [current.definition, current.config, tokenPath];
-          if (existing) {
-            for (const path of files) {
-              mkdirSync(dirname(path), { recursive: true });
-              writeFileSync(path, "preserve this fixture", { mode: 0o600 });
-            }
-          }
-          const commands: string[][] = [];
-          const errors: string[] = [];
-          expect(
-            runServiceCommandWithLegacyCheck(args, {
-              runtime: {
-                platform: "darwin",
-                homeDir,
-                execPath: "/opt/thyra",
-                argv: ["/opt/thyra"],
-                uid: 501,
-              },
-              runCommand: (argv) => {
-                commands.push(argv);
-                return argv[2] === "gui/501/dev.herdr.herdr-gui"
-                  ? queryCode
-                  : 0;
-              },
-              error: (message) => errors.push(message),
-              log: () => undefined,
-            }),
-          ).toBe(1);
-          expect(commands).toEqual([
-            ["launchctl", "print", "gui/501"],
-            ["launchctl", "print", "gui/501/dev.herdr.herdr-gui"],
-          ]);
-          expect(errors.join("\n")).toContain(
-            `cannot check legacy launchd service (exit ${queryCode}); no service changes made`,
-          );
-          for (const path of files) {
-            expect(existsSync(path)).toBe(existing);
-            if (existing) {
-              expect(readFileSync(path, "utf8")).toBe("preserve this fixture");
-              expect(statSync(path).mode & 0o777).toBe(0o600);
-            }
-          }
-        });
-      }
-    }
-
-    test(`confirmed launchd legacy absence permits ${args.join(" ")}`, () => {
-      const homeDir = tempHome();
-      const current = resolveServicePaths("launchd", homeDir);
-      mkdirSync(dirname(current.definition), { recursive: true });
-      writeFileSync(
-        current.definition,
-        renderLaunchdService("/opt/thyra", current),
-      );
-      const commands: string[][] = [];
-      expect(
-        runServiceCommandWithLegacyCheck(args, {
-          runtime: {
-            platform: "darwin",
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: ["/opt/thyra"],
-            uid: 501,
-          },
-          runCommand: (argv) => {
-            commands.push(argv);
-            return argv[2] === "gui/501/dev.herdr.herdr-gui" ? 113 : 0;
-          },
-          getLanIPs: () => [],
-          log: () => undefined,
-        }),
-      ).toBe(0);
-      expect(commands.slice(0, 2)).toEqual([
-        ["launchctl", "print", "gui/501"],
-        ["launchctl", "print", "gui/501/dev.herdr.herdr-gui"],
-      ]);
-      expect(commands.at(-1)?.[1]).toBe(
-        args[1] === "restart" ? "kickstart" : "bootstrap",
-      );
-    });
-
-    test(`missing launchd domain blocks ${args.join(" ")} before the service query`, () => {
-      const homeDir = tempHome();
-      const commands: string[][] = [];
-      const errors: string[] = [];
-      expect(
-        runServiceCommandWithLegacyCheck(args, {
-          runtime: {
-            platform: "darwin",
-            homeDir,
-            execPath: "/opt/thyra",
-            argv: ["/opt/thyra"],
-            uid: 501,
-          },
-          runCommand: (argv) => {
-            commands.push(argv);
-            return 113;
-          },
-          error: (message) => errors.push(message),
-        }),
-      ).toBe(1);
-      expect(commands).toEqual([["launchctl", "print", "gui/501"]]);
-      expect(errors.join("\n")).toContain("cannot check launchd user domain");
-      const current = resolveServicePaths("launchd", homeDir);
-      expect(existsSync(current.config)).toBeFalse();
-      expect(existsSync(current.definition)).toBeFalse();
-    });
-  }
-
-  test("unknown legacy Windows query errors refuse activation without replacing files", () => {
-    const homeDir = tempHome();
-    const errors: string[] = [];
+test("uninstall restores the systemd definition and permissions if daemon-reload fails", () => {
+  const homeDir = tempHome();
+  const paths = resolveServicePaths("systemd", homeDir);
+  const definition = renderSystemdService("/opt/thyra", paths.config);
+  mkdirSync(dirname(paths.definition), { recursive: true });
+  mkdirSync(dirname(paths.config), { recursive: true });
+  writeFileSync(paths.definition, definition);
+  // Explicit, so a restrictive umask cannot turn 0640 into 0600.
+  chmodSync(paths.definition, 0o640);
+  writeFileSync(paths.config, "HOST=127.0.0.1\n");
+  const tokenPath = join(dirname(paths.config), "auth-token");
+  writeFileSync(tokenPath, "a".repeat(64));
+  for (const throws of [false, true]) {
     expect(
-      runServiceCommandWithLegacyCheck(["service", "install", "--force"], {
-        runtime: {
-          platform: "win32",
-          homeDir,
-          execPath: "/opt/thyra",
-          argv: ["/opt/thyra"],
-        },
-        runCommand: () => 1,
-        error: (message) => errors.push(message),
-      }),
-    ).toBe(1);
-    expect(errors.join("\n")).toContain("cannot check legacy scheduled task");
-    expect(
-      existsSync(resolveServicePaths("windows-task", homeDir).config),
-    ).toBeFalse();
-  });
-
-  test("legacy Windows task hash stays tied to its old per-user config directory", () => {
-    const homeDir = tempHome();
-    const old = resolveLegacyServicePaths("windows-task", homeDir);
-    const current = resolveServicePaths("windows-task", homeDir);
-    expect(old.taskName).toStartWith("dev.herdr.herdr-gui-");
-    expect(current.taskName).toStartWith("dev.thyra-");
-    expect(old.taskName?.split("-").at(-1)).not.toBe(
-      current.taskName?.split("-").at(-1),
-    );
-  });
-
-  test("after explicit legacy removal install preserves old env and token", () => {
-    const homeDir = tempHome();
-    const legacy = resolveLegacyServicePaths("systemd", homeDir);
-    const current = resolveServicePaths("systemd", homeDir);
-    mkdirSync(dirname(legacy.config), { recursive: true, mode: 0o700 });
-    writeFileSync(
-      legacy.config,
-      "HOST=0.0.0.0\nPORT=8899\nHERDR_GUI_LOG_LEVEL=debug\n",
-      { mode: 0o600 },
-    );
-    const token = "a".repeat(64);
-    writeFileSync(join(dirname(legacy.config), "auth-token"), `${token}\n`, {
-      mode: 0o600,
-    });
-    const commands: string[][] = [];
-    expect(
-      runServiceCommandWithLegacyCheck(["service", "install"], {
+      runServiceCommand(["service", "uninstall"], {
         runtime: {
           platform: "linux",
           homeDir,
           execPath: "/opt/thyra",
-          argv: ["/opt/thyra"],
+          argv: [],
         },
         runCommand: (argv) => {
-          commands.push(argv);
-          return argv.includes("herdr-gui.service") ? 4 : 0;
+          if (argv.includes("daemon-reload")) {
+            expect(existsSync(paths.definition)).toBeFalse();
+            if (throws) throw new Error("daemon-reload failed");
+            return 7;
+          }
+          return 0;
         },
-        getLanIPs: () => [],
         log: () => undefined,
+        error: () => undefined,
       }),
-    ).toBe(0);
-    expect(commands[0]).toEqual([
-      "systemctl",
-      "--user",
-      "--no-pager",
-      "status",
-      "herdr-gui.service",
-    ]);
-    expect(commands.at(-1)).toEqual([
-      "systemctl",
-      "--user",
-      "restart",
-      "thyra.service",
-    ]);
-    expect(readFileSync(current.config, "utf8")).toBe(
-      readFileSync(legacy.config, "utf8"),
-    );
+    ).toBe(throws ? 1 : 7);
+    expect(readFileSync(paths.definition, "utf8")).toBe(definition);
+    if (process.platform !== "win32")
+      expect(statSync(paths.definition).mode & 0o777).toBe(0o640);
+    expect(readFileSync(paths.config, "utf8")).toBe("HOST=127.0.0.1\n");
+    expect(readFileSync(tokenPath, "utf8")).toBe("a".repeat(64));
     expect(
-      readFileSync(join(dirname(current.config), "auth-token"), "utf8"),
-    ).toBe(`${token}\n`);
-    expect(
-      readFileSync(join(dirname(legacy.config), "auth-token"), "utf8"),
-    ).toBe(`${token}\n`);
-  });
+      existsSync(`${paths.definition}.uninstall-${process.pid}`),
+    ).toBeFalse();
+  }
 });
 
-test("service run honors explicit new and legacy supervisor overrides", () => {
+test("service run honors an explicit supervisor override, including empty", () => {
   const homeDir = tempHome();
   const configPath = join(homeDir, "thyra.env");
-  const previousNew = process.env.THYRA_RESTART_SUPERVISOR;
-  const previousOld = process.env.HERDR_GUI_RESTART_SUPERVISOR;
+  const previous = process.env.THYRA_RESTART_SUPERVISOR;
   try {
-    delete process.env.THYRA_RESTART_SUPERVISOR;
-    delete process.env.HERDR_GUI_RESTART_SUPERVISOR;
-    writeFileSync(configPath, "HERDR_GUI_RESTART_SUPERVISOR=0\n");
-    expect(runServiceCommand(["service", "run", configPath])).toBe(
-      SERVICE_COMMAND_CONTINUE,
-    );
-    expect(process.env.THYRA_RESTART_SUPERVISOR).toBeUndefined();
-    expect(process.env.HERDR_GUI_RESTART_SUPERVISOR as string | undefined).toBe(
-      "0",
-    );
-    writeFileSync(
-      configPath,
-      "HERDR_GUI_RESTART_SUPERVISOR=1\nTHYRA_RESTART_SUPERVISOR=\n",
-    );
-    runServiceCommand(["service", "run", configPath]);
-    expect(process.env.THYRA_RESTART_SUPERVISOR as string | undefined).toBe("");
+    for (const value of ["0", ""]) {
+      delete process.env.THYRA_RESTART_SUPERVISOR;
+      writeFileSync(configPath, `THYRA_RESTART_SUPERVISOR=${value}\n`);
+      expect(runServiceCommand(["service", "run", configPath])).toBe(
+        SERVICE_COMMAND_CONTINUE,
+      );
+      expect(process.env.THYRA_RESTART_SUPERVISOR as string | undefined).toBe(
+        value,
+      );
+    }
   } finally {
-    if (previousNew === undefined) delete process.env.THYRA_RESTART_SUPERVISOR;
-    else process.env.THYRA_RESTART_SUPERVISOR = previousNew;
-    if (previousOld === undefined)
-      delete process.env.HERDR_GUI_RESTART_SUPERVISOR;
-    else process.env.HERDR_GUI_RESTART_SUPERVISOR = previousOld;
+    if (previous === undefined) delete process.env.THYRA_RESTART_SUPERVISOR;
+    else process.env.THYRA_RESTART_SUPERVISOR = previous;
   }
 });

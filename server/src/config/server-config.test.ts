@@ -134,8 +134,7 @@ describe("native TLS", () => {
                 argv: ["/opt/thyra-test/bin/thyra", "service", "install"],
                 uid: 1000,
               },
-              runCommand: (argv) =>
-                argv.includes("herdr-gui.service") ? 4 : 0,
+              runCommand: () => 0,
               getLanIPs: () => ["192.0.2.10"],
               log: (message) => logs.push(message),
             }),

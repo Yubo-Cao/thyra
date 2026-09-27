@@ -221,8 +221,7 @@ describe("readServiceEnv", () => {
   });
 
   test("ignores comments and unrelated keys", () => {
-    const contents =
-      "# HOST=10.0.0.1\nHERDR_GUI_LOG_LEVEL=info\nHOST=127.0.0.1\n";
+    const contents = "# HOST=10.0.0.1\nTHYRA_LOG_LEVEL=info\nHOST=127.0.0.1\n";
     expect(readServiceEnv(contents, "HOST")).toBe("127.0.0.1");
   });
 });
@@ -263,9 +262,9 @@ describe("computeUrl", () => {
     expect(computeUrl(dir)).toBe("http://127.0.0.1:8787");
   });
 
-  test("new password values take precedence, including empty values", () => {
+  test("a fixed password omits the token; empty or foreign names do not", () => {
     const dir = fixture({
-      "thyra.env": "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nTHYRA_PASSWORD=new\n",
+      "thyra.env": "HOST=0.0.0.0\nTHYRA_PASSWORD=secret\n",
       "auth-token": "saved-token\n",
     });
     expect(computeUrl(dir)).toBe("http://localhost:8787");

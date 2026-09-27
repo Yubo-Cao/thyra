@@ -164,8 +164,8 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 `;
 }
 
-// launchd supplies XPC_SERVICE_NAME for supervisor detection. Do not inject a
-// THYRA default here: it would shadow a legacy override in the sourced env.
+// launchd supplies XPC_SERVICE_NAME for supervisor detection, so the plist
+// injects no THYRA_RESTART_SUPERVISOR default and the sourced env stays in charge.
 export function renderLaunchdService(
   binaryPath: string,
   paths: ServicePaths,
@@ -211,35 +211,4 @@ ${programArguments}
 </dict>
 </plist>
 `;
-}
-
-/** Published <= 0.7.0 identities, retained until explicit service cutover. */
-export function resolveLegacyServicePaths(
-  platform: ServicePlatform,
-  homeDir: string,
-  appDataDir?: string,
-): ServicePaths {
-  const base =
-    platform === "windows-task"
-      ? join(appDataDir ?? join(homeDir, "AppData", "Roaming"), "herdr-gui")
-      : join(homeDir, ".config", "herdr-gui");
-  const config = join(base, "herdr-gui.env");
-  if (platform === "windows-task") {
-    const userKey = createHash("sha256")
-      .update(base.toLowerCase())
-      .digest("hex")
-      .slice(0, 16);
-    return {
-      config,
-      definition: join(base, "herdr-gui-task.ps1"),
-      taskName: `dev.herdr.herdr-gui-${userKey}`,
-    };
-  }
-  return {
-    config,
-    definition:
-      platform === "systemd"
-        ? join(homeDir, ".config", "systemd", "user", "herdr-gui.service")
-        : join(homeDir, "Library", "LaunchAgents", "dev.herdr.herdr-gui.plist"),
-  };
 }

@@ -90,13 +90,11 @@ test.each([
   "push subject %s uses the default, override, or disables delivery",
   async (subject, expected) => {
     const previous = process.env.THYRA_WEB_PUSH_SUBJECT;
-    const legacy = process.env.HERDR_GUI_WEB_PUSH_SUBJECT;
     const dir = mkdtempSync(join(tmpdir(), "thyra-push-default-"));
     const path = join(dir, "web-push.json");
     const send = mock(async () => ({ statusCode: 201, body: "", headers: {} }));
     let service: ReturnType<typeof createWebPushService> | undefined;
     try {
-      delete process.env.HERDR_GUI_WEB_PUSH_SUBJECT;
       if (subject === undefined) delete process.env.THYRA_WEB_PUSH_SUBJECT;
       else process.env.THYRA_WEB_PUSH_SUBJECT = subject;
       service = createWebPushService({ path, send });
@@ -131,8 +129,6 @@ test.each([
       service?.stop();
       if (previous === undefined) delete process.env.THYRA_WEB_PUSH_SUBJECT;
       else process.env.THYRA_WEB_PUSH_SUBJECT = previous;
-      if (legacy === undefined) delete process.env.HERDR_GUI_WEB_PUSH_SUBJECT;
-      else process.env.HERDR_GUI_WEB_PUSH_SUBJECT = legacy;
       rmSync(dir, { recursive: true, force: true });
     }
   },
