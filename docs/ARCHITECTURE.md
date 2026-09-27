@@ -48,6 +48,9 @@ SSH tunnel, not Herdr or its workspaces.
 - Browser caches, storage, mount keys, notifications, and async actions are
   connection-scoped. Switching connections retires the browser lease; same-ID
   runtime replacement clears active and inactive sessions before IDs can recur.
+  Inspector RPC results (diff summaries, file previews) are TanStack Query
+  entries keyed by connection and client generation; a new lease drops every
+  other scope and aborts its requests, and previews stay within 16 MiB.
 
 ## Terminal endpoints
 
