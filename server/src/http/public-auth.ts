@@ -151,6 +151,15 @@ export function withPublicSecurityHeaders(
     !headers.get("content-security-policy")?.startsWith("sandbox")
   ) {
     headers.set("content-security-policy", htmlPolicy);
+    // Stop Cloudflare edge features (Web Analytics, Rocket Loader, email
+    // obfuscation) from injecting scripts the CSP would then block.
+    const cacheControl = headers.get("cache-control");
+    if (!cacheControl?.includes("no-transform")) {
+      headers.set(
+        "cache-control",
+        cacheControl ? `${cacheControl}, no-transform` : "no-transform",
+      );
+    }
   }
   return new Response(response.body, {
     status: response.status,

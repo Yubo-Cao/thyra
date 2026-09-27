@@ -202,6 +202,7 @@ describe("public security headers", () => {
     );
     expect(page.headers.get("strict-transport-security")).toContain("max-age=");
     expect(page.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(page.headers.get("cache-control")).toBe("no-transform");
 
     const unauthorized = withPublicSecurityHeaders(
       new Response("unauthorized", { status: 401 }),
