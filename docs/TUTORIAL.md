@@ -36,7 +36,7 @@ browser leaves terminals running; host sleep, shutdown, or process exit can stop
 **You are done when:** terminal input shows your project directory.
 
 Standalone and the installer's service default to `127.0.0.1:8787`, which
-**bypasses login even with a password**. A service created by
+**skips login for direct local use even with a password**; proxied access logs in. A service created by
 `thyra service install` or the plugin alone defaults to `0.0.0.0:8787` with a token.
 
 ![Desktop workspace: agents and their status in the tree, an agent terminal, and the Changes inspector](./images/thyra-desktop-changes.png)
@@ -168,9 +168,9 @@ Hop B: Thyra -> Herdr       (local sockets / Thyra SSH profile)
 ### Safety checks
 
 - Admit only fully trusted people/devices. UI access has the Thyra user's authority.
-- **Loopback bypasses login even with a password.** A proxy/tunnel forwarding to
-  it becomes the entire remote access boundary. Use an independently authenticated
-  proxy if that is insufficient; do not widen the bind just to force login.
+- **Loopback skips login only for direct local use.** An SSH tunnel is direct
+  local use, so it becomes the entire remote access boundary. Requests through a
+  reverse proxy such as Serve still log in with the password or token.
 - Use trusted HTTPS/encrypted tunnels and restrict listener/access policy.
   Authentication alone adds no TLS, rate limiting, permission roles, or sandbox.
 - Keep passwords, token URLs, and Tailcat addresses out of screenshots, issues,
@@ -199,8 +199,9 @@ remain encrypted.
    `HOST=127.0.0.1` and `PORT=8787` in its protected
    [environment file](./DEPLOYMENT.md#run-as-a-user-service), preserving other settings,
    then run `thyra service restart` or the plugin's `thyra.restart` action.
-   Confirm asynchronous plugin restarts in its log. **Loopback removes the
-   token/password gate; Tailscale policy must replace it.**
+   Confirm asynchronous plugin restarts in its log. Add
+   `THYRA_PUBLIC_BASE_URL=https://<host>.<tailnet>.ts.net` (the Serve address from
+   the next step) to that file too; without it Thyra refuses the Serve hostname.
 
 4. Inspect `tailscale serve status`. Only if HTTPS port 443 at `/` is free, run:
 
@@ -212,7 +213,8 @@ remain encrypted.
    Approve HTTPS certificate consent as an authorized admin. Hostnames appear in
    public certificate transparency logs, so avoid sensitive names.
 5. On the Tailscale-connected phone, open the **printed HTTPS hostname**, not an
-   IP or localhost. Run `pwd` in an idle pane. Verify excluded devices cannot
+   IP or localhost, and log in with the password or the token from
+   `~/.config/thyra/auth-token`. Run `pwd` in an idle pane. Verify excluded devices cannot
    connect, using policy tests if no test device exists. With Tailscale off and
    no other access path, the URL should be unreachable.
 
@@ -329,7 +331,8 @@ Check in order (about 3 minutes):
 | Symptom | First check |
 | --- | --- |
 | Phone localhost cannot reach the computer | Use Serve's printed HTTPS hostname. |
-| Password set but no login page | Loopback bypasses login; for non-loopback, use incognito to rule out an existing cookie. |
+| Password set but no login page | Direct local use of a loopback listener skips login; otherwise use incognito to rule out an existing cookie. |
+| `421 misdirected request` | Add the URL you opened to `THYRA_PUBLIC_BASE_URL` and restart Thyra. |
 | Address already in use | Check for an existing plugin/user service; do not duplicate it. |
 | SSH history is empty | Check transcript readability and [session lookup limits](../FEATURES.md#agent-awareness-and-session-inspection). |
 | Clipboard/PWA restricted | Use trusted, warning-free HTTPS; check browser permissions/support. |

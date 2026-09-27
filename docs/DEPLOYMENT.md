@@ -133,8 +133,8 @@ Then run `thyra`, or `thyra service install` for a user service.
 
 ### Remote access and security
 
-New installer configs bind `127.0.0.1`: only the same machine can connect, and loopback requests need no login.
-For phones and other computers, keep that binding and publish it privately with `tailscale serve --bg --https=443 http://127.0.0.1:8787`; the tailnet ACL becomes the access boundary ([tutorial](./TUTORIAL.md#tailscale)).
+New installer configs bind `127.0.0.1`: only the same machine can connect, and direct local requests need no login.
+For phones and other computers, keep that binding and publish it privately with `tailscale serve --bg --https=443 http://127.0.0.1:8787`, set `THYRA_PUBLIC_BASE_URL` to the HTTPS address, and log in once per browser with the token ([tutorial](./TUTORIAL.md#tailscale), [reverse proxies](#reverse-proxies-and-allowed-origins)).
 To use Thyra from another computer over SSH, forward the port: `ssh -L 8787:127.0.0.1:8787 host`.
 `--lan` binds all interfaces and requires the login token printed at install time (stored in `~/.config/thyra/auth-token`); use it only on trusted networks, preferably with [native HTTPS](#native-https).
 Never expose Thyra directly to the public internet, and never use `tailscale funnel` for it; Thyra runs shell commands with your user's rights.
@@ -217,7 +217,7 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | --- | --- | --- |
 | `--host <addr>` | `HOST` | `127.0.0.1` |
 | `--port <n>` | `PORT` | `8787` |
-| `--password <pw>` | `THYRA_PASSWORD` | Generated token for non-loopback |
+| `--password <pw>` | `THYRA_PASSWORD` | Generated token |
 | `--tls-cert <path>` | `THYRA_TLS_CERT` | Disabled; PEM chain, requires key |
 | `--tls-key <path>` | `THYRA_TLS_KEY` | Disabled; PEM key, requires certificate |
 | `--socket-path <path>` | `HERDR_SOCKET_PATH` | Default control socket/pipe |
@@ -234,7 +234,8 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_DISABLE_UPDATE_CHECK=1` | Disable update checks |
 | `THYRA_RESTART_SUPERVISOR=0\|1` | Override external supervisor detection |
 | `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
-| `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded client address is believed; see [collaborator identity](#collaborator-identity) |
+| `THYRA_PUBLIC_BASE_URL` | Comma-separated URLs browsers use through a proxy or DNS name, such as `https://thyra.example.ts.net`; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
+| `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded headers are believed; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
 | `THYRA_IDENTITY_PATH` | Collaborator identity file (default `~/.config/thyra/identities.json`) |
@@ -245,9 +246,11 @@ fail closed without archive discovery. HTTPS is required except loopback tests;
 credentials, queries, and fragments in URLs are rejected.
 
 ```bash
-thyra                              # local, no login
+thyra                              # local, no login for direct local use
 thyra --host 0.0.0.0 --port 8787     # generated token
 ```
+
+Without `THYRA_PASSWORD`, the token lives in `~/.config/thyra/auth-token` (created on first start) and is also the password for proxied access to a loopback listener.
 
 For a fixed password, prefer `THYRA_PASSWORD` over process-visible
 `--password`. Read [Security](../SECURITY.md) before non-loopback use.
@@ -264,8 +267,9 @@ thyra --host 0.0.0.0 --port 8443 \
 
 Missing/unreadable/malformed/mismatched files stop startup, never fall back to
 HTTP. Without TLS settings, HTTP is used. HTTPS adds `Secure` cookies and HTTPS
-startup links, but **does not change authentication**: loopback bypasses login;
-non-loopback requires a token/password. Do not expose directly to the public internet.
+startup links, but **does not change authentication**: direct local use of a
+loopback listener skips login; everything else requires a token/password. Do not
+expose directly to the public internet.
 
 For private LAN testing, use your issuer or [mkcert](https://github.com/FiloSottile/mkcert).
 Replace this reserved example IP with the host's actual LAN address:
@@ -286,6 +290,31 @@ thyra --host 0.0.0.0 --port 8443 \
 - Protect keys and keep them out of Git. Issuance/renewal is external; restart
   after replacement. Services need absolute paths in their environment file.
 
+### Reverse proxies and allowed origins
+
+A browser reaching Thyra through a proxy or a DNS name needs that URL in `THYRA_PUBLIC_BASE_URL`; otherwise Thyra answers `421 misdirected request` (DNS rebinding protection).
+IP-literal and loopback addresses (`http://192.0.2.10:8787`, `http://localhost:8787`) work without it.
+WebSocket upgrades and state-changing requests must come from that origin, the request's own origin, or `http://localhost:<port>`; see [Security](../SECURITY.md#trust-model).
+
+Forwarded headers (`X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`, `Forwarded`, `X-Real-IP`) are believed only from `THYRA_TRUSTED_PROXIES`, which defaults to loopback.
+A request carrying them is proxied, never local, so it must log in even on a loopback listener.
+The proxy must preserve `Host` or send `X-Forwarded-Host`, and should send `X-Forwarded-Proto` for HTTPS (Caddy and `tailscale serve` do all three; nginx needs `proxy_set_header Host $host;`, `X-Forwarded-For $proxy_add_x_forwarded_for`, and `X-Forwarded-Proto $scheme`) and must pass WebSocket upgrades.
+
+```caddyfile
+https://thyra.example.com {
+	reverse_proxy 127.0.0.1:8787
+}
+```
+
+```bash
+# ~/.config/thyra/thyra.env
+HOST=127.0.0.1
+PORT=8787
+THYRA_PUBLIC_BASE_URL=https://thyra.example.com
+```
+
+Each browser, including an installed home-screen app, logs in once with the password or token; the session cookie lasts 30 days and is `Secure` over HTTPS.
+
 ## Collaborator identity
 
 Thyra recognizes the same device, and with Tailscale the same person, across tabs, browsers, and the home screen app, so the collaborator list shows "Yubo · iphone, liveopt" instead of one entry per tab.
@@ -297,7 +326,7 @@ See [collaborator identity](./ARCHITECTURE.md#collaborator-identity) for the rul
   Set `THYRA_TAILSCALE_IDENTITY=off` to disable lookups, or point `THYRA_TAILSCALE_SOCKET`/`THYRA_TAILSCALE_CLI` at a non-default tailscaled.
 - **Without Tailscale.** Thyra sets a random, HttpOnly `thyra_device` cookie and matches browser contexts that cannot share it (such as Safari and its home screen app) by coarse device hints from the same network address.
   Two identical phones behind one NAT stay separate; the match is best-effort, not an authentication factor.
-- **Reverse proxies.** Forwarded client addresses (`X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Proto`) are believed only from `THYRA_TRUSTED_PROXIES`, which defaults to loopback, so a local Caddy, nginx, or `tailscale serve` works as is.
+- **Reverse proxies.** Forwarded client addresses (`X-Forwarded-For`, `X-Real-IP`) are believed only from `THYRA_TRUSTED_PROXIES`, which defaults to loopback, so a local Caddy, nginx, or `tailscale serve` works as is.
   List other proxies as comma-separated addresses or CIDR ranges (`THYRA_TRUSTED_PROXIES=loopback,10.0.0.5`), or set `none` to ignore forwarded headers entirely.
   Never list addresses that untrusted clients can connect from: they could then claim any address, including another device's tailnet address.
   The proxy must set or append the address it received the request from to `X-Forwarded-For` (Caddy, nginx's `$proxy_add_x_forwarded_for`, and `tailscale serve` do); Thyra reads the chain from the right, so a client-supplied prefix is ignored.
@@ -539,7 +568,7 @@ curl -fsS http://127.0.0.1:8787/healthz
 ```
 
 Tokens live in `~/.config/thyra/auth-token` or `%APPDATA%\thyra\auth-token`.
-A `?token=...` visit sets an HttpOnly cookie and removes the URL token. To rotate,
+A `?token=...` page visit sets an HttpOnly cookie and redirects without the token; API and WebSocket requests ignore it. To rotate,
 stop the service, replace the file with a fresh 64-character lowercase hexadecimal
 secret (mode `0600`), then restart.
 

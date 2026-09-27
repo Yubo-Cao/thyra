@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
+import { HTML_SECURITY_HEADERS } from "./auth";
 import {
   decodeStaticPathname,
   isStaticRequestMethod,
@@ -252,6 +253,7 @@ function responseHeaders(pathname: string): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": contentType(pathname),
   };
+  if (pathname.endsWith(".html")) Object.assign(headers, HTML_SECURITY_HEADERS);
   if (pathname.startsWith("/assets/")) {
     // Vite fingerprints everything under /assets, so a URL never changes
     // content; repeat visits then load the app without touching the network.

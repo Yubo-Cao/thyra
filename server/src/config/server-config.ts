@@ -168,9 +168,12 @@ Options (flags override env vars):
   const configuredPassword = String(
     args.password ?? thyraEnv("PASSWORD") ?? "",
   );
+  // A loopback listener skips login only for direct local requests; requests
+  // through a reverse proxy still log in, so a credential always exists.
   const authRequired = !isLocalHost(host);
-  const generatedAuthTokenPath =
-    authRequired && !configuredPassword ? defaultAuthTokenPath() : undefined;
+  const generatedAuthTokenPath = !configuredPassword
+    ? defaultAuthTokenPath()
+    : undefined;
   let generatedAuthToken: string | undefined;
   try {
     generatedAuthToken = generatedAuthTokenPath

@@ -437,6 +437,56 @@ describe("generated token login", () => {
     );
   });
 
+  test("a loopback listener skips login only for local requests", async () => {
+    const handlers = createAuthHandlers({
+      authRequired: false,
+      password: "generated-token",
+    });
+    const request = () => new Request("http://127.0.0.1:8787/");
+    expect(handlers.isAuthed(request(), { local: true })).toBe(true);
+    // Through a reverse proxy the request is not local and must log in.
+    expect(handlers.isAuthed(request(), { local: false })).toBe(false);
+    expect(handlers.isAuthed(request())).toBe(false);
+    const login = await handlers.handleLogin(
+      new Request("http://127.0.0.1:8787/api/login", {
+        method: "POST",
+        body: JSON.stringify({ password: "generated-token" }),
+      }),
+      { local: false, secure: true },
+    );
+    expect(login.status).toBe(200);
+    expect(login.headers.get("set-cookie")).toContain("; Secure");
+    expect(
+      handlers.isAuthed(
+        new Request("http://127.0.0.1:8787/", {
+          headers: { cookie: cookieHeader(login) },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test("never accepts an empty password for a proxied login", async () => {
+    const handlers = createAuthHandlers({ authRequired: false, password: "" });
+    const login = await handlers.handleLogin(
+      new Request("http://127.0.0.1:8787/api/login", {
+        method: "POST",
+        body: JSON.stringify({ password: "" }),
+      }),
+    );
+    expect(login.status).toBe(401);
+  });
+
+  test("the login page cannot be framed and sends no referrer", () => {
+    const headers = createAuthHandlers({
+      authRequired: true,
+      password: "fixed-password",
+    }).loginPage().headers;
+    expect(headers.get("content-security-policy")).toBe(
+      "frame-ancestors 'none'",
+    );
+    expect(headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
   test("rejects an empty authentication secret", () => {
     expect(() =>
       createAuthHandlers({

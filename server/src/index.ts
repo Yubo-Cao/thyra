@@ -78,6 +78,19 @@ import { createShutdownController } from "./connections/shutdown";
 import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
 import { createAuthHandlers, unauthenticatedLoginRedirect } from "./http/auth";
+import { createLoginRateLimiter } from "./http/login-rate-limit";
+import {
+  createRequestAccessPolicy,
+  forbiddenResponse,
+  hostNotAllowedResponse,
+  originCheckMode,
+  parsePublicBaseUrls,
+  type RequestAccessPolicy,
+} from "./http/request-access";
+import { authorizeRpc } from "./authz/policy";
+import { collaborationParams } from "./authz/collaboration-params";
+import { parseTrustedProxies } from "./identity/client-address";
+import { thyraEnv } from "./config/environment";
 import { prewarmStaticCompression, serveStatic } from "./http/static-files";
 import {
   createUpdateHandlers,
@@ -149,7 +162,27 @@ const {
   password: config.password,
   urlLoginToken: config.generatedAuthToken,
   secureCookies: Boolean(config.tls),
+  loginLimiter: createLoginRateLimiter(),
 });
+const publicBaseUrls = parsePublicBaseUrls(thyraEnv("PUBLIC_BASE_URL"));
+if (publicBaseUrls.invalid.length > 0) {
+  logger.warn("ignoring invalid THYRA_PUBLIC_BASE_URL entries", {
+    entries: publicBaseUrls.invalid.join(","),
+  });
+}
+let requestAccessPolicy: RequestAccessPolicy | null = null;
+/** Created on first use: the listening port is known only after binding. */
+function requestAccess(port: number): RequestAccessPolicy {
+  requestAccessPolicy ??= createRequestAccessPolicy({
+    port,
+    tls: Boolean(config.tls),
+    bindHost: config.host,
+    publicOrigins: publicBaseUrls.origins,
+    trustedProxies: parseTrustedProxies(process.env.THYRA_TRUSTED_PROXIES),
+  });
+  return requestAccessPolicy;
+}
+const CLIENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
 type RpcRequest = ConnectionRpcRequest;
 
@@ -167,6 +200,8 @@ const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
 const clients = new Set<ServerWebSocket<unknown>>();
 const clientIds = new WeakMap<ServerWebSocket<unknown>, number>();
 const clientSessions = new WeakMap<ServerWebSocket<unknown>, string | null>();
+/** Presence participant ids are assigned by the bridge, one per socket. */
+const participantIds = new WeakMap<ServerWebSocket<unknown>, string>();
 interface WebSocketCleanupSnapshot {
   client: string;
   viewedTerminals: string[];
@@ -665,6 +700,25 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     safeSend(ws, payload, "invalid-request");
     return;
   }
+  // Deny by default: only methods in the policy table reach routing or any
+  // handler, including the Herdr passthrough at the end.
+  const authorization = authorizeRpc(method);
+  if (!authorization.allowed) {
+    const message = authorization.message;
+    markRpcError(ws, id, message);
+    safeSend(
+      ws,
+      validationConnectionId
+        ? serializeConnectionEnvelope(
+            validationConnectionId,
+            { id, error: { message } },
+            validationConnectionGeneration,
+          )
+        : JSON.stringify({ id, error: { message } }),
+      "rpc-denied",
+    );
+    return;
+  }
   let route: ReturnType<typeof resolveRpcRoute<LegacyConnectionRuntime>>;
   try {
     route = resolveRpcRoute({
@@ -1055,13 +1109,21 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method.startsWith("collaboration.")) {
     try {
-      // The bridge, not the page, decides the presented name and color.
+      // The bridge, not the page, decides the participant id, role, name
+      // and color; a page can only act as its own participant.
+      const participantId = participantIds.get(ws);
+      if (!participantId) throw new Error("presence unavailable");
+      const validParams = collaborationParams(
+        method,
+        params ?? {},
+        participantId,
+      );
       const callParams =
         method === "collaboration.update"
-          ? await clientIdentity.presenceParams(ws, params ?? {})
-          : (params ?? {});
+          ? await clientIdentity.presenceParams(ws, validParams)
+          : validParams;
       if (method === "collaboration.leave")
-        clientIdentity.forgetParticipant(callParams.participant_id);
+        clientIdentity.forgetParticipant(participantId);
       const result = clientIdentity.annotateResult(
         await collaboration.call(method, callParams),
         connection.presenceContext,
@@ -1391,7 +1453,11 @@ async function handleConnectionHttpRequest(
 function main() {
   const server = bindListenerBeforeConnectionStart({
     bindListener: () =>
-      Bun.serve<{ sessionToken: string | null; client?: ClientContext }>({
+      Bun.serve<{
+        sessionToken: string | null;
+        client?: ClientContext;
+        clientSession: string | null;
+      }>({
         port: config.port,
         hostname: config.host,
         tls: config.tls,
@@ -1404,9 +1470,6 @@ function main() {
             return new Response("invalid request URL", { status: 400 });
           }
 
-          const tokenLoginResponse = handleTokenLogin(req);
-          if (tokenLoginResponse) return tokenLoginResponse;
-
           if (url.pathname === "/health" || url.pathname === "/healthz") {
             return new Response("Ok", {
               status: 200,
@@ -1414,9 +1477,45 @@ function main() {
             });
           }
 
+          // Host allowlist (DNS rebinding) and Origin checks (cross-site
+          // WebSocket and request forgery) precede authentication.
+          const peer = server.requestIP(req)?.address;
+          const accessPolicy = requestAccess(server.port ?? config.port);
+          const access = accessPolicy.evaluate(req, peer);
+          if (!access.hostAllowed) {
+            logger.warn("rejected request for an unknown host", {
+              host: logDetail(access.host ?? ""),
+            });
+            return hostNotAllowedResponse(access.host);
+          }
+          const originMode = originCheckMode(url.pathname, req.method);
+          if (originMode !== "none") {
+            const decision = accessPolicy.checkOrigin(
+              req,
+              access,
+              originMode === "strict",
+            );
+            if (!decision.ok) {
+              logger.warn("rejected cross-origin request", {
+                reason: decision.reason,
+                path: logDetail(url.pathname),
+                origin: logDetail(req.headers.get("origin") ?? ""),
+              });
+              return forbiddenResponse(decision.reason);
+            }
+          }
+          const authContext = {
+            local: access.local,
+            secure: access.secure,
+            clientKey: access.clientAddress,
+          };
+
+          const tokenLoginResponse = handleTokenLogin(req, authContext);
+          if (tokenLoginResponse) return tokenLoginResponse;
+
           // Auth endpoints are always reachable.
           if (url.pathname === "/api/login" && req.method === "POST") {
-            return handleLogin(req);
+            return handleLogin(req, authContext);
           }
           if (url.pathname === "/login") {
             return loginPage(req);
@@ -1429,9 +1528,9 @@ function main() {
             return serveStatic(req, config.publicDir);
           }
           if (url.pathname === "/api/logout") {
-            const response = handleLogout(req);
+            const response = handleLogout(req, authContext);
             const token = sessionToken(req);
-            if (response.ok && config.authRequired && token) {
+            if (response.ok && token) {
               for (const client of clients) {
                 if (clientSessions.get(client) !== token) continue;
                 webSocketCleanup.cleanup(client);
@@ -1441,8 +1540,9 @@ function main() {
             return response;
           }
 
-          // Everything else requires auth when bound to a non-localhost address.
-          if (!isAuthed(req)) {
+          // Everything else requires login, except direct local use of a
+          // loopback listener.
+          if (!isAuthed(req, authContext)) {
             const accept = req.headers.get("accept") ?? "";
             if (req.method === "GET" && accept.includes("text/html")) {
               return unauthenticatedLoginRedirect();
@@ -1451,10 +1551,8 @@ function main() {
           }
 
           if (url.pathname === "/ws") {
-            const upgrade = clientIdentity.upgradeContext(
-              req,
-              server.requestIP(req)?.address,
-            );
+            const upgrade = clientIdentity.upgradeContext(req, peer);
+            const clientSession = url.searchParams.get("client_session");
             if (
               server.upgrade(req, {
                 // Bun rejects an empty headers object.
@@ -1464,6 +1562,10 @@ function main() {
                 data: {
                   sessionToken: sessionToken(req),
                   client: upgrade.context,
+                  clientSession:
+                    clientSession && CLIENT_SESSION_PATTERN.test(clientSession)
+                      ? clientSession
+                      : null,
                 },
               })
             )
@@ -1494,7 +1596,8 @@ function main() {
               ok: true,
               version: APP_VERSION,
               socket: config.socketPath,
-              auth_required: config.authRequired,
+              // Whether this browser had to log in (shows Log out).
+              auth_required: config.authRequired || !access.local,
             });
           }
           if (url.pathname === "/api/update/check" && req.method === "GET") {
@@ -1534,7 +1637,7 @@ function main() {
           // Everything else: serve the built frontend (embedded or on-disk).
           return clientIdentity.withPageCookie(
             req,
-            server.requestIP(req)?.address,
+            peer,
             await serveStatic(req, config.publicDir),
           );
         },
@@ -1544,6 +1647,11 @@ function main() {
             clients.add(ws);
             clientSessions.set(ws, ws.data.sessionToken);
             clientIdentity.attach(ws, ws.data.client);
+            const participantId = clientIdentity.participantId(
+              ws,
+              ws.data.clientSession,
+            );
+            participantIds.set(ws, participantId);
             const label = assignClientId(ws);
             logger.debug("client connected", {
               client: label,
@@ -1557,6 +1665,7 @@ function main() {
                 socket: config.socketPath,
                 bridge_protocol_version: 2,
                 default_connection_id: connectionManager.defaultId(),
+                participant_id: participantId,
                 capabilities: {
                   connection_id: true,
                   connection_scoped_http: true,
@@ -1696,16 +1805,16 @@ function main() {
       error: (error as Error).message,
     }),
   );
-  if (config.authRequired) {
-    if (config.generatedAuthTokenPath) {
-      logger.info("authentication required", {
-        mode: "generated token",
-        path: config.generatedAuthTokenPath,
-      });
-    } else {
-      logger.info("authentication required", { mode: "password" });
-    }
-  }
+  logger.info("authentication", {
+    scope: config.authRequired
+      ? "all requests"
+      : "proxied and non-local requests",
+    mode: config.generatedAuthTokenPath ? "generated token" : "password",
+    ...(config.generatedAuthTokenPath
+      ? { path: config.generatedAuthTokenPath }
+      : {}),
+    public_base_url: publicBaseUrls.origins.join(",") || undefined,
+  });
   logger.debug("Herdr sockets configured", {
     control_socket: config.socketPath,
     client_socket: config.clientSocketPath,
@@ -1715,7 +1824,7 @@ function main() {
 
   const browserUrl = withLoginToken(
     publicBrowserUrl,
-    config.generatedAuthToken,
+    config.authRequired ? config.generatedAuthToken : undefined,
   );
   if (isAnyHost(config.host)) {
     const lanUrls = getLanIPs().map((ip) =>

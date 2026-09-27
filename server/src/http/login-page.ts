@@ -17,6 +17,7 @@ const STRINGS = {
     footer: "Your workspace, wherever you are.",
     wrongPassword: "Wrong password or token. Try again.",
     loginFailed: "Unable to log in. Please try again.",
+    tooManyAttempts: "Too many attempts. Wait a few minutes and try again.",
     unreachable:
       "Cannot reach the server. Check your connection and try again.",
   },
@@ -36,6 +37,7 @@ const STRINGS = {
     footer: "你的工作区，随你而行。",
     wrongPassword: "密码或令牌错误，请重试。",
     loginFailed: "无法登录，请重试。",
+    tooManyAttempts: "尝试次数过多，请稍等几分钟后再试。",
     unreachable: "无法连接到服务器。请检查网络连接后重试。",
   },
 } satisfies Record<LoginLocale, Record<string, string>>;
@@ -158,7 +160,8 @@ export function renderLoginHtml(locale: LoginLocale = "en"): string {
       if(r.status===401){
         err.textContent=${scriptString(s.wrongPassword)};
         pw.setAttribute('aria-invalid','true');pw.value='';pw.focus();
-      }else{err.textContent=${scriptString(s.loginFailed)};}
+      }else if(r.status===429){err.textContent=${scriptString(s.tooManyAttempts)};}
+      else{err.textContent=${scriptString(s.loginFailed)};}
     }catch{err.textContent=${scriptString(s.unreachable)};}
     finally{btn.disabled=false;btn.textContent=${scriptString(s.logIn)};}
   };

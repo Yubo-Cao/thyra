@@ -316,8 +316,8 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   checksum-verified standalone updates under a supported supervisor, and probe
   `/health` or `/healthz`.
 
-**Loopback bypasses login even with a password.** Non-loopback requires a token
-or password. UI access grants terminal/file authority, not a read-only role;
+**Direct local use of a loopback listener skips login.** Proxied and non-loopback
+access requires a token or password. UI access grants terminal/file authority, not a read-only role;
 read [Security](./SECURITY.md) before sharing access.
 
 ![Configuration dialog on the Appearance tab: theme, accent, text size, terminal font, language, and layout](docs/images/thyra-desktop-settings.png)

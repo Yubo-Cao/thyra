@@ -160,6 +160,8 @@ export interface BridgeHello {
   socket?: string;
   bridge_protocol_version: number;
   default_connection_id: string;
+  /** Presence participant id the bridge assigned to this page. */
+  participant_id?: string;
   capabilities: {
     connection_id?: boolean;
     connection_scoped_http?: boolean;
@@ -296,9 +298,18 @@ export async function logoutBrowserSession(): Promise<void> {
   location.replace("/login");
 }
 
+/**
+ * Random per page load. Sent on every (re)connect so the bridge keeps
+ * assigning this page the same presence participant id.
+ */
+const CLIENT_SESSION = Array.from(
+  crypto.getRandomValues(new Uint8Array(16)),
+  (byte) => byte.toString(16).padStart(2, "0"),
+).join("");
+
 function wsUrl(): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${location.host}/ws`;
+  return `${proto}://${location.host}/ws?client_session=${CLIENT_SESSION}`;
 }
 
 function scopedPayload<T extends object>(

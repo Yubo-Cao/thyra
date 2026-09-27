@@ -171,6 +171,12 @@ export function collaborationProfile(): CollaborationProfile {
   // made every tab/window impersonate the same collaborator and bypass pane
   // ownership checks intended for independent client sessions. People and
   // devices are recognized by the bridge instead (bridge.identity).
+  // The bridge assigns the id actually used for presence and pane claims.
+  const assigned = bridge.hello?.participant_id;
+  if (assigned && assigned !== clientSessionId) {
+    clientSessionId = assigned;
+    cachedProfile = null;
+  }
   clientSessionId ??= `web-${randomId()}`;
   if (selfIdentity) {
     return {

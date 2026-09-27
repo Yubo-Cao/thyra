@@ -1,6 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { loginLocale, renderLoginHtml } from "./login-page";
+import {
+  type LoginRateLimiter,
+  tooManyAttemptsResponse,
+} from "./login-rate-limit";
 
 const AUTH_COOKIE = "herdr_auth";
 const AUTH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -21,11 +25,27 @@ function base64UrlDecode(value: string) {
   ).toString("utf8");
 }
 
+/** Per-request facts from the request-access policy. */
+export type AuthRequestContext = {
+  /**
+   * Direct loopback use. On a loopback listener these requests skip login;
+   * requests that came through a reverse proxy are never local.
+   */
+  local?: boolean;
+  /** The browser reached Thyra over HTTPS; cookies get `Secure`. */
+  secure?: boolean;
+  /** Rate-limit key for login attempts (the resolved client address). */
+  clientKey?: string | null;
+};
+
 export function createAuthHandlers(args: {
+  /** Every request needs login (non-loopback listener). */
   authRequired: boolean;
+  /** Signing secret and login password or token; empty disables login. */
   password: string;
   urlLoginToken?: string;
   secureCookies?: boolean;
+  loginLimiter?: LoginRateLimiter;
 }) {
   if (args.authRequired && !args.password) {
     throw new Error("authentication requires a non-empty signing secret");
@@ -61,12 +81,23 @@ export function createAuthHandlers(args: {
     return `${payload}.${sign(payload)}`;
   }
 
-  function authCookieHeaders(req: Request): Record<string, string> {
+  function secureAttribute(context: AuthRequestContext): string {
+    return args.secureCookies || context.secure ? "; Secure" : "";
+  }
+
+  function authCookieHeaders(
+    req: Request,
+    context: AuthRequestContext,
+  ): Record<string, string> {
     // Keep live tabs on the same session token without extending its expiry.
-    if (isAuthed(req)) return {};
+    if (hasValidSession(req)) return {};
     return {
-      "set-cookie": `${AUTH_COOKIE}=${signedToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${AUTH_TOKEN_TTL_SECONDS}${args.secureCookies ? "; Secure" : ""}`,
+      "set-cookie": `${AUTH_COOKIE}=${signedToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${AUTH_TOKEN_TTL_SECONDS}${secureAttribute(context)}`,
     };
+  }
+
+  function clientKey(context: AuthRequestContext): string {
+    return context.clientKey || "unknown";
   }
 
   function secretsEqual(actual: string, expected: string): boolean {
@@ -101,13 +132,25 @@ export function createAuthHandlers(args: {
     return parseCookie(req.headers.get("cookie"), AUTH_COOKIE);
   }
 
-  function isAuthed(req: Request): boolean {
-    if (!args.authRequired) return true;
+  function hasValidSession(req: Request): boolean {
+    if (!args.password) return false;
     const token = sessionToken(req);
     return token !== null && isValidSignedToken(token);
   }
 
-  function handleLogout(req: Request): Response {
+  /** Whether this request may skip login (loopback listener, local use). */
+  function bypassesLogin(context: AuthRequestContext): boolean {
+    return !args.authRequired && context.local === true;
+  }
+
+  function isAuthed(req: Request, context: AuthRequestContext = {}): boolean {
+    return bypassesLogin(context) || hasValidSession(req);
+  }
+
+  function handleLogout(
+    req: Request,
+    context: AuthRequestContext = {},
+  ): Response {
     if (req.method !== "POST") {
       return new Response("method not allowed", {
         status: 405,
@@ -125,39 +168,61 @@ export function createAuthHandlers(args: {
     return new Response(null, {
       status: 204,
       headers: {
-        "set-cookie": `${AUTH_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${args.secureCookies ? "; Secure" : ""}`,
+        "set-cookie": `${AUTH_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureAttribute(context)}`,
         "cache-control": "no-store",
       },
     });
   }
 
-  function handleTokenLogin(req: Request): Response | null {
-    if (!args.authRequired || !args.urlLoginToken || req.method !== "GET") {
+  /**
+   * `?token=` on a page navigation is exchanged once for the session cookie
+   * and removed by a redirect. It never authenticates the request itself,
+   * API calls or WebSocket upgrades.
+   */
+  function handleTokenLogin(
+    req: Request,
+    context: AuthRequestContext = {},
+  ): Response | null {
+    if (!args.urlLoginToken || req.method !== "GET" || bypassesLogin(context)) {
       return null;
     }
     // pi-lens-ignore: unchecked-throwing-call
     const url = new URL(req.url);
     const suppliedToken = url.searchParams.get("token");
     if (suppliedToken === null) return null;
+    if (url.pathname === "/ws" || url.pathname.startsWith("/api/")) return null;
+    const destination = req.headers.get("sec-fetch-dest");
+    if (destination !== null && destination !== "document") return null;
     url.searchParams.delete("token");
 
+    const key = clientKey(context);
+    const retryAfter = args.loginLimiter?.retryAfterSeconds(key);
+    if (retryAfter) return tooManyAttemptsResponse(retryAfter);
     const valid = secretsEqual(suppliedToken, args.urlLoginToken);
+    if (valid) args.loginLimiter?.success(key);
+    else args.loginLimiter?.failure(key);
     const location = valid ? `${url.pathname}${url.search}` : "/login";
     return new Response(null, {
       status: 303,
       headers: {
         location,
-        ...(valid ? authCookieHeaders(req) : {}),
+        ...(valid ? authCookieHeaders(req, context) : {}),
         "cache-control": "no-store",
         "referrer-policy": "no-referrer",
       },
     });
   }
 
-  async function handleLogin(req: Request): Promise<Response> {
-    if (!args.authRequired) {
+  async function handleLogin(
+    req: Request,
+    context: AuthRequestContext = {},
+  ): Promise<Response> {
+    if (bypassesLogin(context)) {
       return Response.json({ ok: true, note: "auth not required" });
     }
+    const key = clientKey(context);
+    const retryAfter = args.loginLimiter?.retryAfterSeconds(key);
+    if (retryAfter) return tooManyAttemptsResponse(retryAfter);
     let body: any;
     try {
       body = await req.json();
@@ -165,17 +230,20 @@ export function createAuthHandlers(args: {
       return Response.json({ error: "bad request" }, { status: 400 });
     }
     if (
+      !args.password ||
       typeof body?.password !== "string" ||
       !secretsEqual(body.password, args.password)
     ) {
+      args.loginLimiter?.failure(key);
       return Response.json({ error: "wrong password" }, { status: 401 });
     }
+    args.loginLimiter?.success(key);
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: {
         "content-type": "application/json",
         "cache-control": "no-store",
-        ...authCookieHeaders(req),
+        ...authCookieHeaders(req, context),
       },
     });
   }
@@ -186,7 +254,7 @@ export function createAuthHandlers(args: {
       headers: {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
-        "referrer-policy": "no-referrer",
+        ...HTML_SECURITY_HEADERS,
         vary: "Accept-Language",
       },
     });
@@ -201,6 +269,13 @@ export function createAuthHandlers(args: {
     loginPage,
   };
 }
+
+/** Headers for Thyra's own HTML pages (not workspace file previews). */
+export const HTML_SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  "referrer-policy": "no-referrer",
+  "content-security-policy": "frame-ancestors 'none'",
+  "x-frame-options": "DENY",
+};
 
 export function unauthenticatedLoginRedirect(): Response {
   // Use a relative Location so reverse proxies preserve the public origin

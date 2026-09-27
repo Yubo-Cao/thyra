@@ -387,6 +387,9 @@ pages suppress duplicate local notifications. See [delivery limits](./DEPLOYMENT
 ## Browser collaboration and terminal ownership
 
 Each browser page receives an ephemeral participant ID, which keeps tabs, windows, and separate browser sessions distinct for pane claims while allowing one participant session to hold claims on several panes.
+The bridge assigns it: a page opens `/ws?client_session=<random per page load>`, and the bridge derives `web-<keyed hash of the device cookie and that nonce>` and returns it as `participant_id` in the hello.
+Reconnects of the same page keep the id (and its claims); other browsers cannot reproduce it.
+The bridge replaces `participant_id` and `role` (`editor`) in every `collaboration.*` call, so a page can update, claim, release, or leave only as itself.
 Presence reports include the active workspace, tab, and pane.
 Who a participant is (person and device) is decided by the bridge, not the page; see [collaborator identity](#collaborator-identity).
 
@@ -490,6 +493,20 @@ A stale shell can therefore run one load after a deploy when the network is slow
 Thyra is trusted single-user administration, not a sandbox or multi-user
 permission system. Listener access and required authentication grant authority;
 see [Security](../SECURITY.md#trust-model) for loopback, TLS, and outer access controls.
+
+Each HTTP request is classified before routing (`server/src/http/request-access.ts`):
+its effective host and scheme (from `X-Forwarded-Host`/`-Proto` only for trusted
+proxies), whether it was proxied, and whether it is direct local use. Unknown hosts
+are refused; `/ws` and non-GET/HEAD requests require an allowed `Origin` unless
+local; `/api` reads refuse foreign initiators. Login is skipped only for direct
+local use of a loopback listener.
+
+WebSocket RPC is deny-by-default. `server/src/authz/policy.ts` lists every method
+the bridge handles or forwards to Herdr with a class (`read`, `write`, `admin`,
+`dangerous`); roles map to classes, and today the authenticated owner holds all
+of them. Unlisted methods fail before connection routing, so the Herdr
+passthrough only forwards listed navigation, layout, and input methods. A test
+fails when a method the server dispatches or `web/src` calls has no entry.
 
 The browser accepts one unscoped bridge hello before other messages. Message kinds
 are exclusive and validated; downstream events cannot inject reserved bridge

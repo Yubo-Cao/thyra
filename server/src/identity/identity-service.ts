@@ -494,6 +494,19 @@ export function createIdentityService<Socket extends object>(args: {
       };
     },
 
+    /**
+     * The presence participant id the bridge assigns to a socket. A page
+     * reconnecting with the same `clientSession` nonce keeps its id (and
+     * pane claims); the device cookie in the derivation keeps other
+     * browsers from reproducing it.
+     */
+    participantId(socket: Socket, clientSession: string | null): string {
+      const deviceId = sessions.get(socket)?.context.deviceId;
+      if (!deviceId || !clientSession)
+        return `web-${randomBytes(12).toString("base64url")}`;
+      return `web-${keyed(`participant:${deviceId}:${clientSession}`).slice(0, 22)}`;
+    },
+
     forgetParticipant(participantId: unknown) {
       if (typeof participantId === "string") participants.delete(participantId);
     },
