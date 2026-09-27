@@ -454,7 +454,7 @@ While a pane has a display owner, the bridge enforces it for every other device 
 - Their input tells Herdr not to claim size ownership (below).
 
 Panes without a display owner keep the claim-based browser rules above.
-In the browser, a device that may not size the pane mirrors the shared size and scales xterm down to fit.
+In the browser, a device that may not size the pane mirrors the shared size and scales xterm down to fit; its pinch zoom magnifies and pans that scaled view and never sends a resize, while a device that sizes the pane refits it once when the pinch ends.
 The claim holder of a pane another device displays is input-only: it opens the composer, previews at one frame per second (`min_frame_interval_ms: 1000`), or pauses frames and polls `terminal.preview_text` (last 60 lines, every 1.5 s while visible) for a text preview; the bridge reads it with Herdr `pane.read` in ANSI format and strips ANSI, like the MCP pane read, so the page never picks read parameters that could replay input.
 "Type here, keep size on {device}" claims the pane without touching the display; "Take control and resize here" also takes it.
 

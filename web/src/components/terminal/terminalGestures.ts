@@ -409,6 +409,8 @@ export function installTerminalGestures(session: TerminalSession): () => void {
     if (e.touches.length !== 1) {
       session.retireTouchLink();
       touchMoved = true;
+      // A finger left over from a pinch or swipe must not scroll.
+      touchLastY = null;
       touch.cancelPending();
       if (!touch.active) presentation.cancelSelection();
       return;

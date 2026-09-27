@@ -27,6 +27,7 @@ import { terminalPageScroll } from "../../terminalScroll";
 import { applyTerminalTheme } from "../../terminalThemes";
 import { installTerminalKeyboard } from "./terminalKeyboard";
 import { installTerminalGestures } from "./terminalGestures";
+import { installTerminalPinch } from "./terminalPinch";
 import {
   applyTerminalFollowScale,
   detachTerminal,
@@ -92,7 +93,7 @@ export function useTerminalBindings(
     // Another device sizes the pane: keep xterm at its size and scale it
     // to fit. There is no size of ours to send.
     if (refs.followShared.current) {
-      applyTerminalFollowScale(term, container, true);
+      applyTerminalFollowScale(term, container, true, refs.followPan.current);
       return null;
     }
     applyTerminalFollowScale(term, container, false);
@@ -230,9 +231,12 @@ export function useTerminalSession(bindings: TerminalSessionBindings) {
     if (!bindings.container) return;
     const session = openTerminalSession(bindings);
     const disposeKeyboard = installTerminalKeyboard(session);
+    // Before the gestures, whose touchend stops later listeners.
+    const disposePinch = installTerminalPinch(session);
     const disposeGestures = installTerminalGestures(session);
     return () =>
       session.dispose(() => {
+        disposePinch();
         disposeGestures();
         disposeKeyboard();
       });

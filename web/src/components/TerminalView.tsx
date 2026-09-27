@@ -72,6 +72,8 @@ import {
   useTerminalModifiers,
 } from "./terminal/TerminalShortcuts";
 import { TerminalTouchSelectionBar } from "./terminal/TerminalTouchSelectionBar";
+import { usePaneSwipe } from "./terminal/paneSwipe";
+import { setTerminalZoom } from "../touchGestures";
 import {
   focusTerminalEndpoint,
   setTerminalStdinDisabled,
@@ -221,6 +223,7 @@ export function TerminalView({
   );
   const [terminalAttachError, setTerminalAttachError] = useState("");
   const [pasteLoading, setPasteLoading] = useState(false);
+  const [zoomBadge, setZoomBadge] = useState<number | null>(null);
   const terminalLoadingSpinner = useDelayedFlag(
     terminalLoading,
     TERMINAL_LOADING_SPINNER_DELAY_MS,
@@ -251,9 +254,11 @@ export function TerminalView({
       retryAttach: () => setAttachRetry((value) => value + 1),
       setPasteLoading,
       setUploadError,
+      setZoomBadge,
     }),
     [],
   );
+  usePaneSwipe(container);
   const selectedPaneInLayout =
     s.selectedPaneId &&
     s.layout?.panes.some((p) => p.pane_id === s.selectedPaneId)
@@ -720,6 +725,21 @@ export function TerminalView({
             className="terminal-view"
             data-preview={framesPaused ? "text" : undefined}
           />
+          {zoomBadge !== null ? (
+            <Button
+              className="terminal-zoom-badge"
+              variant="secondary"
+              aria-label={t("Reset terminal zoom, currently {zoom}%", {
+                zoom: zoomBadge,
+              })}
+              onClick={() => {
+                setZoomBadge(null);
+                setTerminalZoom(1);
+              }}
+            >
+              {zoomBadge}%
+            </Button>
+          ) : null}
           {framesPaused ? (
             <TerminalTextPreview
               client={connectionClient}

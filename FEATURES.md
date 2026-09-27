@@ -260,6 +260,22 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   available; **Done**/Esc exits.
   Scroll first to select older output. Selection freezes the displayed frame,
   not the connection; legacy streams resume at a 1 MiB buffered UTF-16 limit.
+- Pinch the terminal with two fingers to change its font size on this
+  browser; the size shown while pinching applies on release. On a pane this
+  device sizes, the new grid resizes it once; on a pane another device
+  displays, pinching only magnifies the scaled view, two fingers pan it, and
+  the pane is never resized. The percentage appears while pinching and for a
+  moment after; tap it to restore the default size.
+- Swipe sideways with three fingers across the terminal or pane area to move
+  to the next pane (left to right) or the previous one (right to left). Panes
+  follow workspace order, then tab order, then pane order within the tab, and
+  wrap from the last to the first. A brief banner names the destination.
+  **Configuration > Behavior > Pane swipe** switches to four fingers or turns
+  it off. Three fingers work unchanged on iPhone and iPad; the swipe takes
+  them over from iOS's three-finger undo/redo while a text field is focused,
+  though iOS may still show its own edit banner. Four-finger mode on an iPad
+  requires turning off **Settings > Multitasking & Gestures > Gestures**
+  (four- and five-finger app switching), which otherwise receives the swipe.
 - The default grid holds latching **Ctrl**/**Alt**/**Shift**, Ctrl+C/D/R, Esc,
   Tab, Enter, arrows, and PgUp/PgDn.
 - **Ctrl**, **Alt**, and **Shift** in the shortcut grid apply to the next key

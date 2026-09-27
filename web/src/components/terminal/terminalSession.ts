@@ -55,6 +55,7 @@ import {
   type TerminalSize,
 } from "../../terminalResize";
 import { TerminalTouchSelection } from "../../terminalTouchSelection";
+import { terminalZoom, zoomedTerminalFontSize } from "../../touchGestures";
 import type { PaneLayout } from "../../types";
 import {
   type TerminalFrameParts,
@@ -125,9 +126,12 @@ export function useDelayedFlag(pending: boolean, delayMs: number): boolean {
   return pending && elapsed;
 }
 
-export function terminalDensity(uiScale: number) {
+/** Font options for the layout and scale, with this browser's pinch zoom. */
+export function terminalDensity(uiScale: number, zoom = terminalZoom()) {
   const compact = typeof window !== "undefined" && isMobileLayout();
-  return terminalFontOptions(compact, uiScale);
+  const options = terminalFontOptions(compact, uiScale);
+  const fontSize = zoomedTerminalFontSize(options.fontSize, zoom);
+  return { ...options, fontSize };
 }
 
 export function isApplePlatform() {
@@ -251,8 +255,10 @@ function createTerminalRefs(initial: {
     attachEvictions: box<number[]>([]),
     attachWatchdog: new TerminalAttachFrameWatchdog(),
     attachTimeouts: box(0),
-    // Another device sizes this pane: mirror its size, scaled to fit.
+    // Another device sizes this pane: mirror its size, scaled to fit, and
+    // pan a pinch-zoomed view by this offset.
     followShared: box(false),
+    followPan: box({ x: 0, y: 0 }),
     // This viewer's frame stream: minimum interval, and paused for a text
     // preview. Sent with each attach and on change.
     frameInterval: box(0),
@@ -263,39 +269,61 @@ function createTerminalRefs(initial: {
 /**
  * While following another device's size, keep xterm at the frame size and
  * scale it down (never up) to fit the container; otherwise undo the scale.
+ * Pinch zoom magnifies that fitted view (`live` previews a pinch in progress)
+ * and `pan`, clamped in place, shows the part that no longer fits. Returns the
+ * applied scale.
  */
 export function applyTerminalFollowScale(
   term: Terminal,
   container: HTMLElement,
   follow: boolean,
-) {
+  pan = { x: 0, y: 0 },
+  live = 1,
+): number {
+  const style = container.style;
   if (!follow) {
-    if (!container.classList.contains("is-following")) return;
+    if (!container.classList.contains("is-following")) return 1;
     container.classList.remove("is-following");
-    container.style.removeProperty("--terminal-follow-scale");
-    return;
+    for (const name of ["scale", "x", "y", "width", "height"])
+      style.removeProperty(`--terminal-follow-${name}`);
+    return 1;
   }
   const element = term.element;
   const screen = element?.querySelector<HTMLElement>(".xterm-screen");
-  let scale = 1;
+  let scale = live;
+  let width = 0;
+  let height = 0;
   if (element && screen && screen.offsetWidth > 0 && screen.offsetHeight > 0) {
-    const style = getComputedStyle(element);
+    const computed = getComputedStyle(element);
     const px = (value: string) => Number.parseFloat(value) || 0;
-    const width =
-      screen.offsetWidth + px(style.paddingLeft) + px(style.paddingRight);
-    const height =
-      screen.offsetHeight + px(style.paddingTop) + px(style.paddingBottom);
-    scale = Math.min(
+    width =
+      screen.offsetWidth + px(computed.paddingLeft) + px(computed.paddingRight);
+    height =
+      screen.offsetHeight +
+      px(computed.paddingTop) +
+      px(computed.paddingBottom);
+    // The font already carries the zoom: fit as if the container did too.
+    const zoom = terminalZoom();
+    scale *= Math.min(
       1,
-      container.clientWidth / width,
-      container.clientHeight / height,
+      (zoom * container.clientWidth) / width,
+      (zoom * container.clientHeight) / height,
     );
   }
+  scale = Math.max(0.1, Math.round(scale * 1000) / 1000);
+  // A view smaller than its container stays at the origin; a larger one
+  // keeps covering it.
+  const clampPan = (offset: number, room: number) =>
+    Math.round(Math.min(0, Math.max(room, offset)));
+  pan.x = clampPan(pan.x, container.clientWidth - width * scale);
+  pan.y = clampPan(pan.y, container.clientHeight - height * scale);
   container.classList.add("is-following");
-  container.style.setProperty(
-    "--terminal-follow-scale",
-    String(Math.max(0.1, Math.round(scale * 1000) / 1000)),
-  );
+  style.setProperty("--terminal-follow-scale", String(scale));
+  style.setProperty("--terminal-follow-x", `${pan.x}px`);
+  style.setProperty("--terminal-follow-y", `${pan.y}px`);
+  style.setProperty("--terminal-follow-width", `${width}px`);
+  style.setProperty("--terminal-follow-height", `${height}px`);
+  return scale;
 }
 
 /** Mutable state a terminal view and its xterm session share across renders. */
@@ -356,6 +384,8 @@ export type TerminalViewSetters = {
   retryAttach: () => void;
   setPasteLoading: (loading: boolean) => void;
   setUploadError: (message: string) => void;
+  /** Shows the pinch zoom percentage (and its reset control), or hides it. */
+  setZoomBadge: (percent: number | null) => void;
 };
 
 /** What the hosting view hands its terminal session. */
@@ -776,7 +806,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       (frame.width !== term.cols || frame.height !== term.rows)
     ) {
       term.resize(frame.width, frame.height);
-      applyTerminalFollowScale(term, container, true);
+      applyTerminalFollowScale(term, container, true, refs.followPan.current);
     }
     if (typeof frame.mouse_reporting === "boolean") {
       term.options.macOptionClickForcesSelection = true;
