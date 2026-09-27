@@ -68,19 +68,9 @@ import {
 } from "./components/lazyPanels";
 import { prefetchWhenIdle } from "./idlePrefetch";
 import { useStartupSettled } from "./startupGate";
-import {
-  type ActiveDiffSelection,
-  clearDiffViewerResourceCache,
-  prefetchDiffViewerWorkspace,
-} from "./components/diffViewerResources";
+import type { ActiveDiffSelection } from "./components/diffViewerResources";
 import { clearDiffContentResourceState } from "./components/diffContentState";
-import {
-  clearFileExplorerResourceCache,
-  prefetchFileExplorerWorkspace,
-  requestFilePreview,
-} from "./components/fileExplorerResources";
 import { type ActiveFilePreviewSelection } from "./components/FilePreviewContent";
-import { GlobalTooltip } from "./components/GlobalTooltip";
 import { themedSelectPanel } from "./components/LazyThemedSelect";
 import { textInputDialogPanel } from "./components/ModalDialogs";
 import { Button } from "./components/ui/Button";
@@ -208,6 +198,21 @@ const noticeToastsPanel = lazyPanel("notice-toasts", () =>
   import("./components/NoticeToasts").then((module) => module.NoticeToasts),
 );
 const NoticeToasts = noticeToastsPanel.Component;
+// Delegated tooltips and overlay scrollbar thumbs load after the first output.
+const LazyGlobalTooltip = lazyWithReload("global-tooltip", () =>
+  import("./components/GlobalTooltip").then((module) => ({
+    default: module.GlobalTooltip,
+  })),
+);
+const LazyOverlayScrollbarLayer = lazyWithReload("overlay-scrollbars", () =>
+  import("./components/OverlayScrollbarLayer").then((module) => ({
+    default: module.OverlayScrollbarLayer,
+  })),
+);
+// The inspector's file and diff caches are not needed for the first screen.
+const fileExplorerResources = () =>
+  import("./components/fileExplorerResources");
+const diffViewerResources = () => import("./components/diffViewerResources");
 
 // Once the terminal has output, fetch the surfaces people open next, most
 // likely first, one chunk per idle period (skipped under Data Saver and 2G).
@@ -1545,10 +1550,13 @@ export default function App() {
         loading: true,
         error: null,
       });
-      void requestFilePreview(workspaceId, entry.path, {
-        client: connectionClient,
-        refresh: true,
-      })
+      void fileExplorerResources()
+        .then(({ requestFilePreview }) =>
+          requestFilePreview(workspaceId, entry.path, {
+            client: connectionClient,
+            refresh: true,
+          }),
+        )
         .then((preview) => {
           if (
             !connectionClient.isCurrent() ||
@@ -2157,16 +2165,20 @@ export default function App() {
         detail.workspace,
       );
       const resourceKey = resourceOwnerKey(scope);
-      clearFileExplorerResourceCache(
-        connectionClient,
-        resourceKey,
-        thyraLocalStorage,
+      void fileExplorerResources().then((resources) =>
+        resources.clearFileExplorerResourceCache(
+          connectionClient,
+          resourceKey,
+          thyraLocalStorage,
+        ),
       );
       clearDiffContentResourceState(resourceStateKey(scope));
-      clearDiffViewerResourceCache(
-        connectionClient,
-        resourceKey,
-        thyraLocalStorage,
+      void diffViewerResources().then((resources) =>
+        resources.clearDiffViewerResourceCache(
+          connectionClient,
+          resourceKey,
+          thyraLocalStorage,
+        ),
       );
       writeResourceFileSelection(thyraLocalStorage, scope, null);
       const current = inspectorStateRef.current;
@@ -2412,20 +2424,20 @@ export default function App() {
       !inspectorState?.open ||
       !sameResourceOwner(inspectorState.scope, scope)
     ) {
-      void prefetchFileExplorerWorkspace(
-        focusedWorkspace.workspace_id,
-        connectionClient,
-        resourceKey,
+      const workspaceId = focusedWorkspace.workspace_id;
+      void fileExplorerResources().then((resources) =>
+        resources.prefetchFileExplorerWorkspace(
+          workspaceId,
+          connectionClient,
+          resourceKey,
+        ),
       );
-    }
-    if (
-      !inspectorState?.open ||
-      !sameResourceOwner(inspectorState.scope, scope)
-    ) {
-      void prefetchDiffViewerWorkspace(
-        focusedWorkspace.workspace_id,
-        connectionClient,
-        resourceKey,
+      void diffViewerResources().then((resources) =>
+        resources.prefetchDiffViewerWorkspace(
+          workspaceId,
+          connectionClient,
+          resourceKey,
+        ),
       );
     }
   }, [connectionClient, focusedWorkspace, inspectorState, startupReady]);
@@ -3522,7 +3534,12 @@ export default function App() {
           </div>
         </main>
       </div>
-      <GlobalTooltip />
+      {startupReady ? (
+        <Suspense fallback={null}>
+          <LazyGlobalTooltip />
+          <LazyOverlayScrollbarLayer />
+        </Suspense>
+      ) : null}
       {viewportDebugEnabled ? <ViewportDebugOverlay /> : null}
       <PopupOverlay terminalTheme={terminalTheme} />
       {paneJumpOpen ? (
