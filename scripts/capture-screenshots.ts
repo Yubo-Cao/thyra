@@ -17,7 +17,8 @@
  * When bubblewrap is installed, Herdr and Thyra run in a private mount and PID
  * namespace where the demo home is `/home/demo`, so shots show neutral paths
  * and every demo process ends with its namespace. Requires `vips` for image
- * optimization and playwright-core (set PLAYWRIGHT_CORE to its directory).
+ * optimization and the root playwright-core devDependency with its WebKit
+ * build (PLAYWRIGHT_CORE_PATH selects another playwright-core directory).
  */
 import { spawn, type Subprocess } from "bun";
 import {
@@ -35,6 +36,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { loadPlaywrightCore } from "./playwright-core";
 import zhCN from "../web/src/locales/zh-CN";
 import {
   CLAUDE_API_SESSION_ID,
@@ -50,9 +52,6 @@ import {
   DEMO_TIME_ZONE,
 } from "./demo/fixture";
 
-const PLAYWRIGHT =
-  process.env.PLAYWRIGHT_CORE ??
-  "/mnt/btrfs-root/@storage/home/data/project/SimilateAI/decks/confetti/app/node_modules/playwright-core";
 /** Production Thyra and a long-running local instance. */
 const RESERVED_PORTS = new Set([8787, 8799]);
 const DEMO_HOME = "/home/demo";
@@ -976,8 +975,7 @@ const SHOTS: Record<string, Shot> = {
 };
 
 async function capture(env: Environment, rawDir: string) {
-  const loaded = await import(PLAYWRIGHT);
-  const playwright = loaded.default ?? loaded;
+  const playwright = await loadPlaywrightCore();
   const browser = await playwright.webkit.launch({ headless: true });
   const selected = options.only
     ? options.only.split(",").map((name) => name.trim())

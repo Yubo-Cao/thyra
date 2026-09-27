@@ -67,6 +67,7 @@ Workspace types: `bun run --filter thyra-web typecheck` or
 `bun run --filter thyra-server typecheck` (builds web assets first).
 Frontend changes also need `bun run build:web`; bundling needs `bun run build`.
 For load-time work, `bun scripts/measure-first-load.ts` (not in CI) loads the built app in Chromium and WebKit through a throttled link against a throwaway Herdr server and reports time to the agent list and to terminal output, cold and warm.
+It and `scripts/capture-screenshots.ts` load the pinned root `playwright-core` devDependency (set `PLAYWRIGHT_CORE_PATH=<dir>` to use another copy) and need its browsers in Playwright's cache: `bunx playwright-core install chromium webkit`.
 Releases must package/inspect every supported archive/checksum; see
 [builds](docs/DEPLOYMENT.md#build-a-standalone-executable) and
 [release policy](AGENTS.md#release-notes).
@@ -174,7 +175,7 @@ bun scripts/capture-screenshots.ts [--only desktop-changes,mobile-launcher] [--p
 
 It seeds the demo in `scripts/demo/` (Git projects, fake `claude`/`codex` agents, session files, launcher pins) into a throwaway Herdr server and Thyra on a spare port, captures desktop and phone shots in English and Chinese with Playwright WebKit, and writes optimized PNGs plus the site's hero AVIFs.
 It never touches a live Herdr and stops everything it started; `--serve` keeps the demo running for inspection instead.
-It needs `playwright-core` (`PLAYWRIGHT_CORE=<dir>`) with its WebKit build and `vips`; with `bwrap` installed the demo home appears as `/home/demo`.
+It needs `vips` and Playwright's WebKit build (`bunx playwright-core install webkit`); with `bwrap` installed the demo home appears as `/home/demo`.
 Rerun it after visible UI changes and look at every image before committing.
 
 **Deploy Pages** runs on `main` pushes or manual retry. Upload requires a published

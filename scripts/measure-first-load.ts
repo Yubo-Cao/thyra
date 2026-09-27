@@ -34,10 +34,8 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { loadPlaywrightCore } from "./playwright-core";
 
-const PLAYWRIGHT =
-  process.env.PLAYWRIGHT_CORE ??
-  "/mnt/btrfs-root/@storage/home/data/project/SimilateAI/decks/confetti/app/node_modules/playwright-core";
 const MARKER = "THYRA_PERF_MARKER";
 const SWITCHER_LABEL = "perf-second";
 const PRODUCTION_PORT = 8787;
@@ -798,8 +796,7 @@ function report(results: RunResult[]) {
 async function main() {
   // Fail fast on a syntax error instead of silently recording nothing.
   new Function(INSTRUMENTATION);
-  const loaded = await import(PLAYWRIGHT);
-  const playwright = loaded.default ?? loaded;
+  const playwright = await loadPlaywrightCore();
   const browsers = options.browser.split(",").filter(Boolean);
   const profiles = options.profile.split(",").map((name) => {
     const profile = PROFILES[name];
