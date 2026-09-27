@@ -192,9 +192,9 @@
                 />
                 <img
                   src="./assets/thyra-desktop-changes.png"
-                  alt="Thyra showing multiple workspaces, live terminals, and image changes"
-                  width="4998"
-                  height="2714"
+                  alt="Thyra with agents and their status in the workspace tree, a live Claude terminal, and a wrapped diff in the Changes inspector"
+                  width="2880"
+                  height="1800"
                   fetchpriority="high"
                 />
               </picture>
@@ -419,9 +419,9 @@
                 tabindex="0"
                 data-showcase-tab
                 data-image="./assets/thyra-desktop-changes.png"
-                data-alt="Thyra changed files and image previews beside live terminals"
+                data-alt="Thyra Changes inspector with a wrapped diff beside a live agent terminal"
                 data-label="Changes"
-                data-title="Review code and image changes beside your terminals."
+                data-title="Review what the agent changed beside its terminal."
                 data-copy="Inspect staged, unstaged, untracked, and branch changes without leaving the active workspace."
               >
                 <span>01</span> Changes
@@ -435,12 +435,28 @@
                 tabindex="-1"
                 data-showcase-tab
                 data-image="./assets/thyra-desktop-files.png"
-                data-alt="Thyra file explorer with a rendered README preview"
+                data-alt="Thyra expanded file explorer rendering a README with a Mermaid diagram, in the light theme"
                 data-label="File explorer"
                 data-title="Browse the repository without leaving the terminal."
                 data-copy="Preview source, Markdown, Mermaid, and images; search loaded files; upload, download, copy paths, and manage files locally or over SSH."
               >
                 <span>02</span> Files
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-history"
+                aria-controls="showcase-panel"
+                aria-selected="false"
+                tabindex="-1"
+                data-showcase-tab
+                data-image="./assets/thyra-desktop-history.png"
+                data-alt="Thyra History inspector listing a Claude Code session's prompt and replies"
+                data-label="Agent history"
+                data-title="Read what the agent said and ran."
+                data-copy="Filter a session by user, agent, and tool entries, search loaded text, and open the full transcript for Codex, Claude, and other supported agents."
+              >
+                <span>03</span> History
               </button>
             </div>
 
@@ -465,9 +481,9 @@
                 >
                   <img
                     src="./assets/thyra-desktop-changes.png"
-                    alt="Thyra changed files and image previews beside live terminals"
-                    width="4998"
-                    height="2714"
+                    alt="Thyra Changes inspector with a wrapped diff beside a live agent terminal"
+                    width="2880"
+                    height="1800"
                     loading="lazy"
                     decoding="async"
                     data-showcase-image
@@ -556,8 +572,12 @@
             </p>
             <ul>
               <li>
-                <span></span>Touch-safe terminal controls and configurable
-                shortcuts
+                <span></span>Start Claude or Codex in a pinned folder from the
+                project launcher
+              </li>
+              <li>
+                <span></span>A configurable shortcut grid with latching Ctrl,
+                Alt, and Shift
               </li>
               <li>
                 <span></span>Responsive file, diff, pane, and session views
@@ -581,12 +601,12 @@
           >
             <figure class="phone phone-left">
               <div class="phone-speaker"></div>
-              <a href="./assets/thyra-mobile-changes.png">
+              <a href="./assets/thyra-mobile-launcher.png">
                 <img
-                  src="./assets/thyra-mobile-changes.png"
-                  alt="Thyra changed files view on mobile"
-                  width="1179"
-                  height="2379"
+                  src="./assets/thyra-mobile-launcher.png"
+                  alt="Thyra project launcher on a phone, offering Claude or Codex for a pinned folder"
+                  width="1170"
+                  height="2532"
                   loading="lazy"
                   decoding="async"
                 />
@@ -597,9 +617,9 @@
               <a href="./assets/thyra-mobile-terminal.png">
                 <img
                   src="./assets/thyra-mobile-terminal.png"
-                  alt="Thyra terminal controls on mobile"
-                  width="1179"
-                  height="2379"
+                  alt="Thyra phone terminal with the shortcut grid open and Ctrl latched"
+                  width="1170"
+                  height="2532"
                   loading="lazy"
                   decoding="async"
                 />
@@ -607,12 +627,12 @@
             </figure>
             <figure class="phone phone-right">
               <div class="phone-speaker"></div>
-              <a href="./assets/thyra-mobile-files.png">
+              <a href="./assets/thyra-mobile-changes.png">
                 <img
-                  src="./assets/thyra-mobile-files.png"
-                  alt="Thyra rendered file preview on mobile"
-                  width="1179"
-                  height="2379"
+                  src="./assets/thyra-mobile-changes.png"
+                  alt="Thyra unified, wrapped diff on a phone"
+                  width="1170"
+                  height="2532"
                   loading="lazy"
                   decoding="async"
                 />

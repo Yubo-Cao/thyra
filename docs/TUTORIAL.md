@@ -39,7 +39,7 @@ Standalone and the installer's service default to `127.0.0.1:8787`, which
 **bypasses login even with a password**. A service created by
 `thyra service install` or the plugin alone defaults to `0.0.0.0:8787` with a token.
 
-![Desktop workspace with project navigation, terminals, and changed files](./images/thyra-desktop-changes.png)
+![Desktop workspace: agents and their status in the tree, an agent terminal, and the Changes inspector](./images/thyra-desktop-changes.png)
 
 | Object | Meaning |
 | --- | --- |
@@ -79,13 +79,13 @@ For missing records, follow [session inspection guidance](../FEATURES.md#agent-a
 
 ### Review the file and diff
 
-1. Open **File Explorer**, select `README.md`, and compare **Raw / Rendered**.
+1. Open **File Explorer**, select `README.md`, and compare **Preview / Source**.
 2. Open **Diff Viewer > Working tree** and read the added/removed lines.
 3. Search with `Cmd/Ctrl+F` for the new command; verify it in the project's configuration.
 
 **You are done when:** you can identify the change and verify its command.
 
-![File Explorer previewing a README](./images/thyra-desktop-files.png)
+![Expanded File Explorer previewing a README in the light theme](./images/thyra-desktop-files.png)
 
 Tree search covers loaded files, not repository-wide contents. Right-click or
 long-press opens file actions; `Cmd/Ctrl+Click` on terminal paths opens previews.
@@ -123,7 +123,8 @@ on a phone points to the phone, not your computer.
 
 1. Open Thyra on your phone, authenticate if required, and select your project/pane.
 2. Use the floating terminal shortcuts for Ctrl/arrows, then open Changes to review
-   the unified diff. Long-press opens file actions.
+   the unified diff. Long-press opens file actions. The folder button starts
+   Claude or Codex in a pinned or recent folder.
 3. Adjust **Configuration > Appearance > Text size** if needed and install the PWA:
 
 | Browser | Install action |
@@ -135,7 +136,7 @@ on a phone points to the phone, not your computer.
 **You are done when:** the home-screen icon opens your project. Install the stable
 Thyra service URL, not this tutorial website.
 
-![Mobile terminal with touch shortcuts](./images/thyra-mobile-terminal.png)
+![Phone terminal with the shortcut grid open and Ctrl latched for the next key](./images/thyra-mobile-terminal.png)
 
 PWA mode is neither offline access nor background keep-alive. Host sleep, stopped
 services, or VPN loss interrupts access. [Notifications](./DEPLOYMENT.md#web-push-notifications)

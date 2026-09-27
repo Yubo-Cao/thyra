@@ -8,13 +8,15 @@ const sourceDirectory = join(root, "site");
 const outputDirectory = join(root, ".pages-dist");
 const assetDirectory = join(outputDirectory, "assets");
 
+// Regenerate with `bun scripts/capture-screenshots.ts`.
 const assets = [
-  ["docs/images/thyra-desktop-changes.png", "thyra-desktop-changes.png"],
-  ["docs/images/thyra-desktop-files.png", "thyra-desktop-files.png"],
-  ["docs/images/thyra-mobile-changes.png", "thyra-mobile-changes.png"],
-  ["docs/images/thyra-mobile-files.png", "thyra-mobile-files.png"],
-  ["docs/images/thyra-mobile-terminal.png", "thyra-mobile-terminal.png"],
-] as const;
+  "thyra-desktop-changes.png",
+  "thyra-desktop-files.png",
+  "thyra-desktop-history.png",
+  "thyra-mobile-changes.png",
+  "thyra-mobile-launcher.png",
+  "thyra-mobile-terminal.png",
+].map((name) => [`docs/images/${name}`, name] as const);
 
 async function ensureFile(path: string): Promise<void> {
   const file = await stat(path);

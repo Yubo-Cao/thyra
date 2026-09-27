@@ -84,8 +84,8 @@ describe("tutorial Markdown", () => {
       'href="https://github.com/Yubo-Cao/thyra/blob/main/SECURITY.md"',
     );
     expect(content).toContain('src="../assets/thyra-desktop-changes.png"');
-    expect(content).toContain('width="4998"');
-    expect(content).toContain('height="2714"');
+    expect(content).toContain('width="2880"');
+    expect(content).toContain('height="1800"');
     expect(content).toContain('loading="lazy"');
     expect(content).toContain("&lt;safe&gt;");
     expect(content).toContain('role="region"');
@@ -193,7 +193,7 @@ describe("Pages references", () => {
     );
     const screenshotPattern = /thyra-(?:desktop|mobile)-[a-z-]+\.png/g;
     const screenshots = [...new Set(readme.match(screenshotPattern))].sort();
-    expect(screenshots).toHaveLength(5);
+    expect(screenshots).toHaveLength(6);
     for (const source of [site, build]) {
       expect([...new Set(source.match(screenshotPattern))].sort()).toEqual(
         screenshots,
@@ -201,6 +201,48 @@ describe("Pages references", () => {
     }
     for (const image of tutorial.match(screenshotPattern) ?? []) {
       expect(screenshots).toContain(image);
+    }
+  });
+
+  test("the Chinese README mirrors every screenshot with its Chinese-UI capture", async () => {
+    const [readme, chinese] = await Promise.all(
+      ["../README.md", "../README.zh-CN.md"].map((path) =>
+        Bun.file(new URL(path, import.meta.url)).text(),
+      ),
+    );
+    expect(readme).toContain("[简体中文](./README.zh-CN.md)");
+    expect(chinese).toContain("[English](./README.md)");
+    const images = (markdown: string) => [
+      ...new Set(markdown.match(/docs\/images\/[a-z-]+\.png/g)),
+    ];
+    const english = images(readme);
+    expect(english.length).toBeGreaterThan(0);
+    expect(images(chinese).sort()).toEqual(
+      english.map((image) => image.replace(".png", "-zh.png")).sort(),
+    );
+  });
+
+  test("docs screenshots exist, are PNGs, and are all referenced", async () => {
+    const referencing = await Promise.all(
+      [
+        "../README.md",
+        "../README.zh-CN.md",
+        "../FEATURES.md",
+        "../docs/TUTORIAL.md",
+        "../docs/DEPLOYMENT.md",
+        "../docs/HISTORY.md",
+        "../site/index.html",
+      ].map((path) => Bun.file(new URL(path, import.meta.url)).text()),
+    );
+    const text = referencing.join("\n");
+    for (const directory of ["images", "screenshots"]) {
+      const root = new URL(`../docs/${directory}/`, import.meta.url).pathname;
+      for await (const name of new Bun.Glob("*").scan(root)) {
+        expect(name).toMatch(/\.png$/);
+        const png = Buffer.from(await Bun.file(root + name).arrayBuffer());
+        expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+        expect(text).toContain(name);
+      }
     }
   });
 

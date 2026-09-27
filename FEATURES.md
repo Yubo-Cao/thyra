@@ -54,6 +54,9 @@ Thyra focuses the new tab after the shell draws its prompt and types the configu
 Commands default to `claude` and `codex` and are edited under the launcher's settings button or **Configuration > Connection**; pins, commands, and launch history are saved on the Thyra server per connection, so every device shares them.
 The browser only chooses an agent, never the command text.
 
+<!-- markdownlint-disable-next-line MD033 -->
+<img src="docs/images/thyra-mobile-launcher.png" alt="Project launcher on a phone: pinned and recent folders, with Claude and Codex offered for the selected folder" width="300">
+
 ## Full Browser Terminal
 
 - Server-rendered terminals support normal input, modified Enter, macOS editing
@@ -148,6 +151,8 @@ accessible transcripts. Muse token totals use per-run provider routing; when a
 cached-token convention is unknown, totals show `-` rather than an estimate.
 See [History synchronization](docs/HISTORY.md).
 
+![Inspector History tab showing a Claude Code session beside the agent's terminal](docs/images/thyra-desktop-history.png)
+
 ## Git Worktree Lifecycle
 
 Open **Worktree Lifecycle** from a workspace menu or the command menu to:
@@ -222,6 +227,8 @@ after fetch, and abort conflicts. They never push.
   `.tar.gz` directories; copy paths or delete with confirmation via right-click
   or long-press. Upload/delete stay checkout-scoped. Operations work over SSH.
 
+![Expanded file explorer rendering a README with a Mermaid diagram and a table, in the light theme](docs/images/thyra-desktop-files.png)
+
 ## Diff Viewer
 
 - Review **Working tree**, **Against main**, or **Last step** (the latest completed
@@ -237,6 +244,8 @@ after fetch, and abort conflicts. They never push.
 
 Scope, view, wrapping, and selection persist per checkout/browser; wrapping is
 separate for desktop/mobile. Jump from a diff to its file preview.
+
+![Changes inspector showing a wrapped working-tree diff beside a live agent terminal](docs/images/thyra-desktop-changes.png)
 
 ## Mobile and PWA
 
@@ -280,6 +289,9 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   icons. **PWA is not offline access**: Thyra must remain reachable.
   See [installation steps](README.md#install-as-a-pwa).
 
+<!-- markdownlint-disable-next-line MD033 -->
+<img src="docs/images/thyra-mobile-terminal.png" alt="Phone terminal with the shortcut grid open and Ctrl latched for the next key" width="300">
+
 ## Remote, Multi-Client, and Operations
 
 - Shared local/SSH profiles have independent browser selection. Disconnecting
@@ -307,6 +319,8 @@ separate for desktop/mobile. Jump from a diff to its file preview.
 **Loopback bypasses login even with a password.** Non-loopback requires a token
 or password. UI access grants terminal/file authority, not a read-only role;
 read [Security](./SECURITY.md) before sharing access.
+
+![Configuration dialog on the Appearance tab: theme, accent, text size, terminal font, language, and layout](docs/images/thyra-desktop-settings.png)
 
 ## Keyboard Shortcuts
 

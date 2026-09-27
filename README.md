@@ -1,5 +1,7 @@
 # Thyra
 
+English | [简体中文](./README.zh-CN.md)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./site/assets/thyra-lockup-on-charcoal.png" />
@@ -15,22 +17,26 @@ agent sessions, and review files and diffs on desktop or mobile.
 
 ### Desktop
 
-[![Desktop workspace with live terminals and image changes][desktop-changes]][desktop-changes]
+[![Thyra with Claude working in a terminal and the Changes inspector showing a wrapped diff][desktop-changes]][desktop-changes]
 
-Workspace terminals with changed files and image previews.
+Agents and their status in the workspace tree, a live terminal, and the working-tree diff side by side.
 
 <!-- markdownlint-disable MD033 -->
 
 <table width="100%">
   <thead>
     <tr>
-      <th align="center">File explorer</th>
+      <th width="50%" align="center">File preview (light theme)</th>
+      <th width="50%" align="center">Agent history</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td align="center" valign="top">
-        <a href="./docs/images/thyra-desktop-files.png"><img src="./docs/images/thyra-desktop-files.png" alt="Desktop file explorer" width="100%" /></a>
+      <td width="50%" align="center" valign="top">
+        <a href="./docs/images/thyra-desktop-files.png"><img src="./docs/images/thyra-desktop-files.png" alt="Expanded file explorer rendering a README with a Mermaid diagram and a table, in the light theme" width="100%" /></a>
+      </td>
+      <td width="50%" align="center" valign="top">
+        <a href="./docs/images/thyra-desktop-history.png"><img src="./docs/images/thyra-desktop-history.png" alt="Inspector History tab listing a Claude Code session's prompt and replies" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -41,21 +47,21 @@ Workspace terminals with changed files and image previews.
 <table width="100%">
   <thead>
     <tr>
-      <th width="33.33%" align="center">Changed files</th>
-      <th width="33.33%" align="center">Full terminal control</th>
-      <th width="33.33%" align="center">File viewer</th>
+      <th width="33.33%" align="center">Project launcher</th>
+      <th width="33.33%" align="center">Shortcut grid</th>
+      <th width="33.33%" align="center">Diff review</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/thyra-mobile-changes.png"><img src="./docs/images/thyra-mobile-changes.png" alt="Mobile changed files viewer" width="100%" /></a>
+        <a href="./docs/images/thyra-mobile-launcher.png"><img src="./docs/images/thyra-mobile-launcher.png" alt="Launcher sheet with pinned and recent folders, offering Claude or Codex for the selected folder" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/thyra-mobile-terminal.png"><img src="./docs/images/thyra-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
+        <a href="./docs/images/thyra-mobile-terminal.png"><img src="./docs/images/thyra-mobile-terminal.png" alt="Phone terminal with the shortcut grid open and Ctrl latched for the next key" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/thyra-mobile-files.png"><img src="./docs/images/thyra-mobile-files.png" alt="Mobile file viewer" width="100%" /></a>
+        <a href="./docs/images/thyra-mobile-changes.png"><img src="./docs/images/thyra-mobile-changes.png" alt="Unified, wrapped diff of a changed file on a phone" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -64,6 +70,7 @@ Workspace terminals with changed files and image previews.
 <!-- markdownlint-enable MD033 -->
 
 Click any screenshot to open the full-resolution image.
+The interface is also available in Simplified Chinese; the [Chinese README](./README.zh-CN.md) shows it.
 
 [desktop-changes]: ./docs/images/thyra-desktop-changes.png
 
