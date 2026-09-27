@@ -269,7 +269,12 @@ separate for desktop/mobile. Jump from a diff to its file preview.
 - Swipe sideways with three fingers across the terminal or pane area to move
   to the next pane (left to right) or the previous one (right to left). Panes
   follow workspace order, then tab order, then pane order within the tab, and
-  wrap from the last to the first. A brief banner names the destination.
+  wrap from the last to the first. The pane follows the fingers while a card
+  naming the destination slides in; releasing past about a third of the
+  width, or with a flick, completes the switch, and anything shorter springs
+  back. A quick second swipe while the first settles moves on again, and only
+  the final pane is opened. With reduced motion the card fades in instead and
+  a brief banner names the destination.
   **Configuration > Behavior > Pane swipe** switches to four fingers or turns
   it off. Three fingers work unchanged on iPhone and iPad; the swipe takes
   them over from iOS's three-finger undo/redo while a text field is focused,

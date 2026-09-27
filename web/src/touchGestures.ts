@@ -174,17 +174,25 @@ export class SwipeTracker {
         this.last.set(point.identifier, { x: point.clientX, y: point.clientY });
   }
 
+  /** The swiping fingers' mean travel, while the swipe is live. */
+  delta(): { dx: number; dy: number } | null {
+    if (this.state !== "tracking") return null;
+    let dx = 0;
+    let dy = 0;
+    for (const [id, from] of this.start) {
+      const to = this.last.get(id) ?? from;
+      dx += (to.x - from.x) / this.start.size;
+      dy += (to.y - from.y) / this.start.size;
+    }
+    return { dx, dy };
+  }
+
   /** A finger lifted; `remaining` touches are still down. */
   lift(remaining: number): -1 | 0 | 1 {
     let step: -1 | 0 | 1 = 0;
-    if (this.state === "tracking") {
-      let dx = 0;
-      let dy = 0;
-      for (const [id, from] of this.start) {
-        const to = this.last.get(id) ?? from;
-        dx += (to.x - from.x) / this.start.size;
-        dy += (to.y - from.y) / this.start.size;
-      }
+    const delta = this.delta();
+    if (delta) {
+      const { dx, dy } = delta;
       if (
         Math.abs(dx) >= SWIPE_MIN_PX &&
         Math.abs(dx) >= SWIPE_DOMINANCE * Math.abs(dy)
