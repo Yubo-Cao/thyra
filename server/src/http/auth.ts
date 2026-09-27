@@ -85,15 +85,19 @@ export function createAuthHandlers(args: {
     return args.secureCookies || context.secure ? "; Secure" : "";
   }
 
+  /** `Set-Cookie` value for a new session (login or tailnet login). */
+  function sessionCookie(context: AuthRequestContext): string {
+    if (!args.password) throw new Error("login is not configured");
+    return `${AUTH_COOKIE}=${signedToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${AUTH_TOKEN_TTL_SECONDS}${secureAttribute(context)}`;
+  }
+
   function authCookieHeaders(
     req: Request,
     context: AuthRequestContext,
   ): Record<string, string> {
     // Keep live tabs on the same session token without extending its expiry.
     if (hasValidSession(req)) return {};
-    return {
-      "set-cookie": `${AUTH_COOKIE}=${signedToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${AUTH_TOKEN_TTL_SECONDS}${secureAttribute(context)}`,
-    };
+    return { "set-cookie": sessionCookie(context) };
   }
 
   function clientKey(context: AuthRequestContext): string {
@@ -262,6 +266,7 @@ export function createAuthHandlers(args: {
 
   return {
     isAuthed,
+    sessionCookie,
     sessionToken,
     handleTokenLogin,
     handleLogin,

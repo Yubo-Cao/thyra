@@ -134,7 +134,7 @@ Then run `thyra`, or `thyra service install` for a user service.
 ### Remote access and security
 
 New installer configs bind `127.0.0.1`: only the same machine can connect, and direct local requests need no login.
-For phones and other computers, keep that binding and publish it privately with `tailscale serve --bg --https=443 http://127.0.0.1:8787`, set `THYRA_PUBLIC_BASE_URL` to the HTTPS address, and log in once per browser with the token ([tutorial](./TUTORIAL.md#tailscale), [reverse proxies](#reverse-proxies-and-allowed-origins)).
+For phones and other computers, keep that binding and publish it privately with `tailscale serve --bg --https=443 http://127.0.0.1:8787`, and set `THYRA_PUBLIC_BASE_URL` to the HTTPS address; tailnet users are then logged in by Tailscale identity ([tutorial](./TUTORIAL.md#tailscale), [reverse proxies](#reverse-proxies-and-allowed-origins)).
 To use Thyra from another computer over SSH, forward the port: `ssh -L 8787:127.0.0.1:8787 host`.
 `--lan` binds all interfaces and requires the login token printed at install time (stored in `~/.config/thyra/auth-token`); use it only on trusted networks, preferably with [native HTTPS](#native-https).
 Never expose Thyra directly to the public internet, and never use `tailscale funnel` for it; Thyra runs shell commands with your user's rights.
@@ -236,6 +236,7 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
 | `THYRA_PUBLIC_BASE_URL` | Comma-separated URLs browsers use through a proxy or DNS name, such as `https://thyra.example.ts.net`; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded headers are believed; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
+| `THYRA_TAILNET_AUTH=admin\|off` | Log in proxied tailnet users by Tailscale `whois` (default `admin` when `whois` is available); see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
 | `THYRA_IDENTITY_PATH` | Collaborator identity file (default `~/.config/thyra/identities.json`) |
@@ -314,6 +315,10 @@ THYRA_PUBLIC_BASE_URL=https://thyra.example.com
 ```
 
 Each browser, including an installed home-screen app, logs in once with the password or token; the session cookie lasts 30 days and is `Secure` over HTTPS.
+
+With Tailscale, **tailnet login** skips that step: when a proxied request's forwarded client address is a tailnet address and Tailscale `whois` names a user for it, Thyra issues the session cookie itself.
+It is on (`THYRA_TAILNET_AUTH=admin`) whenever `whois` works ([collaborator identity](#collaborator-identity)), and gives every tailnet user who can reach the proxy full access, so restrict the proxy's port with Tailscale ACLs.
+Tagged nodes and failed lookups get the login page. Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tailnet; never enable it for a public tunnel such as `cloudflared`.
 
 ## Collaborator identity
 

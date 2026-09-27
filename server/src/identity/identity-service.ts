@@ -524,6 +524,22 @@ export function createIdentityService<Socket extends object>(args: {
         : { ...result, snapshot: annotated };
     },
 
+    /** Whether a Tailscale `whois` backend is configured. */
+    whoisAvailable: args.whois.available,
+
+    /**
+     * The Tailscale user owning a tailnet address, via the cached `whois`.
+     * Null for non-tailnet addresses, tagged or unknown nodes, and lookup
+     * failures, so callers fail closed.
+     */
+    async tailnetUser(
+      address: string | null | undefined,
+    ): Promise<{ login: string } | null> {
+      if (!address || !isTailnetAddress(address)) return null;
+      const identity = await args.whois.lookup(address);
+      return identity?.user ? { login: identity.user.login } : null;
+    },
+
     /** Device key for client counting; falls back to the cookie device. */
     deviceKeyOf(socket: Socket): string | null {
       const session = sessions.get(socket);

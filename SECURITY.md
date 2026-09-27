@@ -23,6 +23,16 @@ An SSH port forward is direct local use. A request that arrives through a revers
 proxy (`X-Forwarded-*`, `Forwarded`, or `X-Real-IP`) is never local and must log in
 with `THYRA_PASSWORD` or the generated token, even on a loopback listener.
 
+**Tailnet login** (`THYRA_TAILNET_AUTH=admin`, the default when Tailscale `whois`
+is available) logs in a proxied request without a password when the proxy is in
+`THYRA_TRUSTED_PROXIES`, the forwarded client address is a tailnet address
+(`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), and `whois` names a Tailscale user for it;
+the browser then receives the normal session cookie. Every user of the tailnet who
+can reach the proxy therefore gets full (owner) access; restrict it with Tailscale
+ACLs. Tagged nodes, unknown peers, and `whois` failures fall back to the login page.
+Set `THYRA_TAILNET_AUTH=off` for a proxy reachable from outside the tailnet: a
+public tunnel (such as `cloudflared`) must never be combined with tailnet login.
+
 **Do not expose Thyra directly to the public internet.** For non-loopback:
 
 - Set a strong `THYRA_PASSWORD`; prefer it to `--password`, which exposes

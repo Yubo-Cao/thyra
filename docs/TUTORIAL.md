@@ -170,7 +170,8 @@ Hop B: Thyra -> Herdr       (local sockets / Thyra SSH profile)
 - Admit only fully trusted people/devices. UI access has the Thyra user's authority.
 - **Loopback skips login only for direct local use.** An SSH tunnel is direct
   local use, so it becomes the entire remote access boundary. Requests through a
-  reverse proxy such as Serve still log in with the password or token.
+  reverse proxy such as Serve log in with the password or token, or by Tailscale
+  identity for tailnet users ([tailnet login](./DEPLOYMENT.md#reverse-proxies-and-allowed-origins)).
 - Use trusted HTTPS/encrypted tunnels and restrict listener/access policy.
   Authentication alone adds no TLS, rate limiting, permission roles, or sandbox.
 - Keep passwords, token URLs, and Tailcat addresses out of screenshots, issues,
@@ -213,8 +214,9 @@ remain encrypted.
    Approve HTTPS certificate consent as an authorized admin. Hostnames appear in
    public certificate transparency logs, so avoid sensitive names.
 5. On the Tailscale-connected phone, open the **printed HTTPS hostname**, not an
-   IP or localhost, and log in with the password or the token from
-   `~/.config/thyra/auth-token`. Run `pwd` in an idle pane. Verify excluded devices cannot
+   IP or localhost. Tailnet login signs you in by Tailscale identity; if the login
+   page appears, use the password or the token from `~/.config/thyra/auth-token`.
+   Run `pwd` in an idle pane. Verify excluded devices cannot
    connect, using policy tests if no test device exists. With Tailscale off and
    no other access path, the URL should be unreachable.
 

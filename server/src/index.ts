@@ -79,6 +79,7 @@ import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
 import { createAuthHandlers, unauthenticatedLoginRedirect } from "./http/auth";
 import { createLoginRateLimiter } from "./http/login-rate-limit";
+import { parseTailnetAuthMode, tailnetLogin } from "./http/tailnet-auth";
 import {
   createRequestAccessPolicy,
   forbiddenResponse,
@@ -152,6 +153,7 @@ const downstreamConnectionConfig = {
 };
 const {
   isAuthed,
+  sessionCookie,
   sessionToken,
   handleTokenLogin,
   handleLogin,
@@ -184,12 +186,32 @@ function requestAccess(port: number): RequestAccessPolicy {
 }
 const CLIENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
+function cookieValue(setCookie: string): string {
+  const pair = setCookie.split(";", 1)[0] ?? "";
+  return pair.slice(pair.indexOf("=") + 1);
+}
+
+function withSetCookie(response: Response, setCookie: string): Response {
+  const headers = new Headers(response.headers);
+  headers.append("set-cookie", setCookie);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 type RpcRequest = ConnectionRpcRequest;
 
 const clientIdentity = createIdentityServiceFromEnv<ServerWebSocket<unknown>>({
   secureCookies: Boolean(config.tls),
   logger: logger.child("identity"),
 });
+const tailnetAuth = parseTailnetAuthMode(
+  thyraEnv("TAILNET_AUTH"),
+  clientIdentity.whoisAvailable,
+);
+if (tailnetAuth.warning) logger.warn(tailnetAuth.warning);
 
 const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   appVersion: APP_VERSION,
@@ -1542,25 +1564,47 @@ function main() {
 
           // Everything else requires login, except direct local use of a
           // loopback listener.
+          // Tailnet users behind a trusted proxy log in by Tailscale whois
+          // and receive the normal session cookie for later requests.
+          let issuedCookie: string | null = null;
           if (!isAuthed(req, authContext)) {
-            const accept = req.headers.get("accept") ?? "";
-            if (req.method === "GET" && accept.includes("text/html")) {
-              return unauthenticatedLoginRedirect();
+            const login = await tailnetLogin({
+              mode: tailnetAuth.mode,
+              access,
+              lookupUser: clientIdentity.tailnetUser,
+            });
+            if (login) {
+              issuedCookie = sessionCookie(authContext);
+              logger.info("tailnet login", { login: logDetail(login) });
+            } else {
+              const accept = req.headers.get("accept") ?? "";
+              if (req.method === "GET" && accept.includes("text/html")) {
+                return unauthenticatedLoginRedirect();
+              }
+              return new Response("unauthorized", { status: 401 });
             }
-            return new Response("unauthorized", { status: 401 });
           }
 
           if (url.pathname === "/ws") {
             const upgrade = clientIdentity.upgradeContext(req, peer);
             const clientSession = url.searchParams.get("client_session");
+            const upgradeHeaders = new Headers();
+            if (upgrade.headers["set-cookie"])
+              upgradeHeaders.append(
+                "set-cookie",
+                upgrade.headers["set-cookie"],
+              );
+            if (issuedCookie) upgradeHeaders.append("set-cookie", issuedCookie);
             if (
               server.upgrade(req, {
                 // Bun rejects an empty headers object.
-                ...(upgrade.headers["set-cookie"]
-                  ? { headers: upgrade.headers }
+                ...(upgradeHeaders.has("set-cookie")
+                  ? { headers: upgradeHeaders }
                   : {}),
                 data: {
-                  sessionToken: sessionToken(req),
+                  sessionToken: issuedCookie
+                    ? cookieValue(issuedCookie)
+                    : sessionToken(req),
                   client: upgrade.context,
                   clientSession:
                     clientSession && CLIENT_SESSION_PATTERN.test(clientSession)
@@ -1635,11 +1679,12 @@ function main() {
             return handleConnectionHttpRequest(connectionRoute, url, req);
           }
           // Everything else: serve the built frontend (embedded or on-disk).
-          return clientIdentity.withPageCookie(
+          const page = clientIdentity.withPageCookie(
             req,
             peer,
             await serveStatic(req, config.publicDir),
           );
+          return issuedCookie ? withSetCookie(page, issuedCookie) : page;
         },
         websocket: {
           perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
@@ -1814,6 +1859,7 @@ function main() {
       ? { path: config.generatedAuthTokenPath }
       : {}),
     public_base_url: publicBaseUrls.origins.join(",") || undefined,
+    tailnet_auth: tailnetAuth.mode,
   });
   logger.debug("Herdr sockets configured", {
     control_socket: config.socketPath,

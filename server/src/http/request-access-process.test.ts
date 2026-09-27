@@ -20,6 +20,7 @@ test("loopback listener enforces Host, Origin, proxy login and RPC policy", asyn
       THYRA_PASSWORD: "",
       THYRA_PUBLIC_BASE_URL: "https://dev.example",
       THYRA_TRUSTED_PROXIES: "loopback",
+      THYRA_TAILSCALE_IDENTITY: "off",
       THYRA_CONNECTIONS_PATH: join(root, "connections.json"),
       HERDR_SOCKET_PATH: join(root, "missing-control.sock"),
       HERDR_CLIENT_SOCKET_PATH: join(root, "missing-render.sock"),

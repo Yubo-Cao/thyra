@@ -499,7 +499,11 @@ its effective host and scheme (from `X-Forwarded-Host`/`-Proto` only for trusted
 proxies), whether it was proxied, and whether it is direct local use. Unknown hosts
 are refused; `/ws` and non-GET/HEAD requests require an allowed `Origin` unless
 local; `/api` reads refuse foreign initiators. Login is skipped only for direct
-local use of a loopback listener.
+local use of a loopback listener. Tailnet login (`server/src/http/tailnet-auth.ts`)
+authenticates a proxied request whose forwarded client address is a tailnet
+address that Tailscale `whois` (the identity service's cache) maps to a user, and
+issues the normal session cookie on that response and WebSocket upgrade. A future
+public listener must not enable it.
 
 WebSocket RPC is deny-by-default. `server/src/authz/policy.ts` lists every method
 the bridge handles or forwards to Herdr with a class (`read`, `write`, `admin`,
