@@ -1,5 +1,6 @@
 import type { ITheme, Terminal } from "@xterm/xterm";
 import type { ResolvedTheme } from "./appearance";
+import { msg, t } from "./i18n";
 
 export const TERMINAL_THEME_SELECTION_STORAGE_KEY = "terminalThemeSelection.v1";
 export const CUSTOM_TERMINAL_THEMES_STORAGE_KEY = "customTerminalThemes.v1";
@@ -51,6 +52,10 @@ export type TerminalThemeDefinition = {
   theme: ITheme;
 };
 
+export function terminalThemeName(theme: TerminalThemeDefinition): string {
+  return theme.builtin ? t(theme.name) : theme.name;
+}
+
 export type TerminalThemeSelection = {
   dark: string;
   light: string;
@@ -62,14 +67,14 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
   {
     // Persisted preset IDs stay stable for existing theme selections/exports.
     id: "herdr-dark",
-    name: "Thyra Dark",
+    name: msg("Thyra Dark"),
     variant: "dark",
     builtin: true,
     theme: DARK_TERMINAL_THEME,
   },
   {
     id: "herdr-light",
-    name: "Thyra Light",
+    name: msg("Thyra Light"),
     variant: "light",
     builtin: true,
     theme: LIGHT_TERMINAL_THEME,
@@ -481,11 +486,11 @@ export function customTerminalThemeToITheme(
 }
 
 function normalizeThemeName(value: unknown): string {
-  if (typeof value !== "string") return "Custom theme";
+  if (typeof value !== "string") return t("Custom theme");
   const clipped = Array.from(value.trim())
     .slice(0, MAX_TERMINAL_THEME_NAME_LENGTH)
     .join("");
-  return clipped || "Custom theme";
+  return clipped || t("Custom theme");
 }
 
 function normalizeCustomThemeId(
@@ -632,7 +637,7 @@ export function resolveTerminalThemeDefinition(
   if (fallback) return fallback;
   return {
     id: defaultTerminalThemeId(resolvedTheme),
-    name: resolvedTheme === "light" ? "Thyra Light" : "Thyra Dark",
+    name: resolvedTheme === "light" ? msg("Thyra Light") : msg("Thyra Dark"),
     variant: resolvedTheme,
     builtin: true,
     theme: terminalThemeFor(resolvedTheme),

@@ -111,11 +111,11 @@ const ATTENTION_STATUSES = [
 ] as const;
 
 const AGENT_STATUS_TEXT: Record<string, string> = {
-  blocked: msg("blocked"),
-  done: msg("done"),
-  working: msg("working"),
-  idle: msg("idle"),
-  unknown: msg("unknown"),
+  blocked: msg("Blocked"),
+  done: msg("Done"),
+  working: msg("Working"),
+  idle: msg("Idle"),
+  unknown: msg("Unknown"),
 };
 
 /** The status Herdr reports, translated when it is a known agent state. */

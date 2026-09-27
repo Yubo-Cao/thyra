@@ -24,6 +24,23 @@
   display: block;
 }
 
+.diff-hunk-separator {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 32px;
+  width: 100%;
+  padding: 4px 12px;
+  border: 0;
+  background: var(--diff-bg);
+  color: var(--muted);
+  font: inherit;
+}
+
+button.diff-hunk-separator {
+  cursor: pointer;
+}
+
 .diff-content-view {
   position: relative;
   flex: 1 1 auto;

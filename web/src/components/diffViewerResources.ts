@@ -1,4 +1,5 @@
 import { thyraLocalStorage } from "../browserStorage";
+import { t } from "../i18n";
 import type { ConnectionClient } from "../api";
 import type { GitDiffEntry, GitDiffFile, GitDiffSummary } from "../types";
 import { connectionClientScopeKey } from "../useConnectionClient";
@@ -451,11 +452,13 @@ export function requestDiffFile(
   snapshotId?: string,
 ) {
   if (!client.isCurrent()) {
-    return Promise.reject(new Error("connection changed during diff request"));
+    return Promise.reject(
+      new Error(t("connection changed during diff request")),
+    );
   }
   if (scope === "last-step" && !snapshotId) {
     return Promise.reject(
-      new Error("last-step diff requires a fresh summary snapshot"),
+      new Error(t("last-step diff requires a fresh summary snapshot")),
     );
   }
   const requestKey = diffFileRequestKey(
@@ -481,7 +484,7 @@ export function requestDiffFile(
     task
       .then((file) => {
         if (!client.isCurrent()) {
-          throw new Error("connection changed during diff request");
+          throw new Error(t("connection changed during diff request"));
         }
         return file;
       })

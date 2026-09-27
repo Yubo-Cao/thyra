@@ -32,6 +32,7 @@ import { usePaneControl } from "../usePaneControl";
 import { paneDisplayName } from "../paneIdentity";
 import { agentClass } from "../utils";
 import { shouldShowAgentStatusLabel } from "./agentSession";
+import { agentStatusText } from "../agentOrder";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
@@ -3560,7 +3561,7 @@ export function TerminalView({
               <span
                 className={`${agentClass(pane.agent_status)} terminal-pane-status`}
               >
-                {pane.agent_status}
+                {agentStatusText(pane.agent_status)}
               </span>
             ) : null}
           </div>

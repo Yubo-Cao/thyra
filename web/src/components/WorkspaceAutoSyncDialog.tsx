@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
 import { store } from "../store";
-import { UI_LOCALE } from "../uiLocale";
+import { uiIntlLocale } from "../uiLocale";
 import { useConnectionClient } from "../useConnectionClient";
 import { Dialog } from "./ui/Dialog";
 import { Switch } from "./ui/Switch";
@@ -185,7 +185,9 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function formatLastRun(value?: string) {
   if (!value) return t("Not run yet");
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(UI_LOCALE);
+  return Number.isNaN(date.valueOf())
+    ? value
+    : date.toLocaleString(uiIntlLocale());
 }
 
 function statusLabel(status?: AutoSyncStatus) {

@@ -1,4 +1,5 @@
 import { WORKSPACE_PINS_STORAGE_KEY } from "./workspacePins";
+import { t } from "./i18n";
 import { COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY } from "./workspaceTreeCollapse";
 
 export const LEGACY_DEFAULT_CONNECTION_ID = "legacy-default";
@@ -36,8 +37,8 @@ export function connectionStorageKey(
   connectionId: string,
   baseKey: string,
 ): string {
-  if (!connectionId) throw new Error("invalid connection_id");
-  if (!baseKey) throw new Error("invalid storage key");
+  if (!connectionId) throw new Error(t("invalid connection_id"));
+  if (!baseKey) throw new Error(t("invalid storage key"));
   if (connectionId === LEGACY_DEFAULT_CONNECTION_ID) return baseKey;
   return `herdr.connection/${encodeURIComponent(connectionId)}/${encodeURIComponent(baseKey)}`;
 }

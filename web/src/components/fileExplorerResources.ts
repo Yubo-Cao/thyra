@@ -552,7 +552,9 @@ export function requestFilePreview(
 ) {
   const client = options.client;
   if (!client.isCurrent()) {
-    return Promise.reject(new Error("connection changed during file preview"));
+    return Promise.reject(
+      new Error(t("connection changed during file preview")),
+    );
   }
   const key = filePreviewCacheKey(client, workspaceId, path);
   const cached = readCachedPreview(key);
@@ -569,10 +571,10 @@ export function requestFilePreview(
   const scopedTask = task
     .then((preview) => {
       if (!client.isCurrent()) {
-        throw new Error("connection changed during file preview");
+        throw new Error(t("connection changed during file preview"));
       }
       if (previewRequestRevisions.get(key) !== revision) {
-        throw new Error("file preview request superseded");
+        throw new Error(t("file preview request superseded"));
       }
       previewResourceRevision += 1;
       const versionedPreview = {
@@ -639,14 +641,16 @@ export async function createExplorerEntry(
   path: string,
   kind: "directory" | "file",
 ) {
-  if (!client.isCurrent()) throw new Error("connection changed during create");
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during create"));
   const result = (await client.call("file.mkdir", {
     workspace_id: workspaceId,
     path,
     kind,
     ...(isFilesystemPath(path) ? { scope: "filesystem" } : {}),
   })) as { path: string; type: "directory" | "file" };
-  if (!client.isCurrent()) throw new Error("connection changed during create");
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during create"));
   return result;
 }
 
@@ -656,7 +660,8 @@ export async function uploadExplorerFile(
   directory: string,
   file: File,
 ) {
-  if (!client.isCurrent()) throw new Error("connection changed during upload");
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during upload"));
   const url = new URL(
     connectionHttpPath(
       client.connectionId,
@@ -666,7 +671,7 @@ export async function uploadExplorerFile(
     window.location.origin,
   );
   if (url.origin !== window.location.origin)
-    throw new Error("invalid upload origin");
+    throw new Error(t("invalid upload origin"));
   url.searchParams.set("workspace_id", workspaceId);
   url.searchParams.set("directory", directory);
   url.searchParams.set("filename", file.name);
@@ -676,7 +681,8 @@ export async function uploadExplorerFile(
     body: file,
   });
   const text = await response.text();
-  if (!client.isCurrent()) throw new Error("connection changed during upload");
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during upload"));
   let payload: any;
   try {
     payload = text ? JSON.parse(text) : {};
@@ -685,7 +691,9 @@ export async function uploadExplorerFile(
   }
   if (!response.ok) {
     throw new Error(
-      payload?.error || text || `upload failed ${response.status}`,
+      payload?.error ||
+        text ||
+        t("upload failed {status}", { status: response.status }),
     );
   }
   return payload as {
@@ -700,7 +708,8 @@ export async function deleteExplorerEntry(
   workspaceId: string,
   path: string,
 ) {
-  if (!client.isCurrent()) throw new Error("connection changed during delete");
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during delete"));
   const url = new URL(
     connectionHttpPath(
       client.connectionId,
@@ -710,13 +719,14 @@ export async function deleteExplorerEntry(
     window.location.origin,
   );
   if (url.origin !== window.location.origin)
-    throw new Error("invalid delete origin");
+    throw new Error(t("invalid delete origin"));
   url.searchParams.set("workspace_id", workspaceId);
   url.searchParams.set("path", path);
   if (isFilesystemPath(path)) url.searchParams.set("scope", "filesystem");
   const response = await fetch(url, { method: "POST" });
   const text = await response.text();
-  if (!client.isCurrent()) throw new Error("connection changed during delete");
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during delete"));
   let payload: any;
   try {
     payload = text ? JSON.parse(text) : {};
@@ -725,7 +735,9 @@ export async function deleteExplorerEntry(
   }
   if (!response.ok) {
     throw new Error(
-      payload?.error || text || `delete failed ${response.status}`,
+      payload?.error ||
+        text ||
+        t("delete failed {status}", { status: response.status }),
     );
   }
   return payload as {

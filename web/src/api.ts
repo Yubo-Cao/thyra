@@ -441,7 +441,7 @@ export class Bridge {
    * lease are rejected so their replies cannot publish into the new session.
    */
   setActiveConnection(connectionId: string): number {
-    if (!connectionId) throw new Error("invalid connection_id");
+    if (!connectionId) throw new Error(t("invalid connection_id"));
     if (connectionId === this._activeConnectionId)
       return this._clientGeneration;
     this._activeConnectionId = connectionId;
@@ -452,7 +452,7 @@ export class Bridge {
   advanceActiveConnectionGeneration(): number {
     this._clientGeneration += 1;
     this.rejectPending(
-      "connection changed during request",
+      msg("connection changed during request"),
       (pending) => pending.connectionId !== null,
     );
     return this._clientGeneration;
@@ -474,13 +474,15 @@ export class Bridge {
       serverRuntimeGeneration,
       call: (method, params = {}, timeoutMs = RPC_TIMEOUT_MS) => {
         if (!this.helloAcceptedForSocket) {
-          return Promise.reject(new Error("bridge hello is unavailable"));
+          return Promise.reject(new Error(t("bridge hello is unavailable")));
         }
         if (
           generation !== this._clientGeneration ||
           connectionId !== this._activeConnectionId
         ) {
-          return Promise.reject(new Error("connection changed during request"));
+          return Promise.reject(
+            new Error(t("connection changed during request")),
+          );
         }
         if (
           requiresRuntimeGeneration() &&
@@ -489,7 +491,7 @@ export class Bridge {
               serverRuntimeGeneration)
         ) {
           return Promise.reject(
-            new Error("connection runtime generation is unavailable"),
+            new Error(t("connection runtime generation is unavailable")),
           );
         }
         return this.callScoped(
@@ -533,7 +535,7 @@ export class Bridge {
     try {
       ws = new WebSocket(wsUrl());
     } catch {
-      this.handleDisconnect(null, "bridge connection could not be opened");
+      this.handleDisconnect(null, msg("bridge connection could not be opened"));
       return;
     }
     this.ws = ws;
@@ -542,8 +544,8 @@ export class Bridge {
       if (this.ws !== ws || this.helloAcceptedForSocket) return;
       this.forceReconnect(
         ws.readyState === WebSocket.CONNECTING
-          ? "bridge connection timed out"
-          : "bridge hello timed out",
+          ? msg("bridge connection timed out")
+          : msg("bridge hello timed out"),
       );
     }, this.connectTimeoutMs);
 
@@ -563,17 +565,17 @@ export class Bridge {
     ws.onclose = (event) => {
       if (this.ws !== ws) return;
       if (event?.code === 4001) {
-        this.disconnect("logged out");
+        this.disconnect(msg("logged out"));
         // Clear the shared cookie in every tab before navigating. A close frame
         // can arrive before the initiating tab receives its logout response.
         void logoutBrowserSession().catch(() => location.replace("/login"));
         return;
       }
-      this.handleDisconnect(ws, "bridge disconnected");
+      this.handleDisconnect(ws, msg("bridge disconnected"));
     };
   }
 
-  disconnect(reason = "bridge connection paused") {
+  disconnect(reason: string = msg("bridge connection paused")) {
     this.reconnectEnabled = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -628,7 +630,7 @@ export class Bridge {
           this._status === "connected" &&
           this.lastMessageAt < probeStartedAt
         ) {
-          this.forceReconnect("bridge heartbeat timed out");
+          this.forceReconnect(msg("bridge heartbeat timed out"));
         }
       },
     );
@@ -645,7 +647,7 @@ export class Bridge {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // The close event never fired (the OS froze the page first), so drop
       // the stale socket instead of waiting for the heartbeat interval.
-      this.forceReconnect("bridge socket is no longer open");
+      this.forceReconnect(msg("bridge socket is no longer open"));
       return;
     }
     this.runHeartbeatProbe();
@@ -671,7 +673,7 @@ export class Bridge {
     for (const [id, pending] of this.pending) {
       if (!predicate(pending)) continue;
       if (pending.timer !== null) clearTimeout(pending.timer);
-      pending.reject(new Error(message));
+      pending.reject(new Error(t(message)));
       this.pending.delete(id);
     }
   }
@@ -785,31 +787,31 @@ export class Bridge {
         (owns("connection_id") || owns("connection_generation"))
       ) {
         pending.reject(
-          new Error("global response contains connection identity"),
+          new Error(t("global response contains connection identity")),
         );
       } else if (
         pending.connectionId !== null &&
         msg.connection_id !== pending.connectionId
       ) {
-        pending.reject(new Error("response connection_id mismatch"));
+        pending.reject(new Error(t("response connection_id mismatch")));
       } else if (
         pending.connectionId !== null &&
         requiresRuntimeGeneration &&
         msg.connection_generation !== pending.serverRuntimeGeneration
       ) {
-        pending.reject(new Error("response connection_generation mismatch"));
+        pending.reject(new Error(t("response connection_generation mismatch")));
       } else if (
         pending.connectionId !== null &&
         pending.clientGeneration !== this._clientGeneration
       ) {
-        pending.reject(new Error("connection changed during request"));
+        pending.reject(new Error(t("connection changed during request")));
       } else if (
         hasError &&
         (!msg.error ||
           typeof msg.error !== "object" ||
           typeof msg.error.message !== "string")
       ) {
-        pending.reject(new Error("invalid error response"));
+        pending.reject(new Error(t("invalid error response")));
       } else if (hasError) {
         pending.reject(new Error(msg.error.message));
       } else {
@@ -967,11 +969,11 @@ export class Bridge {
   ): Promise<any> {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("not connected to bridge"));
+      return Promise.reject(new Error(t("not connected to bridge")));
     }
     if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES) {
-      this.forceReconnect("bridge send buffer is full");
-      return Promise.reject(new Error("bridge send buffer is full"));
+      this.forceReconnect(msg("bridge send buffer is full"));
+      return Promise.reject(new Error(t("bridge send buffer is full")));
     }
     const id = `c${++this.seq}_${Date.now().toString(36)}`;
     return new Promise((resolve, reject) => {
@@ -980,7 +982,7 @@ export class Bridge {
           ? null
           : setTimeout(() => {
               if (this.pending.delete(id)) {
-                reject(new Error(`timeout: ${method}`));
+                reject(new Error(t("timeout: {method}", { method })));
               }
             }, timeoutMs);
       this.pending.set(id, {
@@ -1010,7 +1012,7 @@ export class Bridge {
       } catch (error) {
         if (timer !== null) clearTimeout(timer);
         this.pending.delete(id);
-        this.forceReconnect("bridge send failed");
+        this.forceReconnect(msg("bridge send failed"));
         reject(error as Error);
       }
     });
@@ -1026,7 +1028,9 @@ export class Bridge {
   ): Promise<any> {
     if (isBridgeGlobalMethod(method)) {
       return Promise.reject(
-        new Error(`global RPC cannot use a connection client: ${method}`),
+        new Error(
+          t("global RPC cannot use a connection client: {method}", { method }),
+        ),
       );
     }
     return this.sendCall(
@@ -1059,7 +1063,7 @@ export class Bridge {
       );
     }
     if (!this.helloAcceptedForSocket) {
-      return Promise.reject(new Error("bridge hello is unavailable"));
+      return Promise.reject(new Error(t("bridge hello is unavailable")));
     }
     const serverRuntimeGeneration =
       this._hello?.capabilities?.connection_runtime_generation === true
@@ -1070,7 +1074,7 @@ export class Bridge {
       serverRuntimeGeneration === null
     ) {
       return Promise.reject(
-        new Error("connection runtime generation is unavailable"),
+        new Error(t("connection runtime generation is unavailable")),
       );
     }
     return this.callScoped(

@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { agentStatusText } from "../agentOrder";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
 import {
   shallowEqual,
@@ -273,7 +274,7 @@ export function TabBar({
                 {agentSummary ? (
                   <span
                     className="tabbar-agent-marker"
-                    title={`${agentSummary.primaryAgent} · ${agentSummary.status}${
+                    title={`${agentSummary.primaryAgent} · ${agentStatusText(agentSummary.status)}${
                       agentSummary.additionalAgents > 0
                         ? ` · ${
                             agentSummary.additionalAgents === 1

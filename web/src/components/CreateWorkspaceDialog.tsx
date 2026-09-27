@@ -80,7 +80,7 @@ export function CreateWorkspaceDialog({
         placeholder={t("Optional")}
       />
       <TextField
-        label="CWD"
+        label={t("Working directory")}
         fullWidth
         value={cwd}
         onValueChange={setCwd}

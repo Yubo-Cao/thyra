@@ -119,7 +119,7 @@ async function writeClipboardText(
     failure ??= error;
   }
 
-  throw clipboardError(failure ?? "browser clipboard access is unavailable");
+  throw clipboardError(failure ?? t("browser clipboard access is unavailable"));
 }
 
 /** Copy from a real button click or terminal keyboard shortcut. */
@@ -184,7 +184,8 @@ export function reserveClipboardWrite(
     .write([
       new ClipboardItem({
         "text/plain": content.then((text) => {
-          if (text === null) throw new Error("no terminal clipboard arrived");
+          if (text === null)
+            throw new Error(t("no terminal clipboard arrived"));
           return new Blob([text], { type: "text/plain" });
         }),
       }),

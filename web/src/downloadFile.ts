@@ -6,6 +6,8 @@
  * context on iOS/standalone (the in-app browser offers a way back), and keep
  * the classic anchor download everywhere else.
  */
+import { t } from "./i18n";
+
 export type FileDownloadStrategy = "share" | "new-context" | "anchor";
 
 /** Share sheets need the whole blob in memory; open large files instead. */
@@ -121,7 +123,9 @@ export async function downloadFileFromUrl(args: {
     try {
       const response = await fetch(args.url, { credentials: "same-origin" });
       if (!response.ok) {
-        throw new Error(`download failed (${response.status})`);
+        throw new Error(
+          t("download failed ({status})", { status: response.status }),
+        );
       }
       const size = Number(response.headers.get("content-length") ?? 0);
       if (size > MAX_SHARE_FILE_BYTES) {

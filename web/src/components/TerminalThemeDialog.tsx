@@ -18,6 +18,7 @@ import {
   TERMINAL_THEME_PRESETS,
   type TerminalThemeSelection,
   terminalColorToHex,
+  terminalThemeName,
 } from "../terminalThemes";
 import { cn } from "../utils";
 import { Button } from "./ui/Button";
@@ -263,7 +264,9 @@ export function TerminalThemeDialog({
     setDraft(
       draftFromDefinition(
         card.definition,
-        t("{name} copy", { name: card.definition.name }),
+        t("{name} copy", {
+          name: terminalThemeName(card.definition),
+        }),
       ),
     );
   };
@@ -391,14 +394,14 @@ export function TerminalThemeDialog({
                   />
                   <span className="terminal-theme-card-name">
                     {active ? <Check size={13} aria-hidden="true" /> : null}
-                    {card.definition.name}
+                    {terminalThemeName(card.definition)}
                     {custom ? <Token>{t("Custom")}</Token> : null}
                   </span>
                 </Button>
                 <span className="terminal-theme-card-actions">
                   <IconButton
                     label={t("Duplicate {name}", {
-                      name: card.definition.name,
+                      name: terminalThemeName(card.definition),
                     })}
                     tooltip={
                       canCreate ? t("Duplicate as custom theme") : limitReached

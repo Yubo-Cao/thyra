@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { t } from "./i18n";
 import type { ConnectionClient } from "./api";
 import type { GitDiffSummary } from "./types";
 import { connectionClientScopeKey } from "./useConnectionClient";
@@ -170,11 +171,11 @@ export function refreshGitDiffSummary(
       .catch(() => undefined)
       .then(() => {
         if (trailingRequests.get(key) !== trailing) {
-          throw new Error("queued diff summary request retired");
+          throw new Error(t("queued diff summary request retired"));
         }
         if (!client.isCurrent()) {
           throw new Error(
-            "connection changed before queued diff summary request",
+            t("connection changed before queued diff summary request"),
           );
         }
         return refreshGitDiffSummary(client, workspaceId, mode, resourceKey);
@@ -201,7 +202,7 @@ export function refreshGitDiffSummary(
   )
     .then((summary) => {
       if (!client.isCurrent()) {
-        throw new Error("connection changed during diff summary request");
+        throw new Error(t("connection changed during diff summary request"));
       }
       if (activeTokens.get(key) === token) {
         publish(key, { summary, loading: false, error: null });

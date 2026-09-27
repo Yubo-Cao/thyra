@@ -2,6 +2,7 @@ import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { downloadFileFromUrl } from "../downloadFile";
 import { t } from "../i18n";
+import { uiIntlLocale } from "../uiLocale";
 import { store } from "../store";
 import type { Pane } from "../types";
 
@@ -263,12 +264,12 @@ export function firstLinePreview(text: string, max = 96) {
 }
 
 export function formatCount(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat(uiIntlLocale()).format(value);
 }
 
 function formatCompactNumber(value?: number) {
   if (!value) return "0";
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(uiIntlLocale(), {
     notation: "compact",
     maximumFractionDigits: value >= 10000 ? 1 : 0,
   }).format(value);

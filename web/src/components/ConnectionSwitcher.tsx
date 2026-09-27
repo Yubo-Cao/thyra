@@ -420,7 +420,7 @@ function ConnectionCard({
             <code
               title={
                 connection.remote_control_socket_path ||
-                "Inferred under the remote home directory"
+                t("Inferred under the remote home directory")
               }
             >
               {t("Remote control: {path}", {
@@ -432,7 +432,7 @@ function ConnectionCard({
             <code
               title={
                 connection.remote_client_socket_path ||
-                "Inferred under the remote home directory"
+                t("Inferred under the remote home directory")
               }
             >
               {t("Remote render: {path}", {

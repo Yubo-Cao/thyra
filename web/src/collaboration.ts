@@ -1,5 +1,6 @@
 import type { ConnectionClient, HerdrEventMsg } from "./api";
 import { thyraLocalStorage } from "./browserStorage";
+import { t } from "./i18n";
 import type { State } from "./store";
 
 export type CollaborationParticipant = {
@@ -71,7 +72,7 @@ function randomId() {
 
 function defaultName() {
   const platform = navigator.platform?.trim();
-  return platform ? `${platform} user` : "Thyra user";
+  return platform ? t("{platform} user", { platform }) : t("Thyra user");
 }
 
 export function collaborationProfileForSession(
@@ -131,7 +132,7 @@ export function collaborationProfile(): CollaborationProfile {
 export function saveCollaborationProfile(profile: CollaborationProfile) {
   cachedProfile = {
     ...profile,
-    displayName: profile.displayName.trim().slice(0, 80) || "Thyra user",
+    displayName: profile.displayName.trim().slice(0, 80) || t("Thyra user"),
   };
   try {
     thyraLocalStorage.setItem(
@@ -276,7 +277,7 @@ export async function updateCollaborationPresence(
     collaborationPresenceParams(snapshot, typing),
   );
   const parsed = parseSnapshot(result);
-  if (!parsed) throw new Error("invalid collaboration snapshot");
+  if (!parsed) throw new Error(t("invalid collaboration snapshot"));
   publishCollaborationSnapshot(client, parsed);
   return parsed;
 }

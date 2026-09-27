@@ -3,6 +3,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { installCatalog, msg, resolveLocale, t } from "./i18n";
 import zhCN from "./locales/zh-CN";
+import { agentStatusText } from "./agentOrder";
+import { formatUiRelativeTime } from "./uiLocale";
+import { formatOptionalCompact } from "./components/agentSession";
 
 const SOURCE_ROOT = import.meta.dir;
 
@@ -46,6 +49,31 @@ const placeholders = (text: string) =>
   [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
 describe("interface translation", () => {
+  test("agent status labels and relative times follow the loaded catalog", () => {
+    installCatalog("zh-CN", zhCN);
+    try {
+      for (const [status, label] of [
+        ["Working", "工作中"],
+        ["Idle", "空闲"],
+        ["Blocked", "已阻塞"],
+        ["Done", "完成"],
+        ["Unknown", "未知"],
+      ]) {
+        expect(agentStatusText(status)).toBe(label);
+        expect(agentStatusText(status.toLowerCase())).toBe(label);
+      }
+      expect(formatUiRelativeTime(-5, "minute")).toBe("5分钟前");
+      expect(formatOptionalCompact(50_000)).toBe("5万");
+      expect(t("Pane {index} / {count}", { index: 1, count: 2 })).toBe(
+        "窗格 1 / 2",
+      );
+    } finally {
+      installCatalog("en", {});
+    }
+    expect(agentStatusText("working")).toBe("Working");
+    expect(formatUiRelativeTime(-5, "minute")).toBe("5 minutes ago");
+  });
+
   test("translates, interpolates, and falls back to English", () => {
     installCatalog("zh-CN", {
       "Copied {count} characters": "已复制 {count} 个字符",

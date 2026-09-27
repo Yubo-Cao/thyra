@@ -1,5 +1,6 @@
 // Simplified Chinese messages for the settings group; keys are the English source.
 export default {
+  "Inferred under the remote home directory": "自动推断远程主目录下的路径",
   Auto: "自动",
 
   // Configuration dialog

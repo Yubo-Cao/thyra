@@ -56,6 +56,26 @@ type PierreDiffOptions = NonNullable<
   ComponentProps<typeof FileDiff>["options"]
 >;
 
+// Pierre 1.4.3 exposes a custom separator callback but no label formatter.
+export const renderDiffHunkSeparator: Extract<
+  PierreDiffOptions["hunkSeparators"],
+  (...args: never[]) => unknown
+> = (hunk, instance) => {
+  const separator = document.createElement(hunk.expandable ? "button" : "span");
+  separator.className = "diff-hunk-separator";
+  separator.textContent = !hunk.lineCountKnown
+    ? t("More unchanged context may be available")
+    : hunk.lines === 1
+      ? t("1 unmodified line")
+      : t("{count} unmodified lines", { count: hunk.lines });
+  if (hunk.expandable) {
+    separator.setAttribute("type", "button");
+    separator.setAttribute("aria-label", t("Expand unchanged lines"));
+    separator.onclick = () => instance.expandHunk(hunk.hunkIndex, "both");
+  }
+  return separator;
+};
+
 const DIFF_VIEW_MODE_KEY = "diffViewMode";
 const DESKTOP_DIFF_WRAP_KEY = "desktopDiffWrap";
 const MOBILE_DIFF_WRAP_KEY = "mobileDiffWrap";
@@ -856,7 +876,7 @@ export function DiffContentView({
       disableFileHeader: true,
       stickyHeader: false,
       diffIndicators: "bars",
-      hunkSeparators: "line-info-basic",
+      hunkSeparators: renderDiffHunkSeparator,
       lineDiffType: "word-alt",
       maxLineDiffLength: 2_000,
       tokenizeMaxLineLength: 4_000,

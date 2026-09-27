@@ -55,6 +55,7 @@ import { shallowEqual, store, useStoreSelector } from "../store";
 import {
   type CustomTerminalTheme,
   resolveTerminalThemeDefinition,
+  terminalThemeName,
   type TerminalThemeSelection,
 } from "../terminalThemes";
 import {
@@ -331,16 +332,20 @@ export function ConfigurationDialog({
         icon={<SquareTerminal size={15} />}
         title={t("Terminal theme")}
         description={t("Dark: {dark} · Light: {light}", {
-          dark: resolveTerminalThemeDefinition(
-            "dark",
-            props.terminalThemeSelection,
-            props.customTerminalThemes,
-          ).name,
-          light: resolveTerminalThemeDefinition(
-            "light",
-            props.terminalThemeSelection,
-            props.customTerminalThemes,
-          ).name,
+          dark: terminalThemeName(
+            resolveTerminalThemeDefinition(
+              "dark",
+              props.terminalThemeSelection,
+              props.customTerminalThemes,
+            ),
+          ),
+          light: terminalThemeName(
+            resolveTerminalThemeDefinition(
+              "light",
+              props.terminalThemeSelection,
+              props.customTerminalThemes,
+            ),
+          ),
         })}
         onClick={(event) => openDetail(event, "terminal")}
       />

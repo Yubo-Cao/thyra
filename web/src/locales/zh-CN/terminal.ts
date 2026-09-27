@@ -1,5 +1,8 @@
 // Simplified Chinese messages for the terminal group; keys are the English source.
 export default {
+  "Thyra Dark": "Thyra 深色",
+  "Thyra Light": "Thyra 浅色",
+  "no terminal clipboard arrived": "未收到终端剪贴板内容",
   // Terminal pane
   Terminal: "终端",
   "Copied {count} characters": "已复制 {count} 个字符",

@@ -762,7 +762,7 @@ export function numberedCreatedTabRename(
   ) {
     return null;
   }
-  return { tabId, label: `Tab ${number}` };
+  return { tabId, label: t("Tab {number}", { number }) };
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;

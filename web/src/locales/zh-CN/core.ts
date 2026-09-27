@@ -63,6 +63,30 @@ export default {
     "通知 Service Worker 未能就绪。请检查连接后重试。",
 
   // Connection
+  "invalid connection_id": "连接 ID 无效",
+  "invalid connection_generation": "连接代次无效",
+  "connection changed during request": "请求期间连接已更改",
+  "bridge hello is unavailable": "桥接服务握手信息不可用",
+  "connection runtime generation is unavailable": "连接运行时代次不可用",
+  "bridge connection could not be opened": "无法建立桥接服务连接",
+  "bridge connection timed out": "连接桥接服务超时",
+  "bridge hello timed out": "桥接服务握手超时",
+  "logged out": "已退出登录",
+  "bridge disconnected": "桥接服务已断开",
+  "bridge connection paused": "桥接服务连接已暂停",
+  "bridge heartbeat timed out": "桥接服务心跳超时",
+  "bridge socket is no longer open": "桥接服务套接字已关闭",
+  "global response contains connection identity": "全局响应包含了连接标识",
+  "response connection_id mismatch": "响应中的连接 ID 不匹配",
+  "response connection_generation mismatch": "响应中的连接代次不匹配",
+  "invalid error response": "错误响应无效",
+  "not connected to bridge": "未连接到桥接服务",
+  "bridge send buffer is full": "桥接服务发送缓冲区已满",
+  "timeout: {method}": "请求超时：{method}",
+  "bridge send failed": "向桥接服务发送失败",
+  "global RPC cannot use a connection client: {method}":
+    "全局 RPC 无法使用连接客户端：{method}",
+  "invalid storage key": "存储键无效",
   "Connection is paused": "连接已暂停",
   "Resume the connection before sending actions to Herdr.":
     "请先恢复连接，再向 Herdr 发送操作。",
@@ -103,6 +127,9 @@ export default {
   "Connection operation failed": "连接操作失败",
 
   // Pane control
+  "{platform} user": "{platform} 用户",
+  "Thyra user": "Thyra 用户",
+  "invalid collaboration snapshot": "协作状态快照无效",
   "Another collaborator": "另一位协作者",
   "This pane is view only. Take control to send input.":
     "此窗格为只读。请接管控制后再发送输入。",

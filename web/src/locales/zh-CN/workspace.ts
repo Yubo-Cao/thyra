@@ -119,6 +119,7 @@ export default {
   'Close workspace "{name}"?{warning}': "关闭工作区“{name}”？{warning}",
 
   // Create workspace dialog
+  "Working directory": "工作目录",
   "Create workspace": "创建工作区",
   "Create Workspace": "创建工作区",
   Optional: "可选",

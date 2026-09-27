@@ -7,6 +7,7 @@ import {
   useShortcutPreferences,
 } from "./shortcutPreferences";
 import { t } from "./i18n";
+import { agentStatusText } from "./agentOrder";
 import { SHORTCUT_NUMBERS } from "./shortcutBindings";
 import {
   ChevronLeft,
@@ -769,7 +770,7 @@ function PaneJumpOverlay({
                     <span
                       className={`${agentClass(entry.agentStatus)} pane-jump-agent-status`}
                     >
-                      {entry.agentStatus}
+                      {agentStatusText(entry.agentStatus)}
                     </span>
                   ) : null}
                 </span>

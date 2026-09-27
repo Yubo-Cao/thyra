@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
+import { installCatalog } from "../i18n";
+import zhCN from "../locales/zh-CN";
 import type { GitDiffEntry, GitDiffFile } from "../types";
 import { IMAGE_MIME_TYPES } from "../../../shared/filePreview";
 import { expandDiffEntryOnActivate } from "./diffContentState";
@@ -9,7 +11,77 @@ import {
   nextDiffHunkIndex,
   isImageDiff,
   highlightedPatch,
+  renderDiffHunkSeparator,
 } from "./DiffContentView";
+
+test("diff separators translate counts and retain context expansion", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const expandHunk = mock(() => {});
+  const instance = { expandHunk } as unknown as Parameters<
+    typeof renderDiffHunkSeparator
+  >[1];
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElement: (tagName: string) => ({
+        tagName,
+        className: "",
+        textContent: "",
+        onclick: null,
+        setAttribute: mock(() => {}),
+      }),
+    },
+  });
+  installCatalog("zh-CN", zhCN);
+  try {
+    const hunk = {
+      slotName: "separator",
+      hunkIndex: 2,
+      lines: 1,
+      lineCountKnown: true,
+      type: "unified" as const,
+    };
+    for (const count of [0, 1, 5]) {
+      const separator = renderDiffHunkSeparator(
+        { ...hunk, lines: count },
+        instance,
+      )! as HTMLElement;
+      expect(separator.textContent).toBe(`${count} \u884c\u672a\u4fee\u6539`);
+      expect(separator.tagName).toBe("span");
+    }
+    const expandable = renderDiffHunkSeparator(
+      {
+        ...hunk,
+        lineCountKnown: false,
+        expandable: { up: true, down: true, chunked: true },
+      },
+      instance,
+    )! as HTMLElement;
+    expect(expandable.textContent).toBe(
+      "\u53ef\u80fd\u8fd8\u6709\u66f4\u591a\u672a\u4fee\u6539\u7684\u4e0a\u4e0b\u6587",
+    );
+    expect(expandable.tagName).toBe("button");
+    expect(expandable.setAttribute).toHaveBeenCalledWith(
+      "aria-label",
+      "\u5c55\u5f00\u672a\u4fee\u6539\u7684\u884c",
+    );
+    expandable.onclick?.call(expandable, {} as PointerEvent);
+    expect(expandHunk).toHaveBeenCalledWith(2, "both");
+
+    installCatalog("en", {});
+    expect(
+      (renderDiffHunkSeparator(hunk, instance) as HTMLElement).textContent,
+    ).toBe("1 unmodified line");
+    expect(
+      (renderDiffHunkSeparator({ ...hunk, lines: 5 }, instance) as HTMLElement)
+        .textContent,
+    ).toBe("5 unmodified lines");
+  } finally {
+    installCatalog("en", {});
+    if (descriptor) Object.defineProperty(globalThis, "document", descriptor);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
+});
 
 const entries: GitDiffEntry[] = [
   { path: "src/one.ts", kind: "unstaged", status: "M" },
