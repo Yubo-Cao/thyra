@@ -1,0 +1,26 @@
+# Cloudflare Tunnel for Thyra's public listener, as a systemd user service.
+# Install: copy to ~/.config/systemd/user/, then
+#   systemctl --user daemon-reload && systemctl --user enable --now thyra-tunnel
+[Unit]
+Description=Cloudflare Tunnel for Thyra's public listener
+Documentation=https://github.com/Yubo-Cao/thyra/blob/main/docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel
+Wants=network-online.target
+After=network-online.target thyra.service
+# Retry a dropped edge connection, but stop after five failures in five
+# minutes instead of looping on bad credentials or configuration.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+ConditionPathExists=%h/.cloudflared/thyra.yml
+
+[Service]
+Type=simple
+# Use the path of `command -v cloudflared` on this host.
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config %h/.cloudflared/thyra.yml tunnel run
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

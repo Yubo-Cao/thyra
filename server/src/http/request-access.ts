@@ -7,6 +7,8 @@ import {
   resolveClientAddress,
   type TrustedProxies,
 } from "../identity/client-address";
+import { isTailnetAddress } from "../identity/tailscale";
+import type { ListenerKind } from "./listener";
 
 /**
  * Origin and Host checks that stop other web pages from using a signed-in
@@ -25,21 +27,33 @@ import {
  * - Only a direct loopback request without forwarding headers, a loopback
  *   `Host` and no foreign `Origin` is "local"; a request that came through
  *   a reverse proxy is never local, so it never skips login.
+ *
+ * The listener kind is fixed per listener. On the `public` listener the only
+ * accepted host and origin is the public origin, nothing is local, the scheme
+ * is HTTPS, and the client address is `CF-Connecting-IP` from a trusted
+ * cloudflared (else the peer); `X-Forwarded-*` headers are ignored there.
  */
 
 export type RequestAccessOptions = {
+  /** The listener this policy guards; decides trust, never headers. */
+  listenerKind: ListenerKind;
   /** Listening port, for the loopback origins of direct local use. */
   port: number;
   /** Native TLS on the listener. */
   tls: boolean;
   /** Configured listen address. */
   bindHost: string;
-  /** Normalized origins from `THYRA_PUBLIC_BASE_URL`. */
+  /**
+   * Normalized origins from `THYRA_PUBLIC_BASE_URL`; on the public listener,
+   * exactly `THYRA_PUBLIC_ORIGIN`.
+   */
   publicOrigins: readonly string[];
   trustedProxies: TrustedProxies;
 };
 
 export type RequestAccess = {
+  /** The listener the request arrived on. */
+  listener: ListenerKind;
   /** The effective host names this server. */
   hostAllowed: boolean;
   /** Effective host (`hostname[:port]`), from `X-Forwarded-Host` if proxied. */
@@ -54,6 +68,11 @@ export type RequestAccess = {
   secure: boolean;
   /** Client address for rate limiting (forwarded only by trusted proxies). */
   clientAddress: string | null;
+  /**
+   * The request carries Cloudflare edge headers: it came through a tunnel,
+   * so it never gets tailnet login, whatever listener it reached.
+   */
+  cloudflare: boolean;
 };
 
 export type AccessDecision = { ok: true } | { ok: false; reason: string };
@@ -66,6 +85,7 @@ const FORWARDING_HEADERS = [
   "x-real-ip",
 ];
 const LOOPBACK_NAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const CLOUDFLARE_HEADERS = ["cf-connecting-ip", "cf-ray", "cf-ipcountry"];
 
 export function parsePublicBaseUrls(value: string | undefined): {
   origins: string[];
@@ -134,7 +154,23 @@ function firstValue(header: string | null): string | null {
   return header?.split(",")[0]?.trim() || null;
 }
 
+/**
+ * `CF-Connecting-IP` as a client address. Cloudflare sets it to the TCP peer
+ * of its edge, which is never loopback or a tailnet address; such values
+ * come from a local process and are ignored.
+ */
+function cloudflareClientAddress(value: string | null): string | null {
+  const address = normalizeAddress(value);
+  if (!address || isLoopbackAddress(address) || isTailnetAddress(address)) {
+    return null;
+  }
+  return address;
+}
+
 export function createRequestAccessPolicy(options: RequestAccessOptions) {
+  if (options.listenerKind === "public") {
+    return createPublicAccessPolicy(options);
+  }
   const scheme = options.tls ? "https" : "http";
   const publicHosts = new Set(
     options.publicOrigins.map((origin) => new URL(origin).hostname),
@@ -203,6 +239,7 @@ export function createRequestAccessPolicy(options: RequestAccessOptions) {
       trusted: options.trustedProxies,
     });
     return {
+      listener: options.listenerKind,
       hostAllowed,
       host: authority?.host ?? null,
       ownOrigin,
@@ -210,6 +247,7 @@ export function createRequestAccessPolicy(options: RequestAccessOptions) {
       local,
       secure: effectiveScheme === "https",
       clientAddress: client.address,
+      cloudflare: CLOUDFLARE_HEADERS.some((name) => headers.has(name)),
     };
   }
 
@@ -223,33 +261,97 @@ export function createRequestAccessPolicy(options: RequestAccessOptions) {
     );
   }
 
-  /**
-   * Browser-context check. `strict` applies to WebSocket upgrades and
-   * state-changing methods: an `Origin` is then required unless the
-   * request is local.
-   */
-  function checkOrigin(
-    req: Request,
-    access: RequestAccess,
-    strict: boolean,
-  ): AccessDecision {
-    const origin = req.headers.get("origin");
-    if (origin !== null) {
-      return originAllowed(origin, access)
-        ? { ok: true }
-        : { ok: false, reason: "origin not allowed" };
-    }
-    const site = req.headers.get("sec-fetch-site");
-    if (site === "cross-site" || site === "same-site") {
-      return { ok: false, reason: "cross-site request" };
-    }
-    if (strict && !access.local) {
-      return { ok: false, reason: "origin required" };
-    }
-    return { ok: true };
+  return {
+    evaluate,
+    checkOrigin: (req: Request, access: RequestAccess, strict: boolean) =>
+      checkOrigin(req, access, strict, (origin) =>
+        originAllowed(origin, access),
+      ),
+    loopbackOrigins,
+  };
+}
+
+/**
+ * The public listener: one host, one origin, HTTPS, never local, and no
+ * forwarded header other than a trusted cloudflared's `CF-Connecting-IP`.
+ */
+function createPublicAccessPolicy(options: RequestAccessOptions) {
+  const [publicOrigin, ...extra] = options.publicOrigins;
+  if (!publicOrigin || extra.length > 0) {
+    throw new Error("the public listener needs exactly one public origin");
+  }
+  const publicUrl = new URL(publicOrigin);
+  if (publicUrl.protocol !== "https:") {
+    throw new Error("the public origin must use HTTPS");
   }
 
-  return { evaluate, checkOrigin, loopbackOrigins };
+  function evaluate(
+    req: Request,
+    peer: string | null | undefined,
+  ): RequestAccess {
+    const headers = req.headers;
+    const peerAddress = normalizeAddress(peer);
+    const trustedPeer =
+      peerAddress !== null &&
+      options.trustedProxies.ranges.some((range) =>
+        addressInRange(peerAddress, range),
+      );
+    const authority = parseAuthority(headers.get("host"));
+    const hostAllowed = authority?.host === publicUrl.host;
+    const forwardedClient = trustedPeer
+      ? cloudflareClientAddress(headers.get("cf-connecting-ip"))
+      : null;
+    return {
+      listener: "public",
+      hostAllowed,
+      host: authority?.host ?? null,
+      ownOrigin: hostAllowed ? publicOrigin : null,
+      proxied: trustedPeer,
+      local: false,
+      secure: true,
+      clientAddress: forwardedClient ?? peerAddress,
+      cloudflare: true,
+    };
+  }
+
+  return {
+    evaluate,
+    checkOrigin: (req: Request, access: RequestAccess, strict: boolean) =>
+      checkOrigin(
+        req,
+        access,
+        strict,
+        (origin) => parseOrigin(origin) === publicOrigin,
+      ),
+    loopbackOrigins: new Set<string>(),
+  };
+}
+
+/**
+ * Browser-context check. `strict` applies to WebSocket upgrades and
+ * state-changing methods: an `Origin` is then required unless the request
+ * is local.
+ */
+function checkOrigin(
+  req: Request,
+  access: RequestAccess,
+  strict: boolean,
+  originAllowed: (origin: string) => boolean,
+): AccessDecision {
+  const origin = req.headers.get("origin");
+  if (origin !== null) {
+    return originAllowed(origin)
+      ? { ok: true }
+      : { ok: false, reason: "origin not allowed" };
+  }
+  const site = req.headers.get("sec-fetch-site");
+  if (site === "cross-site" || site === "same-site") {
+    return { ok: false, reason: "cross-site request" };
+  }
+  if (strict && !access.local) {
+    return { ok: false, reason: "origin required" };
+  }
+  return { ok: true };
 }
 
 export type RequestAccessPolicy = ReturnType<typeof createRequestAccessPolicy>;

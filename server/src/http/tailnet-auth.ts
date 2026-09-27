@@ -7,9 +7,10 @@ import type { RequestAccess } from "./request-access";
  * tailnet address, and Tailscale `whois` names a user for it. The caller
  * then issues the normal session cookie, so later requests skip `whois`.
  *
- * This trusts every user of the tailnet with full access. It must stay off
- * for any listener or proxy reachable from outside the tailnet (such as a
- * public tunnel), where forwarded addresses are not tailnet peers.
+ * This trusts every user of the tailnet with full access. It is tied to the
+ * `tailnet` listener kind: the public listener (Cloudflare Tunnel) never
+ * runs it, and a proxy reachable from outside the tailnet must not forward
+ * to the primary listener while it is on.
  */
 
 export type TailnetAuthMode = "admin" | "off";
@@ -40,7 +41,12 @@ export function parseTailnetAuthMode(
   };
 }
 
-/** The tailnet login that authenticates this request, or null. */
+/**
+ * The tailnet login that authenticates this request, or null. Only the
+ * `tailnet` listener can produce one; a request on the public listener, or
+ * one that carries Cloudflare edge headers, never does, whatever its
+ * forwarded address.
+ */
 export async function tailnetLogin(args: {
   mode: TailnetAuthMode;
   access: RequestAccess;
@@ -49,6 +55,8 @@ export async function tailnetLogin(args: {
   const address = args.access.clientAddress;
   if (
     args.mode !== "admin" ||
+    args.access.listener !== "tailnet" ||
+    args.access.cloudflare ||
     !args.access.proxied ||
     !address ||
     !isTailnetAddress(address)

@@ -279,6 +279,9 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_PUBLIC_BASE_URL` | Comma-separated URLs browsers use through a proxy or DNS name, such as `https://thyra.example.ts.net`; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded headers are believed; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TAILNET_AUTH=admin\|off` | Log in proxied tailnet users by Tailscale `whois` (default `admin` when `whois` is available); see [reverse proxies](#reverse-proxies-and-allowed-origins) |
+| `THYRA_PUBLIC_LISTEN` | Second, internet-facing listener (`127.0.0.1:8788`) for Cloudflare Tunnel; see [public access](#public-access-through-cloudflare-tunnel) |
+| `THYRA_PUBLIC_ORIGIN` | The one HTTPS origin served by the public listener, such as `https://thyra.example.com` |
+| `THYRA_PUBLIC_TRUSTED_PROXIES` | Peers whose `CF-Connecting-IP` the public listener believes (default `loopback`) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
 | `THYRA_IDENTITY_PATH` | Collaborator identity file (default `~/.config/thyra/identities.json`) |
@@ -360,7 +363,47 @@ Each browser, including an installed home-screen app, logs in once with the pass
 
 With Tailscale, **tailnet login** skips that step: when a proxied request's forwarded client address is a tailnet address and Tailscale `whois` names a user for it, Thyra issues the session cookie itself.
 It is on (`THYRA_TAILNET_AUTH=admin`) whenever `whois` works ([collaborator identity](#collaborator-identity)), and gives every tailnet user who can reach the proxy full access, so restrict the proxy's port with Tailscale ACLs.
-Tagged nodes and failed lookups get the login page. Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tailnet; never enable it for a public tunnel such as `cloudflared`.
+Tagged nodes and failed lookups get the login page. Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tailnet; never point a public tunnel such as `cloudflared` at this listener: use the [public listener](#public-access-through-cloudflare-tunnel).
+
+### Public access through Cloudflare Tunnel
+
+Thyra can serve a public address from a second listener while the primary listener stays private (tailnet or loopback).
+**The listener, never a request header, decides trust.** Requests on the public listener are always public:
+
+- Tailnet login, direct-local bypass, the owner password or token, `?token=` links and the primary listener's session cookie never authenticate there, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
+- Only `THYRA_PUBLIC_ORIGIN` is accepted as `Host` and `Origin` (anything else gets `421` or `403`); `X-Forwarded-*` headers are ignored.
+- The client address (login and request rate limits, 300 requests a minute per address) is `CF-Connecting-IP` when the peer is in `THYRA_PUBLIC_TRUSTED_PROXIES` (default `loopback`, the local `cloudflared`), otherwise the peer.
+- Responses carry HSTS, a strict Content Security Policy, `nosniff` and `frame-ancestors 'none'`; cookies set there use the `__Host-` prefix.
+- Without an account sign-in it serves only the login page (which says sign-in is unavailable) and static assets; every other page redirects to it, and every API, MCP and WebSocket request gets `401`.
+
+Cloudflare Tunnel (`cloudflared`) connects outbound, so no inbound port opens.
+Create a named tunnel once, as the account owner:
+
+```bash
+cloudflared tunnel login                   # browser: authorize the zone (writes ~/.cloudflared/cert.pem)
+cloudflared tunnel create thyra            # writes ~/.cloudflared/<TUNNEL_ID>.json
+cloudflared tunnel route dns thyra thyra.example.com   # CNAME -> <TUNNEL_ID>.cfargotunnel.com
+```
+
+`tunnel route dns` needs the certificate of the zone that holds the name; otherwise create a proxied `CNAME thyra.example.com -> <TUNNEL_ID>.cfargotunnel.com` with any DNS-edit token for that zone.
+Copy [`deploy/cloudflared/thyra.yml`](../deploy/cloudflared/thyra.yml) to `~/.cloudflared/thyra.yml` and fill in the tunnel id and host name, then enable the public listener and the tunnel:
+
+```bash
+# ~/.config/thyra/thyra.env
+THYRA_PUBLIC_LISTEN=127.0.0.1:8788
+THYRA_PUBLIC_ORIGIN=https://thyra.example.com
+```
+
+```bash
+systemctl --user restart thyra
+cp deploy/systemd/thyra-tunnel.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now thyra-tunnel
+curl -sI https://thyra.example.com/login   # 200 with strict-transport-security
+```
+
+The unit restarts a dropped tunnel but gives up after five failures in five minutes; check `journalctl --user -u thyra-tunnel`.
+`THYRA_PUBLIC_ORIGIN` must not also appear in `THYRA_PUBLIC_BASE_URL`, and the tunnel must target the public listener's port, never `PORT`: the primary listener answers the public host with `421` and never gives tailnet login to a request carrying Cloudflare headers.
+Startup fails if `THYRA_PUBLIC_LISTEN` is set without a valid HTTPS `THYRA_PUBLIC_ORIGIN`.
 
 ## Collaborator identity
 

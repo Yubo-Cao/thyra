@@ -5,8 +5,11 @@
  * bridge implements it or forwards it to Herdr. Anything else, including
  * Herdr methods the web client never uses, is rejected before dispatch.
  * Classes describe the authority a method exercises; roles map to the
- * classes they may use. Today the only role is the authenticated owner.
+ * classes they may use. The listener decides which roles can occur; see
+ * `rpcRoleFor`.
  */
+
+import type { ListenerKind } from "../http/listener";
 
 export type RpcClass = "read" | "write" | "admin" | "dangerous";
 
@@ -152,11 +155,31 @@ export const DENIED_RPC_METHODS: Readonly<Record<string, string>> = {
   "agent.prompt": "prompting agents through the bridge is not allowed",
 };
 
-export type RpcRole = "owner";
+/**
+ * `owner` holds every class. `anonymous` holds none: it is the role of a
+ * public-listener socket without an account principal, so a socket that
+ * somehow skipped login still cannot call anything.
+ */
+export type RpcRole = "owner" | "anonymous";
 
 const ROLE_CLASSES: Readonly<Record<RpcRole, ReadonlySet<RpcClass>>> = {
   owner: new Set<RpcClass>(["read", "write", "admin", "dangerous"]),
+  anonymous: new Set<RpcClass>(),
 };
+
+/**
+ * The RPC role of an authenticated socket. The private listeners (`tailnet`,
+ * `local`) authenticate only the owner (password, token, tailnet login, or
+ * direct local use). On the public listener the role comes solely from the
+ * account principal, never from the listener or headers.
+ */
+export function rpcRoleFor(
+  listener: ListenerKind,
+  principalRole: RpcRole | null,
+): RpcRole {
+  if (listener !== "public") return "owner";
+  return principalRole ?? "anonymous";
+}
 
 export type RpcDecision =
   | { allowed: true; entry: RpcPolicyEntry }

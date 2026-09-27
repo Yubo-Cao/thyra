@@ -530,13 +530,31 @@ local; `/api` reads refuse foreign initiators. Login is skipped only for direct
 local use of a loopback listener. Tailnet login (`server/src/http/tailnet-auth.ts`)
 authenticates a proxied request whose forwarded client address is a tailnet
 address that Tailscale `whois` (the identity service's cache) maps to a user, and
-issues the normal session cookie on that response and WebSocket upgrade. A future
-public listener must not enable it.
+issues the normal session cookie on that response and WebSocket upgrade.
+
+Each listener has a fixed kind (`server/src/http/listener.ts`) that is threaded
+into the request-access policy, tailnet login, and RPC authorization: the primary
+listener is `tailnet` (tailnet login on) or `local`, and `THYRA_PUBLIC_LISTEN`
+binds a `public` listener. No header changes a request's kind. On `public`, the
+policy accepts only `THYRA_PUBLIC_ORIGIN` as host and origin, is never local,
+treats the scheme as HTTPS, and takes the client address from `CF-Connecting-IP`
+of a trusted peer only (never loopback or tailnet values); tailnet login refuses
+anything but the `tailnet` kind and any request with Cloudflare headers. The
+public router (`publicFetch` in `server/src/index.ts`) rate-limits per client,
+then asks a `PublicAuthenticator` (`server/src/http/public-auth.ts`) to serve
+authentication routes and to resolve a principal; the owner cookie and password
+handlers are not reachable there. Without a principal only the login page and
+fingerprinted assets are served and everything else is `401` or a redirect to
+`/login`. A principal's role becomes the socket's RPC role (`rpcRoleFor`);
+private listeners always yield `owner`, a public socket without a principal is
+`anonymous`, which holds no class, and non-owner principals get no HTTP API.
+Public responses add HSTS, a strict CSP (the SPA entry's inline scripts are
+allowed by hash), and `__Host-` cookies.
 
 WebSocket RPC is deny-by-default. `server/src/authz/policy.ts` lists every method
 the bridge handles or forwards to Herdr with a class (`read`, `write`, `admin`,
-`dangerous`); roles map to classes, and today the authenticated owner holds all
-of them. Unlisted methods fail before connection routing, so the Herdr
+`dangerous`); roles map to classes: the owner holds all of them and
+`anonymous` none. Unlisted methods fail before connection routing, so the Herdr
 passthrough only forwards listed navigation, layout, and input methods. A test
 fails when a method the server dispatches or `web/src` calls has no entry.
 

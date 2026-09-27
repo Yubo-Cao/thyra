@@ -59,6 +59,20 @@ export async function serveStatic(
   return new Response("not found", { status: 404 });
 }
 
+/** Text of a built frontend file (on-disk directory first), or null. */
+export async function readStaticText(
+  publicDir: string,
+  pathname: string,
+): Promise<string | null> {
+  for (const directory of [publicDir, builtPublicDir]) {
+    const filePath = resolvePublicFilePath(directory, pathname);
+    if (!filePath) return null;
+    const file = Bun.file(filePath);
+    if (await file.exists()) return file.text();
+  }
+  return null;
+}
+
 // Text assets are sent compressed; on a slow phone link every byte of the
 // entry chunk counts. Brotli at maximum quality costs about a second of CPU per
 // large chunk, so it runs off the event loop, once per file version, and the

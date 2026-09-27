@@ -1,4 +1,4 @@
-import type { ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
 import { createWebPushService } from "./notifications/web-push";
@@ -86,13 +86,35 @@ import {
   hostNotAllowedResponse,
   originCheckMode,
   parsePublicBaseUrls,
+  type RequestAccess,
   type RequestAccessPolicy,
 } from "./http/request-access";
-import { authorizeRpc } from "./authz/policy";
+import { authorizeRpc, type RpcRole, rpcRoleFor } from "./authz/policy";
+import {
+  type ListenerKind,
+  loadPublicListenerConfig,
+  primaryListenerKind,
+} from "./http/listener";
+import {
+  createLoginUnavailableAuthenticator,
+  inlineScriptHashes,
+  isPublicStaticAsset,
+  type PublicAuthenticator,
+  publicContentSecurityPolicy,
+  withPublicSecurityHeaders,
+} from "./http/public-auth";
+import {
+  createRequestRateLimiter,
+  rateLimitedResponse,
+} from "./http/request-rate-limit";
 import { collaborationParams } from "./authz/collaboration-params";
 import { parseTrustedProxies } from "./identity/client-address";
 import { thyraEnv } from "./config/environment";
-import { prewarmStaticCompression, serveStatic } from "./http/static-files";
+import {
+  prewarmStaticCompression,
+  readStaticText,
+  serveStatic,
+} from "./http/static-files";
 import {
   createUpdateHandlers,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
@@ -182,9 +204,13 @@ if (publicBaseUrls.invalid.length > 0) {
   });
 }
 let requestAccessPolicy: RequestAccessPolicy | null = null;
-/** Created on first use: the listening port is known only after binding. */
+/**
+ * The primary listener's policy, created on first use: the listening port
+ * is known only after binding.
+ */
 function requestAccess(port: number): RequestAccessPolicy {
   requestAccessPolicy ??= createRequestAccessPolicy({
+    listenerKind: primaryKind,
     port,
     tls: Boolean(config.tls),
     bindHost: config.host,
@@ -192,6 +218,50 @@ function requestAccess(port: number): RequestAccessPolicy {
     trustedProxies: parseTrustedProxies(process.env.THYRA_TRUSTED_PROXIES),
   });
   return requestAccessPolicy;
+}
+
+// The internet-facing listener behind Cloudflare Tunnel. Misconfiguration
+// stops startup rather than serving public traffic half-configured.
+let publicListener: ReturnType<typeof loadPublicListenerConfig> = null;
+try {
+  publicListener = loadPublicListenerConfig({
+    listen: thyraEnv("PUBLIC_LISTEN"),
+    origin: thyraEnv("PUBLIC_ORIGIN"),
+    trustedProxies: thyraEnv("PUBLIC_TRUSTED_PROXIES"),
+    primaryOrigins: publicBaseUrls.origins,
+    primary: { hostname: config.host, port: config.port },
+  });
+} catch (error) {
+  console.error(`[bridge] ${(error as Error).message}`);
+  process.exit(2);
+}
+for (const warning of publicListener?.warnings ?? []) logger.warn(warning);
+const publicAccessPolicy = publicListener
+  ? createRequestAccessPolicy({
+      listenerKind: "public",
+      port: publicListener.port,
+      tls: false,
+      bindHost: publicListener.hostname,
+      publicOrigins: [publicListener.origin],
+      trustedProxies: publicListener.trustedProxies,
+    })
+  : null;
+/**
+ * Authentication for the public listener. Until accounts exist this knows
+ * nobody, so the public listener serves only the login page and assets.
+ */
+const publicAuth: PublicAuthenticator = createLoginUnavailableAuthenticator();
+const publicRequests = createRequestRateLimiter();
+const publicLoginLimiter = createLoginRateLimiter();
+let publicHtmlPolicy: Promise<string> | null = null;
+/** The public CSP, allowing the SPA entry's inline scripts by hash. */
+function publicPagePolicy(): Promise<string> {
+  publicHtmlPolicy ??= readStaticText(config.publicDir, "/index.html")
+    .catch(() => null)
+    .then((html) =>
+      publicContentSecurityPolicy(inlineScriptHashes(html ?? "")),
+    );
+  return publicHtmlPolicy;
 }
 const CLIENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -221,6 +291,7 @@ const tailnetAuth = parseTailnetAuthMode(
   clientIdentity.whoisAvailable,
 );
 if (tailnetAuth.warning) logger.warn(tailnetAuth.warning);
+const primaryKind: ListenerKind = primaryListenerKind(tailnetAuth.mode);
 
 const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   appVersion: APP_VERSION,
@@ -259,6 +330,8 @@ const clientIds = new WeakMap<ServerWebSocket<unknown>, number>();
 const clientSessions = new WeakMap<ServerWebSocket<unknown>, string | null>();
 /** Presence participant ids are assigned by the bridge, one per socket. */
 const participantIds = new WeakMap<ServerWebSocket<unknown>, string>();
+/** RPC role of each socket, fixed at upgrade by its listener and principal. */
+const socketRoles = new WeakMap<ServerWebSocket<unknown>, RpcRole>();
 interface WebSocketCleanupSnapshot {
   client: string;
   viewedTerminals: string[];
@@ -772,7 +845,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   // Deny by default: only methods in the policy table reach routing or any
   // handler, including the Herdr passthrough at the end.
-  const authorization = authorizeRpc(method);
+  const authorization = authorizeRpc(
+    method,
+    socketRoles.get(ws) ?? "anonymous",
+  );
   if (!authorization.allowed) {
     const message = authorization.message;
     markRpcError(ws, id, message);
@@ -1526,346 +1602,535 @@ async function handleConnectionHttpRequest(
   }
 }
 
+type SocketData = {
+  sessionToken: string | null;
+  client?: ClientContext;
+  clientSession: string | null;
+  /** Fixed at upgrade by the listener and, on the public one, the principal. */
+  rpcRole: RpcRole;
+};
+
+type AuthenticatedRoute = {
+  url: URL;
+  requestPathname: string;
+  access: RequestAccess;
+  /** Session cookie issued by this response (tailnet login). */
+  issuedCookie: string | null;
+  rpcRole: RpcRole;
+  /** The request and peer the identity service sees. */
+  identityRequest: Request;
+  identityPeer: string | null | undefined;
+  /** Public listener: no identity device cookie (it is not `__Host-`). */
+  publicListener: boolean;
+};
+
+const FORWARDING_HEADER_NAMES = [
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+];
+
+/** A copy for the identity service without any forwarding headers. */
+function withoutForwardingHeaders(req: Request): Request {
+  const headers = new Headers(req.headers);
+  for (const name of FORWARDING_HEADER_NAMES) headers.delete(name);
+  return new Request(req.url, { method: req.method, headers });
+}
+
+/** Routes after authentication, shared by every listener. */
+async function routeAuthenticated(
+  req: Request,
+  server: Server<SocketData>,
+  route: AuthenticatedRoute,
+): Promise<Response | undefined> {
+  const { url, requestPathname, access, issuedCookie } = route;
+  if (url.pathname === "/ws") {
+    const upgrade = clientIdentity.upgradeContext(
+      route.identityRequest,
+      route.identityPeer,
+    );
+    const clientSession = url.searchParams.get("client_session");
+    const upgradeHeaders = new Headers();
+    if (upgrade.headers["set-cookie"] && !route.publicListener)
+      upgradeHeaders.append("set-cookie", upgrade.headers["set-cookie"]);
+    if (issuedCookie) upgradeHeaders.append("set-cookie", issuedCookie);
+    if (
+      server.upgrade(req, {
+        // Bun rejects an empty headers object.
+        ...(upgradeHeaders.has("set-cookie")
+          ? { headers: upgradeHeaders }
+          : {}),
+        data: {
+          sessionToken: issuedCookie
+            ? cookieValue(issuedCookie)
+            : sessionToken(req),
+          client: upgrade.context,
+          clientSession:
+            clientSession && CLIENT_SESSION_PATTERN.test(clientSession)
+              ? clientSession
+              : null,
+          rpcRole: route.rpcRole,
+        },
+      })
+    )
+      return undefined;
+    return new Response("websocket upgrade failed", { status: 400 });
+  }
+  if (url.pathname === "/api/notifications/push") {
+    return webPush.handle(req);
+  }
+  if (url.pathname === "/api/voice/status" && req.method === "GET") {
+    return voice.status();
+  }
+  if (url.pathname === "/api/voice/transcribe" && req.method === "POST") {
+    // Local recognizers and remote providers can exceed Bun's default
+    // ten-second idle timeout for a long segment.
+    server.timeout(req, 75);
+    return voice.transcribe(req);
+  }
+  if (url.pathname === "/api/voice/cleanup" && req.method === "POST") {
+    server.timeout(req, 60);
+    return voice.cleanup(req);
+  }
+  if (url.pathname === "/api/health") {
+    return Response.json({
+      ok: true,
+      version: APP_VERSION,
+      socket: config.socketPath,
+      // Whether this browser had to log in (shows Log out).
+      auth_required: config.authRequired || !access.local,
+    });
+  }
+  if (url.pathname === "/api/update/check" && req.method === "GET") {
+    server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
+    return handleUpdateCheck(req);
+  }
+  if (url.pathname === "/api/update/install" && req.method === "POST") {
+    // Binary download and verification can exceed Bun's default ten-second
+    // request timeout. Keep the larger budget scoped to update requests.
+    server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
+    return handleUpdateInstall(req);
+  }
+  if (url.pathname === "/api/herdr/status" && req.method === "GET") {
+    return handleHerdrStatus();
+  }
+  if (url.pathname === "/api/herdr/setup" && req.method === "POST") {
+    // Herdr download plus service start shares the update budget.
+    server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
+    return handleHerdrSetup(req);
+  }
+  const connectionRoute = parseConnectionHttpRoute(requestPathname, req.method);
+  if (connectionRoute) {
+    if (
+      connectionRoute.kind === "connection" &&
+      connectionRoute.endpoint === "file-download" &&
+      url.searchParams.get("inline") === "1" &&
+      isHtmlPath(url.searchParams.get("path") ?? "")
+    ) {
+      // HTML preparation can require several bounded SSH resource reads.
+      server.timeout(req, DOWNLOAD_TIMEOUT_MS / 1000);
+    }
+    return handleConnectionHttpRequest(connectionRoute, url, req);
+  }
+  // Everything else: serve the built frontend (embedded or on-disk).
+  const staticPage = await serveStatic(req, config.publicDir);
+  const page = route.publicListener
+    ? staticPage
+    : clientIdentity.withPageCookie(
+        route.identityRequest,
+        route.identityPeer,
+        staticPage,
+      );
+  return issuedCookie ? withSetCookie(page, issuedCookie) : page;
+}
+
+/** The primary listener (`HOST`/`PORT`): `tailnet` or `local`. */
+async function primaryFetch(
+  req: Request,
+  server: Server<SocketData>,
+): Promise<Response | undefined> {
+  const requestPathname = rawRequestPathname(req.url);
+  let url: URL;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return new Response("invalid request URL", { status: 400 });
+  }
+
+  if (url.pathname === "/health" || url.pathname === "/healthz") {
+    return new Response("Ok", {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  // Host allowlist (DNS rebinding) and Origin checks (cross-site
+  // WebSocket and request forgery) precede authentication.
+  const peer = server.requestIP(req)?.address;
+  const accessPolicy = requestAccess(server.port ?? config.port);
+  const access = accessPolicy.evaluate(req, peer);
+  if (!access.hostAllowed) {
+    logger.warn("rejected request for an unknown host", {
+      host: logDetail(access.host ?? ""),
+    });
+    return hostNotAllowedResponse(access.host);
+  }
+  const originMode = originCheckMode(url.pathname, req.method);
+  if (originMode !== "none") {
+    const decision = accessPolicy.checkOrigin(
+      req,
+      access,
+      originMode === "strict",
+    );
+    if (!decision.ok) {
+      logger.warn("rejected cross-origin request", {
+        reason: decision.reason,
+        path: logDetail(url.pathname),
+        origin: logDetail(req.headers.get("origin") ?? ""),
+      });
+      return forbiddenResponse(decision.reason);
+    }
+  }
+  const authContext = {
+    local: access.local,
+    secure: access.secure,
+    clientKey: access.clientAddress,
+  };
+
+  const tokenLoginResponse = handleTokenLogin(req, authContext);
+  if (tokenLoginResponse) return tokenLoginResponse;
+
+  // Auth endpoints are always reachable.
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    return handleLogin(req, authContext);
+  }
+  if (url.pathname === "/login") {
+    return loginPage(req);
+  }
+  // The login page's logo and favicon must also work before login.
+  if (
+    url.pathname === "/thyra-icon-192.png" ||
+    url.pathname === "/thyra-icon.svg"
+  ) {
+    return serveStatic(req, config.publicDir);
+  }
+  if (url.pathname === "/api/logout") {
+    const response = handleLogout(req, authContext);
+    const token = sessionToken(req);
+    if (response.ok && token) {
+      for (const client of clients) {
+        if (clientSessions.get(client) !== token) continue;
+        webSocketCleanup.cleanup(client);
+        client.close(4001, "Logged out");
+      }
+    }
+    return response;
+  }
+
+  // MCP authenticates with its own bearer tokens, never the cookie.
+  if (url.pathname === "/mcp") {
+    server.timeout(req, 60);
+    return mcp.handle(req, access.clientAddress ?? peer);
+  }
+
+  // Everything else requires login, except direct local use of a
+  // loopback listener.
+  // Tailnet users behind a trusted proxy log in by Tailscale whois
+  // and receive the normal session cookie for later requests.
+  let issuedCookie: string | null = null;
+  if (!isAuthed(req, authContext)) {
+    const login = await tailnetLogin({
+      mode: tailnetAuth.mode,
+      access,
+      lookupUser: clientIdentity.tailnetUser,
+    });
+    if (login) {
+      issuedCookie = sessionCookie(authContext);
+      logger.info("tailnet login", { login: logDetail(login) });
+    } else {
+      const accept = req.headers.get("accept") ?? "";
+      if (req.method === "GET" && accept.includes("text/html")) {
+        return unauthenticatedLoginRedirect();
+      }
+      return new Response("unauthorized", { status: 401 });
+    }
+  }
+
+  return routeAuthenticated(req, server, {
+    url,
+    requestPathname,
+    access,
+    issuedCookie,
+    rpcRole: rpcRoleFor(primaryKind, null),
+    identityRequest: req,
+    identityPeer: peer,
+    publicListener: false,
+  });
+}
+
+/**
+ * The public listener (`THYRA_PUBLIC_LISTEN`) behind Cloudflare Tunnel.
+ * Only the public authenticator can authenticate a request here; without a
+ * principal it serves the login page and static assets, and answers every
+ * API, MCP and WebSocket request with 401.
+ */
+async function publicFetch(
+  req: Request,
+  server: Server<SocketData>,
+): Promise<Response | undefined> {
+  const response = await publicRoute(req, server);
+  return (
+    response && withPublicSecurityHeaders(response, await publicPagePolicy())
+  );
+}
+
+async function publicRoute(
+  req: Request,
+  server: Server<SocketData>,
+): Promise<Response | undefined> {
+  if (!publicListener || !publicAccessPolicy) {
+    return new Response("not found", { status: 404 });
+  }
+  const requestPathname = rawRequestPathname(req.url);
+  let url: URL;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return new Response("invalid request URL", { status: 400 });
+  }
+  if (url.pathname === "/health" || url.pathname === "/healthz") {
+    return new Response("Ok", {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+  const peer = server.requestIP(req)?.address;
+  const access = publicAccessPolicy.evaluate(req, peer);
+  const retryAfter = publicRequests.take(access.clientAddress ?? "unknown");
+  if (retryAfter) return rateLimitedResponse(retryAfter);
+  if (!access.hostAllowed) {
+    logger.warn("public listener rejected an unknown host", {
+      host: logDetail(access.host ?? ""),
+    });
+    return new Response("misdirected request", {
+      status: 421,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+  const originMode = originCheckMode(url.pathname, req.method);
+  if (originMode !== "none") {
+    const decision = publicAccessPolicy.checkOrigin(
+      req,
+      access,
+      originMode === "strict",
+    );
+    if (!decision.ok) return forbiddenResponse(decision.reason);
+  }
+  const context = {
+    access,
+    origin: publicListener.origin,
+    loginLimiter: publicLoginLimiter,
+  };
+  const authResponse = await publicAuth.handle(req, url, context);
+  if (authResponse) return authResponse;
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    isPublicStaticAsset(url.pathname)
+  ) {
+    // Without Accept, a missing asset is a 404 rather than the SPA entry.
+    const headers = new Headers(req.headers);
+    headers.delete("accept");
+    return serveStatic(
+      new Request(req.url, { method: req.method, headers }),
+      config.publicDir,
+    );
+  }
+  const principal = await publicAuth.authenticate(req, context);
+  if (!principal) {
+    const accept = req.headers.get("accept") ?? "";
+    if (
+      req.method === "GET" &&
+      url.pathname !== "/ws" &&
+      accept.includes("text/html")
+    ) {
+      return unauthenticatedLoginRedirect();
+    }
+    return new Response("unauthorized", {
+      status: 401,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+  // MCP agents use bearer tokens on the private listener only.
+  if (url.pathname === "/mcp") {
+    return new Response("not found", { status: 404 });
+  }
+  const rpcRole = rpcRoleFor("public", principal.role);
+  if (
+    rpcRole !== "owner" &&
+    (url.pathname === "/api" || url.pathname.startsWith("/api/"))
+  ) {
+    return forbiddenResponse("not available for this account");
+  }
+  return routeAuthenticated(req, server, {
+    url,
+    requestPathname,
+    access,
+    issuedCookie: null,
+    rpcRole,
+    identityRequest: withoutForwardingHeaders(req),
+    identityPeer: access.clientAddress,
+    publicListener: true,
+  });
+}
+
+const websocketHandlers: WebSocketHandler<SocketData> = {
+  perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
+  open(ws) {
+    clients.add(ws);
+    clientSessions.set(ws, ws.data.sessionToken);
+    socketRoles.set(ws, ws.data.rpcRole);
+    clientIdentity.attach(ws, ws.data.client);
+    const participantId = clientIdentity.participantId(
+      ws,
+      ws.data.clientSession,
+    );
+    participantIds.set(ws, participantId);
+    const label = assignClientId(ws);
+    logger.debug("client connected", {
+      client: label,
+      clients: clients.size,
+    });
+    notifyBrowserClientCount();
+    safeSend(
+      ws,
+      JSON.stringify({
+        hello: true,
+        socket: config.socketPath,
+        bridge_protocol_version: 2,
+        default_connection_id: connectionManager.defaultId(),
+        participant_id: participantId,
+        capabilities: {
+          connection_id: true,
+          connection_scoped_http: true,
+          connection_runtime_generation: true,
+        },
+      }),
+      "hello",
+    );
+  },
+  drain(ws) {
+    // The viewer caught up: send the newest repaint we held back.
+    flushCoalescedMessages(ws, {
+      cleanup: () => {
+        webSocketCleanup.cleanup(ws);
+      },
+      warn: (detail) =>
+        logger.warn("websocket send failed", {
+          detail: detail.replace(/^\[bridge\] /, ""),
+        }),
+    });
+  },
+  message(ws, message) {
+    if (!clients.has(ws)) return;
+    const text = typeof message === "string" ? message : message.toString();
+    const { id, method, connectionId, connectionGeneration } =
+      parseRpcMeta(text);
+    const startedAt = Date.now();
+    let responseConnectionId: string | null = null;
+    let logConnectionId: string | null = null;
+    if (method && !isBridgeGlobalMethod(method)) {
+      if (connectionId === undefined) {
+        responseConnectionId = connectionManager.defaultId();
+        logConnectionId = responseConnectionId;
+      } else {
+        try {
+          responseConnectionId = validateConnectionId(connectionId);
+          logConnectionId = responseConnectionId;
+        } catch {
+          logConnectionId = "invalid";
+        }
+      }
+    }
+    handleRpc(ws, text)
+      .then(() => {
+        const outcome = takeRpcOutcome(ws, id);
+        logRpc(
+          ws,
+          method,
+          startedAt,
+          outcome?.status ?? "ok",
+          logConnectionId,
+          outcome?.detail,
+        );
+      })
+      .catch((e) => {
+        logRpc(
+          ws,
+          method,
+          startedAt,
+          "error",
+          logConnectionId,
+          (e as Error).message,
+        );
+        const errorMessage: Record<string, unknown> = {
+          error: { message: (e as Error).message },
+        };
+        if (id) errorMessage.id = id;
+        safeSend(
+          ws,
+          responseConnectionId
+            ? serializeConnectionEnvelope(
+                responseConnectionId,
+                errorMessage,
+                typeof connectionGeneration === "number"
+                  ? connectionGeneration
+                  : undefined,
+              )
+            : JSON.stringify(errorMessage),
+          "message-error",
+        );
+      });
+  },
+  close(ws) {
+    const { client, viewedTerminals } = webSocketCleanup.complete(ws);
+    logger.debug("client disconnected", {
+      client,
+      clients: clients.size,
+      terminals: viewedTerminals.length ? viewedTerminals.join(",") : "none",
+    });
+  },
+};
+
+let publicServer: Server<SocketData> | null = null;
+
 function main() {
   const server = bindListenerBeforeConnectionStart({
-    bindListener: () =>
-      Bun.serve<{
-        sessionToken: string | null;
-        client?: ClientContext;
-        clientSession: string | null;
-      }>({
+    bindListener: () => {
+      const primary = Bun.serve<SocketData>({
         port: config.port,
         hostname: config.host,
         tls: config.tls,
-        async fetch(req, server) {
-          const requestPathname = rawRequestPathname(req.url);
-          let url: URL;
-          try {
-            url = new URL(req.url);
-          } catch {
-            return new Response("invalid request URL", { status: 400 });
-          }
-
-          if (url.pathname === "/health" || url.pathname === "/healthz") {
-            return new Response("Ok", {
-              status: 200,
-              headers: { "content-type": "text/plain; charset=utf-8" },
-            });
-          }
-
-          // Host allowlist (DNS rebinding) and Origin checks (cross-site
-          // WebSocket and request forgery) precede authentication.
-          const peer = server.requestIP(req)?.address;
-          const accessPolicy = requestAccess(server.port ?? config.port);
-          const access = accessPolicy.evaluate(req, peer);
-          if (!access.hostAllowed) {
-            logger.warn("rejected request for an unknown host", {
-              host: logDetail(access.host ?? ""),
-            });
-            return hostNotAllowedResponse(access.host);
-          }
-          const originMode = originCheckMode(url.pathname, req.method);
-          if (originMode !== "none") {
-            const decision = accessPolicy.checkOrigin(
-              req,
-              access,
-              originMode === "strict",
-            );
-            if (!decision.ok) {
-              logger.warn("rejected cross-origin request", {
-                reason: decision.reason,
-                path: logDetail(url.pathname),
-                origin: logDetail(req.headers.get("origin") ?? ""),
-              });
-              return forbiddenResponse(decision.reason);
-            }
-          }
-          const authContext = {
-            local: access.local,
-            secure: access.secure,
-            clientKey: access.clientAddress,
-          };
-
-          const tokenLoginResponse = handleTokenLogin(req, authContext);
-          if (tokenLoginResponse) return tokenLoginResponse;
-
-          // Auth endpoints are always reachable.
-          if (url.pathname === "/api/login" && req.method === "POST") {
-            return handleLogin(req, authContext);
-          }
-          if (url.pathname === "/login") {
-            return loginPage(req);
-          }
-          // The login page's logo and favicon must also work before login.
-          if (
-            url.pathname === "/thyra-icon-192.png" ||
-            url.pathname === "/thyra-icon.svg"
-          ) {
-            return serveStatic(req, config.publicDir);
-          }
-          if (url.pathname === "/api/logout") {
-            const response = handleLogout(req, authContext);
-            const token = sessionToken(req);
-            if (response.ok && token) {
-              for (const client of clients) {
-                if (clientSessions.get(client) !== token) continue;
-                webSocketCleanup.cleanup(client);
-                client.close(4001, "Logged out");
-              }
-            }
-            return response;
-          }
-
-          // MCP authenticates with its own bearer tokens, never the cookie.
-          if (url.pathname === "/mcp") {
-            server.timeout(req, 60);
-            return mcp.handle(req, access.clientAddress ?? peer);
-          }
-
-          // Everything else requires login, except direct local use of a
-          // loopback listener.
-          // Tailnet users behind a trusted proxy log in by Tailscale whois
-          // and receive the normal session cookie for later requests.
-          let issuedCookie: string | null = null;
-          if (!isAuthed(req, authContext)) {
-            const login = await tailnetLogin({
-              mode: tailnetAuth.mode,
-              access,
-              lookupUser: clientIdentity.tailnetUser,
-            });
-            if (login) {
-              issuedCookie = sessionCookie(authContext);
-              logger.info("tailnet login", { login: logDetail(login) });
-            } else {
-              const accept = req.headers.get("accept") ?? "";
-              if (req.method === "GET" && accept.includes("text/html")) {
-                return unauthenticatedLoginRedirect();
-              }
-              return new Response("unauthorized", { status: 401 });
-            }
-          }
-
-          if (url.pathname === "/ws") {
-            const upgrade = clientIdentity.upgradeContext(req, peer);
-            const clientSession = url.searchParams.get("client_session");
-            const upgradeHeaders = new Headers();
-            if (upgrade.headers["set-cookie"])
-              upgradeHeaders.append(
-                "set-cookie",
-                upgrade.headers["set-cookie"],
-              );
-            if (issuedCookie) upgradeHeaders.append("set-cookie", issuedCookie);
-            if (
-              server.upgrade(req, {
-                // Bun rejects an empty headers object.
-                ...(upgradeHeaders.has("set-cookie")
-                  ? { headers: upgradeHeaders }
-                  : {}),
-                data: {
-                  sessionToken: issuedCookie
-                    ? cookieValue(issuedCookie)
-                    : sessionToken(req),
-                  client: upgrade.context,
-                  clientSession:
-                    clientSession && CLIENT_SESSION_PATTERN.test(clientSession)
-                      ? clientSession
-                      : null,
-                },
-              })
-            )
-              return undefined;
-            return new Response("websocket upgrade failed", { status: 400 });
-          }
-          if (url.pathname === "/api/notifications/push") {
-            return webPush.handle(req);
-          }
-          if (url.pathname === "/api/voice/status" && req.method === "GET") {
-            return voice.status();
-          }
-          if (
-            url.pathname === "/api/voice/transcribe" &&
-            req.method === "POST"
-          ) {
-            // Local recognizers and remote providers can exceed Bun's default
-            // ten-second idle timeout for a long segment.
-            server.timeout(req, 75);
-            return voice.transcribe(req);
-          }
-          if (url.pathname === "/api/voice/cleanup" && req.method === "POST") {
-            server.timeout(req, 60);
-            return voice.cleanup(req);
-          }
-          if (url.pathname === "/api/health") {
-            return Response.json({
-              ok: true,
-              version: APP_VERSION,
-              socket: config.socketPath,
-              // Whether this browser had to log in (shows Log out).
-              auth_required: config.authRequired || !access.local,
-            });
-          }
-          if (url.pathname === "/api/update/check" && req.method === "GET") {
-            server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
-            return handleUpdateCheck(req);
-          }
-          if (url.pathname === "/api/update/install" && req.method === "POST") {
-            // Binary download and verification can exceed Bun's default ten-second
-            // request timeout. Keep the larger budget scoped to update requests.
-            server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
-            return handleUpdateInstall(req);
-          }
-          if (url.pathname === "/api/herdr/status" && req.method === "GET") {
-            return handleHerdrStatus();
-          }
-          if (url.pathname === "/api/herdr/setup" && req.method === "POST") {
-            // Herdr download plus service start shares the update budget.
-            server.timeout(req, UPDATE_HTTP_IDLE_TIMEOUT_SECONDS);
-            return handleHerdrSetup(req);
-          }
-          const connectionRoute = parseConnectionHttpRoute(
-            requestPathname,
-            req.method,
-          );
-          if (connectionRoute) {
-            if (
-              connectionRoute.kind === "connection" &&
-              connectionRoute.endpoint === "file-download" &&
-              url.searchParams.get("inline") === "1" &&
-              isHtmlPath(url.searchParams.get("path") ?? "")
-            ) {
-              // HTML preparation can require several bounded SSH resource reads.
-              server.timeout(req, DOWNLOAD_TIMEOUT_MS / 1000);
-            }
-            return handleConnectionHttpRequest(connectionRoute, url, req);
-          }
-          // Everything else: serve the built frontend (embedded or on-disk).
-          const page = clientIdentity.withPageCookie(
-            req,
-            peer,
-            await serveStatic(req, config.publicDir),
-          );
-          return issuedCookie ? withSetCookie(page, issuedCookie) : page;
-        },
-        websocket: {
-          perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
-          open(ws) {
-            clients.add(ws);
-            clientSessions.set(ws, ws.data.sessionToken);
-            clientIdentity.attach(ws, ws.data.client);
-            const participantId = clientIdentity.participantId(
-              ws,
-              ws.data.clientSession,
-            );
-            participantIds.set(ws, participantId);
-            const label = assignClientId(ws);
-            logger.debug("client connected", {
-              client: label,
-              clients: clients.size,
-            });
-            notifyBrowserClientCount();
-            safeSend(
-              ws,
-              JSON.stringify({
-                hello: true,
-                socket: config.socketPath,
-                bridge_protocol_version: 2,
-                default_connection_id: connectionManager.defaultId(),
-                participant_id: participantId,
-                capabilities: {
-                  connection_id: true,
-                  connection_scoped_http: true,
-                  connection_runtime_generation: true,
-                },
-              }),
-              "hello",
-            );
-          },
-          drain(ws) {
-            // The viewer caught up: send the newest repaint we held back.
-            flushCoalescedMessages(ws, {
-              cleanup: () => {
-                webSocketCleanup.cleanup(ws);
-              },
-              warn: (detail) =>
-                logger.warn("websocket send failed", {
-                  detail: detail.replace(/^\[bridge\] /, ""),
-                }),
-            });
-          },
-          message(ws, message) {
-            if (!clients.has(ws)) return;
-            const text =
-              typeof message === "string" ? message : message.toString();
-            const { id, method, connectionId, connectionGeneration } =
-              parseRpcMeta(text);
-            const startedAt = Date.now();
-            let responseConnectionId: string | null = null;
-            let logConnectionId: string | null = null;
-            if (method && !isBridgeGlobalMethod(method)) {
-              if (connectionId === undefined) {
-                responseConnectionId = connectionManager.defaultId();
-                logConnectionId = responseConnectionId;
-              } else {
-                try {
-                  responseConnectionId = validateConnectionId(connectionId);
-                  logConnectionId = responseConnectionId;
-                } catch {
-                  logConnectionId = "invalid";
-                }
-              }
-            }
-            handleRpc(ws, text)
-              .then(() => {
-                const outcome = takeRpcOutcome(ws, id);
-                logRpc(
-                  ws,
-                  method,
-                  startedAt,
-                  outcome?.status ?? "ok",
-                  logConnectionId,
-                  outcome?.detail,
-                );
-              })
-              .catch((e) => {
-                logRpc(
-                  ws,
-                  method,
-                  startedAt,
-                  "error",
-                  logConnectionId,
-                  (e as Error).message,
-                );
-                const errorMessage: Record<string, unknown> = {
-                  error: { message: (e as Error).message },
-                };
-                if (id) errorMessage.id = id;
-                safeSend(
-                  ws,
-                  responseConnectionId
-                    ? serializeConnectionEnvelope(
-                        responseConnectionId,
-                        errorMessage,
-                        typeof connectionGeneration === "number"
-                          ? connectionGeneration
-                          : undefined,
-                      )
-                    : JSON.stringify(errorMessage),
-                  "message-error",
-                );
-              });
-          },
-          close(ws) {
-            const { client, viewedTerminals } = webSocketCleanup.complete(ws);
-            logger.debug("client disconnected", {
-              client,
-              clients: clients.size,
-              terminals: viewedTerminals.length
-                ? viewedTerminals.join(",")
-                : "none",
-            });
-          },
-        },
-      }),
+        fetch: primaryFetch,
+        websocket: websocketHandlers,
+      });
+      if (publicListener) {
+        try {
+          // Plain HTTP on loopback; cloudflared terminates TLS at the edge.
+          publicServer = Bun.serve<SocketData>({
+            port: publicListener.port,
+            hostname: publicListener.hostname,
+            fetch: publicFetch,
+            websocket: websocketHandlers,
+          });
+        } catch (error) {
+          void primary.stop(true);
+          throw error;
+        }
+      }
+      return primary;
+    },
     startConnection: async () => {
       await connectionProfiles.startConfigured();
       notifyBrowserClientCount();
@@ -1901,9 +2166,19 @@ function main() {
   );
   logger.info("listening", {
     url: publicBrowserUrl,
+    listener: primaryKind,
     websocket: "/ws",
     log_level: config.logLevel,
   });
+  if (publicListener && publicServer) {
+    logger.info("public listener", {
+      origin: publicListener.origin,
+      listen: browserUrlFor(
+        publicListener.hostname,
+        publicServer.port ?? publicListener.port,
+      ),
+    });
+  }
   // Maximum-quality Brotli for the first-visit files, off the request path.
   void prewarmStaticCompression(config.publicDir).catch((error) =>
     logger.debug("static compression prewarm failed", {

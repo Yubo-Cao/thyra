@@ -18,6 +18,7 @@ function policy(
   } = {},
 ) {
   return createRequestAccessPolicy({
+    listenerKind: "tailnet",
     port: PORT,
     tls: overrides.tls ?? false,
     bindHost: overrides.bindHost ?? "127.0.0.1",

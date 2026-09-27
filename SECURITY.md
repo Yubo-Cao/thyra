@@ -33,7 +33,23 @@ ACLs. Tagged nodes, unknown peers, and `whois` failures fall back to the login p
 Set `THYRA_TAILNET_AUTH=off` for a proxy reachable from outside the tailnet: a
 public tunnel (such as `cloudflared`) must never be combined with tailnet login.
 
-**Do not expose Thyra directly to the public internet.** For non-loopback:
+**Listeners decide trust, never headers.** The primary listener (`HOST`/`PORT`)
+is `tailnet` when tailnet login is on and `local` otherwise. The optional
+**public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always
+`public`: no loopback bypass, tailnet login, owner password or token, `?token=`
+link, or primary-listener cookie authenticates there; `X-Forwarded-*` and
+Tailscale headers are ignored; `CF-Connecting-IP` sets only the rate-limit address,
+and only from `THYRA_PUBLIC_TRUSTED_PROXIES` (loopback by default); `Host` and
+`Origin` must be `THYRA_PUBLIC_ORIGIN`. It sends HSTS and a strict Content Security
+Policy and sets only `__Host-` cookies. Without an account sign-in it serves the
+login page and static assets and refuses every API, MCP and WebSocket request, and
+a public socket without an account principal holds no RPC class. On the primary
+listener, the public host gets `421` and a request carrying Cloudflare headers never
+gets tailnet login, so a misrouted tunnel fails closed. See
+[public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
+
+**Do not expose the primary listener to the public internet**; use the public
+listener behind Cloudflare Tunnel for a public address. For non-loopback:
 
 - Set a strong `THYRA_PASSWORD`; prefer it to `--password`, which exposes
   secrets in process arguments.

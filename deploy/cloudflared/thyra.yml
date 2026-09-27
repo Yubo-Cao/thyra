@@ -1,0 +1,14 @@
+# Copy to ~/.cloudflared/thyra.yml after `cloudflared tunnel create thyra`.
+# Routes the public DNS name to Thyra's public listener (THYRA_PUBLIC_LISTEN),
+# never to the primary listener (PORT).
+tunnel: TUNNEL_ID
+credentials-file: /home/USER/.cloudflared/TUNNEL_ID.json
+no-autoupdate: true
+ingress:
+  - hostname: thyra.example.com
+    service: http://127.0.0.1:8788
+    originRequest:
+      # Thyra accepts only the public host on this listener.
+      httpHostHeader: thyra.example.com
+      connectTimeout: 10s
+  - service: http_status:404

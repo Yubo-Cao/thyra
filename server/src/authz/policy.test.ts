@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-import { authorizeRpc, DENIED_RPC_METHODS, RPC_POLICY } from "./policy";
+import {
+  authorizeRpc,
+  DENIED_RPC_METHODS,
+  RPC_POLICY,
+  rpcRoleFor,
+} from "./policy";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
 const METHOD = String.raw`[a-z_]+(?:\.[a-z_]+)+`;
@@ -160,6 +165,25 @@ describe("authorizeRpc", () => {
   test("allows listed methods for the owner", () => {
     for (const method of Object.keys(RPC_POLICY)) {
       expect(authorizeRpc(method).allowed).toBe(true);
+    }
+  });
+});
+
+describe("roles by listener", () => {
+  test("private listeners authenticate only the owner", () => {
+    expect(rpcRoleFor("tailnet", null)).toBe("owner");
+    expect(rpcRoleFor("local", null)).toBe("owner");
+  });
+
+  test("the public listener grants nothing without a principal", () => {
+    expect(rpcRoleFor("public", null)).toBe("anonymous");
+    expect(rpcRoleFor("public", "anonymous")).toBe("anonymous");
+    expect(rpcRoleFor("public", "owner")).toBe("owner");
+  });
+
+  test("the anonymous role can call no method", () => {
+    for (const method of Object.keys(RPC_POLICY)) {
+      expect(authorizeRpc(method, "anonymous").allowed).toBe(false);
     }
   });
 });
