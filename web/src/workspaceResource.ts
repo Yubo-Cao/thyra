@@ -1,15 +1,11 @@
-import type { TerminalReviewAnnotation } from "./annotations";
 import { getShortcutSnapshot } from "./shortcutPreferences";
 import { matchesShortcut, type ShortcutBindings } from "./shortcutBindings";
 import type { Workspace } from "./types";
 import { connectionStorageKey } from "./connectionStorage";
 
 export type InspectorView = "files" | "changes" | "history";
-export type WorkspaceSurface = "terminal" | "annotations" | InspectorView;
 export const WORKSPACE_INSPECTOR_REQUEST_EVENT =
   "thyra:workspace-inspector-request";
-export const WORKSPACE_ANNOTATION_REQUEST_EVENT =
-  "thyra:workspace-annotation-request";
 
 export function isWorkspaceInspectorShortcut(
   event: Pick<
@@ -28,12 +24,6 @@ export interface WorkspaceInspectorRequest {
   view: InspectorView;
 }
 
-export interface WorkspaceAnnotationRequest {
-  connectionId: string;
-  generation: number;
-  workspaceId: string;
-  annotation: TerminalReviewAnnotation;
-}
 export type InspectorDock = "right" | "bottom";
 
 export const INSPECTOR_MIN_RIGHT = 360;
@@ -46,24 +36,7 @@ export function inspectorMaximumSize(
   dock: InspectorDock,
   availableWidth: number,
   availableHeight: number,
-  peerLayout = false,
 ): number {
-  if (peerLayout) {
-    return Math.max(
-      0,
-      dock === "right"
-        ? Math.min(
-            availableWidth * 0.55,
-            availableWidth - TERMINAL_MIN_WIDTH / 2 - INSPECTOR_SEPARATOR_SIZE,
-          )
-        : Math.min(
-            availableHeight * 0.5,
-            availableHeight -
-              TERMINAL_MIN_HEIGHT / 2 -
-              INSPECTOR_SEPARATOR_SIZE,
-          ),
-    );
-  }
   return dock === "right"
     ? Math.max(
         INSPECTOR_MIN_RIGHT,

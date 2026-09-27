@@ -103,7 +103,7 @@ keyboard shortcuts, or workspace/agent menus.
 - Closed worktrees must open before browsing; missing ones offer cleanup, never
   sibling files. Directory previews can prefill **New workspace**.
 
-Inspector and Annotations leave the sidebar unchanged. Previews stay read-only
+Inspector leaves the sidebar unchanged. Previews stay read-only
 until **Edit** opens the file editor;
 [resource ownership](docs/ARCHITECTURE.md#workspace-resource-ownership) prevents
 cross-worktree state mixing.
@@ -221,26 +221,6 @@ after fetch, and abort conflicts. They never push.
   `.tar.gz` directories; copy paths or delete with confirmation via right-click
   or long-press. Upload/delete stay checkout-scoped. Operations work over SSH.
 
-## Review Annotations
-
-Open **Annotations** independently of Inspector. Desktop supports floating or
-pinned layouts; mobile has a dedicated touch surface.
-
-1. Comment on diff line numbers, source gutters, rendered Markdown selections,
-   or selected terminal text using **Add comment**.
-2. Edit/reorder checkout-scoped comments, then copy feedback or pre-fill a chosen
-   agent pane. **Delivery never submits**: review and press Enter manually.
-3. Use **Go to agent** after pre-fill. Copy retains drafts; successful pre-fill
-   removes only unchanged delivered comments. Failed delivery, concurrent edits,
-   or leaving the workspace/connection preserves the original draft.
-
-With focus inside Annotations, use the configurable shortcuts shown on **Copy**
-and **Pre-fill agent**. Copy confirms success with a brief notification.
-Drafts stay in this browser and survive panel closure. Blank comments cannot be
-sent. Refresh re-anchors matching file/diff content and marks unresolved anchors
-stale without losing quotes. Terminal quotes are not re-anchored; missing panes
-are marked unavailable.
-
 ## Diff Viewer
 
 - Review **Working tree**, **Against main**, or **Last step** (the latest completed
@@ -266,8 +246,8 @@ separate for desktop/mobile. Jump from a diff to its file preview.
 - Touch reads output without opening the keyboard. Tap the last rows (where
   agent input boxes sit) or **Open device keyboard** to type; a tap higher up
   dismisses it without input. Long-press selects text and copies it on
-  release; handles adjust and recopy. **Copy**, **Add comment**, and link
-  actions stay available; **Done**/Esc exits.
+  release; handles adjust and recopy. **Copy** and link actions stay
+  available; **Done**/Esc exits.
   Scroll first to select older output. Selection freezes the displayed frame,
   not the connection; legacy streams resume at a 1 MiB buffered UTF-16 limit.
 - The default grid holds latching **Ctrl**/**Alt**/**Shift**, Ctrl+C/D/R, Esc,
@@ -343,7 +323,6 @@ Common defaults (Linux/Android exceptions follow):
 | Sidebar | `Cmd+B` | `Ctrl+Alt+B` |
 | Workspace Inspector | `Cmd+Shift+B` | `Ctrl+Alt+Shift+B` |
 | Expand / restore Inspector (desktop) | `Cmd+Option+Enter` | `Ctrl+Alt+Shift+Enter` |
-| Annotations | `Cmd+Option+A` | `Ctrl+Alt+A` |
 | Zen mode (desktop) | `Cmd+Shift+Z` | `Ctrl+Alt+Z` |
 | Recent pane switcher | `Ctrl+Tab` | `Ctrl+Alt+J` |
 | Search panes | `Alt+K` | `Alt+K` |
@@ -360,8 +339,7 @@ Common defaults (Linux/Android exceptions follow):
 | Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
 | Agent history | `Cmd+Shift+H` | `Ctrl+Alt+H` |
 | Search raw preview / diff | `Cmd+F` | `Ctrl+F` |
-| Send composer / add review comment / pre-fill agent (focused surface) | `Cmd+Enter` | `Ctrl+Enter` |
-| Copy review feedback (in Annotations) | `Cmd+Shift+C` | `Ctrl+Shift+C` |
+| Send composer | `Cmd+Enter` | `Ctrl+Enter` |
 | Copy terminal selection | `Cmd+C` | `Ctrl+Shift+C` / `Ctrl+Insert` |
 | Terminal paste | `Cmd+V` | `Ctrl+V` (also `Ctrl+Shift+V` on Linux) |
 | Open terminal links / file paths | `Cmd+Click` | `Ctrl+Click` |

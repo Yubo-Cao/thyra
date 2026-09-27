@@ -15,7 +15,6 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
 import {
   ChevronLeft,
@@ -25,17 +24,7 @@ import {
   RotateCcw,
   Save,
 } from "lucide-react";
-import { fileReviewLineDisplayLabel, MAX_QUOTE_LENGTH } from "../annotations";
 import { t } from "../i18n";
-import {
-  FileAnnotationDrag,
-  type FileAnnotationRequest,
-} from "./fileAnnotationDrag";
-import type {
-  FileLineReviewAnnotation,
-  NewReviewAnnotation,
-  ReviewAnnotation,
-} from "../annotations";
 import type { FileExplorerEntry, FilePreview } from "../types";
 import { copyTextFromUserGesture } from "../terminalClipboard";
 import { useConnectionClient } from "../useConnectionClient";
@@ -44,11 +33,7 @@ import {
   workspaceMarkdownDocumentPath,
   workspaceFileUrl,
 } from "../workspaceFileUrl";
-import { MarkdownPreview, type MarkdownSelectionTarget } from "./markdown";
-import {
-  AnnotationComposerPopover,
-  type AnnotationComposerDraft,
-} from "./AnnotationComposerPopover";
+import { MarkdownPreview } from "./markdown";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { ImagePreview } from "./ImagePreview";
 import {
@@ -132,25 +117,6 @@ type AppTheme = "dark" | "light";
 
 const PDF_INLINE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
 
-type PendingFileAnnotation =
-  | {
-      kind: "line";
-      x: number;
-      y: number;
-      path: string;
-      line: number;
-      endLine?: number;
-      quote: string;
-    }
-  | {
-      kind: "quote";
-      x: number;
-      y: number;
-      path: string;
-      quote: string;
-      section: string[];
-    };
-
 type CodeMirrorPreviewDeps = Awaited<
   ReturnType<typeof importCodeMirrorPreviewDeps>
 >;
@@ -175,12 +141,8 @@ async function importCodeMirrorPreviewDeps() {
     ),
     Compartment: state.Compartment,
     Decoration: view.Decoration,
-    RangeSet: state.RangeSet,
-    GutterMarker: view.GutterMarker,
-    gutter: view.gutter,
     EditorState: state.EditorState,
     EditorView: view.EditorView,
-    ViewPlugin: view.ViewPlugin,
     keymap: view.keymap,
     openSearchPanel: searchModule.openSearchPanel,
     search: searchModule.search,
@@ -246,13 +208,10 @@ export function FilePreviewContent({
   fragment,
   changesContent,
   changesKey,
-  annotations = [],
   backAction,
   onOpenChanges,
   onOpenFile,
   onRefresh,
-  onCreateAnnotation,
-  onReanchorAnnotations,
 }: {
   entry: FileExplorerEntry | null;
   preview: FilePreview | null;
@@ -262,12 +221,9 @@ export function FilePreviewContent({
   changesContent?: ReactNode;
   changesKey?: string;
   backAction?: { label: string; onClick: () => void };
-  annotations?: readonly ReviewAnnotation[];
   onOpenChanges?: () => void;
   onOpenFile?: (path: string, fragment?: string) => void;
   onRefresh?: () => void;
-  onCreateAnnotation?: (annotation: NewReviewAnnotation) => void;
-  onReanchorAnnotations?: (path: string, text: string) => void;
 }) {
   const connectionClient = useConnectionClient();
   const workspaces = useStoreSelector((state) => state.workspaces);
@@ -281,10 +237,6 @@ export function FilePreviewContent({
   );
   const [detailTab, setDetailTab] = useState<"file" | "changes">("file");
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
-  const [pendingAnnotation, setPendingAnnotation] =
-    useState<PendingFileAnnotation | null>(null);
-  const [markdownSelection, setMarkdownSelection] =
-    useState<MarkdownSelectionTarget | null>(null);
   const theme = useDocumentTheme();
   const previewText = preview?.text ?? null;
   const previewPath = preview?.path ?? "";
@@ -390,40 +342,11 @@ export function FilePreviewContent({
   const directoryWorkspaceName = directoryPath
     ? directoryPreviewName(directoryPath)
     : "";
-  const lineAnnotations = useMemo(
-    () =>
-      annotations.filter(
-        (annotation): annotation is FileLineReviewAnnotation =>
-          annotation.source === "file" &&
-          annotation.anchor === "line" &&
-          annotation.path === previewPath,
-      ),
-    [annotations, previewPath],
-  );
-  const annotationComposerDraft: AnnotationComposerDraft | null =
-    pendingAnnotation
-      ? {
-          x: pendingAnnotation.x,
-          y: pendingAnnotation.y,
-          title:
-            pendingAnnotation.kind === "line"
-              ? `${pendingAnnotation.path} · ${fileReviewLineDisplayLabel(pendingAnnotation)}`
-              : pendingAnnotation.section.length
-                ? `${pendingAnnotation.path} · ${pendingAnnotation.section.join(" › ")}`
-                : t("{path} · selected passage", {
-                    path: pendingAnnotation.path,
-                  }),
-          quote: pendingAnnotation.quote,
-        }
-      : null;
-
   useEffect(() => {
     setPreviewMode("rendered");
   }, [entry?.path]);
 
   useEffect(() => {
-    setPendingAnnotation(null);
-    setMarkdownSelection(null);
     setSaveConflict(null);
   }, [previewPath]);
 
@@ -551,16 +474,6 @@ export function FilePreviewContent({
   };
 
   useEffect(() => {
-    if (previewText === null || !previewPath || preview?.truncated) return;
-    onReanchorAnnotations?.(previewPath, previewText);
-  }, [onReanchorAnnotations, preview?.truncated, previewPath, previewText]);
-
-  useEffect(() => {
-    if (hasMarkdownPreview && renderRichPreview && !showingChanges) return;
-    setMarkdownSelection(null);
-  }, [hasMarkdownPreview, renderRichPreview, showingChanges]);
-
-  useEffect(() => {
     if (detailTab === "changes" && changesAvailable) {
       onOpenChangesRef.current?.();
     }
@@ -606,43 +519,6 @@ export function FilePreviewContent({
     section.addEventListener("copy", onCopy);
     return () => section.removeEventListener("copy", onCopy);
   }, []);
-
-  const closeAnnotationComposer = useCallback(() => {
-    setPendingAnnotation(null);
-  }, []);
-
-  const saveAnnotation = useCallback(
-    (comment: string) => {
-      const pending = pendingAnnotation;
-      if (!pending || !onCreateAnnotation) return;
-      if (pending.kind === "line") {
-        onCreateAnnotation({
-          source: "file",
-          anchor: "line",
-          path: pending.path,
-          line: pending.line,
-          ...(pending.endLine === undefined
-            ? {}
-            : { endLine: pending.endLine }),
-          quote: pending.quote,
-          comment,
-        });
-      } else {
-        onCreateAnnotation({
-          source: "file",
-          anchor: "quote",
-          path: pending.path,
-          quote: pending.quote,
-          section: pending.section,
-          comment,
-        });
-      }
-      setPendingAnnotation(null);
-      setMarkdownSelection(null);
-      window.getSelection()?.removeAllRanges();
-    },
-    [onCreateAnnotation, pendingAnnotation],
-  );
 
   const copyPreviewText = async () => {
     if (previewText === null) return;
@@ -956,9 +832,6 @@ export function FilePreviewContent({
               linkUrlResolver={markdownLinkUrlResolver}
               fragment={fragment}
               onOpenDocument={onOpenFile}
-              onSelectionChange={
-                onCreateAnnotation ? setMarkdownSelection : undefined
-              }
             />
           ) : null}
           {!loading && !error && hasMermaidPreview && renderRichPreview ? (
@@ -977,68 +850,11 @@ export function FilePreviewContent({
               text={previewText}
               path={previewPath}
               theme={theme}
-              annotations={lineAnnotations}
               editorViewRef={editorViewRef}
-              onRequestAnnotation={
-                onCreateAnnotation
-                  ? ({ line, endLine, quote, x, y }) =>
-                      setPendingAnnotation({
-                        kind: "line",
-                        path: previewPath,
-                        line,
-                        endLine,
-                        quote,
-                        x,
-                        y,
-                      })
-                  : undefined
-              }
             />
           ) : null}
         </div>
       )}
-      {markdownSelection &&
-      onCreateAnnotation &&
-      hasMarkdownPreview &&
-      renderRichPreview &&
-      !showingChanges
-        ? createPortal(
-            <Button
-              variant="primary"
-              className="markdown-annotate-button"
-              style={{
-                left: Math.min(
-                  Math.max(8, markdownSelection.x),
-                  Math.max(8, window.innerWidth - 154),
-                ),
-                top: Math.min(
-                  Math.max(8, markdownSelection.y),
-                  Math.max(8, window.innerHeight - 42),
-                ),
-              }}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => {
-                setPendingAnnotation({
-                  kind: "quote",
-                  path: previewPath,
-                  quote: markdownSelection.quote,
-                  section: markdownSelection.section,
-                  x: markdownSelection.x,
-                  y: markdownSelection.y,
-                });
-                setMarkdownSelection(null);
-              }}
-            >
-              {t("Annotate selection")}
-            </Button>,
-            document.body,
-          )
-        : null}
-      <AnnotationComposerPopover
-        draft={annotationComposerDraft}
-        onSave={saveAnnotation}
-        onClose={closeAnnotationComposer}
-      />
       <CreateWorkspaceDialog
         open={workspaceDialogOpen}
         initialName={directoryWorkspaceName}
@@ -1049,160 +865,18 @@ export function FilePreviewContent({
   );
 }
 
-type CodeMirrorAnnotationRequest = FileAnnotationRequest;
-
-type CodeMirrorAnnotationRuntime = {
-  deps: CodeMirrorPreviewDeps;
-  compartment: InstanceType<CodeMirrorPreviewDeps["Compartment"]>;
-  view: CodeMirrorEditorView;
-};
-
-function codeMirrorAnnotationExtensions(
-  deps: CodeMirrorPreviewDeps,
-  text: string,
-  annotations: readonly FileLineReviewAnnotation[],
-  onRequestAnnotation?: (request: CodeMirrorAnnotationRequest) => void,
-) {
-  if (!onRequestAnnotation && annotations.length === 0) return [];
-  const annotationsByLine = new Map<number, FileLineReviewAnnotation[]>();
-  for (const annotation of annotations) {
-    const current = annotationsByLine.get(annotation.line);
-    if (current) current.push(annotation);
-    else annotationsByLine.set(annotation.line, [annotation]);
-  }
-
-  const normalizedText = text.replace(/\r\n?/g, "\n");
-  const lineStarts = [0];
-  for (let index = 0; index < normalizedText.length; index += 1) {
-    if (normalizedText[index] === "\n") lineStarts.push(index + 1);
-  }
-
-  const annotatedLines = new Set<number>();
-  for (const annotation of annotations) {
-    const end = Math.min(
-      annotation.endLine ?? annotation.line,
-      lineStarts.length,
-    );
-    for (let line = annotation.line; line <= end; line += 1)
-      annotatedLines.add(line);
-  }
-
-  class ReviewGutterMarker extends deps.GutterMarker {
-    constructor(
-      private count: number,
-      private stale: boolean,
-    ) {
-      super();
-    }
-
-    toDOM() {
-      const marker = document.createElement("span");
-      marker.className = `cm-review-annotation-marker ${
-        this.stale ? "is-stale" : ""
-      }`;
-      marker.textContent = String(this.count);
-      marker.title =
-        this.count === 1
-          ? t("1 review comment")
-          : t("{count} review comments", { count: this.count });
-      return marker;
-    }
-  }
-
-  const dragPlugin = deps.ViewPlugin.define(
-    (view) =>
-      new FileAnnotationDrag(
-        view,
-        (request) => onRequestAnnotation?.(request),
-        () =>
-          store.notify({
-            kind: "info",
-            message: t("Select fewer lines to annotate"),
-            detail: t(
-              "The selected text exceeds the {limit}-character annotation limit.",
-              { limit: MAX_QUOTE_LENGTH.toLocaleString("en-US") },
-            ),
-          }),
-      ),
-  );
-
-  return [
-    dragPlugin,
-    deps.gutter({
-      class: "cm-review-annotation-gutter",
-      markers: (view) =>
-        deps.RangeSet.of(
-          Array.from(annotationsByLine.entries())
-            .sort(([left], [right]) => left - right)
-            .flatMap(([lineNumber, matches]) => {
-              if (lineNumber > view.state.doc.lines) return [];
-              const line = view.state.doc.line(lineNumber);
-              return [
-                new ReviewGutterMarker(
-                  matches.length,
-                  matches.every((annotation) => annotation.stale),
-                ).range(line.from),
-              ];
-            }),
-          true,
-        ),
-      domEventHandlers: {
-        mousedown: (view, line, event) => {
-          if (
-            !(event instanceof MouseEvent) ||
-            event.button !== 0 ||
-            !onRequestAnnotation
-          ) {
-            return false;
-          }
-          return (
-            view
-              .plugin(dragPlugin)
-              ?.start(view.state.doc.lineAt(line.from).number, event) ?? false
-          );
-        },
-      },
-    }),
-    deps.EditorView.decorations.of(
-      deps.Decoration.set(
-        Array.from(annotatedLines)
-          .sort((left, right) => left - right)
-          .flatMap((lineNumber) => {
-            const from = lineStarts[lineNumber - 1];
-            return from === undefined
-              ? []
-              : [
-                  deps.Decoration.line({
-                    attributes: { "data-review-annotated": "true" },
-                  }).range(from),
-                ];
-          }),
-      ),
-    ),
-  ];
-}
-
 function CodeMirrorPreview({
   text,
   path,
   theme,
-  annotations,
   editorViewRef,
-  onRequestAnnotation,
 }: {
   text: string;
   path: string;
   theme: AppTheme;
-  annotations: readonly FileLineReviewAnnotation[];
   editorViewRef: MutableRefObject<CodeMirrorEditorView | null>;
-  onRequestAnnotation?: (request: CodeMirrorAnnotationRequest) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const annotationRuntimeRef = useRef<CodeMirrorAnnotationRuntime | null>(null);
-  const annotationsRef = useRef(annotations);
-  const requestAnnotationRef = useRef(onRequestAnnotation);
-  annotationsRef.current = annotations;
-  requestAnnotationRef.current = onRequestAnnotation;
 
   useEffect(() => {
     const parent = containerRef.current;
@@ -1215,7 +889,6 @@ function CodeMirrorPreview({
       if (cancelled || !containerRef.current) return;
       parent.textContent = "";
       const syntaxCompartment = new deps.Compartment();
-      const annotationCompartment = new deps.Compartment();
       view = new deps.EditorView({
         parent,
         state: deps.EditorState.create({
@@ -1230,14 +903,6 @@ function CodeMirrorPreview({
             deps.EditorView.editable.of(false),
             deps.EditorView.contentAttributes.of({ tabindex: "0" }),
             syntaxCompartment.of([]),
-            annotationCompartment.of(
-              codeMirrorAnnotationExtensions(
-                deps,
-                text,
-                annotationsRef.current,
-                (request) => requestAnnotationRef.current?.(request),
-              ),
-            ),
             deps.EditorView.theme(
               {
                 "&": {
@@ -1385,11 +1050,6 @@ function CodeMirrorPreview({
         }),
       });
       editorViewRef.current = view;
-      annotationRuntimeRef.current = {
-        deps,
-        compartment: annotationCompartment,
-        view,
-      };
       const activeView = view;
 
       void highlightCodeTokens(text, path)
@@ -1415,27 +1075,9 @@ function CodeMirrorPreview({
     return () => {
       cancelled = true;
       if (editorViewRef.current === view) editorViewRef.current = null;
-      if (annotationRuntimeRef.current?.view === view) {
-        annotationRuntimeRef.current = null;
-      }
       view?.destroy();
     };
   }, [editorViewRef, path, text, theme]);
-
-  useEffect(() => {
-    const runtime = annotationRuntimeRef.current;
-    if (!runtime) return;
-    runtime.view.dispatch({
-      effects: runtime.compartment.reconfigure(
-        codeMirrorAnnotationExtensions(
-          runtime.deps,
-          text,
-          annotations,
-          (request) => requestAnnotationRef.current?.(request),
-        ),
-      ),
-    });
-  }, [annotations, text]);
 
   return (
     <div ref={containerRef} className="file-preview-code syntax-highlighted" />

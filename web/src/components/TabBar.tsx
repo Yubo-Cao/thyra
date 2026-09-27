@@ -8,7 +8,7 @@ import {
 } from "../store";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MessageSquareText, PanelRight, Plus, X } from "lucide-react";
+import { PanelRight, Plus, X } from "lucide-react";
 import type { Tab } from "../types";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
@@ -66,17 +66,11 @@ export function requestClosePane(paneId: string) {
 export function TabBar({
   mobile = false,
   inspectorOpen = false,
-  annotationsOpen = false,
-  annotationCount = 0,
   onToggleInspector,
-  onToggleAnnotations,
 }: {
   mobile?: boolean;
   inspectorOpen?: boolean;
-  annotationsOpen?: boolean;
-  annotationCount?: number;
   onToggleInspector?: () => void;
-  onToggleAnnotations?: () => void;
 }) {
   useShortcutPreferences();
   const s = useStoreSelector(
@@ -353,22 +347,6 @@ export function TabBar({
               <span>{t("Inspector")}</span>
               {changedCount > 0 ? (
                 <span className="tabbar-change-count">{changedCount}</span>
-              ) : null}
-            </Button>
-            <Button
-              aria-expanded={annotationsOpen}
-              title={shortcutTitle(
-                annotationsOpen
-                  ? t("Close Annotations")
-                  : t("Open Annotations"),
-                "annotations.toggle",
-              )}
-              onClick={onToggleAnnotations}
-            >
-              <MessageSquareText size={14} />
-              <span>{t("Annotations")}</span>
-              {annotationCount > 0 ? (
-                <span className="tabbar-change-count">{annotationCount}</span>
               ) : null}
             </Button>
           </div>

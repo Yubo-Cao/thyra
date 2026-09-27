@@ -39,14 +39,18 @@ const LATE_SHORTCUT_IDS: ShortcutId[] = [
   "zen.toggle",
   "pane.zoom",
   "inspector.expand",
-  "annotations.toggle",
-  "annotations.copy",
-  "annotations.prefill",
   "panes.search",
   "plugin.herdrFloat.toggle",
   "terminal.ctrlEnter",
   "voice.pushToTalk",
 ];
+/** Removed actions that saved presets may still name; loading drops them. */
+const RETIRED_SHORTCUT_IDS = new Set([
+  "annotations.toggle",
+  "annotation.submit",
+  "annotations.copy",
+  "annotations.prefill",
+]);
 export function validateShortcutPreset(value: unknown): ShortcutPreset {
   if (!value || typeof value !== "object")
     throw new Error(t("Invalid shortcut preset."));
@@ -71,7 +75,9 @@ export function validateShortcutPreset(value: unknown): ShortcutPreset {
     throw new Error(t("Missing shortcut bindings."));
   if (
     Object.keys(input.bindings).some(
-      (id) => !SHORTCUT_IDS.includes(id as ShortcutId),
+      (id) =>
+        !SHORTCUT_IDS.includes(id as ShortcutId) &&
+        !RETIRED_SHORTCUT_IDS.has(id),
     )
   )
     throw new Error(t("This preset contains unknown actions."));

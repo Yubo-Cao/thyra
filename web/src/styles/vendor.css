@@ -1,4 +1,3 @@
 /* Vendor overrides the first screen needs. Syntax and diff overrides load
-   with their lazy consumers: components/syntaxHighlighting.css,
-   DiffContentView.css (Pierre diffs), and FilePreviewContent.css
-   (CodeMirror annotation markers). */
+   with their lazy consumers: components/syntaxHighlighting.css and
+   DiffContentView.css (Pierre diffs). */

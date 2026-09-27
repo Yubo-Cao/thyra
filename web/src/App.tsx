@@ -1,18 +1,4 @@
 import { listenForTaskNotificationActivation } from "./taskNotifications";
-import { useReviewAnnotationDraft } from "./useReviewAnnotationDraft";
-import {
-  annotationDraftStorageKey,
-  compileReviewFeedback,
-  createReviewAnnotation,
-  moveReviewAnnotation,
-  parseReviewAnnotation,
-  removeDeliveredReviewAnnotations,
-  reanchorDiffReviewAnnotations,
-  reanchorFileReviewAnnotations,
-  reviewAgentPanes,
-  type NewReviewAnnotation,
-  type ReviewAnnotation,
-} from "./annotations";
 import { thyraLocalStorage, thyraStorageEventKey } from "./browserStorage";
 import { LAYOUT_CHANGE_EVENT, useLayoutPreferences } from "./layoutPreferences";
 import {
@@ -29,7 +15,6 @@ import {
   FolderOpen,
   FolderTree,
   History,
-  MessageSquareText,
   Minimize2,
   MoreHorizontal,
   PanelTop,
@@ -77,7 +62,6 @@ import {
   LazyConnectionSwitcher,
 } from "./components/ConnectionSwitcherTrigger";
 import {
-  annotationComposerPanel,
   createWorkspaceDialog,
   terminalComposerPanel,
   terminalFileLinkMenuPanel,
@@ -168,7 +152,6 @@ import {
   tabShortcutAction,
 } from "./tabShortcuts";
 import { copyTextFromUserGesture } from "./terminalClipboard";
-import { terminalPasteRequest } from "./terminalPaste";
 import {
   activateTerminalComposerDraftScope,
   readTerminalComposerDraft,
@@ -176,7 +159,7 @@ import {
   terminalComposerDraftKey,
 } from "./terminalComposer";
 import { terminalMountKey } from "./terminalConnection";
-import type { FileExplorerEntry, GitDiffEntry, Pane } from "./types";
+import type { FileExplorerEntry, Pane } from "./types";
 import {
   connectionClientScopeKey,
   useConnectionClient,
@@ -198,9 +181,6 @@ import {
   resourceStateKey,
   sameResourceOwner,
   WORKSPACE_INSPECTOR_REQUEST_EVENT,
-  type ResourceScope,
-  WORKSPACE_ANNOTATION_REQUEST_EVENT,
-  type WorkspaceAnnotationRequest,
   type WorkspaceInspectorRequest,
   type WorkspaceInspectorState,
   writeInspectorPreferences,
@@ -219,12 +199,6 @@ const workspaceInspectorPanel = lazyPanel("workspace-inspector", () =>
 const WorkspaceInspectorHost = workspaceInspectorPanel.Component;
 
 // Surfaces that open on demand; Latched keeps them mounted afterwards.
-const annotationPanel = lazyPanel("annotation-panel", () =>
-  import("./components/AnnotationPanel").then(
-    (module) => module.AnnotationPanel,
-  ),
-);
-const AnnotationPanel = annotationPanel.Component;
 const mobileTabSheet = lazyPanel("mobile-tab-sheet", () =>
   import("./components/MobileTabSheet").then((module) => module.MobileTabSheet),
 );
@@ -248,13 +222,11 @@ function idlePrefetchLoaders(mobile: boolean) {
     preloadOverlays,
     themedSelectPanel.preload,
     textInputDialogPanel.preload,
-    annotationComposerPanel.preload,
     terminalFileLinkMenuPanel.preload,
     createWorkspaceDialog.preload,
     projectLauncherPanel.preload,
     ...(mobile ? [mobileTabSheet.preload] : [terminalComposerPanel.preload]),
     workspaceInspectorPanel.preload,
-    annotationPanel.preload,
   ];
 }
 
@@ -352,7 +324,7 @@ function TerminalView(props: TerminalViewProps) {
 }
 
 export type Theme = ThemePreference;
-type MobileView = "workspaces" | "session" | "annotations" | InspectorView;
+type MobileView = "workspaces" | "session" | InspectorView;
 type OpenInspectorOptions = {
   entry?: FileExplorerEntry;
   path?: string;
@@ -1370,45 +1342,6 @@ export default function App() {
     connectionClient,
     "resource-ui",
   );
-  const {
-    annotations,
-    scope: annotationScope,
-    scopeRef: annotationScopeRef,
-    sessionRef: annotationSessionRef,
-    read: readAnnotationDraft,
-    select: selectAnnotationDraft,
-    update: updateAnnotationDraft,
-  } = useReviewAnnotationDraft(resourceUiKey);
-  const [annotationsOpen, setAnnotationsOpen] = useState(false);
-  const [annotationsFloating, setAnnotationsFloating] = useState(
-    () => thyraLocalStorage.getItem("annotationPanelMode") !== "fixed",
-  );
-  const annotationsDocked = annotationsOpen && (mobile || !annotationsFloating);
-  const toggleAnnotationsFloating = () => {
-    const next = !annotationsFloating;
-    setAnnotationsFloating(next);
-    try {
-      thyraLocalStorage.setItem(
-        "annotationPanelMode",
-        next ? "floating" : "fixed",
-      );
-    } catch {
-      store.notify({
-        kind: "error",
-        message: t("Annotation layout could not be saved"),
-        detail: t("The layout applies until this page reloads."),
-      });
-    }
-  };
-  const [focusedAnnotationId, setFocusedAnnotationId] = useState<string | null>(
-    null,
-  );
-  const [annotationPreferredPaneId, setAnnotationPreferredPaneId] = useState<
-    string | undefined
-  >();
-  const [deliveredPaneId, setDeliveredPaneId] = useState<string | null>(null);
-  const [annotationDeliveryBusy, setAnnotationDeliveryBusy] = useState(false);
-  const annotationAwaitingFocusRef = useRef<ResourceScope | null>(null);
   const inspectorFocusRequestRef = useRef<{
     state: WorkspaceInspectorState;
     source: Element | null;
@@ -1538,47 +1471,6 @@ export default function App() {
   const inspectorResourceStateKey = inspectorState
     ? resourceStateKey(inspectorState.scope)
     : null;
-  const annotationStorageKey = annotationScope
-    ? annotationDraftStorageKey(annotationScope)
-    : null;
-  const annotationWorkspace = annotationScope
-    ? resolveWorkspaceForScope(annotationScope, s.workspaces)
-    : undefined;
-  const annotationAgentPanes = useMemo(
-    () =>
-      reviewAgentPanes(
-        s.panes,
-        annotationWorkspace?.workspace_id ?? "",
-        annotationPreferredPaneId,
-      ),
-    [annotationPreferredPaneId, annotationWorkspace?.workspace_id, s.panes],
-  );
-  const commitAnnotations = useCallback(
-    (
-      update:
-        | ReviewAnnotation[]
-        | ((current: ReviewAnnotation[]) => ReviewAnnotation[]),
-    ) => {
-      if (!annotationScope) return;
-      updateAnnotationDraft(annotationScope, update);
-    },
-    [annotationScope, updateAnnotationDraft],
-  );
-  const setAnnotationDraftScope = useCallback(
-    (scope: ResourceScope, open = false, preferredPaneId?: string) => {
-      const changed = selectAnnotationDraft(scope);
-      setAnnotationsOpen(open);
-      if (changed) {
-        setFocusedAnnotationId(null);
-        setAnnotationPreferredPaneId(preferredPaneId);
-        setDeliveredPaneId(null);
-        setAnnotationDeliveryBusy(false);
-      } else if (preferredPaneId !== undefined) {
-        setAnnotationPreferredPaneId(preferredPaneId);
-      }
-    },
-    [selectAnnotationDraft],
-  );
 
   const commitInspectorState = useCallback(
     (next: WorkspaceInspectorState | null) => {
@@ -1603,7 +1495,6 @@ export default function App() {
     updateInspectorState((current) =>
       current ? { ...current, open: false } : current,
     );
-    setAnnotationsOpen(false);
     setMobileView("session");
     if (!mobile) {
       requestAnimationFrame(() => {
@@ -1727,13 +1618,6 @@ export default function App() {
         connectionClient.connectionId,
         workspace,
       );
-      if (
-        !annotationScopeRef.current ||
-        annotationScopeRef.current.workspaceId !== scope.workspaceId ||
-        !sameResourceOwner(annotationScopeRef.current, scope)
-      ) {
-        setAnnotationDraftScope(scope, annotationsOpen);
-      }
       const current = inspectorStateRef.current;
       const sameOwner = !!current && sameResourceOwner(current.scope, scope);
       const stageWidth = inspectorStageRef.current?.clientWidth ?? 0;
@@ -1820,216 +1704,8 @@ export default function App() {
       finishInspectorFocus,
       loadInspectorFilePreview,
       mobile,
-      annotationsOpen,
-      annotationScopeRef,
-      setAnnotationDraftScope,
     ],
   );
-  const openAnnotations = useCallback(
-    (workspaceId?: string, preferredPaneId?: string) => {
-      const snapshot = store.get();
-      const workspace = workspaceId
-        ? snapshot.workspaces.find(
-            (candidate) => candidate.workspace_id === workspaceId,
-          )
-        : snapshot.workspaces.find((candidate) => candidate.focused);
-      if (!workspace) return;
-      const scope = resourceScopeForWorkspace(
-        connectionClient.connectionId,
-        workspace,
-      );
-      setAnnotationDraftScope(scope, true, preferredPaneId);
-      annotationAwaitingFocusRef.current = workspace.focused ? null : scope;
-      if (!workspace.focused) void store.focusWorkspace(workspace.workspace_id);
-      if (mobile) setMobileView("annotations");
-    },
-    [connectionClient.connectionId, mobile, setAnnotationDraftScope],
-  );
-  const toggleAnnotations = useCallback(() => {
-    if (annotationsOpen && (!mobile || mobileView === "annotations")) {
-      setAnnotationsOpen(false);
-      if (mobile)
-        setMobileView(
-          inspectorStateRef.current?.open
-            ? inspectorStateRef.current.view
-            : "session",
-        );
-      return;
-    }
-    openAnnotations();
-  }, [annotationsOpen, mobile, mobileView, openAnnotations]);
-  const reanchorFileAnnotations = useCallback(
-    (path: string, text: string) => {
-      if (!inspectorState || !connectionClient.isCurrent()) return;
-      updateAnnotationDraft(inspectorState.scope, (current) =>
-        reanchorFileReviewAnnotations(current, path, text),
-      );
-    },
-    [connectionClient, inspectorState, updateAnnotationDraft],
-  );
-  const reanchorDiffAnnotations = useCallback(
-    (path: string, kind: GitDiffEntry["kind"], patch: string) => {
-      if (!inspectorState || !connectionClient.isCurrent()) return;
-      updateAnnotationDraft(inspectorState.scope, (current) =>
-        reanchorDiffReviewAnnotations(current, path, kind, patch),
-      );
-    },
-    [connectionClient, inspectorState, updateAnnotationDraft],
-  );
-  const addAnnotation = useCallback(
-    (input: NewReviewAnnotation) => {
-      if (!inspectorState || !connectionClient.isCurrent()) return;
-      const annotation = createReviewAnnotation(input);
-      setAnnotationDraftScope(inspectorState.scope, true);
-      updateAnnotationDraft(inspectorState.scope, (current) => [
-        ...current,
-        annotation,
-      ]);
-      setFocusedAnnotationId(annotation.id);
-      setAnnotationsOpen(true);
-      if (mobile) setMobileView("annotations");
-    },
-    [
-      connectionClient,
-      inspectorState,
-      mobile,
-      setAnnotationDraftScope,
-      updateAnnotationDraft,
-    ],
-  );
-  const closeAnnotations = useCallback(() => {
-    setAnnotationsOpen(false);
-    if (mobile) {
-      setMobileView(
-        inspectorStateRef.current?.open
-          ? inspectorStateRef.current.view
-          : "session",
-      );
-      return;
-    }
-    document
-      .querySelector<HTMLElement>(
-        ".pane-layout-cell.is-active .xterm-helper-textarea, .pane-switcher-layout .xterm-helper-textarea, .workspace-terminal-surface > .terminal-shell .xterm-helper-textarea",
-      )
-      ?.focus();
-  }, [mobile]);
-  const clearAnnotations = useCallback(() => {
-    commitAnnotations([]);
-    setFocusedAnnotationId(null);
-    closeAnnotations();
-  }, [closeAnnotations, commitAnnotations]);
-  const copyFeedback = useCallback(
-    async (fallback = false) => {
-      const message = compileReviewFeedback(annotations);
-      if (!message) {
-        store.notify({
-          kind: "error",
-          message: t("Add text to a review comment before delivery"),
-        });
-        return;
-      }
-      const deliverySession = annotationSessionRef.current;
-      setAnnotationDeliveryBusy(true);
-      try {
-        await copyTextFromUserGesture(message);
-        store.notify({
-          kind: "success",
-          message: fallback
-            ? t("No agent pane found; feedback copied")
-            : t("Review feedback copied"),
-          autoDismissMs: 3000,
-        });
-      } catch (error) {
-        store.notify({
-          kind: "error",
-          message: t("Failed to copy review feedback"),
-          detail: error instanceof Error ? error.message : String(error),
-        });
-      } finally {
-        if (annotationSessionRef.current === deliverySession)
-          setAnnotationDeliveryBusy(false);
-      }
-    },
-    [annotations, annotationSessionRef],
-  );
-  const sendFeedback = useCallback(
-    async (paneId: string | null) => {
-      const target = annotationAgentPanes.find(
-        (pane) => pane.pane_id === paneId,
-      );
-      if (!target) {
-        await copyFeedback(true);
-        return;
-      }
-      const message = compileReviewFeedback(annotations);
-      if (!message) {
-        store.notify({
-          kind: "error",
-          message: t("Add text to a review comment before delivery"),
-        });
-        return;
-      }
-      const deliverySession = annotationSessionRef.current;
-      setAnnotationDeliveryBusy(true);
-      try {
-        const request = terminalPasteRequest(target.pane_id, message);
-        await connectionClient.call(request.method, request.params);
-        if (!connectionClient.isCurrent()) return;
-        const draftActive =
-          deliverySession !== null &&
-          annotationSessionRef.current === deliverySession;
-        if (draftActive) {
-          setDeliveredPaneId(target.pane_id);
-          commitAnnotations((current) =>
-            removeDeliveredReviewAnnotations(current, annotations),
-          );
-        }
-        store.notify({
-          kind: "success",
-          message: t("Feedback pre-filled in the agent pane"),
-          detail: draftActive
-            ? t("Review the message there, then press Enter to submit it.")
-            : t(
-                "Original draft retained because its workspace was left or unloaded, or its connection changed. Review the message in the agent pane, then press Enter.",
-              ),
-          autoDismissMs: 6000,
-        });
-      } catch (error) {
-        if (!connectionClient.isCurrent()) return;
-        store.notify({
-          kind: "error",
-          message: t("Failed to pre-fill review feedback"),
-          detail: error instanceof Error ? error.message : String(error),
-        });
-      } finally {
-        if (annotationSessionRef.current === deliverySession)
-          setAnnotationDeliveryBusy(false);
-      }
-    },
-    [
-      annotationAgentPanes,
-      annotationSessionRef,
-      annotations,
-      commitAnnotations,
-      connectionClient,
-      copyFeedback,
-    ],
-  );
-  const goToDeliveredAgent = useCallback(() => {
-    if (!deliveredPaneId || !connectionClient.isCurrent()) return;
-    const pane = store
-      .get()
-      .panes.find((candidate) => candidate.pane_id === deliveredPaneId);
-    if (!pane || pane.workspace_id !== annotationWorkspace?.workspace_id)
-      return;
-    activateTerminalSurface();
-    void store.focusPane(deliveredPaneId);
-  }, [
-    activateTerminalSurface,
-    annotationWorkspace?.workspace_id,
-    connectionClient,
-    deliveredPaneId,
-  ]);
   const openFileExplorer = useCallback(
     (workspaceId?: string, focusInspector = true) =>
       openInspector("files", workspaceId, { focusInspector }),
@@ -2447,65 +2123,6 @@ export default function App() {
       );
   }, [connectionClient, openInspector]);
   useEffect(() => {
-    const handleAnnotationRequest = (event: Event) => {
-      const detail = (event as CustomEvent<WorkspaceAnnotationRequest>).detail;
-      if (
-        !detail ||
-        detail.connectionId !== connectionClient.connectionId ||
-        detail.generation !== connectionClient.generation ||
-        !connectionClient.isCurrent()
-      )
-        return;
-      const annotation = parseReviewAnnotation(detail.annotation);
-      const workspace = store
-        .get()
-        .workspaces.find(
-          (candidate) => candidate.workspace_id === detail.workspaceId,
-        );
-      if (
-        !annotation ||
-        annotation.source !== "terminal" ||
-        !workspace ||
-        !store
-          .get()
-          .panes.some(
-            (pane) =>
-              pane.pane_id === annotation.paneId &&
-              pane.workspace_id === detail.workspaceId,
-          )
-      )
-        return;
-      const scope = resourceScopeForWorkspace(
-        connectionClient.connectionId,
-        workspace,
-      );
-      setAnnotationDraftScope(scope, true, annotation.paneId);
-      updateAnnotationDraft(scope, (current) =>
-        current.some((item) => item.id === annotation.id)
-          ? current
-          : [...current, annotation],
-      );
-      setFocusedAnnotationId(annotation.id);
-      annotationAwaitingFocusRef.current = workspace.focused ? null : scope;
-      if (!workspace.focused) void store.focusWorkspace(workspace.workspace_id);
-      if (mobile) setMobileView("annotations");
-    };
-    window.addEventListener(
-      WORKSPACE_ANNOTATION_REQUEST_EVENT,
-      handleAnnotationRequest,
-    );
-    return () =>
-      window.removeEventListener(
-        WORKSPACE_ANNOTATION_REQUEST_EVENT,
-        handleAnnotationRequest,
-      );
-  }, [
-    connectionClient,
-    mobile,
-    setAnnotationDraftScope,
-    updateAnnotationDraft,
-  ]);
-  useEffect(() => {
     const pending = pendingInspectorRequestRef.current;
     if (!pending) return;
     if (
@@ -2640,12 +2257,6 @@ export default function App() {
     commitInspectorState(null);
     setActiveDiff(emptyActiveDiffSelection());
     setActiveFilePreview(emptyActiveFilePreviewSelection());
-    annotationAwaitingFocusRef.current = null;
-    setAnnotationPreferredPaneId(undefined);
-    setAnnotationDeliveryBusy(false);
-    setDeliveredPaneId(null);
-    setAnnotationsOpen(false);
-    setFocusedAnnotationId(null);
     paneJumpReturnFocusRef.current = null;
     setPaneJumpOpen(false);
     setPaneJumpIndex(0);
@@ -2672,68 +2283,10 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [startupReady]);
   useEffect(() => {
-    if (mobile && mobileView === "annotations")
-      setMobileControlsCollapsed(false);
-  }, [mobile, mobileView]);
-  useEffect(() => {
     if (!mobile) return;
     const current = inspectorStateRef.current;
-    if (!annotationsOpen)
-      setMobileView(current?.open ? current.view : "session");
-  }, [annotationsOpen, mobile]);
-  useLayoutEffect(() => {
-    if (!annotationScope || annotationWorkspace) return;
-    selectAnnotationDraft(null);
-    annotationAwaitingFocusRef.current = null;
-    setAnnotationsOpen(false);
-    setFocusedAnnotationId(null);
-    setAnnotationPreferredPaneId(undefined);
-    setDeliveredPaneId(null);
-    setAnnotationDeliveryBusy(false);
-    if (mobileView === "annotations") setMobileView("session");
-  }, [annotationScope, annotationWorkspace, mobileView, selectAnnotationDraft]);
-  useEffect(() => {
-    if (!focusedWorkspace) return;
-    const scope = resourceScopeForWorkspace(
-      connectionClient.connectionId,
-      focusedWorkspace,
-    );
-    const pending = annotationAwaitingFocusRef.current;
-    if (
-      pending &&
-      (pending.workspaceId !== scope.workspaceId ||
-        !sameResourceOwner(pending, scope)) &&
-      s.pendingFocusWorkspaceId === pending.workspaceId
-    )
-      return;
-    annotationAwaitingFocusRef.current = null;
-    const current = annotationScopeRef.current;
-    const sameOwner = current && sameResourceOwner(current, scope);
-    if (sameOwner && current.workspaceId === scope.workspaceId) return;
-    setAnnotationDraftScope(scope, !!sameOwner && annotationsOpen);
-  }, [
-    annotationsOpen,
-    annotationScopeRef,
-    connectionClient.connectionId,
-    focusedWorkspace,
-    s.pendingFocusWorkspaceId,
-    resourceUiKey,
-    setAnnotationDraftScope,
-  ]);
-  useEffect(() => {
-    if (!annotationScope || !annotationWorkspace) return;
-    commitAnnotations((current) =>
-      current.map((annotation) => {
-        if (annotation.source !== "terminal") return annotation;
-        const stale = !s.panes.some(
-          (pane) => pane.pane_id === annotation.paneId,
-        );
-        return stale === !!annotation.stale
-          ? annotation
-          : { ...annotation, stale };
-      }),
-    );
-  }, [annotationScope, annotationWorkspace, commitAnnotations, s.panes]);
+    setMobileView(current?.open ? current.view : "session");
+  }, [mobile]);
   useLayoutEffect(() => {
     const current = inspectorStateRef.current;
     if (!current?.open || !focusedWorkspace || s.pendingFocusWorkspaceId) {
@@ -3152,13 +2705,6 @@ export default function App() {
         setInspectorExpanded(!current?.open || !current.expanded);
         return;
       }
-      if (shortcutMatches(e, "annotations.toggle")) {
-        if (isEditableElement(e.target)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (!e.repeat) toggleAnnotations();
-        return;
-      }
       const fileExplorerShortcut = shortcutMatches(e, "files.toggle");
       if (fileExplorerShortcut) {
         if (isEditableElement(e.target)) return;
@@ -3227,7 +2773,6 @@ export default function App() {
     paneJumpSearch,
     selectPaneJumpIndex,
     setInspectorExpanded,
-    toggleAnnotations,
     toggleDiffViewer,
     toggleFileExplorer,
     toggleSidebar,
@@ -3459,13 +3004,11 @@ export default function App() {
     e.preventDefault();
     const bounds = stage.getBoundingClientRect();
     const minimum =
-      (current.dock === "right" ? INSPECTOR_MIN_RIGHT : INSPECTOR_MIN_BOTTOM) /
-      (annotationsDocked ? 2 : 1);
+      current.dock === "right" ? INSPECTOR_MIN_RIGHT : INSPECTOR_MIN_BOTTOM;
     const maximum = inspectorMaximumSize(
       current.dock,
       bounds.width,
       bounds.height,
-      annotationsDocked,
     );
     const next = {
       ...current,
@@ -3490,20 +3033,14 @@ export default function App() {
     const startY = e.clientY;
     const dock = current.dock;
     const bounds = stage.getBoundingClientRect();
-    const maxSize = inspectorMaximumSize(
-      dock,
-      bounds.width,
-      bounds.height,
-      annotationsDocked,
-    );
+    const maxSize = inspectorMaximumSize(dock, bounds.width, bounds.height);
     const startSize = Math.min(current.size, maxSize);
     let finalSize = startSize;
     const onMove = (event: PointerEvent) => {
       finalSize = Math.min(
         maxSize,
         Math.max(
-          (dock === "right" ? INSPECTOR_MIN_RIGHT : INSPECTOR_MIN_BOTTOM) /
-            (annotationsDocked ? 2 : 1),
+          dock === "right" ? INSPECTOR_MIN_RIGHT : INSPECTOR_MIN_BOTTOM,
           startSize +
             (dock === "right"
               ? startX - event.clientX
@@ -3660,24 +3197,6 @@ export default function App() {
           icon={<FileDiff size={16} aria-hidden="true" />}
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={() => openDiffViewer()}
-        />
-        <IconButton
-          className={mobileView === "annotations" ? "active" : ""}
-          title={shortcutTitle(t("Annotations"), "annotations.toggle")}
-          label={t("Show review annotations")}
-          icon={
-            <>
-              <MessageSquareText size={16} aria-hidden="true" />
-              {annotations.length > 0 ? (
-                <span className="mobile-nav-badge" aria-hidden="true">
-                  {annotations.length}
-                </span>
-              ) : null}
-            </>
-          }
-          aria-pressed={annotationsOpen}
-          tabIndex={mobileControlsCollapsed ? -1 : 0}
-          onClick={toggleAnnotations}
         />
         <IconButton
           className={mobileView === "history" ? "active" : ""}
@@ -3884,14 +3403,9 @@ export default function App() {
             key={`${resourceUiKey}:tabs`}
             mobile={mobile}
             inspectorOpen={inspectorState?.open === true}
-            annotationsOpen={annotationsOpen}
-            annotationCount={annotations.length}
             onToggleInspector={toggleWorkspaceInspector}
-            onToggleAnnotations={toggleAnnotations}
           />
-          <div
-            className={`workspace-surfaces ${annotationsDocked ? "has-annotations" : ""}`}
-          >
+          <div className="workspace-surfaces">
             <div
               ref={inspectorStageRef}
               className={`workspace-stage ${
@@ -3955,17 +3469,6 @@ export default function App() {
                       key={`${resourceUiKey}:${resourceOwnerKey(inspectorState.scope)}`}
                       state={inspectorState}
                       onReady={finishInspectorFocus}
-                      annotations={readAnnotationDraft(inspectorState.scope)}
-                      onCreateAnnotation={addAnnotation}
-                      onReanchorFileAnnotations={reanchorFileAnnotations}
-                      onReanchorDiffAnnotations={reanchorDiffAnnotations}
-                      onEditAnnotation={(id) => {
-                        if (!connectionClient.isCurrent()) return;
-                        setAnnotationDraftScope(inspectorState.scope, true);
-                        setFocusedAnnotationId(id);
-                        setAnnotationsOpen(true);
-                        if (mobile) setMobileView("annotations");
-                      }}
                       visible={!mobile || mobileView === inspectorState.view}
                       workspace={inspectorWorkspace}
                       historyPane={inspectorHistoryPane}
@@ -4020,55 +3523,6 @@ export default function App() {
                 </div>
               ) : null}
             </div>
-            <Latched
-              key={annotationStorageKey}
-              open={annotationsOpen && !!annotationScope}
-            >
-              <AnnotationPanel
-                open={annotationsOpen && !!annotationScope}
-                annotations={annotations}
-                floating={annotationsFloating && !mobile && !!annotationScope}
-                onToggleFloating={
-                  mobile ? undefined : toggleAnnotationsFloating
-                }
-                agentPanes={annotationAgentPanes}
-                preferredPaneId={annotationPreferredPaneId}
-                busy={annotationDeliveryBusy}
-                focusedAnnotationId={focusedAnnotationId}
-                onClose={closeAnnotations}
-                onUpdateComment={(id, comment) =>
-                  commitAnnotations((current) =>
-                    current.map((annotation) =>
-                      annotation.id === id
-                        ? { ...annotation, comment }
-                        : annotation,
-                    ),
-                  )
-                }
-                onDelete={(id) => {
-                  commitAnnotations((current) =>
-                    current.filter((annotation) => annotation.id !== id),
-                  );
-                  if (focusedAnnotationId === id) setFocusedAnnotationId(null);
-                }}
-                onMove={(id, delta) =>
-                  commitAnnotations((current) =>
-                    moveReviewAnnotation(current, id, delta),
-                  )
-                }
-                onGoToAgent={
-                  deliveredPaneId &&
-                  annotationAgentPanes.some(
-                    (pane) => pane.pane_id === deliveredPaneId,
-                  )
-                    ? goToDeliveredAgent
-                    : undefined
-                }
-                onClear={clearAnnotations}
-                onCopy={() => void copyFeedback()}
-                onSend={(paneId) => void sendFeedback(paneId)}
-              />
-            </Latched>
           </div>
         </main>
       </div>

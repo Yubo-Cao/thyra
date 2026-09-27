@@ -18,7 +18,6 @@ const descriptions: Description[] = [
     msg("Expand or restore the Inspector on desktop"),
     msg("Global"),
   ],
-  ["annotations.toggle", msg("Toggle Annotations"), msg("Global")],
   ["zen.toggle", msg("Toggle Zen mode on desktop"), msg("Global")],
   ["panes.recent", msg("Open the recent pane switcher"), msg("Global")],
   [
@@ -137,13 +136,6 @@ const descriptions: Description[] = [
   [
     "preview.selectAll",
     msg("Select all in the file preview"),
-    msg("Preview & review"),
-  ],
-  ["annotation.submit", msg("Add a review comment"), msg("Preview & review")],
-  ["annotations.copy", msg("Copy review feedback"), msg("Preview & review")],
-  [
-    "annotations.prefill",
-    msg("Pre-fill agent with review feedback"),
     msg("Preview & review"),
   ],
 ];

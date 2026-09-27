@@ -359,17 +359,13 @@ test("older presets gain panel shortcuts without replacing saved assignments", (
       ...previous.bindings,
     };
     delete bindings["inspector.expand"];
-    delete bindings["annotations.toggle"];
     const loaded = validateShortcutPreset({ ...previous, bindings });
     expect(loaded.bindings).toEqual(previous.bindings);
 
     bindings["tab.create"] = previous.bindings["inspector.expand"];
-    bindings["tab.close"] = previous.bindings["annotations.toggle"];
     const taken = validateShortcutPreset({ ...previous, bindings });
     expect(taken.bindings["tab.create"]).toEqual(bindings["tab.create"]!);
-    expect(taken.bindings["tab.close"]).toEqual(bindings["tab.close"]!);
     expect(taken.bindings["inspector.expand"]).toEqual([]);
-    expect(taken.bindings["annotations.toggle"]).toEqual([]);
   }
 });
 
@@ -384,29 +380,21 @@ test("older presets keep a key assigned before the popup shortcut existed", () =
   }
 });
 
-test("older presets gain annotation delivery shortcuts without replacing saved keys", () => {
+test("presets saved with the removed annotation actions still load", () => {
   for (const base of ["mac", "windows", "linux"] as const) {
     const defaults = defaultShortcutBindings(base);
-    const bindings: Partial<typeof defaults> = { ...defaults };
-    delete bindings["annotations.copy"];
-    delete bindings["annotations.prefill"];
-    expect(
-      validateShortcutPreset({ ...preset(), base, bindings }).bindings,
-    ).toEqual(defaults);
-
-    delete bindings["terminal.copy"];
-    delete bindings["terminal.ctrlEnter"];
-    bindings["annotation.submit"] = [];
-    bindings["composer.send"] = [];
-    bindings["tab.create"] = defaults["annotations.copy"];
-    bindings["tab.close"] = defaults["annotations.prefill"];
-    const loaded = validateShortcutPreset({ ...preset(), base, bindings });
-    expect(loaded.bindings["annotations.copy"]).toEqual([]);
-    expect(loaded.bindings["annotations.prefill"]).toEqual([]);
-    expect(loaded.bindings["tab.create"]).toEqual(defaults["annotations.copy"]);
-    expect(loaded.bindings["tab.close"]).toEqual(
-      defaults["annotations.prefill"],
-    );
+    const loaded = validateShortcutPreset({
+      ...preset(),
+      base,
+      bindings: {
+        ...defaults,
+        "annotations.toggle": ["Ctrl+Alt+A"],
+        "annotation.submit": ["Ctrl+Enter"],
+        "annotations.copy": ["Ctrl+Shift+C"],
+        "annotations.prefill": ["Ctrl+Enter"],
+      },
+    });
+    expect(loaded.bindings).toEqual(defaults);
   }
 });
 
@@ -449,8 +437,6 @@ describe("terminal copy shortcuts", () => {
       ...previous.bindings,
     };
     delete bindings["terminal.copy"];
-    delete bindings["annotations.copy"];
-    delete bindings["annotations.prefill"];
     bindings["tab.create"] = ["Ctrl+Shift+C"];
     const loaded = parseShortcutPreferences(
       JSON.stringify({

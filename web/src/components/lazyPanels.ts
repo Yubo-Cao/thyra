@@ -11,11 +11,6 @@ export const createWorkspaceDialog = lazyPanel("create-workspace", () =>
 export const terminalComposerPanel = lazyPanel("terminal-composer", () =>
   import("./TerminalComposer").then((module) => module.TerminalComposer),
 );
-export const annotationComposerPanel = lazyPanel("annotation-composer", () =>
-  import("./AnnotationComposerPopover").then(
-    (module) => module.AnnotationComposerPopover,
-  ),
-);
 export const terminalFileLinkMenuPanel = lazyPanel(
   "terminal-file-link-menu",
   () =>

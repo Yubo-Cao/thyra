@@ -22,10 +22,6 @@ import {
 import type { ConnectionClient } from "../api";
 import { thyraLocalStorage } from "../browserStorage";
 import { t } from "../i18n";
-import {
-  type NewReviewAnnotation,
-  type ReviewAnnotation,
-} from "../annotations";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
 import type { GitDiffEntry, Pane, Workspace } from "../types";
@@ -99,11 +95,6 @@ export function WorkspaceInspectorHost({
   onFileSelectionChange,
   onDiffSelectionChange,
   onOpenDiffFile,
-  annotations,
-  onCreateAnnotation,
-  onReanchorFileAnnotations,
-  onReanchorDiffAnnotations,
-  onEditAnnotation,
   onOpenDocument,
   onRefreshFile,
   onViewChange,
@@ -128,15 +119,6 @@ export function WorkspaceInspectorHost({
   onOpenDocument: (path: string, fragment?: string) => void;
   onRefreshFile: () => void;
   onOpenDiffFile: (entry: ActiveDiffSelection["entry"]) => void;
-  annotations: readonly ReviewAnnotation[];
-  onCreateAnnotation: (input: NewReviewAnnotation) => void;
-  onReanchorFileAnnotations: (path: string, text: string) => void;
-  onReanchorDiffAnnotations: (
-    path: string,
-    kind: GitDiffEntry["kind"],
-    patch: string,
-  ) => void;
-  onEditAnnotation: (id: string) => void;
   onViewChange: (view: InspectorView) => void;
   onDockChange: (dock: InspectorDock) => void;
   onExpandedChange: (expanded: boolean) => void;
@@ -504,9 +486,6 @@ export function WorkspaceInspectorHost({
                       }
                     : undefined
                 }
-                annotations={annotations}
-                onCreateAnnotation={onCreateAnnotation}
-                onReanchorAnnotations={onReanchorFileAnnotations}
                 onOpenChanges={
                   primaryFileChangesEntry
                     ? () =>
@@ -554,10 +533,6 @@ export function WorkspaceInspectorHost({
                         resourceKey={`${contentResourceKey}:file:${fileChangesKey}`}
                         mobile={compact}
                         connectionClient={connectionClient}
-                        annotations={annotations}
-                        onCreateAnnotation={onCreateAnnotation}
-                        onReanchorAnnotations={onReanchorDiffAnnotations}
-                        onEditAnnotation={onEditAnnotation}
                         onSelectFile={(entry) =>
                           diffViewerRef.current?.selectWorkingEntry(entry)
                         }
@@ -632,10 +607,6 @@ export function WorkspaceInspectorHost({
                     mobile={compact}
                     resourceKey={contentResourceKey}
                     connectionClient={connectionClient}
-                    annotations={annotations}
-                    onCreateAnnotation={onCreateAnnotation}
-                    onReanchorAnnotations={onReanchorDiffAnnotations}
-                    onEditAnnotation={onEditAnnotation}
                     onSelectFile={(target) =>
                       diffViewerRef.current?.selectEntry(target)
                     }

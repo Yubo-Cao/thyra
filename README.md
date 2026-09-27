@@ -24,17 +24,13 @@ Workspace terminals with changed files and image previews.
 <table width="100%">
   <thead>
     <tr>
-      <th width="50%" align="center">File explorer</th>
-      <th width="50%" align="center">Diff annotations</th>
+      <th align="center">File explorer</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td width="50%" align="center" valign="top">
+      <td align="center" valign="top">
         <a href="./docs/images/thyra-desktop-files.png"><img src="./docs/images/thyra-desktop-files.png" alt="Desktop file explorer" width="100%" /></a>
-      </td>
-      <td width="50%" align="center" valign="top">
-        <a href="./docs/images/thyra-desktop-annotations.png"><img src="./docs/images/thyra-desktop-annotations.png" alt="Desktop diff annotations" width="100%" /></a>
       </td>
     </tr>
   </tbody>

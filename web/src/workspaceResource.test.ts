@@ -1,9 +1,3 @@
-import {
-  annotationDraftStorageKey,
-  readReviewAnnotations,
-  writeReviewAnnotations,
-  type ReviewAnnotation,
-} from "./annotations";
 import { defaultShortcutBindings } from "./shortcutBindings";
 import { describe, expect, test } from "bun:test";
 import type { Workspace } from "./types";
@@ -100,12 +94,6 @@ describe("workspace inspector shortcuts", () => {
 });
 
 describe("workspace inspector geometry", () => {
-  test("caps peer-layout resizing while preserving a compact terminal", () => {
-    expect(inspectorMaximumSize("right", 800, 700, true)).toBeCloseTo(440);
-    expect(inspectorMaximumSize("right", 500, 700, true)).toBe(253);
-    expect(inspectorMaximumSize("bottom", 800, 700, true)).toBe(350);
-    expect(inspectorMaximumSize("bottom", 800, 200, true)).toBe(73);
-  });
   test("preserves terminal minimums at the dock boundary", () => {
     const inspector = inspectorMaximumSize("right", 1000, 800);
     expect(inspector).toBe(513);
@@ -133,9 +121,6 @@ describe("workspace resource scope", () => {
       workspace("docs", "/repo/.worktrees/docs"),
     );
     expect(new Set([main, auth, docs].map(resourceStateKey)).size).toBe(3);
-    expect(
-      new Set([main, auth, docs].map(annotationDraftStorageKey)).size,
-    ).toBe(3);
     writeResourceFileSelection(storage, auth, "auth-only.md");
     expect(readResourceFileSelection(storage, main)).toBeUndefined();
     expect(readResourceFileSelection(storage, docs)).toBeUndefined();
@@ -234,16 +219,6 @@ describe("workspace resource scope", () => {
     const hostB = hostWorkspace("w1", "host-b");
     const scopeA = resourceScopeForWorkspace("ssh-profile", hostA);
     const scopeB = resourceScopeForWorkspace("ssh-profile", hostB);
-    const draft: ReviewAnnotation = {
-      id: "host-a-draft",
-      source: "file",
-      anchor: "line",
-      path: "README.md",
-      line: 1,
-      quote: "host A only",
-      comment: "Review on host A",
-      createdAt: 1,
-    };
     writeResourceFileSelection(storage, scopeA, "host-a.md");
     writeInspectorPreferences(storage, {
       scope: scopeA,
@@ -254,11 +229,6 @@ describe("workspace resource scope", () => {
       expanded: false,
     });
     writeInspectorNavigationRatio(storage, scopeA, "files", 0.56);
-    expect(
-      writeReviewAnnotations(storage, annotationDraftStorageKey(scopeA), [
-        draft,
-      ]),
-    ).toBe(true);
 
     const sibling = resourceScopeForWorkspace(
       "ssh-profile",
@@ -271,18 +241,12 @@ describe("workspace resource scope", () => {
         dock: "right",
         filesNavigationRatio: 0.4,
       });
-      expect(
-        readReviewAnnotations(storage, annotationDraftStorageKey(isolated)),
-      ).toEqual([]);
       expect(sameResourceOwner(scopeA, isolated)).toBe(false);
       expect(resourceStateKey(scopeA)).not.toBe(resourceStateKey(isolated));
     }
     expect(resolveWorkspaceForScope(scopeA, [hostB])).toBeUndefined();
     writeResourceFileSelection(storage, scopeB, "host-b.md");
     writeInspectorNavigationRatio(storage, scopeB, "files", 0.65);
-    writeReviewAnnotations(storage, annotationDraftStorageKey(scopeB), [
-      { ...draft, id: "host-b-draft", comment: "Review on host B" },
-    ]);
 
     // Reconstruct scopes as after reconnect/restart; runtime workspace IDs may change.
     for (const id of ["w1", "restarted-workspace"]) {
@@ -299,18 +263,11 @@ describe("workspace resource scope", () => {
         bottomSize: 410,
         filesNavigationRatio: 0.56,
       });
-      expect(
-        readReviewAnnotations(storage, annotationDraftStorageKey(restored)),
-      ).toEqual([draft]);
     }
     expect(readResourceFileSelection(storage, scopeB)).toBe("host-b.md");
     expect(readInspectorPreferences(storage, scopeB).filesNavigationRatio).toBe(
       0.65,
     );
-    expect(
-      readReviewAnnotations(storage, annotationDraftStorageKey(scopeB))[0]
-        ?.comment,
-    ).toBe("Review on host B");
   });
 
   test("encodes repository and checkout paths without delimiter collisions", () => {

@@ -1,15 +1,4 @@
 import { createPortal } from "react-dom";
-import {
-  createReviewAnnotation,
-  MAX_QUOTE_LENGTH,
-  terminalAnnotationTitle,
-  type TerminalReviewAnnotation,
-} from "../annotations";
-import {
-  WORKSPACE_ANNOTATION_REQUEST_EVENT,
-  type WorkspaceAnnotationRequest,
-} from "../workspaceResource";
-import type { AnnotationComposerDraft } from "./AnnotationComposerPopover";
 import { t } from "../i18n";
 import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../layoutPreferences";
 import { resolveTerminalFontFamily, terminalFontOptions } from "../appearance";
@@ -147,7 +136,6 @@ import {
 } from "../terminalLinkProvider";
 import type { TerminalFileLinkMenuState } from "./TerminalFileLinkMenu";
 import {
-  annotationComposerPanel,
   createWorkspaceDialog,
   terminalComposerPanel,
   terminalConfirmDialog,
@@ -201,7 +189,6 @@ import {
 // Surfaces a terminal opens on demand load with their first use, keeping
 // the terminal chunk down to what first output and input need.
 const TerminalComposer = terminalComposerPanel.Component;
-const AnnotationComposerPopover = annotationComposerPanel.Component;
 const TerminalFileLinkMenu = terminalFileLinkMenuPanel.Component;
 const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 const ConfirmDialog = terminalConfirmDialog.Component;
@@ -471,16 +458,6 @@ export function TerminalView({
     [connectionClient],
   );
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
-  const [reviewSelection, setReviewSelection] = useState<
-    | (AnnotationComposerDraft & {
-        paneId: string;
-        workspaceId: string;
-        tabId: string;
-        terminalId: string;
-        composing: boolean;
-      })
-    | null
-  >(null);
   const [uploadError, setUploadError] = useState("");
   const [fileLinkMenu, setFileLinkMenu] =
     useState<TerminalFileLinkMenuState | null>(null);
@@ -565,16 +542,6 @@ export function TerminalView({
     : (s.panes.find((p) => p.pane_id === selectedPaneInLayout) ??
       s.panes.find((p) => p.pane_id === s.layout?.focused_pane_id) ??
       null);
-  useEffect(() => {
-    setReviewSelection(null);
-  }, [
-    connectionClient,
-    pane?.pane_id,
-    pane?.terminal_id,
-    pane?.workspace_id,
-    pane?.tab_id,
-    s.layout?.tab_id,
-  ]);
   const activePaneId =
     selectedPaneInLayout ?? s.layout?.focused_pane_id ?? null;
   const isActivePane = !!pane && (!paneId || pane.pane_id === activePaneId);
@@ -1325,7 +1292,6 @@ export function TerminalView({
       latestLinkFrame = undefined;
       setFileLinkMenu(null);
       touchSelection.reset();
-      setReviewSelection((current) => (current?.composing ? current : null));
       historySelection.reset();
       if (endpointPresentation.selectionDrag) onSelectionBlur();
       term.clearSelection();
@@ -1402,13 +1368,10 @@ export function TerminalView({
           historySelection.reset();
           term.clearSelection();
           endpointPresentation.cancelSelection();
-          setReviewSelection((current) =>
-            current?.composing ? current : null,
-          );
           store.notify({
             kind: "info",
             message: t(
-              "Selection display resumed: pending output reached the 1 MiB limit. Captured comments are preserved.",
+              "Selection display resumed: pending output reached the 1 MiB limit.",
             ),
           });
         });
@@ -1545,7 +1508,6 @@ export function TerminalView({
         bounds.height !== selectionBounds.height
       ) {
         touchSelection.reset();
-        setReviewSelection((current) => (current?.composing ? current : null));
       }
       selectionBounds = bounds;
       const size = fitVisibleTerminal();
@@ -2235,7 +2197,7 @@ export function TerminalView({
         }),
       );
     };
-    let reviewSelectionDrag = false;
+    let selectionDragActive = false;
     // A drag handed to the pane app (mouse reporting) may end in an OSC 52
     // copy that arrives after the gesture; reserve the write while it lasts.
     let appDragStart: { x: number; y: number } | null = null;
@@ -2296,8 +2258,7 @@ export function TerminalView({
       appDragStart = null;
       selectionDragGuard.mouseDown(e.button);
       if (e.button !== 0) return;
-      reviewSelectionDrag = true;
-      setReviewSelection(null);
+      selectionDragActive = true;
       historySelection.reset();
       if (
         endpointPresentation.mouseReporting === undefined &&
@@ -2357,24 +2318,6 @@ export function TerminalView({
       e.preventDefault();
       e.stopImmediatePropagation();
     };
-    const offerReviewSelection = (quote: string, x: number, y: number) => {
-      const source = store
-        .get()
-        .panes.find((candidate) => candidate.pane_id === paneIdRef.current);
-      if (source && quote.trim() && quote.length <= MAX_QUOTE_LENGTH) {
-        setReviewSelection({
-          x: Math.max(8, Math.min(x, window.innerWidth - 140)),
-          y: Math.max(8, Math.min(y + 8, window.innerHeight - 48)),
-          quote,
-          title: terminalAnnotationTitle(source),
-          paneId: source.pane_id,
-          workspaceId: source.workspace_id,
-          tabId: source.tab_id,
-          terminalId: source.terminal_id,
-          composing: false,
-        });
-      } else setReviewSelection(null);
-    };
     const touchSelection = new TerminalTouchSelection(term, {
       begin: (activate) => {
         if (!acceptsEndpointInput() || !isActivePaneRef.current) return;
@@ -2397,36 +2340,18 @@ export function TerminalView({
       changed: () => {
         retireTouchLink();
         setTouchHandles(touchSelection.handles);
-        if (!touchSelection.active) {
-          setReviewSelection((current) =>
-            current?.composing ? current : null,
-          );
-          return;
-        }
+        if (!touchSelection.active) return;
         term.options.disableStdin = true;
         if (term.textarea) term.textarea.readOnly = true;
-        const handle = touchSelection.handles[0];
-        offerReviewSelection(
-          terminalSelectedText(term),
-          handle?.x ?? 8,
-          handle?.y ?? 8,
-        );
       },
       release: () => endpointPresentation.cancelSelection(),
     });
     touchSelectionRef.current = touchSelection;
     const onTouchSelectionEscape = (event: KeyboardEvent) => {
-      if (
-        event.key !== "Escape" ||
-        !touchSelection.active ||
-        (event.target instanceof Element &&
-          event.target.closest(".annotation-composer-popover"))
-      )
-        return;
+      if (event.key !== "Escape" || !touchSelection.active) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       touchSelection.reset();
-      setReviewSelection(null);
     };
     document.addEventListener("keydown", onTouchSelectionEscape, true);
     const onDocumentMouseUp = (e: MouseEvent) => {
@@ -2449,31 +2374,20 @@ export function TerminalView({
         reservedClipboard = reserveClipboardWrite();
       }
       appDragStart = null;
-      const offerReview =
-        reviewSelectionDrag &&
+      if (
+        selectionDragActive &&
         e.button === 0 &&
-        !terminalLinkModifierMatches(e);
-      if (offerReview) {
+        !terminalLinkModifierMatches(e)
+      ) {
         // Copy inside the release itself: Safari only allows clipboard
         // writes during the gesture.
         const selected = historySelection.text ?? term.getSelection();
         if (selected) copySelection(selected);
       }
-      reviewSelectionDrag = false;
+      selectionDragActive = false;
       selectionDragGuard.mouseUp();
       endpointPresentation.selectionDrag = false;
       queueMicrotask(() => {
-        if (
-          offerReview &&
-          !terminalEffectDisposed &&
-          connectionClient.isCurrent()
-        ) {
-          offerReviewSelection(
-            historySelection.text ?? term.getSelection(),
-            e.clientX,
-            e.clientY,
-          );
-        }
         if (!terminalEffectDisposed) endpointPresentation.flush();
       });
     };
@@ -2482,13 +2396,6 @@ export function TerminalView({
       // this deferred replay before a sibling terminal can start an app drag.
       // Synthetic selection replay must not cancel another pane's intent.
       if (!e.isTrusted) return;
-      const target = e.target instanceof Element ? e.target : null;
-      if (
-        !target?.closest(
-          ".terminal-annotation-action, .terminal-touch-selection-actions, .terminal-selection-handle, .annotation-composer-popover",
-        )
-      )
-        setReviewSelection(null);
       if (historySelection.active) {
         historySelection.finish();
         selectionDragGuard.reset();
@@ -2799,18 +2706,11 @@ export function TerminalView({
         !targetInsideTerminal &&
         !(
           e.target instanceof Element &&
-          e.target.closest(
-            ".terminal-touch-selection-ui, .annotation-composer-popover",
-          )
+          e.target.closest(".terminal-touch-selection-ui")
         )
       ) {
         touchSelection.cancelPending();
-        if (touchSelection.active) {
-          touchSelection.reset();
-          setReviewSelection((current) =>
-            current?.composing ? current : null,
-          );
-        }
+        if (touchSelection.active) touchSelection.reset();
       }
       if (
         !terminalPointerShouldBlurInput(
@@ -3478,35 +3378,7 @@ export function TerminalView({
           onClose={() => setWorkspaceDirectory(null)}
         />
       </Latched>
-      {reviewSelection &&
-      !reviewSelection.composing &&
-      touchHandles.length === 0
-        ? createPortal(
-            <Button
-              variant="secondary"
-              size="md"
-              className="terminal-annotation-action"
-              style={{ left: reviewSelection.x, top: reviewSelection.y }}
-              onMouseDown={(event) => event.preventDefault()}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setReviewSelection(null);
-                  termRef.current?.focus();
-                }
-              }}
-              onClick={() =>
-                setReviewSelection((current) =>
-                  current ? { ...current, composing: true } : null,
-                )
-              }
-            >
-              {t("Add comment")}
-            </Button>,
-            document.body,
-          )
-        : null}
-      {touchHandles.length > 0 && !reviewSelection?.composing
+      {touchHandles.length > 0
         ? createPortal(
             <div className="terminal-touch-selection-ui">
               <div
@@ -3536,23 +3408,7 @@ export function TerminalView({
                 </Button>
                 <Button
                   variant="secondary"
-                  disabled={!reviewSelection}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    closeTerminalInput();
-                    setReviewSelection((current) =>
-                      current ? { ...current, composing: true } : null,
-                    );
-                  }}
-                >
-                  {t("Add comment")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    touchSelectionRef.current?.reset();
-                    setReviewSelection(null);
-                  }}
+                  onClick={() => touchSelectionRef.current?.reset()}
                 >
                   {t("Done")}
                 </Button>
@@ -3665,54 +3521,6 @@ export function TerminalView({
             document.body,
           )
         : null}
-      <Latched open={!!reviewSelection?.composing}>
-        <AnnotationComposerPopover
-          draft={reviewSelection?.composing ? reviewSelection : null}
-          onClose={() => {
-            touchSelectionRef.current?.reset();
-            setReviewSelection(null);
-          }}
-          onSave={(comment) => {
-            if (!reviewSelection || !connectionClient.isCurrent()) return;
-            const source = store
-              .get()
-              .panes.find(
-                (candidate) =>
-                  candidate.pane_id === reviewSelection.paneId &&
-                  candidate.workspace_id === reviewSelection.workspaceId &&
-                  candidate.tab_id === reviewSelection.tabId &&
-                  candidate.terminal_id === reviewSelection.terminalId,
-              );
-            if (!source) {
-              setReviewSelection(null);
-              return;
-            }
-            const annotation = createReviewAnnotation({
-              source: "terminal",
-              anchor: "quote",
-              paneId: source.pane_id,
-              title: reviewSelection.title,
-              quote: reviewSelection.quote,
-              comment,
-            }) as TerminalReviewAnnotation;
-            window.dispatchEvent(
-              new CustomEvent<WorkspaceAnnotationRequest>(
-                WORKSPACE_ANNOTATION_REQUEST_EVENT,
-                {
-                  detail: {
-                    connectionId: connectionClient.connectionId,
-                    generation: connectionClient.generation,
-                    workspaceId: source.workspace_id,
-                    annotation,
-                  },
-                },
-              ),
-            );
-            touchSelectionRef.current?.reset();
-            setReviewSelection(null);
-          }}
-        />
-      </Latched>
       <div className="terminal-shell">
         <div
           className={`terminal-pane-head ui-bar ${isActivePane ? "is-active" : ""}`}

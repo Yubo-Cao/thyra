@@ -303,12 +303,6 @@
   }
 }
 
-.terminal-annotation-action {
-  position: fixed;
-  z-index: 1190;
-  box-shadow: var(--shadow-lg);
-}
-
 .terminal-mobile-input-actions {
   display: none;
   position: absolute;

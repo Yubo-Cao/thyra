@@ -323,8 +323,8 @@
               <span class="feature-number">03</span>
               <h3>Review without losing the thread.</h3>
               <p>
-                Inspect changed files, annotate exact lines, preview Markdown,
-                and send compiled feedback back to an agent pane.
+                Inspect changed files, search diffs, preview Markdown, and jump
+                from any change to its file.
               </p>
             </div>
             <div class="diff-snippet" aria-hidden="true">
@@ -334,9 +334,6 @@
               <code class="diff-del">- return session.raw;</code>
               <code class="diff-add">+ return normalize(session);</code>
               <code class="diff-add">+ notifySubscribers();</code>
-              <div class="annotation-chip">
-                <span>1</span> Keep the raw export path
-              </div>
             </div>
           </article>
 
@@ -444,22 +441,6 @@
                 data-copy="Preview source, Markdown, Mermaid, and images; search loaded files; upload, download, copy paths, and manage files locally or over SSH."
               >
                 <span>02</span> Files
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="tab-annotations"
-                aria-controls="showcase-panel"
-                aria-selected="false"
-                tabindex="-1"
-                data-showcase-tab
-                data-image="./assets/thyra-desktop-annotations.png"
-                data-alt="Thyra diff viewer with a line annotation beside live terminals"
-                data-label="Diff annotations"
-                data-title="Turn precise lines into actionable feedback."
-                data-copy="Select diff lines, add comments, and prepare structured feedback for your agent."
-              >
-                <span>03</span> Annotations
               </button>
             </div>
 
@@ -661,10 +642,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m5 12 4 4L19 6M4 21h16" />
             </svg>
-            <h3>Review annotations</h3>
+            <h3>Diff review</h3>
             <p>
-              Attach comments to diff lines, source gutters, or rendered
-              Markdown passages.
+              Working tree, branch, and last-step diffs with search, syntax
+              highlighting, and image previews.
             </p>
           </article>
           <article class="detail-card reveal">

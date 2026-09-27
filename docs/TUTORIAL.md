@@ -90,20 +90,6 @@ Tree search covers loaded files, not repository-wide contents. Right-click or
 long-press opens file actions; `Cmd/Ctrl+Click` on terminal paths opens previews.
 Uploads, deletions, and SSH file operations affect real target-host files.
 
-### Send precise feedback
-
-1. Click/drag diff line numbers and comment, for example: “Use the dev command
-   in package.json.” Source gutters and rendered Markdown selections also work.
-2. Check the files, ranges, and quotes in **Annotations**, then select the agent
-   pane and pre-fill its input.
-3. Review the message in that pane and press Enter yourself.
-
-**You are done when:** the agent receives contextual feedback. **Pre-fill does
-not submit.** Drafts belong to this browser/checkout, not GitHub or other devices;
-stale anchors keep their captured quotes.
-
-![Diff annotations on selected changed lines](./images/thyra-desktop-annotations.png)
-
 This exercise needs no commit. Before committing, run `git status` and follow
 the project's checks. Staging is not committing; committing is not pushing.
 **Discard Unstaged loses changes; Delete Untracked deletes files. Confirmation

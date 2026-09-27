@@ -223,7 +223,6 @@ export default {
   "Toggle the desktop sidebar": "切换桌面端侧边栏",
   "Toggle the Workspace Inspector": "切换工作区检查器",
   "Expand or restore the Inspector on desktop": "在桌面端展开或还原检查器",
-  "Toggle Annotations": "切换批注",
   "Toggle Zen mode on desktop": "在桌面端切换禅模式",
   "Open the recent pane switcher": "打开最近窗格切换器",
   "Toggle the Herdr Float popup shell": "切换 Herdr Float 弹出式 shell",
@@ -267,9 +266,6 @@ export default {
     "语音输入：按住说话，轻按开始或插入",
   "Search the raw file preview or diff": "在原始文件预览或差异中搜索",
   "Select all in the file preview": "在文件预览中全选",
-  "Add a review comment": "添加批注",
-  "Copy review feedback": "复制审阅反馈",
-  "Pre-fill agent with review feedback": "用审阅反馈预填 Agent 输入",
 
   // Agent history
   Unknown: "未知",

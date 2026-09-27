@@ -89,32 +89,6 @@
   overflow-x: auto;
 }
 
-.diff-review-annotation {
-  max-width: min(440px, 100%);
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  padding: 3px 8px;
-  border: 0;
-  background: var(--accent-soft);
-  color: var(--text-strong);
-  font: 11px / 1.2 var(--sans-font);
-}
-
-.diff-review-annotation span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diff-review-annotation.is-stale {
-  border-color: var(--warning-text);
-  background: var(--warning-soft);
-  color: var(--warning-text);
-}
-
 .diff-raw-patch {
   max-width: 100%;
   max-height: 60vh;

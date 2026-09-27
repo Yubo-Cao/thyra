@@ -25,7 +25,6 @@ const base = {
   "sidebar.toggle": ["Ctrl+Alt+B"],
   "inspector.toggle": ["Ctrl+Alt+Shift+B"],
   "inspector.expand": ["Ctrl+Alt+Shift+Enter"],
-  "annotations.toggle": ["Ctrl+Alt+A"],
   "zen.toggle": ["Ctrl+Alt+Z"],
   "panes.recent": ["Ctrl+Alt+J"],
   "plugin.herdrFloat.toggle": ["Ctrl+Alt+F"],
@@ -63,9 +62,6 @@ const base = {
   "composer.send": ["Ctrl+Enter"],
   // Held for push-to-talk; free on macOS, Windows, and KDE/GNOME defaults.
   "voice.pushToTalk": ["Ctrl+Alt+M"],
-  "annotation.submit": ["Ctrl+Enter"],
-  "annotations.copy": ["Ctrl+Shift+C"],
-  "annotations.prefill": ["Ctrl+Enter"],
 };
 export type ShortcutNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type ShortcutId =
@@ -106,7 +102,6 @@ export function defaultShortcutBindings(
       "sidebar.toggle": ["Meta+B"],
       "inspector.toggle": ["Meta+Shift+B"],
       "inspector.expand": ["Alt+Meta+Enter"],
-      "annotations.toggle": ["Alt+Meta+A"],
       "zen.toggle": ["Meta+Shift+Z"],
       "panes.recent": ["Ctrl+Tab", "Ctrl+Shift+Tab"],
       // Meta+F is the system Find shortcut on macOS; use the Ctrl+Meta
@@ -136,9 +131,6 @@ export function defaultShortcutBindings(
       "preview.search": ["Meta+F"],
       "preview.selectAll": ["Meta+A"],
       "composer.send": ["Meta+Enter"],
-      "annotation.submit": ["Meta+Enter"],
-      "annotations.copy": ["Meta+Shift+C"],
-      "annotations.prefill": ["Meta+Enter"],
     });
   return bindings;
 }
@@ -283,9 +275,8 @@ export function formatShortcut(
 
 export function shortcutScope(id: ShortcutId): string {
   if (id.startsWith("command.") && id !== "command.menu") return "command";
-  if (id === "terminal.history" || id === "annotations.toggle") return "global";
-  if (/^(terminal|preview|composer|annotation|annotations)\./.test(id))
-    return id.split(".")[0];
+  if (id === "terminal.history") return "global";
+  if (/^(terminal|preview|composer)\./.test(id)) return id.split(".")[0];
   return "global";
 }
 

@@ -11,10 +11,6 @@ const assetDirectory = join(outputDirectory, "assets");
 const assets = [
   ["docs/images/thyra-desktop-changes.png", "thyra-desktop-changes.png"],
   ["docs/images/thyra-desktop-files.png", "thyra-desktop-files.png"],
-  [
-    "docs/images/thyra-desktop-annotations.png",
-    "thyra-desktop-annotations.png",
-  ],
   ["docs/images/thyra-mobile-changes.png", "thyra-mobile-changes.png"],
   ["docs/images/thyra-mobile-files.png", "thyra-mobile-files.png"],
   ["docs/images/thyra-mobile-terminal.png", "thyra-mobile-terminal.png"],
