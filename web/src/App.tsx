@@ -18,12 +18,7 @@ import {
   LazyPendingStatus,
 } from "./components/LazyBoundary";
 import { activePaneIdForSnapshot } from "./paneJump";
-import {
-  shallowEqual,
-  type TaskNotificationTarget,
-  store,
-  useStoreSelector,
-} from "./store";
+import { type TaskNotificationTarget, store, useStoreSelector } from "./store";
 import {
   connectionClientScopeKey,
   useConnectionClient,
@@ -56,6 +51,7 @@ import "./styles/layout/app.css";
 import "./styles/layout/topbar.css";
 import "./styles/layout/sidebar.css";
 import "./styles/layout/mobile-nav.css";
+import { useShallow } from "zustand/react/shallow";
 
 const MobileTabSheet = mobileTabSheet.Component;
 const LazyProjectLauncher = projectLauncherPanel.Component;
@@ -63,7 +59,7 @@ const LazyProjectLauncher = projectLauncherPanel.Component;
 export default function App() {
   useShortcutPreferences();
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       lastRefresh: state.lastRefresh,
@@ -75,8 +71,7 @@ export default function App() {
       status: state.status,
       tabs: state.tabs,
       workspaces: state.workspaces,
-    }),
-    shallowEqual,
+    })),
   );
   const connectionClient = useConnectionClient();
   const { mobile, preferences: layoutPreferences } = useLayoutPreferences();

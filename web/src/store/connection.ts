@@ -20,7 +20,6 @@ import {
   type BridgeStatus,
   captureConnectionLease,
   catalogReadyForConnection,
-  emit,
   emptyServerSessionState,
   jsonDeepEqual,
   replaceState,
@@ -330,7 +329,6 @@ export function selectConnectionNow(
   forgetLeaseCaches();
   const generation = bridge.setActiveConnection(connectionId);
   replaceState(activateConnectionState(state, connectionId, generation));
-  emit();
   // Popup state is tracked per connection on the bridge, so a switch needs
   // its own query: otherwise only the connection that was active when the
   // socket came up ever reports one.
@@ -364,7 +362,6 @@ function resetActiveConnectionLease(
     },
     notice: null,
   });
-  emit();
   resumeActiveConnection();
 }
 
@@ -448,7 +445,6 @@ export function applyConnectionCatalog(
       defaultConnectionId,
       sessionsByConnectionId: stableSessions,
     });
-    emit();
   }
   if (!nextActive) selectConnectionNow(defaultConnectionId);
 }

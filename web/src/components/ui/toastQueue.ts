@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createStore } from "zustand/vanilla";
 
 // Imperative toast API. This module has no React or HeroUI runtime imports, so
 // the store and the always-loaded shell can raise toasts without loading the
@@ -55,33 +56,22 @@ function resolvedTimeout(content: ToastContent, options: ToastOptions) {
 export class ToastController {
   private sink: ToastSink | null = null;
   private readonly entries = new Map<string, Entry>();
-  private readonly listeners = new Set<() => void>();
   private sequence = 0;
-  private wanted = false;
 
   /** True once any toast was raised; the region host mounts from then on. */
-  get requested(): boolean {
-    return this.wanted;
-  }
+  readonly requested = createStore<boolean>()(() => false);
 
   /** Ids of toasts that are open (or waiting for the region), oldest first. */
   get openIds(): string[] {
     return [...this.entries.keys()];
   }
 
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  };
-
-  getRequested = (): boolean => this.wanted;
-
   show(content: ToastContent, options: ToastOptions = {}): string {
     const id = `toast-${++this.sequence}`;
     const entry: Entry = { content, options };
     this.entries.set(id, entry);
     if (this.sink) this.forward(id, entry);
-    this.request();
+    this.requested.setState(true, true);
     return id;
   }
 
@@ -154,12 +144,6 @@ export class ToastController {
         entry.options.onClose?.();
       },
     };
-  }
-
-  private request() {
-    if (this.wanted) return;
-    this.wanted = true;
-    for (const listener of this.listeners) listener();
   }
 }
 

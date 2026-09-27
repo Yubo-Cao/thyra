@@ -1,12 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { t } from "../i18n";
-import {
-  shallowEqual,
-  store,
-  useStoreSelector,
-  useEndpointCreationReason,
-} from "../store";
+import { store, useStoreSelector, useEndpointCreationReason } from "../store";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { PanePresence } from "./PanePresence";
 import { summarizeTabAgents } from "./agentSession";
@@ -14,6 +9,7 @@ import { requestCloseTab, tabName } from "./TabBar";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { IconButton } from "./ui/IconButton";
+import { useShallow } from "zustand/react/shallow";
 
 /**
  * Bottom-sheet tab switcher for narrow layouts. The tab strip hides itself on
@@ -30,12 +26,11 @@ export function MobileTabSheet({
   onShowSession: () => void;
 }) {
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       panes: state.panes,
       tabs: state.tabs,
       workspaces: state.workspaces,
-    }),
-    shallowEqual,
+    })),
   );
   const transitionPendingRef = useRef(false);
   const [transitionPending, setTransitionPending] = useState(false);

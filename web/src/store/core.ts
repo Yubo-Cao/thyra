@@ -1,7 +1,9 @@
-// The store's state container: the State shape, the subscription API, the
-// patch function every slice writes through, and connection leases that keep
-// async results from landing on a connection the user has since left.
-import { useRef, useSyncExternalStore } from "react";
+// The store's state container: the State shape, the zustand store, the patch
+// function every slice writes through, and connection leases that keep async
+// results from landing on a connection the user has since left.
+import { useStore } from "zustand";
+import { devtools } from "zustand/middleware";
+import { createStore, type StateCreator } from "zustand/vanilla";
 import {
   bridge,
   type ConnectionClient,
@@ -208,8 +210,7 @@ export function nextRecentPaneIds(
 
 const initialSession = emptyServerSessionState();
 
-/** Current snapshot; a live binding, replaced (never mutated) on every write. */
-export let state: State = {
+const initialState: State = {
   status: "disconnected",
   connectionPaused: storedConnectionPaused(),
   bridgeStatus: null,
@@ -233,25 +234,30 @@ export let state: State = {
   pendingRestartVersion: storedPendingRestartVersion(),
   dismissedUpdateVersion: null,
 };
-const listeners = new Set<() => void>();
+const initializer: StateCreator<State> = () => initialState;
+
+/** The app store. Development builds expose it to Redux DevTools. */
+export const appStore = createStore<State>()(
+  import.meta.env.DEV
+    ? (devtools(initializer, { name: "Thyra" }) as StateCreator<State>)
+    : initializer,
+);
+// Nothing hydrates, so static rendering shows the live snapshot.
+appStore.getInitialState = appStore.getState;
+
+/** Current snapshot; a live binding, replaced (never mutated) on every write. */
+export let state = appStore.getState();
+appStore.subscribe((next) => {
+  state = next;
+});
 let noticeSeq = 0;
 
-export function getState(): State {
-  return state;
-}
+export const getState = appStore.getState;
+export const subscribe = appStore.subscribe;
 
-export function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function emit() {
-  listeners.forEach((l) => l());
-}
-
-/** Swap the whole snapshot without notifying; callers emit when ready. */
+/** Swap the whole snapshot and notify subscribers. */
 export function replaceState(next: State) {
-  state = next;
+  appStore.setState(next, true);
 }
 
 /**
@@ -304,8 +310,7 @@ export function set(patch: Partial<State>) {
       },
     };
   }
-  state = { ...state, ...patch };
-  emit();
+  appStore.setState(patch);
 }
 
 // --- Connection leases ---
@@ -370,64 +375,7 @@ export function connectionEventIsActive(
 
 // --- React bindings ---
 
-/** Shallowly compares own enumerable values; pair with useStoreSelector. */
-export function shallowEqual<T>(a: T, b: T): boolean {
-  if (Object.is(a, b)) return true;
-  if (
-    typeof a !== "object" ||
-    a === null ||
-    typeof b !== "object" ||
-    b === null
-  ) {
-    return false;
-  }
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-    if (
-      !Object.is(
-        (a as Record<string, unknown>)[key],
-        (b as Record<string, unknown>)[key],
-      )
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Subscribe to a derived slice of the store. The selector result is cached
- * and reused while `isEqual` reports equality, so inline selectors are safe
- * as long as they keep stable semantics; object-returning selectors should
- * pass a shallow equality to avoid re-rendering on every emit.
- */
-export function useStoreSelector<T>(
-  selector: (state: State) => T,
-  isEqual: (a: T, b: T) => boolean = Object.is,
-): T {
-  const cacheRef = useRef<{
-    state: State;
-    selector: (state: State) => T;
-    value: T;
-  } | null>(null);
-
-  const getSnapshot = () => {
-    const snapshot = state;
-    const cache = cacheRef.current;
-    if (cache && cache.state === snapshot && cache.selector === selector) {
-      return cache.value;
-    }
-    const value = selector(snapshot);
-    if (cache && isEqual(cache.value, value)) {
-      cacheRef.current = { state: snapshot, selector, value: cache.value };
-      return cache.value;
-    }
-    cacheRef.current = { state: snapshot, selector, value };
-    return value;
-  };
-
-  return useSyncExternalStore(subscribe, getSnapshot);
+/** Subscribe to a slice; wrap object-returning selectors in `useShallow`. */
+export function useStoreSelector<T>(selector: (state: State) => T): T {
+  return useStore(appStore, selector);
 }

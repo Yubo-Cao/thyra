@@ -18,9 +18,10 @@ import type {
   MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
 import { paneLayoutNeedsSwitcher } from "../paneLayoutSizing";
-import { shallowEqual, type State, store, useStoreSelector } from "../store";
+import { type State, store, useStoreSelector } from "../store";
 import { terminalMountKey } from "../terminalConnection";
 import { blurActiveInput } from "./MobileControls";
+import { useShallow } from "zustand/react/shallow";
 
 const LazyTerminalView = lazyWithReload("terminal-view", () =>
   import("../components/TerminalView").then((module) => ({
@@ -200,14 +201,13 @@ export type TerminalPaneLayoutProps = {
 // the old full terminal view.
 export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       layout: state.layout,
       panes: state.panes,
       selectedPaneId: state.selectedPaneId,
-    }),
-    shallowEqual,
+    })),
   );
   const { mobile } = useLayoutPreferences();
   const layoutRef = useRef<HTMLDivElement | null>(null);

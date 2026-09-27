@@ -29,7 +29,7 @@ import {
   suggestConnectionId,
 } from "../connectionProfiles";
 import { t } from "../i18n";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import { store, useStoreSelector } from "../store";
 import { browserTransportPresentation } from "./browserTransport";
 import {
   ConnectionSwitcherTrigger,
@@ -44,6 +44,7 @@ import { Menu, type MenuEntry } from "./ui/Menu";
 import { TextField } from "./ui/TextField";
 import { Token } from "./ui/Token";
 import "./ConnectionSwitcher.css";
+import { useShallow } from "zustand/react/shallow";
 
 type ProfileDraft = {
   id: string;
@@ -90,13 +91,12 @@ function sshDraftFor(connection?: ConnectionSummary): SshDraft {
 /** Browser-to-bridge state shared by the switcher menu and the manager. */
 function useBrowserTransport() {
   const state = useStoreSelector(
-    (snapshot) => ({
+    useShallow((snapshot) => ({
       bridgeStatus: snapshot.bridgeStatus,
       connectionPaused: snapshot.connectionPaused,
       status: snapshot.status,
       navigationMode: snapshot.navigationMode,
-    }),
-    shallowEqual,
+    })),
   );
   const presentation = browserTransportPresentation(
     state.connectionPaused,
@@ -810,11 +810,10 @@ export type ConnectionSwitcherProps = {
 
 export function ConnectionSwitcher({ defaultOpen }: ConnectionSwitcherProps) {
   const state = useStoreSelector(
-    (snapshot) => ({
+    useShallow((snapshot) => ({
       activeConnectionId: snapshot.activeConnectionId,
       connections: snapshot.connections,
-    }),
-    shallowEqual,
+    })),
   );
   const transport = useBrowserTransport();
   const [open, setOpen] = useState(false);

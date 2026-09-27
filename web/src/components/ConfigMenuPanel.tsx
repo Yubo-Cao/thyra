@@ -21,7 +21,7 @@ import { msg, t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutLabel, useShortcutPreferences } from "../shortcutPreferences";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import { store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import { cn } from "../utils";
 import { Button } from "./ui/Button";
@@ -36,6 +36,7 @@ import { browserCountLabel } from "./browserTransport";
 import { HerdrSetupCard } from "./HerdrSetupCard";
 import { MobileSheetHandle } from "./MobileSheetHandle";
 import "./ConfigMenu.css";
+import { useShallow } from "zustand/react/shallow";
 
 // The application menu's content, loaded on its first open. ConfigMenu keeps
 // the trigger, the open state, and everything that must survive a close.
@@ -87,7 +88,7 @@ export function ConfigMenuDropdown({
   setLogoutError,
 }: ConfigMenuDropdownProps) {
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       bridgeStatus: state.bridgeStatus,
       activeConnectionId: state.activeConnectionId,
       defaultConnectionId: state.defaultConnectionId,
@@ -95,8 +96,7 @@ export function ConfigMenuDropdown({
       status: state.status,
       updateInfo: state.updateInfo,
       updateInstalling: state.updateInstalling,
-    }),
-    shallowEqual,
+    })),
   );
   const connectionClient = useConnectionClient();
   const { health, herdrInfo, herdrUnavailable } =

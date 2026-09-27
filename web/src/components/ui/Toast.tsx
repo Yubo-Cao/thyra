@@ -1,4 +1,5 @@
-import { Suspense, useSyncExternalStore } from "react";
+import { Suspense } from "react";
+import { useStore } from "zustand";
 import { LazyToastRegion } from "./lazyOverlays";
 import { toastController } from "./toastQueue";
 
@@ -15,11 +16,7 @@ export {
  * replays the queued toasts. Stacks at the top end, below the top bar.
  */
 export function ToastRegion() {
-  const requested = useSyncExternalStore(
-    toastController.subscribe,
-    toastController.getRequested,
-    () => false,
-  );
+  const requested = useStore(toastController.requested);
   if (!requested) return null;
   return (
     <Suspense fallback={null}>

@@ -39,13 +39,13 @@ describe("toast controller", () => {
   test("buffers toasts until a region attaches, then replays in order", () => {
     const controller = new ToastController();
     let requests = 0;
-    controller.subscribe(() => requests++);
-    expect(controller.requested).toBe(false);
+    controller.requested.subscribe(() => requests++);
+    expect(controller.requested.getState()).toBe(false);
     const first = controller.show({ title: "one" });
     controller.show({ title: "two", loading: true });
     controller.update(first, { title: "one!" });
     expect(requests).toBe(1);
-    expect(controller.requested).toBe(true);
+    expect(controller.requested.getState()).toBe(true);
 
     const sink = new FakeSink();
     controller.attach(sink);

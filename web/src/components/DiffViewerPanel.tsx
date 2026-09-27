@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -26,8 +25,7 @@ import { useConnectionClient } from "../useConnectionClient";
 import { gitDiffCode, gitDiffCodeLabel } from "../gitDiffStatus";
 import {
   lastStepCompletionKey,
-  readLastStepCompletion,
-  subscribeLastStepCompletion,
+  useLastStepCompletion,
 } from "../lastStepCompletionStore";
 import {
   refreshGitDiffSummary,
@@ -169,20 +167,7 @@ export const DiffViewerPanel = forwardRef<
     connectionClient.connectionId,
     cacheWorkspaceId,
   );
-  const subscribeToCompletion = useCallback(
-    (listener: () => void) =>
-      subscribeLastStepCompletion(completionKey, listener),
-    [completionKey],
-  );
-  const readCompletion = useCallback(
-    () => readLastStepCompletion(completionKey),
-    [completionKey],
-  );
-  const completionRevision = useSyncExternalStore(
-    subscribeToCompletion,
-    readCompletion,
-    readCompletion,
-  );
+  const completionRevision = useLastStepCompletion(completionKey);
   const completionRevisionRef = useRef({
     key: completionKey,
     revision: completionRevision,

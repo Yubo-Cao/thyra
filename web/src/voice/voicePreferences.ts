@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { createStore, useStore } from "zustand";
 import { thyraLocalStorage } from "../browserStorage";
 import { msg } from "../i18n";
 
@@ -22,7 +22,6 @@ export const VOICE_CLEANUP_OPTIONS: {
 ];
 
 const STORAGE_KEY = "voiceCleanupMode";
-const listeners = new Set<() => void>();
 
 export function voiceCleanupMode(): VoiceCleanupMode {
   const stored = thyraLocalStorage.getItem(STORAGE_KEY);
@@ -31,14 +30,13 @@ export function voiceCleanupMode(): VoiceCleanupMode {
     : "tidy";
 }
 
+const cleanupModeStore = createStore<VoiceCleanupMode>()(voiceCleanupMode);
+
 export function setVoiceCleanupMode(mode: VoiceCleanupMode) {
   thyraLocalStorage.setItem(STORAGE_KEY, mode);
-  for (const listener of listeners) listener();
+  cleanupModeStore.setState(mode, true);
 }
 
 export function useVoiceCleanupMode(): VoiceCleanupMode {
-  return useSyncExternalStore((listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  }, voiceCleanupMode);
+  return useStore(cleanupModeStore);
 }

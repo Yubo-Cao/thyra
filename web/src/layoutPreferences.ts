@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { createStore, useStore } from "zustand";
 import { thyraLocalStorage, thyraStorageEventKey } from "./browserStorage";
 
 export const LAYOUT_PREFERENCES_STORAGE_KEY = "layoutPreferences.v1";
@@ -72,21 +72,15 @@ export function resolveMobileLayout(
   );
 }
 
-type LayoutSnapshot = {
+const layoutStore = createStore<{
   preferences: LayoutPreferences;
   mobile: boolean;
   urlOverride: LayoutMode | null;
-};
-const serverSnapshot: LayoutSnapshot = {
-  preferences: defaults,
-  mobile: false,
-  urlOverride: null,
-};
-let snapshot = serverSnapshot;
+}>()(() => ({ preferences: defaults, mobile: false, urlOverride: null }));
 let initialized = false;
-const listeners = new Set<() => void>();
 
-function publishLayout(preferences = snapshot.preferences) {
+function publishLayout(preferences = layoutStore.getState().preferences) {
+  const snapshot = layoutStore.getState();
   const mobile = resolveMobileLayout(
     window.innerWidth,
     preferences,
@@ -101,8 +95,7 @@ function publishLayout(preferences = snapshot.preferences) {
   )
     return;
   const layoutChanged = mobile !== snapshot.mobile;
-  snapshot = { preferences, mobile, urlOverride };
-  for (const listener of listeners) listener();
+  layoutStore.setState({ preferences, mobile, urlOverride });
   if (layoutChanged) window.dispatchEvent(new Event(LAYOUT_CHANGE_EVENT));
 }
 
@@ -131,7 +124,7 @@ export function initializeLayoutPreferences() {
 
 export function updateLayoutPreferences(patch: Partial<LayoutPreferences>) {
   const preferences = parseLayoutPreferences(
-    JSON.stringify({ ...snapshot.preferences, ...patch }),
+    JSON.stringify({ ...layoutStore.getState().preferences, ...patch }),
   );
   // An explicit choice in the menu supersedes this tab's URL override.
   if (
@@ -153,22 +146,10 @@ export function updateLayoutPreferences(patch: Partial<LayoutPreferences>) {
   publishLayout(preferences);
 }
 
-function subscribe(listener: () => void) {
-  initializeLayoutPreferences();
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
 export function isMobileLayout() {
-  return snapshot.mobile;
+  return layoutStore.getState().mobile;
 }
 
 export function useLayoutPreferences() {
-  return useSyncExternalStore(
-    subscribe,
-    () => snapshot,
-    () => serverSnapshot,
-  );
+  return useStore(layoutStore);
 }

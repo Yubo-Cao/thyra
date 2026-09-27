@@ -10,19 +10,19 @@ import type { Collaborator, PresenceSelf } from "../collaborationGroups";
 import { navigateToFocus } from "../followController";
 import { startFollowing, stopFollowing, useFollowTarget } from "../followState";
 import { t } from "../i18n";
-import { shallowEqual, useStoreSelector } from "../store";
+import { useStoreSelector } from "../store";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 import { Token } from "./ui/Token";
+import { useShallow } from "zustand/react/shallow";
 
 function useWorkspaceLists() {
   return useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       workspaces: state.workspaces,
       tabs: state.tabs,
       panes: state.panes,
-    }),
-    shallowEqual,
+    })),
   );
 }
 

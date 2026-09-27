@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { t } from "../i18n";
 import {
   type Notice,
-  shallowEqual,
   store,
   type UpdateInfo,
   useStoreSelector,
@@ -14,6 +13,7 @@ import {
   type ToastTone,
 } from "./ui/Toast";
 import "./NoticeToasts.css";
+import { useShallow } from "zustand/react/shallow";
 
 // The store's notice and update prompt shown through the ui/ toast queue.
 // App loads this module with the first notice, so the queue, the bridge,
@@ -166,12 +166,11 @@ export function NoticeToasts({
   onNoticeAction: (notice: Notice) => void;
 }) {
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       notice: state.notice,
       updateInfo: state.updateInfo,
       updateInstalling: state.updateInstalling,
-    }),
-    shallowEqual,
+    })),
   );
   useNoticeToast(s.notice, onNoticeAction);
   useUpdateToast(s.updateInfo, s.updateInstalling);

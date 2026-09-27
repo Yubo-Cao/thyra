@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { createStore, useStore } from "zustand";
 
 /**
  * Whom this page follows: a person (presence key, see collaborationGroups).
@@ -18,24 +18,14 @@ export type FollowStopReason =
   | "disconnected"
   | "connection";
 
-let target: FollowTarget | null = null;
-const listeners = new Set<() => void>();
+const followStore = createStore<FollowTarget | null>()(() => null);
 
-export function followTarget() {
-  return target;
-}
-
-export function subscribeFollow(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const followTarget = followStore.getState;
 
 function publish(next: FollowTarget | null) {
+  const target = followTarget();
   if (target?.key === next?.key && target?.name === next?.name) return;
-  target = next;
-  listeners.forEach((listener) => listener());
+  followStore.setState(next, true);
 }
 
 export function startFollowing(next: FollowTarget) {
@@ -45,7 +35,7 @@ export function startFollowing(next: FollowTarget) {
 let lastStopReason: FollowStopReason | null = null;
 
 export function stopFollowing(reason: FollowStopReason = "user") {
-  if (!target) return;
+  if (!followTarget()) return;
   lastStopReason = reason;
   publish(null);
 }
@@ -56,5 +46,5 @@ export function lastFollowStopReason() {
 }
 
 export function useFollowTarget() {
-  return useSyncExternalStore(subscribeFollow, followTarget, () => null);
+  return useStore(followStore);
 }

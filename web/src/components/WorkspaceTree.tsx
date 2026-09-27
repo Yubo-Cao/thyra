@@ -1,6 +1,6 @@
 import { thyraLocalStorage, thyraStorageEventKey } from "../browserStorage";
-import { shallowEqual, store, useStoreSelector } from "../store";
-import type { GitStatusSummary, Pane, Workspace } from "../types";
+import { store, useStoreSelector } from "../store";
+import type { GitStatusSummary, Pane, Tab, Workspace } from "../types";
 import { shortId } from "../utils";
 import { t } from "../i18n";
 import {
@@ -89,6 +89,7 @@ import { IconButton } from "./ui/IconButton";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import { Token } from "./ui/Token";
 import "./WorkspaceTree.css";
+import { useShallow } from "zustand/react/shallow";
 
 const EMPTY_AGENT_PANES_BY_WORKSPACE = new Map<string, Pane[]>();
 const EMPTY_AGENT_PANES: Pane[] = [];
@@ -230,7 +231,7 @@ export function WorkspaceTree({
   onViewAgentHistory?: (pane: Pane) => void;
 }) {
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       lastRefresh: state.lastRefresh,
@@ -240,8 +241,7 @@ export function WorkspaceTree({
       status: state.status,
       tabs: state.tabs,
       workspaces: state.workspaces,
-    }),
-    shallowEqual,
+    })),
   );
   const connectionClient = useConnectionClient();
   const agentOrderStorageKey = connectionStorageKey(
@@ -963,15 +963,17 @@ function WorkspaceRow({
   const agents = agentsByWorkspace.get(w.workspace_id) ?? EMPTY_AGENT_PANES;
   const tabCount = tabCountsByWorkspace.get(w.workspace_id) ?? 0;
   const tabCountVisible = alwaysShowTabCount || tabCount > 1;
-  const s = useStoreSelector(
-    (state) => ({
-      pendingFocusWorkspaceId: state.pendingFocusWorkspaceId,
-    }),
-    shallowEqual,
+  const pendingFocusWorkspaceId = useStoreSelector(
+    (state) => state.pendingFocusWorkspaceId,
   );
-  const workspaceTabs = useStoreSelector(
-    (state) => state.tabs.filter((tab) => tab.workspace_id === w.workspace_id),
-    (left, right) =>
+  // Keep the previous list while the fields the row shows are unchanged.
+  const shownTabs = useRef<Tab[]>([]);
+  const workspaceTabs = useStoreSelector((state) => {
+    const left = shownTabs.current;
+    const right = state.tabs.filter(
+      (tab) => tab.workspace_id === w.workspace_id,
+    );
+    const same =
       left.length === right.length &&
       left.every(
         (tab, index) =>
@@ -979,8 +981,9 @@ function WorkspaceRow({
           tab.label === right[index]?.label &&
           tab.pane_count === right[index]?.pane_count &&
           tab.focused === right[index]?.focused,
-      ),
-  );
+      );
+    return same ? left : (shownTabs.current = right);
+  });
   const tabGroups = useMemo(
     () => groupPanesByTab(agents, workspaceTabs),
     [agents, workspaceTabs],
@@ -1004,7 +1007,7 @@ function WorkspaceRow({
     hasNestedItems && isWorktreeGroupCollapsed(collapsedWorktreeGroupKeys, w);
   const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
   const isPendingFocus =
-    s.pendingFocusWorkspaceId === w.workspace_id && !w.focused;
+    pendingFocusWorkspaceId === w.workspace_id && !w.focused;
   const openMenu = (x: number, y: number) => {
     onContextMenu(w, x, y);
   };

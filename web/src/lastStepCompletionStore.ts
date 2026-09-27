@@ -1,5 +1,9 @@
-const revisions = new Map<string, number>();
-const listeners = new Map<string, Set<() => void>>();
+import { createStore, useStore } from "zustand";
+
+/** Completed agent steps per connection and workspace, as revisions. */
+export const lastStepCompletions = createStore<Record<string, number>>()(
+  () => ({}),
+);
 
 export function lastStepCompletionKey(
   connectionId: string,
@@ -13,25 +17,11 @@ export function publishLastStepCompletion(
   workspaceId: string,
 ) {
   const key = lastStepCompletionKey(connectionId, workspaceId);
-  const current = listeners.get(key);
-  if (!current) return;
-  revisions.set(key, (revisions.get(key) ?? 0) + 1);
-  for (const listener of current) listener();
+  lastStepCompletions.setState((revisions) => ({
+    [key]: (revisions[key] ?? 0) + 1,
+  }));
 }
 
-export function readLastStepCompletion(key: string) {
-  return revisions.get(key) ?? 0;
-}
-
-export function subscribeLastStepCompletion(key: string, listener: () => void) {
-  const current = listeners.get(key) ?? new Set<() => void>();
-  current.add(listener);
-  listeners.set(key, current);
-  return () => {
-    current.delete(listener);
-    if (current.size === 0) {
-      listeners.delete(key);
-      revisions.delete(key);
-    }
-  };
+export function useLastStepCompletion(key: string) {
+  return useStore(lastStepCompletions, (revisions) => revisions[key] ?? 0);
 }

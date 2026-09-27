@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { createStore, useStore } from "zustand";
 import { thyraLocalStorage, thyraStorageEventKey } from "./browserStorage";
 import { t } from "./i18n";
 import {
@@ -159,22 +159,20 @@ export function resolveShortcutPreset(
   };
 }
 let platform = detectShortcutPlatform();
-let snapshot = {
+const shortcutStore = createStore(() => ({
   preferences: defaults,
   platform,
   preset: resolveShortcutPreset(defaults, platform),
   storageError: "",
-};
+}));
 let initialized = false;
-const listeners = new Set<() => void>();
 function publish(preferences: ShortcutPreferences, storageError = "") {
-  snapshot = {
+  shortcutStore.setState({
     preferences,
     platform,
     preset: resolveShortcutPreset(preferences, platform),
     storageError,
-  };
-  for (const listener of listeners) listener();
+  });
 }
 function read() {
   try {
@@ -211,20 +209,11 @@ function save(preferences: ShortcutPreferences) {
 }
 export function getShortcutSnapshot() {
   initializeShortcutPreferences();
-  return snapshot;
+  return shortcutStore.getState();
 }
 export function useShortcutPreferences() {
-  return useSyncExternalStore(
-    (listener) => {
-      initializeShortcutPreferences();
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    getShortcutSnapshot,
-    getShortcutSnapshot,
-  );
+  initializeShortcutPreferences();
+  return useStore(shortcutStore);
 }
 export function shortcutMatches(event: ShortcutEvent, id: ShortcutId) {
   return matchesShortcut(event, id, getShortcutSnapshot().preset.bindings);

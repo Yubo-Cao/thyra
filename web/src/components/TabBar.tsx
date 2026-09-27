@@ -1,12 +1,7 @@
 import { t } from "../i18n";
 import { agentStatusText } from "../agentOrder";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
-import {
-  shallowEqual,
-  store,
-  useStoreSelector,
-  useEndpointCreationReason,
-} from "../store";
+import { store, useStoreSelector, useEndpointCreationReason } from "../store";
 import { useEffect, useRef, useState } from "react";
 import { useLongPress } from "./useLongPress";
 import { createPortal } from "react-dom";
@@ -25,6 +20,7 @@ import { Button } from "./ui/Button";
 import { ContextMenu } from "./ui/ContextMenu";
 import { IconButton } from "./ui/IconButton";
 import "./TabBar.css";
+import { useShallow } from "zustand/react/shallow";
 
 const REQUEST_CLOSE_TAB_EVENT = "thyra:request-close-tab";
 const REQUEST_CLOSE_PANE_EVENT = "thyra:request-close-pane";
@@ -75,14 +71,13 @@ export function TabBar({
 }) {
   useShortcutPreferences();
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       panes: state.panes,
       tabs: state.tabs,
       workspaces: state.workspaces,
-    }),
-    shallowEqual,
+    })),
   );
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(
     null,

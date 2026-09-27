@@ -51,7 +51,7 @@ import {
   type MobileTerminalShortcutRows,
   type MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import { store, useStoreSelector } from "../store";
 import {
   type CustomTerminalTheme,
   resolveTerminalThemeDefinition,
@@ -85,6 +85,7 @@ import {
   VOICE_CLEANUP_OPTIONS,
   type VoiceCleanupMode,
 } from "../voice/voicePreferences";
+import { useShallow } from "zustand/react/shallow";
 
 const ShortcutLookupDialog = lazyWithReload("keyboard-shortcuts", () =>
   import("./ShortcutLookupDialog").then((module) => ({
@@ -142,7 +143,7 @@ export function ConfigurationDialog({
 }) {
   const { theme, accentColor, uiScale } = props;
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       taskNotificationPermission: state.taskNotificationPermission,
       taskNotificationsEnabled: state.taskNotificationsEnabled,
       taskNotificationPreferences: state.taskNotificationPreferences,
@@ -155,8 +156,7 @@ export function ConfigurationDialog({
       sshDestination: state.connections.find(
         (c) => c.id === state.activeConnectionId,
       )?.ssh_destination,
-    }),
-    shallowEqual,
+    })),
   );
   const connectionClient = useConnectionClient();
   const [tab, setTab] = useState<ConfigurationTab>(initialTab);

@@ -27,7 +27,7 @@ import {
   SplitSquareVertical,
   X,
 } from "lucide-react";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import { store, useStoreSelector } from "../store";
 import {
   clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
@@ -54,6 +54,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/RadixPopover";
 import { canCreateWorktree, worktreeCreationSource } from "../worktree";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
 import { CommandMenuTrigger, isCommandMenuShortcut } from "./CommandMenu";
+import { useShallow } from "zustand/react/shallow";
 
 type TextAction =
   | { type: "rename-workspace"; workspace: Workspace }
@@ -261,7 +262,7 @@ export function CommandCombobox({
 }: CommandComboboxProps) {
   useShortcutPreferences();
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       layout: state.layout,
@@ -270,8 +271,7 @@ export function CommandCombobox({
       tabs: state.tabs,
       workspaces: state.workspaces,
       endpointAvailability: state.endpointAvailability,
-    }),
-    shallowEqual,
+    })),
   );
   const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");

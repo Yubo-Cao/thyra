@@ -7,10 +7,11 @@ import {
 } from "../connectionProfiles";
 import { t } from "../i18n";
 import { lazyPanel } from "../lazyWithReload";
-import { shallowEqual, useStoreSelector } from "../store";
+import { useStoreSelector } from "../store";
 import { LazyBoundary } from "./LazyBoundary";
 import { Button } from "./ui/Button";
 import "./ConnectionSwitcherTrigger.css";
+import { useShallow } from "zustand/react/shallow";
 
 // The connection menu and manager (Radix popover, profile forms) load on the
 // first open; the trigger shows connection state from the first paint.
@@ -31,14 +32,13 @@ export const ConnectionSwitcherTrigger = forwardRef<
   ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean }
 >(function ConnectionSwitcherTrigger({ active: open, ...props }, ref) {
   const state = useStoreSelector(
-    (snapshot) => ({
+    useShallow((snapshot) => ({
       activeConnectionId: snapshot.activeConnectionId,
       connectionPaused: snapshot.connectionPaused,
       connections: snapshot.connections,
       defaultConnectionId: snapshot.defaultConnectionId,
       status: snapshot.status,
-    }),
-    shallowEqual,
+    })),
   );
   const active =
     state.connections.find(

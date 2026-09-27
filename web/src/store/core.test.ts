@@ -1,9 +1,58 @@
 import { describe, expect, test } from "bun:test";
+import type { Pane } from "../types";
 import {
+  appStore,
   DEFAULT_NOTICE_AUTO_DISMISS_MS,
   nextRecentPaneIds,
   noticeAutoDismissDelay,
+  replaceState,
+  set,
+  state,
 } from "./core";
+
+describe("store container", () => {
+  test("a patch notifies once and applies its side effects", () => {
+    const previous = appStore.getState();
+    const seen: unknown[] = [];
+    const unsubscribe = appStore.subscribe((next) => seen.push(next));
+    try {
+      const panes = [{ pane_id: "a" }, { pane_id: "b" }] as Pane[];
+      set({
+        panes,
+        selectedPaneId: "b",
+        notice: { kind: "info", message: "x" },
+      });
+      set({ notice: { kind: "info", message: "y" } });
+      expect(seen).toHaveLength(2);
+      // The live binding tracks the store before other subscribers run.
+      expect(seen[1]).toBe(state);
+      expect(state.recentPaneIds).toEqual(["b"]);
+      expect(state.notice?.id).toBe((seen[0] as typeof state).notice!.id! + 1);
+      const session = state.sessionsByConnectionId[state.activeConnectionId];
+      expect(session?.selectedPaneId).toBe("b");
+      expect(session?.panes).toBe(panes);
+      expect(state.sessionsByConnectionId).not.toBe(
+        previous.sessionsByConnectionId,
+      );
+    } finally {
+      unsubscribe();
+      replaceState(previous);
+    }
+    expect(state).toBe(previous);
+  });
+
+  test("a patch without session keys keeps the session cache", () => {
+    const previous = appStore.getState();
+    try {
+      set({ updateInstalling: true });
+      expect(state.sessionsByConnectionId).toBe(
+        previous.sessionsByConnectionId,
+      );
+    } finally {
+      replaceState(previous);
+    }
+  });
+});
 
 describe("notice dismissal policy", () => {
   test("uses 15 seconds for an ordinary toast", () => {

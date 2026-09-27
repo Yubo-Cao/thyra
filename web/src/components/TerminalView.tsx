@@ -34,12 +34,7 @@ import {
 } from "../mobileTerminalShortcuts";
 import { paneCanClose } from "../paneJump";
 import { HerdrSetupCard } from "./HerdrSetupCard";
-import {
-  shallowEqual,
-  store,
-  terminalNavigationLoading,
-  useStoreSelector,
-} from "../store";
+import { store, terminalNavigationLoading, useStoreSelector } from "../store";
 import {
   clearTerminalComposerDrafts,
   insertIntoTerminalComposerDraft,
@@ -95,6 +90,7 @@ import {
   useTerminalSession,
 } from "./terminal/useTerminalSession";
 import "./TerminalView.css";
+import { useShallow } from "zustand/react/shallow";
 
 export type { TerminalWorkspaceFileRequest };
 
@@ -166,7 +162,7 @@ export function TerminalView({
   onOpenWorkspaceFile?: (request: TerminalWorkspaceFileRequest) => void;
 }) {
   const s = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       defaultConnectionId: state.defaultConnectionId,
       connectionGeneration: state.connectionGeneration,
@@ -181,8 +177,7 @@ export function TerminalView({
       tabs: state.tabs,
       navigationLoading: terminalNavigationLoading(state),
       error: state.error,
-    }),
-    shallowEqual,
+    })),
   );
   const terminalIdentity = useMemo<TerminalConnectionIdentity>(
     () => ({

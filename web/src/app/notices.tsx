@@ -5,7 +5,6 @@ import {
   isTaskNotificationTarget,
   type Notice,
   noticeAutoDismissDelay,
-  shallowEqual,
   store,
   TASK_NOTIFICATION_ACTIVATE_EVENT,
   type TaskNotificationTarget,
@@ -16,6 +15,7 @@ import {
 import { copyTextFromUserGesture } from "../terminalClipboard";
 import { listenForTaskNotificationActivation } from "../taskNotifications";
 import { noticeToastsPanel } from "./lazySurfaces";
+import { useShallow } from "zustand/react/shallow";
 
 const NoticeToasts = noticeToastsPanel.Component;
 
@@ -26,11 +26,10 @@ export function NoticeHost({
   onOpenTarget: (target: TaskNotificationTarget) => void;
 }) {
   const { notice, updateAvailable } = useStoreSelector(
-    (state) => ({
+    useShallow((state) => ({
       notice: state.notice,
       updateAvailable: !!state.updateInfo?.update_available,
-    }),
-    shallowEqual,
+    })),
   );
   useEffect(() => {
     if (!notice) return;

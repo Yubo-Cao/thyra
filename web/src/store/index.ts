@@ -48,7 +48,6 @@ export {
 } from "../taskNotifications";
 export {
   noticeAutoDismissDelay,
-  shallowEqual,
   useStoreSelector,
   type Notice,
   type PopupInfo,

@@ -6,7 +6,8 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo } from "react";
+import { createStore, useStore } from "zustand";
 import {
   UNSTABLE_Toast as Toast,
   UNSTABLE_ToastContent as ToastContent,
@@ -43,8 +44,8 @@ class AriaToastSink implements ToastSink {
     { content: Content; timeout: number }
   >();
   private readonly replaced = new Set<string>();
-  private readonly listeners = new Set<() => void>();
-  private version = 0;
+  /** Bumped when content changes in place. */
+  readonly version = createStore<number>()(() => 0);
 
   add(content: Content, options: Required<ToastOptions>): string {
     const holder = { key: "" };
@@ -73,8 +74,7 @@ class AriaToastSink implements ToastSink {
       return this.add(content, options);
     }
     this.contents.set(key, { content, timeout: options.timeout });
-    this.version += 1;
-    for (const listener of this.listeners) listener();
+    this.version.setState((version) => version + 1, true);
     return key;
   }
 
@@ -85,13 +85,6 @@ class AriaToastSink implements ToastSink {
   content(key: string): Content | undefined {
     return this.contents.get(key)?.content;
   }
-
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  };
-
-  getVersion = () => this.version;
 }
 
 // React Aria toast region (F6 landmark, pause on hover/focus, focus
@@ -102,7 +95,7 @@ export function ToastRegionImpl({
   controller: ToastController;
 }) {
   const sink = useMemo(() => new AriaToastSink(), []);
-  useSyncExternalStore(sink.subscribe, sink.getVersion, sink.getVersion);
+  useStore(sink.version);
   useEffect(() => {
     const detach = controller.attach(sink);
     return () => {
