@@ -257,25 +257,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   animation: modal-backdrop-in 160ms ease-out;
 }
 
-.modal {
-  position: relative;
-  width: min(720px, 100%);
-  max-height: min(760px, calc(100vh - 36px));
-  overflow: auto;
-  /* Auto margins center the modal like align/justify-content would, but let
-     an oversized modal align to the start edge instead so the backdrop can
-     scroll every part of it into view (flex centering would clip the top
-     beyond reach whenever the containing block is shorter than the modal). */
-  margin: auto;
-  padding: 18px;
-  border: 0;
-  background: var(--shell-panel);
-  box-shadow: var(--shadow-modal);
-  outline: none;
-  isolation: isolate;
-  animation: modal-in 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
 @keyframes modal-backdrop-in {
   from {
     opacity: 0;
@@ -294,8 +275,7 @@ textarea:where(:not([data-rac], [data-slot])):focus {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .modal-backdrop,
-  .modal {
+  .modal-backdrop {
     animation: none;
   }
 }

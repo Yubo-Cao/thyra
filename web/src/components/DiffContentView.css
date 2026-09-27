@@ -98,14 +98,6 @@ button.diff-hunk-separator {
   gap: 6px;
 }
 
-.diff-file-html {
-  min-width: 0;
-  /* Scope horizontal scrolling to the code area so the file header and state
-     banners stay put in no-wrap mode (previously the whole wrapper scrolled
-     and carried the header off screen). */
-  overflow-x: auto;
-}
-
 .diff-raw-patch {
   max-width: 100%;
   max-height: 60vh;
