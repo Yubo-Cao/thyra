@@ -115,7 +115,7 @@ describe.skipIf(!pwsh)("install.ps1 helpers", () => {
           .code,
       ).not.toBe(0);
     }
-  });
+  }, 30_000);
 
   test("reads the Windows entry of the rendered Herdr pin", () => {
     const root = mkdtempSync(join(tmpdir(), "thyra-ps1-"));

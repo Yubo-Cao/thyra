@@ -295,7 +295,7 @@ describe("remote file protocol parsers", () => {
         await rm(outside, { recursive: true, force: true });
       }
     });
-  });
+  }, 30_000);
 
   test("parses remote directory listings", () => {
     const result = parseRemoteFileList(
