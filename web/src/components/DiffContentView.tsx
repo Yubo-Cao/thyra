@@ -20,8 +20,6 @@ import {
   ChevronUp,
   FolderOpen,
   MessageSquareText,
-  Search,
-  X,
 } from "lucide-react";
 import {
   Component,
@@ -68,6 +66,8 @@ import {
 } from "./diffContentState";
 import { diffSyntaxLanguageForPath } from "./diffSyntaxHighlighting";
 import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { SearchField } from "./ui/SearchField";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import "./DiffContentView.css";
 
@@ -571,25 +571,24 @@ const DiffFileSection = memo(function DiffFileSection({
       {embedded ? null : (
         <header className="diff-file-section-head">
           {mobile ? null : (
-            <button
-              type="button"
-              className="diff-file-collapse"
+            <IconButton
               onClick={toggle}
               disabled={!section.active && !onSelectFile}
               aria-expanded={!section.collapsed}
-              aria-label={
+              label={
                 section.collapsed
                   ? t("Expand {path}", { path: section.entry.path })
                   : t("Collapse {path}", { path: section.entry.path })
               }
-              title={section.collapsed ? t("Expand") : t("Collapse")}
-            >
-              {section.collapsed ? (
-                <ChevronRight size={14} />
-              ) : (
-                <ChevronDown size={14} />
-              )}
-            </button>
+              tooltip={section.collapsed ? t("Expand") : t("Collapse")}
+              icon={
+                section.collapsed ? (
+                  <ChevronRight size={14} />
+                ) : (
+                  <ChevronDown size={14} />
+                )
+              }
+            />
           )}
           <div
             className={`diff-file-section-title ${
@@ -633,15 +632,14 @@ const DiffFileSection = memo(function DiffFileSection({
               <span className="diff-file-section-meta">{metaNote}</span>
             ) : null}
           </div>
-          <button
-            type="button"
+          <Button
             className="diff-file-open"
             onClick={() => onOpenFile?.(section.entry)}
             disabled={!onOpenFile}
           >
             <FolderOpen size={14} />
             <span>{t("Open in Files")}</span>
-          </button>
+          </Button>
         </header>
       )}
       {section.collapsed ? null : (
@@ -655,12 +653,12 @@ const DiffFileSection = memo(function DiffFileSection({
             <div className="diff-content-state is-error">
               <span>{section.error}</span>
               {onSelectFile ? (
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   onClick={() => onSelectFile(section.entry)}
                 >
                   {t("Retry")}
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : null}
@@ -670,12 +668,12 @@ const DiffFileSection = memo(function DiffFileSection({
               {loading ? (
                 t("Loading diff")
               ) : onSelectFile ? (
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   onClick={() => onSelectFile(section.entry)}
                 >
                   {t("Load diff")}
-                </button>
+                </Button>
               ) : (
                 t("Select this file to load its diff.")
               )}
@@ -1327,15 +1325,11 @@ export function DiffContentView({
     >
       <div className="diff-content-head">
         {mobile && backAction ? (
-          <button
-            type="button"
-            className="diff-content-back"
-            title={backAction.label}
-            aria-label={backAction.label}
+          <IconButton
+            label={backAction.label}
             onClick={backAction.onClick}
-          >
-            <ChevronLeft size={14} aria-hidden="true" />
-          </button>
+            icon={<ChevronLeft size={14} aria-hidden="true" />}
+          />
         ) : null}
         {embedded ? null : (
           <div className="diff-content-title">
@@ -1362,14 +1356,11 @@ export function DiffContentView({
               className="diff-hunk-navigation"
               aria-label={t("Change navigation")}
             >
-              <button
-                type="button"
+              <IconButton
                 onClick={() => goToHunk(-1)}
-                aria-label={t("Previous change")}
-                title={t("Previous change")}
-              >
-                <ChevronUp size={14} />
-              </button>
+                label={t("Previous change")}
+                icon={<ChevronUp size={14} />}
+              />
               <span>
                 {mobile
                   ? `${hunkIndex < 0 ? "–" : hunkIndex + 1}/${hunkTargets.length}`
@@ -1383,39 +1374,37 @@ export function DiffContentView({
                         total: hunkTargets.length,
                       })}
               </span>
-              <button
-                type="button"
+              <IconButton
                 onClick={() => goToHunk(1)}
-                aria-label={t("Next change")}
-                title={t("Next change")}
-              >
-                <ChevronDown size={14} />
-              </button>
+                label={t("Next change")}
+                icon={<ChevronDown size={14} />}
+              />
             </div>
           ) : null}
           {!embedded && !mobile ? (
             <div className="diff-search-controls">
-              <label className="diff-search">
-                <Search size={13} />
-                <input
-                  ref={searchInputRef}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      goToSearchMatch(e.shiftKey ? -1 : 1);
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSearchQuery("");
-                    }
-                  }}
-                  placeholder={t("Find loaded files")}
-                  disabled={!hasSearchableDiff}
-                />
-              </label>
+              <SearchField
+                ref={searchInputRef}
+                className="diff-search"
+                fullWidth
+                value={searchQuery}
+                onValueChange={setSearchQuery}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    goToSearchMatch(e.shiftKey ? -1 : 1);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchQuery("");
+                  }
+                }}
+                placeholder={t("Find loaded files")}
+                aria-label={t("Find loaded files")}
+                clearLabel={t("Clear diff search")}
+                disabled={!hasSearchableDiff}
+              />
               <span
                 className="diff-search-count"
                 role="status"
@@ -1427,37 +1416,18 @@ export function DiffContentView({
                     ? t("No results")
                     : ""}
               </span>
-              <button
-                type="button"
-                className="diff-search-button"
+              <IconButton
                 onClick={() => goToSearchMatch(-1)}
                 disabled={!searchMatchCount}
-                aria-label={t("Previous matching loaded file")}
-              >
-                <ChevronUp size={14} />
-              </button>
-              <button
-                type="button"
-                className="diff-search-button"
+                label={t("Previous matching loaded file")}
+                icon={<ChevronUp size={14} />}
+              />
+              <IconButton
                 onClick={() => goToSearchMatch(1)}
                 disabled={!searchMatchCount}
-                aria-label={t("Next matching loaded file")}
-              >
-                <ChevronDown size={14} />
-              </button>
-              {searchQuery ? (
-                <button
-                  type="button"
-                  className="diff-search-button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    focusSearch();
-                  }}
-                  aria-label={t("Clear diff search")}
-                >
-                  <X size={14} />
-                </button>
-              ) : null}
+                label={t("Next matching loaded file")}
+                icon={<ChevronDown size={14} />}
+              />
             </div>
           ) : null}
         </div>

@@ -7,7 +7,6 @@ import {
   PinOff,
   Send,
   Trash2,
-  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -25,8 +24,13 @@ import {
   useShortcutPreferences,
 } from "../shortcutPreferences";
 import type { Pane } from "../types";
-import { ConfirmDialog } from "./ModalDialogs";
-import { ThemedSelect } from "./ThemedSelect";
+import { Button } from "./ui/Button";
+import { CloseButton } from "./ui/CloseButton";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { IconButton } from "./ui/IconButton";
+import { Kbd } from "./ui/Kbd";
+import { Select } from "./ui/Select";
+import { TextArea } from "./ui/TextArea";
 import "./AnnotationPanel.css";
 
 function annotationLocation(annotation: ReviewAnnotation) {
@@ -173,28 +177,19 @@ export function AnnotationPanel({
           </span>
         </div>
         {onToggleFloating ? (
-          <button
-            type="button"
-            className="annotation-icon-button annotation-mode-button"
-            aria-label={
-              floating ? t("Pin annotations") : t("Float annotations")
-            }
-            title={floating ? t("Fixed layout") : t("Floating layout")}
+          <IconButton
+            label={floating ? t("Pin annotations") : t("Float annotations")}
+            tooltip={floating ? t("Fixed layout") : t("Floating layout")}
             aria-pressed={!floating}
             onClick={onToggleFloating}
-          >
-            {floating ? <Pin size={16} /> : <PinOff size={16} />}
-          </button>
+            icon={floating ? <Pin size={16} /> : <PinOff size={16} />}
+          />
         ) : null}
-        <button
-          type="button"
-          className="annotation-icon-button"
-          aria-label={t("Close review feedback")}
-          title={t("Close")}
+        <CloseButton
+          label={t("Close review feedback")}
+          tooltip={t("Close")}
           onClick={onClose}
-        >
-          <X size={16} />
-        </button>
+        />
       </header>
 
       <div className="annotation-panel-list">
@@ -237,51 +232,42 @@ export function AnnotationPanel({
               >
                 {annotation.quote || t("Blank line")}
               </blockquote>
-              <textarea
+              <TextArea
+                fullWidth
                 value={annotation.comment}
                 rows={3}
                 maxLength={10_000}
                 aria-label={t("Comment {number}", { number: index + 1 })}
-                onChange={(event) =>
-                  onUpdateComment(annotation.id, event.currentTarget.value)
-                }
+                onValueChange={(value) => onUpdateComment(annotation.id, value)}
               />
               <div className="annotation-card-actions">
-                <button
-                  type="button"
-                  className="annotation-icon-button"
+                <IconButton
                   disabled={index === 0}
-                  aria-label={t("Move comment {number} up", {
+                  label={t("Move comment {number} up", {
                     number: index + 1,
                   })}
-                  title={t("Move up")}
+                  tooltip={t("Move up")}
                   onClick={() => onMove(annotation.id, -1)}
-                >
-                  <ArrowUp size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="annotation-icon-button"
+                  icon={<ArrowUp size={14} />}
+                />
+                <IconButton
                   disabled={index === annotations.length - 1}
-                  aria-label={t("Move comment {number} down", {
+                  label={t("Move comment {number} down", {
                     number: index + 1,
                   })}
-                  title={t("Move down")}
+                  tooltip={t("Move down")}
                   onClick={() => onMove(annotation.id, 1)}
-                >
-                  <ArrowDown size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="annotation-icon-button is-danger"
-                  aria-label={t("Delete comment {number}", {
+                  icon={<ArrowDown size={14} />}
+                />
+                <IconButton
+                  tone="danger"
+                  label={t("Delete comment {number}", {
                     number: index + 1,
                   })}
-                  title={t("Delete")}
+                  tooltip={t("Delete")}
                   onClick={() => onDelete(annotation.id)}
-                >
-                  <Trash2 size={14} />
-                </button>
+                  icon={<Trash2 size={14} />}
+                />
               </div>
             </article>
           ))
@@ -290,18 +276,18 @@ export function AnnotationPanel({
 
       <footer className="annotation-panel-footer">
         {agentPanes.length > 1 ? (
-          <label className="annotation-target-picker">
-            <span>{t("Agent pane")}</span>
-            <ThemedSelect
-              aria-label={t("Agent pane")}
-              value={targetPaneId}
-              options={agentPanes.map((pane) => ({
-                value: pane.pane_id,
-                label: paneLabel(pane),
-              }))}
-              onChange={setTargetPaneId}
-            />
-          </label>
+          <Select
+            className="annotation-target-picker"
+            label={t("Agent pane")}
+            aria-label={t("Agent pane")}
+            fullWidth
+            value={targetPaneId}
+            options={agentPanes.map((pane) => ({
+              value: pane.pane_id,
+              label: paneLabel(pane),
+            }))}
+            onChange={setTargetPaneId}
+          />
         ) : agentPanes.length === 1 ? (
           <div className="annotation-target-summary">
             {t("Agent pane: {pane}", { pane: paneLabel(agentPanes[0]) })}
@@ -312,18 +298,18 @@ export function AnnotationPanel({
           </div>
         )}
         <div className="annotation-delivery-actions">
-          <button
-            type="button"
-            className="ghost"
+          <Button
+            size="md"
             disabled={busy || !hasFeedback}
             onClick={onCopy}
             title={shortcutTitle(t("Copy review feedback"), "annotations.copy")}
           >
             <Clipboard size={14} /> {t("Copy")}
-            {hasCopyShortcut ? <kbd>{copyShortcut}</kbd> : null}
-          </button>
-          <button
-            type="button"
+            {hasCopyShortcut ? <Kbd>{copyShortcut}</Kbd> : null}
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
             disabled={busy || !hasFeedback}
             onClick={() => onSend(targetPaneId || null)}
             title={shortcutTitle(
@@ -333,31 +319,29 @@ export function AnnotationPanel({
           >
             {agentPanes.length ? <Send size={14} /> : <Clipboard size={14} />}
             {agentPanes.length ? t("Pre-fill agent") : t("Copy feedback")}
-            {hasPrefillShortcut ? <kbd>{prefillShortcut}</kbd> : null}
-          </button>
+            {hasPrefillShortcut ? <Kbd>{prefillShortcut}</Kbd> : null}
+          </Button>
         </div>
         {onGoToAgent ? (
-          <button type="button" className="ghost" onClick={onGoToAgent}>
-            {t("Go to agent")}
-          </button>
+          <Button onClick={onGoToAgent}>{t("Go to agent")}</Button>
         ) : null}
-        <button
-          type="button"
+        <Button
           className="annotation-clear-button"
+          data-tone="danger"
           disabled={busy || annotations.length === 0}
           onClick={() => setConfirmClear(true)}
         >
           {t("Clear draft")}
-        </button>
+        </Button>
       </footer>
       <ConfirmDialog
         open={confirmClear}
+        onOpenChange={setConfirmClear}
         title={t("Clear review feedback?")}
         message={t("This removes every unsent review comment from this draft.")}
         confirmLabel={t("Clear feedback")}
-        danger
+        tone="danger"
         onConfirm={onClear}
-        onClose={() => setConfirmClear(false)}
       />
     </aside>
   );

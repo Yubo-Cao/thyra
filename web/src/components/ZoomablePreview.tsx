@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
 
 export type PreviewDimensions = { width: number; height: number };
 
@@ -109,46 +111,35 @@ export function ZoomablePreview({
       }
     >
       <div
-        className="visual-preview-controls"
+        className="ui-bar visual-preview-controls"
         role="toolbar"
         aria-label={t("{label} zoom controls", { label })}
       >
-        <button
-          type="button"
+        <IconButton
           onClick={() => changeZoom(scale / 1.25)}
           disabled={scale <= 0.01}
-          aria-label={t("Zoom out")}
-          title={t("Zoom out")}
-        >
-          <Minus size={14} />
-        </button>
+          label={t("Zoom out")}
+          icon={<Minus size={14} />}
+        />
         <output aria-live="polite" aria-label={t("Zoom level")}>
           {Math.round(scale * 100)}%
         </output>
-        <button
-          type="button"
+        <IconButton
           onClick={() => changeZoom(scale * 1.25)}
           disabled={scale >= 8}
-          aria-label={t("Zoom in")}
-          title={t("Zoom in")}
-        >
-          <Plus size={14} />
-        </button>
-        <button
-          type="button"
+          label={t("Zoom in")}
+          icon={<Plus size={14} />}
+        />
+        <Button
           onClick={() => changeZoom(null)}
           aria-pressed={zoom === null}
           title={t("Fit preview")}
         >
           <Maximize size={13} /> {t("Fit")}
-        </button>
-        <button
-          type="button"
-          onClick={() => changeZoom(1)}
-          title={t("Actual size")}
-        >
+        </Button>
+        <Button onClick={() => changeZoom(1)} title={t("Actual size")}>
           100%
-        </button>
+        </Button>
       </div>
       <div
         className="visual-preview-viewport"

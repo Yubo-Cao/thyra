@@ -24,7 +24,6 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  X,
 } from "lucide-react";
 import { fileReviewLineDisplayLabel, MAX_QUOTE_LENGTH } from "../annotations";
 import { t } from "../i18n";
@@ -72,6 +71,8 @@ import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { invalidateFilePreviewCache } from "./fileExplorerResources";
 import { lazyWithReload } from "../lazyWithReload";
 import { Button } from "./ui/Button";
+import { CloseButton } from "./ui/CloseButton";
+import { IconButton } from "./ui/IconButton";
 import { Token } from "./ui/Token";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import "./syntaxHighlighting.css";
@@ -680,67 +681,52 @@ export function FilePreviewContent({
       <div className="file-preview-head">
         <div className="file-preview-title-row">
           {backAction ? (
-            <button
-              type="button"
+            <IconButton
               className="file-preview-back"
-              title={backAction.label}
-              aria-label={backAction.label}
+              label={backAction.label}
               onClick={backAction.onClick}
-            >
-              <ChevronLeft size={14} aria-hidden="true" />
-            </button>
+              icon={<ChevronLeft size={14} aria-hidden="true" />}
+            />
           ) : null}
           <div className="file-preview-title" title={entry?.name}>
             {entry?.name ?? t("Preview")}
           </div>
           <div className="file-preview-head-actions">
             {!showingChanges && showDirectoryWorkspaceAction ? (
-              <button
-                type="button"
-                className="file-preview-refresh"
-                title={t("New workspace with this directory as CWD")}
-                aria-label={t("New workspace with this directory as CWD")}
+              <IconButton
+                label={t("New workspace with this directory as CWD")}
                 onClick={() => setWorkspaceDialogOpen(true)}
-              >
-                <FolderPlus size={13} aria-hidden="true" />
-              </button>
+                icon={<FolderPlus size={13} aria-hidden="true" />}
+              />
             ) : null}
             {!showingChanges && entry && onRefresh ? (
-              <button
-                type="button"
-                className="file-preview-refresh"
-                title={t("Refresh preview")}
-                aria-label={t("Refresh preview")}
+              <IconButton
+                label={t("Refresh preview")}
                 disabled={loading}
                 onClick={onRefresh}
-              >
-                <RefreshCw
-                  size={13}
-                  className={loading ? "is-spinning" : undefined}
-                  aria-hidden="true"
-                />
-              </button>
+                icon={
+                  <RefreshCw
+                    size={13}
+                    className={loading ? "is-spinning" : undefined}
+                    aria-hidden="true"
+                  />
+                }
+              />
             ) : null}
             {!showingChanges && canEdit && !editing ? (
-              <button
-                type="button"
-                className="file-preview-refresh"
-                title={t("Edit file")}
-                aria-label={t("Edit file")}
+              <IconButton
+                label={t("Edit file")}
                 onClick={startEditing}
-              >
-                <Pencil size={13} aria-hidden="true" />
-              </button>
+                icon={<Pencil size={13} aria-hidden="true" />}
+              />
             ) : null}
             {!showingChanges && hasPreviewText && !preview?.truncated ? (
-              <button
-                type="button"
-                className="file-preview-copy"
+              <Button
                 title={t("Copy entire file content")}
                 onClick={() => void copyPreviewText()}
               >
                 {t("Copy")}
-              </button>
+              </Button>
             ) : null}
             {!showingChanges && hasRichPreview && !editing ? (
               <SegmentedControl
@@ -758,9 +744,7 @@ export function FilePreviewContent({
               />
             ) : null}
             {changesAvailable ? (
-              <button
-                type="button"
-                className="file-preview-changes-toggle"
+              <Button
                 aria-pressed={showingChanges}
                 title={
                   showingChanges ? t("Show file preview") : t("Show changes")
@@ -770,7 +754,7 @@ export function FilePreviewContent({
                 }
               >
                 {t("Changes")}
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -806,14 +790,11 @@ export function FilePreviewContent({
               <RotateCcw size={13} aria-hidden="true" />
               {t("Revert")}
             </Button>
-            <Button
-              icon
-              title={t("Close editor")}
-              aria-label={t("Close editor")}
+            <CloseButton
+              label={t("Close editor")}
+              tooltip={t("Close editor")}
               onClick={stopEditing}
-            >
-              <X size={14} aria-hidden="true" />
-            </Button>
+            />
           </div>
           {saveConflict ? (
             <div className="file-editor-conflict" role="alert">
@@ -1022,8 +1003,8 @@ export function FilePreviewContent({
       renderRichPreview &&
       !showingChanges
         ? createPortal(
-            <button
-              type="button"
+            <Button
+              variant="primary"
               className="markdown-annotate-button"
               style={{
                 left: Math.min(
@@ -1049,7 +1030,7 @@ export function FilePreviewContent({
               }}
             >
               {t("Annotate selection")}
-            </button>,
+            </Button>,
             document.body,
           )
         : null}

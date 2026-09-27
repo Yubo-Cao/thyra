@@ -49,8 +49,8 @@ import {
   type GitRepoMenuItem,
 } from "../gitActions";
 import { keyboardContextMenuPoint, treeKeyboardAction } from "./treeKeyboard";
-import { ActionsMenu } from "./ActionsMenu";
-import { ConfirmDialog } from "./ModalDialogs";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { ContextMenu } from "./ui/ContextMenu";
 import { IconButton } from "./ui/IconButton";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import {
@@ -1146,80 +1146,89 @@ export const DiffViewerPanel = forwardRef<
       {fileLoadingKey ? (
         <div className="diff-loading-inline">{t("Loading diff...")}</div>
       ) : null}
-      {contextMenu ? (
-        <ActionsMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          header={{ title: contextMenu.path, subtitle: "Git" }}
-          groups={[
-            {
-              label: contextMenu.directory ? t("Folder") : t("File"),
-              items: [
-                ...(!contextMenu.directory &&
-                onOpenFile &&
-                contextMenu.entries[0]
-                  ? [
-                      {
-                        key: "open",
-                        label: t("Open file"),
-                        action: () => onOpenFile(contextMenu.entries[0]!),
-                      },
-                    ]
-                  : []),
+      <ContextMenu
+        position={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+        aria-label={t("Git actions")}
+        header={
+          contextMenu ? { title: contextMenu.path, subtitle: "Git" } : undefined
+        }
+        onClose={() => setContextMenu(null)}
+        items={
+          contextMenu
+            ? [
                 {
-                  key: "copy-relative",
-                  label: t("Copy relative path"),
-                  action: () => copyPath(contextMenu.path, "relative"),
+                  id: "path",
+                  title: contextMenu.directory ? t("Folder") : t("File"),
+                  items: [
+                    ...(!contextMenu.directory &&
+                    onOpenFile &&
+                    contextMenu.entries[0]
+                      ? [
+                          {
+                            id: "open",
+                            label: t("Open file"),
+                            onAction: () => onOpenFile(contextMenu.entries[0]!),
+                          },
+                        ]
+                      : []),
+                    {
+                      id: "copy-relative",
+                      label: t("Copy relative path"),
+                      onAction: () => copyPath(contextMenu.path, "relative"),
+                    },
+                    ...(cache.summary?.root
+                      ? [
+                          {
+                            id: "copy-absolute",
+                            label: t("Copy absolute path"),
+                            onAction: () =>
+                              copyPath(
+                                `${cache.summary?.root}/${contextMenu.path}`,
+                                "absolute",
+                              ),
+                          },
+                        ]
+                      : []),
+                  ],
                 },
-                ...(cache.summary?.root
-                  ? [
-                      {
-                        key: "copy-absolute",
-                        label: t("Copy absolute path"),
-                        action: () =>
-                          copyPath(
-                            `${cache.summary?.root}/${contextMenu.path}`,
-                            "absolute",
-                          ),
-                      },
-                    ]
-                  : []),
-              ],
-            },
-            {
-              label: "Git",
-              items: buildGitFileMenuItems(
-                contextMenu.entries,
-                contextMenu.directory,
-              ).map((item) => ({
-                key: item.action,
-                label: item.label,
-                danger: item.danger,
-                action: () => runGitFileMenuAction(item, contextMenu),
-              })),
-            },
-            {
-              label: t("Repository"),
-              items: buildGitRepoMenuItems(workingCounts).map((item) => ({
-                key: item.action,
-                label: item.label,
-                danger: item.danger,
-                disabled: item.count === 0,
-                detail: String(item.count),
-                action: () => runGitRepoMenuAction(item),
-              })),
-            },
-          ].filter((group) => group.items.length > 0)}
-          onClose={() => setContextMenu(null)}
-        />
-      ) : null}
+                {
+                  id: "git",
+                  title: "Git",
+                  items: buildGitFileMenuItems(
+                    contextMenu.entries,
+                    contextMenu.directory,
+                  ).map((item) => ({
+                    id: `file:${item.action}`,
+                    label: item.label,
+                    danger: item.danger,
+                    onAction: () => runGitFileMenuAction(item, contextMenu),
+                  })),
+                },
+                {
+                  id: "repository",
+                  title: t("Repository"),
+                  items: buildGitRepoMenuItems(workingCounts).map((item) => ({
+                    id: `repo:${item.action}`,
+                    label: item.label,
+                    danger: item.danger,
+                    disabled: item.count === 0,
+                    description: String(item.count),
+                    onAction: () => runGitRepoMenuAction(item),
+                  })),
+                },
+              ]
+            : []
+        }
+      />
       <ConfirmDialog
         open={!!confirmState}
+        onOpenChange={(next) => {
+          if (!next) setConfirmState(null);
+        }}
         title={confirmState?.title ?? ""}
         message={confirmState?.message ?? ""}
         confirmLabel={confirmState?.confirmLabel ?? t("Confirm")}
-        danger
-        onClose={() => setConfirmState(null)}
+        tone="danger"
         onConfirm={() => confirmState?.run()}
       />
     </aside>

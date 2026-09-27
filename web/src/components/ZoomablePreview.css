@@ -7,33 +7,9 @@
   background: var(--viewer-code-bg);
 }
 .visual-preview-controls {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--viewer-border);
-  background: var(--viewer-panel-bg);
-}
-.visual-preview-controls button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: 4px;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 6px;
-  color: var(--text);
-  font-size: 12px;
-}
-.visual-preview-controls button:hover,
-.visual-preview-controls button[aria-pressed="true"] {
-  color: var(--text-strong);
-  background: var(--accent-soft);
-}
-.visual-preview-controls button:disabled {
-  opacity: 0.4;
+  border-bottom-color: var(--viewer-border);
+  background: var(--viewer-panel-bg);
 }
 .visual-preview-controls output {
   min-width: 42px;

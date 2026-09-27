@@ -11,24 +11,6 @@
   overflow-wrap: anywhere;
 }
 
-.annotation-composer-popover textarea {
-  width: 100%;
-  min-height: 64px;
-  resize: vertical;
-  padding: 7px 8px;
-  border: 0;
-  outline: none;
-  background: var(--input-bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-}
-
-.annotation-composer-popover textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
 .annotation-composer-popover {
   position: fixed;
   z-index: 1200;
@@ -62,10 +44,4 @@
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.annotation-composer-actions button {
-  min-height: 30px;
-  padding: 0 9px;
-  font-size: 11px;
 }

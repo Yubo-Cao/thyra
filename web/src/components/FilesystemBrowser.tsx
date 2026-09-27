@@ -11,7 +11,6 @@ import {
   Folder,
   FolderPlus,
   RefreshCw,
-  Search,
   Upload,
 } from "lucide-react";
 import type { ConnectionClient } from "../api";
@@ -26,6 +25,9 @@ import {
 import { store, useStoreSelector } from "../store";
 import { t } from "../i18n";
 import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { SearchField } from "./ui/SearchField";
+import { TextField } from "./ui/TextField";
 import { Token } from "./ui/Token";
 import { TextInputDialog } from "./ModalDialogs";
 import {
@@ -346,33 +348,24 @@ export function FilesystemBrowser({
   return (
     <div className="filesystem-browser">
       <div className="ui-bar filesystem-nav">
-        <Button
-          icon
-          title={t("Back")}
-          aria-label={t("Back")}
+        <IconButton
+          label={t("Back")}
           disabled={!history.back.length}
           onClick={goBack}
-        >
-          <ArrowLeft size={14} />
-        </Button>
-        <Button
-          icon
-          title={t("Forward")}
-          aria-label={t("Forward")}
+          icon={<ArrowLeft size={14} />}
+        />
+        <IconButton
+          label={t("Forward")}
           disabled={!history.forward.length}
           onClick={goForward}
-        >
-          <ArrowRight size={14} />
-        </Button>
-        <Button
-          icon
-          title={t("Parent directory")}
-          aria-label={t("Parent directory")}
+          icon={<ArrowRight size={14} />}
+        />
+        <IconButton
+          label={t("Parent directory")}
           disabled={atRoot}
           onClick={() => navigate(parent)}
-        >
-          <ArrowUp size={14} />
-        </Button>
+          icon={<ArrowUp size={14} />}
+        />
         {editingPath ? (
           <form
             className="filesystem-path-form"
@@ -381,16 +374,17 @@ export function FilesystemBrowser({
               navigate(pathInput);
             }}
           >
-            <input
+            <TextField
               ref={pathInputRef}
-              className="filesystem-path-input"
+              fullWidth
+              inputClassName="filesystem-path-input"
               aria-label={t("Directory path")}
               value={pathInput}
               placeholder={t("/absolute/path or ~/path on the connected host")}
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
-              onChange={(event) => setPathInput(event.currentTarget.value)}
+              onValueChange={setPathInput}
               onKeyDown={(event) => {
                 if (event.key !== "Escape") return;
                 event.preventDefault();
@@ -430,8 +424,7 @@ export function FilesystemBrowser({
                     <span className="filesystem-crumb-separator">/</span>
                   ) : null}
                   {crumb.collapsed ? (
-                    <button
-                      type="button"
+                    <Button
                       title={crumb.path}
                       aria-label={t("Show ancestors of {path}", {
                         path: currentPath,
@@ -439,10 +432,9 @@ export function FilesystemBrowser({
                       onClick={() => setEditingPath(true)}
                     >
                       ...
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
                       title={crumb.path}
                       aria-current={
                         crumb.path === breadcrumbs[breadcrumbs.length - 1]?.path
@@ -451,24 +443,22 @@ export function FilesystemBrowser({
                       }
                       onClick={() => navigate(crumb.path)}
                     >
-                      {crumb.label}
-                    </button>
+                      <span>{crumb.label}</span>
+                    </Button>
                   )}
                 </span>
               ))
             ) : (
               <span className="filesystem-crumb">
-                <button
-                  type="button"
+                <Button
                   aria-current="location"
                   onClick={() => setEditingPath(true)}
                 >
-                  {currentPath}
-                </button>
+                  <span>{currentPath}</span>
+                </Button>
               </span>
             )}
-            <button
-              type="button"
+            <Button
               className="filesystem-path-edit"
               aria-label={t("Edit path")}
               title={t("Type a path")}
@@ -476,14 +466,14 @@ export function FilesystemBrowser({
             />
           </div>
         )}
-        <Button
-          icon
-          title={t("Refresh")}
-          aria-label={t("Refresh files")}
+        <IconButton
+          label={t("Refresh files")}
+          tooltip={t("Refresh")}
           onClick={() => setRefresh((value) => value + 1)}
-        >
-          <RefreshCw size={14} className={loading ? "is-spinning" : ""} />
-        </Button>
+          icon={
+            <RefreshCw size={14} className={loading ? "is-spinning" : ""} />
+          }
+        />
       </div>
       <div className="filesystem-places" aria-label={t("Locations")}>
         {places.map((place) => (
@@ -510,68 +500,57 @@ export function FilesystemBrowser({
         ))}
       </div>
       <div className="ui-bar filesystem-tools">
-        <label className="filesystem-filter">
-          <Search size={13} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "ArrowDown") return;
-              event.preventDefault();
-              listRef.current
-                ?.querySelector<HTMLButtonElement>("button[data-file-path]")
-                ?.focus();
-            }}
-            placeholder={t("Filter")}
-            aria-label={t("Filter loaded entries")}
-            maxLength={512}
-            title={t(
-              "Filter loaded names or paths. Globs: r*md, ?.txt, **/*.md, *.{md,txt}",
-            )}
-          />
-        </label>
+        <SearchField
+          className="filesystem-filter"
+          fullWidth
+          value={search}
+          onValueChange={setSearch}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowDown") return;
+            event.preventDefault();
+            listRef.current
+              ?.querySelector<HTMLButtonElement>("button[data-file-path]")
+              ?.focus();
+          }}
+          placeholder={t("Filter")}
+          aria-label={t("Filter loaded entries")}
+          maxLength={512}
+          title={t(
+            "Filter loaded names or paths. Globs: r*md, ?.txt, **/*.md, *.{md,txt}",
+          )}
+        />
         {list ? (
           <Token title={t("{count} entries", { count: list.entries.length })}>
             {search ? `${entries.length}/` : ""}
             {list.entries.length}
           </Token>
         ) : null}
-        <Button
-          icon
+        <IconButton
           aria-pressed={showHidden}
-          title={showHidden ? t("Hide hidden files") : t("Show hidden files")}
-          aria-label={t("Show hidden files")}
+          label={t("Show hidden files")}
+          tooltip={showHidden ? t("Hide hidden files") : t("Show hidden files")}
           onClick={() => onShowHiddenChange(!showHidden)}
-        >
-          {showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
-        </Button>
-        <Button
-          icon
-          title={t("New file")}
-          aria-label={t("New file")}
+          icon={showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+        />
+        <IconButton
+          label={t("New file")}
           disabled={!list}
           onClick={() => setCreating("file")}
-        >
-          <FilePlus size={14} />
-        </Button>
-        <Button
-          icon
-          title={t("New folder")}
-          aria-label={t("New folder")}
+          icon={<FilePlus size={14} />}
+        />
+        <IconButton
+          label={t("New folder")}
           disabled={!list}
           onClick={() => setCreating("directory")}
-        >
-          <FolderPlus size={14} />
-        </Button>
-        <Button
-          icon
-          title={t("Upload files here")}
-          aria-label={t("Upload files")}
+          icon={<FolderPlus size={14} />}
+        />
+        <IconButton
+          label={t("Upload files")}
+          tooltip={t("Upload files here")}
           disabled={!list}
           onClick={() => uploadInputRef.current?.click()}
-        >
-          <Upload size={14} />
-        </Button>
+          icon={<Upload size={14} />}
+        />
         <input
           ref={uploadInputRef}
           type="file"
@@ -709,18 +688,15 @@ export function FilesystemBrowser({
                 <span className="filesystem-name">{entry.name}</span>
                 {meta ? <span className="filesystem-meta">{meta}</span> : null}
               </button>
-              <button
-                type="button"
+              <IconButton
                 className="filesystem-entry-action"
-                aria-label={t("Actions for {name}", { name: entry.name })}
-                title={t("Actions for {name}", { name: entry.name })}
+                label={t("Actions for {name}", { name: entry.name })}
                 onClick={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect();
-                  onMenu(entry, rect.right, rect.bottom);
+                  onMenu(entry, rect.left, rect.bottom);
                 }}
-              >
-                <Ellipsis size={14} />
-              </button>
+                icon={<Ellipsis size={14} />}
+              />
             </div>
           );
         })}

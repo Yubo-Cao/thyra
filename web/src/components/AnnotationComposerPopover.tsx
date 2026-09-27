@@ -6,6 +6,8 @@ import {
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
+import { Button } from "./ui/Button";
+import { TextArea } from "./ui/TextArea";
 import "./AnnotationComposerPopover.css";
 
 export type AnnotationComposerDraft = {
@@ -152,22 +154,21 @@ export function AnnotationComposerPopover({
     >
       <strong>{draft.title}</strong>
       <blockquote>{draft.quote || t("Blank line")}</blockquote>
-      <textarea
+      <TextArea
         ref={textareaRef}
+        fullWidth
         value={comment}
-        onChange={(event) => setComment(event.currentTarget.value)}
+        onValueChange={setComment}
         aria-label={t("Review comment")}
         placeholder={t("Add a review comment")}
         rows={3}
         maxLength={10_000}
       />
       <div className="annotation-composer-actions">
-        <button type="button" className="ghost" onClick={close}>
-          {t("Cancel")}
-        </button>
-        <button type="submit" disabled={!comment.trim()}>
+        <Button onClick={close}>{t("Cancel")}</Button>
+        <Button type="submit" variant="primary" disabled={!comment.trim()}>
           {t("Add comment")}
-        </button>
+        </Button>
       </div>
       <small>
         {t("{shortcut} to add", {

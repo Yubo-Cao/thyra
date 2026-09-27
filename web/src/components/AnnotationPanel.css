@@ -48,33 +48,6 @@
   font-size: 10px;
 }
 
-.annotation-icon-button {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-}
-
-.annotation-icon-button:hover:not(:disabled) {
-  background: var(--accent-soft);
-  color: var(--text-strong);
-}
-
-.annotation-icon-button.is-danger:hover:not(:disabled) {
-  background: var(--danger-soft);
-  color: var(--danger-text);
-}
-
-.annotation-icon-button:disabled {
-  cursor: default;
-  opacity: 0.32;
-}
-
 .annotation-panel-list {
   min-height: 0;
   flex: 1 1 auto;
@@ -159,24 +132,6 @@
   overflow-wrap: anywhere;
 }
 
-.annotation-card textarea {
-  width: 100%;
-  min-height: 64px;
-  resize: vertical;
-  padding: 7px 8px;
-  border: 0;
-  outline: none;
-  background: var(--input-bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-}
-
-.annotation-card textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
 .annotation-card-actions {
   display: flex;
   justify-content: flex-end;
@@ -192,13 +147,8 @@
   background: var(--viewer-header-bg);
 }
 
-.annotation-target-picker {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 10px;
+.annotation-target-picker .select__trigger {
+  flex: 1 1 auto;
 }
 
 .annotation-target-summary {
@@ -215,47 +165,30 @@
   gap: 7px;
 }
 
-.annotation-delivery-actions button {
+/* Label over its shortcut hint: the buttons grow past the token height. */
+.annotation-delivery-actions .button {
   min-width: 0;
-  min-height: 32px;
-  display: inline-flex;
+  height: auto;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  font-size: 11px;
+  row-gap: 2px;
+  padding-block: 4px;
 }
 
-.annotation-delivery-actions kbd {
+.annotation-delivery-actions .kbd {
   flex-basis: 100%;
+  justify-content: center;
+  background: transparent;
   font-size: 9px;
   opacity: 0.7;
 }
 
 .annotation-clear-button {
   justify-self: center;
-  padding: 2px 6px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.annotation-clear-button:hover:not(:disabled) {
-  color: var(--danger-text);
 }
 
 :where(html[data-layout="mobile"]) {
   .annotation-panel {
     box-shadow: none;
-  }
-
-  .annotation-panel button {
-    min-height: 44px;
-  }
-
-  .annotation-icon-button {
-    min-width: 44px;
   }
 
   .annotation-panel-footer {

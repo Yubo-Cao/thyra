@@ -3,7 +3,6 @@ import {
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -20,7 +19,6 @@ import {
   FolderOpen,
   FolderPlus,
   RefreshCw,
-  Search,
   Upload,
 } from "lucide-react";
 import { FilesystemBrowser } from "./FilesystemBrowser";
@@ -28,7 +26,6 @@ import { createFileSearchMatcher } from "../fileSearch";
 import { connectionHttpPath } from "../connectionHttp";
 import { connectionStorageKey } from "../connectionStorage";
 import { downloadFileFromUrl } from "../downloadFile";
-import { lazyWithReload } from "../lazyWithReload";
 import {
   refreshGitDiffSummary,
   useGitDiffSummaryState,
@@ -45,12 +42,14 @@ import { useConnectionClient } from "../useConnectionClient";
 import type {
   FileExplorerEntry,
   FileExplorerList,
-  FilePreview,
   GitDiffEntry,
 } from "../types";
-import { CloseButton } from "./CloseButton";
-import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
-import { Button } from "./ui/Button";
+import { TextInputDialog } from "./ModalDialogs";
+import { Checkbox } from "./ui/Checkbox";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { ContextMenu } from "./ui/ContextMenu";
+import { IconButton } from "./ui/IconButton";
+import { SearchField } from "./ui/SearchField";
 import {
   focusTreeItem,
   keyboardContextMenuPoint,
@@ -62,8 +61,6 @@ import type {
 } from "./FilePreviewContent";
 
 import {
-  workspaceName,
-  displaySize,
   absolutePath,
   initialWorkspacePath,
   type FileExplorerCache,
@@ -88,17 +85,10 @@ import {
   createExplorerEntry,
   isFilesystemPath,
   readExplorerViewMemory,
-  symlinkDescription,
   writeExplorerViewMemory,
 } from "./fileExplorerResources";
 import { SegmentedControl } from "./ui/SegmentedControl";
 import "./FileExplorerDialog.css";
-
-const FilePreviewContent = lazyWithReload("file-preview", () =>
-  import("./FilePreviewContent").then((module) => ({
-    default: module.FilePreviewContent,
-  })),
-);
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -106,37 +96,6 @@ const LONG_PRESS_MOVE_PX = 10;
 export { isExplorerDirectoryEntry };
 const FILE_TREE_INDENT = 10;
 const FILE_TREE_BASE_INDENT = 6;
-
-export function FileExplorerDialog({
-  open,
-  workspaceId,
-  onClose,
-}: {
-  open: boolean;
-  workspaceId?: string;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal file-explorer-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("File Explorer")}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <FileExplorerContent
-          open={open}
-          workspaceId={workspaceId}
-          onClose={onClose}
-          showCloseButton
-        />
-      </div>
-    </div>
-  );
-}
 
 export function FileExplorerPanel({
   open,
@@ -146,7 +105,6 @@ export function FileExplorerPanel({
   activePath,
   previewRequestRef,
   keyboardActive = false,
-  onClose,
   onPreviewChange,
   onActiveDiffEntriesChange,
 }: {
@@ -157,7 +115,8 @@ export function FileExplorerPanel({
   activePath?: string;
   previewRequestRef?: React.MutableRefObject<number>;
   keyboardActive?: boolean;
-  onClose: () => void;
+  /** Unused: the Inspector that hosts the explorer owns closing. */
+  onClose?: () => void;
   onPreviewChange?: (
     selection: ActiveFilePreviewSelection,
     meta?: FilePreviewSelectionMeta,
@@ -173,9 +132,6 @@ export function FileExplorerPanel({
         workspaceId={workspaceId}
         resourceKey={resourceKey}
         initialDirectory={initialDirectory}
-        onClose={onClose}
-        showCloseButton={false}
-        previewPlacement="external"
         activePath={activePath}
         previewRequestRef={previewRequestRef}
         keyboardActive={keyboardActive}
@@ -192,12 +148,6 @@ type FileExplorerEntryMenuState = {
   entry: FileExplorerEntry;
 };
 
-// Keep ENTRY_MENU_ITEM_COUNT in sync with the items rendered in
-// FileExplorerEntryMenu; the height estimate drives clamping and flip placement.
-const ENTRY_MENU_ITEM_COUNT = 3;
-const ENTRY_MENU_WIDTH = 220;
-const ENTRY_MENU_HEIGHT = ENTRY_MENU_ITEM_COUNT * 34 + 8;
-
 function FileExplorerEntryMenu({
   state,
   onClose,
@@ -211,120 +161,47 @@ function FileExplorerEntryMenu({
   onCopy: (entry: FileExplorerEntry) => void;
   onDelete?: (entry: FileExplorerEntry) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!state) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const close = () => onCloseRef.current();
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Tab") {
-        e.preventDefault();
-        close();
-        return;
-      }
-      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-      const buttons = Array.from(
-        ref.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ??
-          [],
-      );
-      const currentIndex = buttons.indexOf(
-        document.activeElement as HTMLButtonElement,
-      );
-      if (!buttons.length || currentIndex < 0) return;
-      e.preventDefault();
-      const nextIndex =
-        e.key === "Home"
-          ? 0
-          : e.key === "End"
-            ? buttons.length - 1
-            : e.key === "ArrowDown"
-              ? (currentIndex + 1) % buttons.length
-              : (currentIndex - 1 + buttons.length) % buttons.length;
-      buttons[nextIndex]?.focus();
-    };
-    const timer = setTimeout(() => {
-      window.addEventListener("mousedown", onDown);
-      window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", close, true);
-      ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-      if (previousFocus?.isConnected)
-        previousFocus.focus({ preventScroll: true });
-    };
-  }, [state]);
-
-  if (!state) return null;
-
-  const { entry } = state;
-  const isDirectory = isExplorerDirectoryEntry(entry);
-  // Keep ENTRY_MENU_ITEM_COUNT in sync with this array.
-  const items = [
-    {
-      label: isDirectory ? t("Download directory") : t("Download file"),
-      action: () => onDownload(entry),
-    },
-    {
-      label: t("Copy absolute path"),
-      action: () => onCopy(entry),
-    },
-    ...(onDelete
-      ? [
-          {
-            label:
-              entry.type === "symlink"
-                ? t("Delete symlink")
-                : isDirectory
-                  ? t("Delete directory")
-                  : t("Delete file"),
-            danger: true,
-            action: () => onDelete(entry),
-          },
-        ]
-      : []),
-  ];
-  const menuMargin = 8;
-  const menuWidth = ENTRY_MENU_WIDTH;
-  const style: React.CSSProperties = {
-    position: "fixed",
-    width: `min(${ENTRY_MENU_WIDTH}px, calc(100vw - 2 * ${menuMargin}px))`,
-    left: Math.max(
-      menuMargin,
-      Math.min(state.x, window.innerWidth - menuWidth - menuMargin),
-    ),
-    top: Math.max(
-      menuMargin,
-      Math.min(state.y, window.innerHeight - ENTRY_MENU_HEIGHT - menuMargin),
-    ),
-    zIndex: 1000,
-  };
-
+  const entry = state?.entry;
+  const isDirectory = entry ? isExplorerDirectoryEntry(entry) : false;
   return (
-    <div ref={ref} className="context-menu" style={style} role="menu">
-      {items.map((item) => (
-        <button
-          key={item.label}
-          className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
-          role="menuitem"
-          onClick={() => {
-            onClose();
-            item.action();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
+    <ContextMenu
+      position={state ? { x: state.x, y: state.y } : null}
+      onClose={onClose}
+      aria-label={t("File actions")}
+      items={
+        entry
+          ? [
+              {
+                id: "download",
+                label: isDirectory
+                  ? t("Download directory")
+                  : t("Download file"),
+                onAction: () => onDownload(entry),
+              },
+              {
+                id: "copy-path",
+                label: t("Copy absolute path"),
+                onAction: () => onCopy(entry),
+              },
+              ...(onDelete
+                ? [
+                    {
+                      id: "delete",
+                      label:
+                        entry.type === "symlink"
+                          ? t("Delete symlink")
+                          : isDirectory
+                            ? t("Delete directory")
+                            : t("Delete file"),
+                      danger: true,
+                      onAction: () => onDelete(entry),
+                    },
+                  ]
+                : []),
+            ]
+          : []
+      }
+    />
   );
 }
 
@@ -333,9 +210,6 @@ function FileExplorerContent({
   workspaceId,
   resourceKey,
   initialDirectory,
-  onClose,
-  showCloseButton,
-  previewPlacement = "inline",
   previewRequestRef,
   activePath,
   keyboardActive = false,
@@ -346,9 +220,6 @@ function FileExplorerContent({
   workspaceId?: string;
   resourceKey?: string;
   initialDirectory?: string;
-  onClose: () => void;
-  showCloseButton: boolean;
-  previewPlacement?: "inline" | "external";
   previewRequestRef?: React.MutableRefObject<number>;
   activePath?: string;
   keyboardActive?: boolean;
@@ -399,10 +270,6 @@ function FileExplorerContent({
   const [previewEntry, setPreviewEntry] = useState<FileExplorerEntry | null>(
     null,
   );
-  const [preview, setPreview] = useState<FilePreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewFragment, setPreviewFragment] = useState<string>();
   const [focusedTreePath, setFocusedTreePath] = useState<string | null>(
     activePath ?? null,
   );
@@ -683,9 +550,6 @@ function FileExplorerContent({
     setPendingDeleteEntry(null);
     if (resourceChanged && !activePath) {
       setPreviewEntry(null);
-      setPreview(null);
-      setPreviewLoading(false);
-      setPreviewError(null);
       emitPreviewChange({
         entry: null,
         preview: null,
@@ -700,17 +564,8 @@ function FileExplorerContent({
       void loadDirectory(path, true);
     }
     void loadGitStatus();
-    let removeKeyHandler = () => {};
-    if (showCloseButton) {
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key === "Escape") onClose();
-      };
-      window.addEventListener("keydown", onKey);
-      removeKeyHandler = () => window.removeEventListener("keydown", onKey);
-    }
     return () => {
       clearLongPressTimer();
-      removeKeyHandler();
     };
     // Reopen against a fresh workspace/show-hidden snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -721,7 +576,6 @@ function FileExplorerContent({
     initialDirectory,
     open,
     showHidden,
-    showCloseButton,
   ]);
 
   useEffect(() => {
@@ -969,19 +823,13 @@ function FileExplorerContent({
       navigationRequestRef.current === requestId &&
       previewRequestKeyRef.current === requestKey;
     setPreviewEntry(entry);
-    setPreviewFragment(fragment);
-    setPreviewError(null);
     const cached = refresh ? null : readCachedPreview(key);
     if (cached) {
-      setPreview(cached);
-      setPreviewLoading(false);
       emitPreviewChange(
         { entry, fragment, preview: cached, loading: false, error: null },
         { userInitiated: true },
       );
     } else {
-      setPreview(null);
-      setPreviewLoading(true);
       emitPreviewChange(
         { entry, fragment, preview: null, loading: true, error: null },
         { userInitiated: true },
@@ -993,7 +841,6 @@ function FileExplorerContent({
         client: connectionClient,
       });
       if (requestIsCurrent()) {
-        setPreview(next);
         emitPreviewChange(
           { entry, fragment, preview: next, loading: false, error: null },
           { userInitiated: true },
@@ -1002,15 +849,10 @@ function FileExplorerContent({
     } catch (e) {
       if (requestIsCurrent() && !cached) {
         const message = (e as Error).message;
-        setPreviewError(message);
         emitPreviewChange(
           { entry, fragment, preview: null, loading: false, error: message },
           { userInitiated: true },
         );
-      }
-    } finally {
-      if (requestIsCurrent()) {
-        setPreviewLoading(false);
       }
     }
   };
@@ -1130,9 +972,6 @@ function FileExplorerContent({
     if (!deletedSelection) return;
     navigationRequestRef.current += 1;
     setPreviewEntry(null);
-    setPreview(null);
-    setPreviewLoading(false);
-    setPreviewError(null);
     emitPreviewChange(
       { entry: null, preview: null, loading: false, error: null },
       { userInitiated: true },
@@ -1497,10 +1336,6 @@ function FileExplorerContent({
     const gitStatus = isDirectory
       ? gitStatusMaps.directoryStatuses.get(entry.path)
       : gitStatusMaps.fileStatuses.get(entry.path);
-    const meta = [symlinkDescription(entry), displaySize(entry)]
-      .filter(Boolean)
-      .join(" · ");
-
     return (
       <div key={entry.path}>
         <div
@@ -1619,17 +1454,13 @@ function FileExplorerContent({
               ))}
             </span>
           ) : null}
-          {meta ? <span className="file-meta">{meta}</span> : null}
           {loading || uploading || deleting ? (
             <span className="row-spinner" />
           ) : null}
           <span className="file-actions">
-            <button
-              type="button"
-              className="ghost file-action"
+            <IconButton
               tabIndex={-1}
-              title={t("File actions")}
-              aria-label={t("File actions")}
+              label={t("File actions")}
               aria-haspopup="menu"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1637,16 +1468,10 @@ function FileExplorerContent({
                   .closest<HTMLElement>(".file-row")
                   ?.focus({ preventScroll: true });
                 const rect = e.currentTarget.getBoundingClientRect();
-                const below = rect.bottom + 4;
-                const y =
-                  below + ENTRY_MENU_HEIGHT <= window.innerHeight - 8
-                    ? below
-                    : Math.max(8, rect.top - 4 - ENTRY_MENU_HEIGHT);
-                openEntryMenu(entry, rect.right - ENTRY_MENU_WIDTH, y);
+                openEntryMenu(entry, rect.left, rect.bottom);
               }}
-            >
-              <Ellipsis size={14} />
-            </button>
+              icon={<Ellipsis size={14} />}
+            />
           </span>
         </div>
         {!query && isDirectory && isExpanded
@@ -1705,24 +1530,6 @@ function FileExplorerContent({
 
   return (
     <>
-      {showCloseButton ? (
-        <>
-          <div className="modal-head">
-            <h2>{t("File Explorer")}</h2>
-            <CloseButton onClick={onClose} />
-          </div>
-          {workspace ? (
-            <div className="file-explorer-summary">
-              <span>{workspaceName(workspace)}</span>
-              <code>
-                {rootInfo?.root ??
-                  (initialWorkspacePath(workspace) || t("Loading path..."))}
-              </code>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
       {!workspace ? (
         <p className="modal-error">{t("No workspace is focused.")}</p>
       ) : null}
@@ -1778,52 +1585,36 @@ function FileExplorerContent({
             />
           ) : (
             <>
-              <div className="file-explorer-toolbar">
-                <label className="file-search">
-                  <Search size={14} />
-                  <input
-                    value={search}
-                    onChange={(e) =>
-                      updateCache({ search: e.currentTarget.value })
-                    }
-                    placeholder={t("Search loaded files")}
-                    aria-label={t("Search loaded files")}
-                    title={t(
-                      "Search loaded names or paths. Globs: r*md, ?.txt, **/*.md, *.{md,txt}",
-                    )}
-                    maxLength={512}
-                  />
-                </label>
-                <label className="file-hidden-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showHidden}
-                    onChange={(e) => setShowHidden(e.currentTarget.checked)}
-                  />
+              <div className="ui-bar file-explorer-toolbar">
+                <SearchField
+                  className="file-search"
+                  fullWidth
+                  value={search}
+                  onValueChange={(value) => updateCache({ search: value })}
+                  placeholder={t("Search loaded files")}
+                  aria-label={t("Search loaded files")}
+                  title={t(
+                    "Search loaded names or paths. Globs: r*md, ?.txt, **/*.md, *.{md,txt}",
+                  )}
+                  maxLength={512}
+                />
+                <Checkbox checked={showHidden} onChange={setShowHidden}>
                   {t("Hidden")}
-                </label>
-                <Button
-                  icon
-                  title={t("New file")}
-                  aria-label={t("New file")}
+                </Checkbox>
+                <IconButton
+                  label={t("New file")}
                   disabled={!workspace}
                   onClick={() => setCreatingEntry("file")}
-                >
-                  <FilePlus size={14} />
-                </Button>
-                <Button
-                  icon
-                  title={t("New folder")}
-                  aria-label={t("New folder")}
+                  icon={<FilePlus size={14} />}
+                />
+                <IconButton
+                  label={t("New folder")}
                   disabled={!workspace}
                   onClick={() => setCreatingEntry("directory")}
-                >
-                  <FolderPlus size={14} />
-                </Button>
-                <button
-                  type="button"
-                  className="ghost file-action"
-                  title={t("Refresh")}
+                  icon={<FolderPlus size={14} />}
+                />
+                <IconButton
+                  label={t("Refresh")}
                   disabled={!workspace}
                   onClick={() => {
                     const pathsToRefresh = Array.from(expanded);
@@ -1835,12 +1626,13 @@ function FileExplorerContent({
                     void loadGitStatus(true);
                     if (previewEntry) void loadPreview(previewEntry);
                   }}
-                >
-                  <RefreshCw
-                    className={gitSummaryState.loading ? "is-spinning" : ""}
-                    size={15}
-                  />
-                </button>
+                  icon={
+                    <RefreshCw
+                      className={gitSummaryState.loading ? "is-spinning" : ""}
+                      size={15}
+                    />
+                  }
+                />
               </div>
 
               {error ? <p className="modal-error">{error}</p> : null}
@@ -1902,36 +1694,6 @@ function FileExplorerContent({
             </>
           )}
         </div>
-        {previewPlacement === "inline" ? (
-          <Suspense
-            fallback={<div role="status">{t("Loading preview...")}</div>}
-          >
-            <FilePreviewContent
-              entry={previewEntry}
-              preview={preview}
-              loading={previewLoading}
-              error={previewError}
-              onRefresh={() => {
-                if (previewEntry)
-                  void loadPreview(previewEntry, previewFragment, true);
-              }}
-              fragment={previewFragment}
-              onOpenFile={(path, fragment) =>
-                void loadPreview(
-                  {
-                    name: path.split("/").pop() ?? path,
-                    path,
-                    type: "file",
-                    size: 0,
-                    mtime_ms: 0,
-                    hidden: false,
-                  },
-                  fragment,
-                )
-              }
-            />
-          </Suspense>
-        ) : null}
       </div>
       <FileExplorerEntryMenu
         state={entryMenu}
@@ -1959,6 +1721,9 @@ function FileExplorerContent({
       />
       <ConfirmDialog
         open={!!pendingDeleteEntry}
+        onOpenChange={(next) => {
+          if (!next) setPendingDeleteEntry(null);
+        }}
         title={
           pendingDeleteEntry?.type === "symlink"
             ? t("Delete Symlink")
@@ -1982,8 +1747,7 @@ function FileExplorerContent({
                   })
         }
         confirmLabel={t("Delete")}
-        danger
-        onClose={() => setPendingDeleteEntry(null)}
+        tone="danger"
         onConfirm={() => {
           if (pendingDeleteEntry) void deleteEntry(pendingDeleteEntry);
         }}

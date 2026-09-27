@@ -226,6 +226,7 @@ export default {
   "Against main": "对比 main",
   Main: "主工作树",
   "Diff actions": "更改操作",
+  "Git actions": "Git 操作",
   "Refreshing changes": "正在刷新更改",
   "Refresh changes": "刷新更改",
   "No completed agent step yet": "Agent 尚未完成任何步骤",

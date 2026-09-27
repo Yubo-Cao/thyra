@@ -24,14 +24,6 @@
   display: block;
 }
 
-.workspace-inspector.is-compact .diff-content-view {
-  border: 0;
-}
-
-.file-preview-changes > .diff-content-view {
-  border: none;
-}
-
 .diff-content-view {
   position: relative;
   flex: 1 1 auto;
@@ -74,22 +66,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.diff-content-back {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  color: var(--muted);
-}
-
-.diff-content-back:hover {
-  color: var(--text);
-  background: var(--accent-soft);
 }
 
 /* Control groups keep their natural width and wrap as whole units; the
@@ -198,38 +174,6 @@
   border: 0;
   background: var(--panel);
   box-shadow: var(--shadow-lg);
-}
-
-.diff2html-wrapper .diff-search-match {
-  padding: 0 1px;
-  background: color-mix(in srgb, var(--yellow) 42%, transparent);
-  color: var(--text-strong);
-  outline: 1px solid color-mix(in srgb, var(--yellow) 48%, transparent);
-}
-
-.diff2html-wrapper .diff-search-match.is-current {
-  background: color-mix(in srgb, var(--yellow) 72%, transparent);
-  color: var(--text-strong);
-  outline-color: var(--yellow);
-}
-
-.diff-line-add {
-  color: var(--success-text);
-  background: var(--success-soft);
-}
-
-.diff-line-del {
-  color: var(--danger-text);
-  background: var(--danger-soft);
-}
-
-.diff-line-hunk {
-  color: var(--blue);
-  background: var(--accent-soft);
-}
-
-.diff-line-meta {
-  color: var(--muted);
 }
 
 /* Keep mobile styling in sync with the saved layout and URL override. */
