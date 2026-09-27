@@ -25,13 +25,13 @@ import {
   SunMoon,
   Type as TypeIcon,
 } from "lucide-react";
-import type { Theme } from "../App";
 import {
   ACCENT_OPTIONS,
   type AccentColor,
   clampUiScale,
   normalizeTerminalFontFamily,
   TERMINAL_FONT_OPTIONS,
+  type ThemePreference as Theme,
   UI_SCALE_DEFAULT,
   UI_SCALE_MAX,
   UI_SCALE_MIN,

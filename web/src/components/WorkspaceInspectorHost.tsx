@@ -20,15 +20,23 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { ConnectionClient } from "../api";
+import {
+  emptyActiveDiffSelection,
+  emptyActiveFilePreviewSelection,
+  fileEntry,
+  type WorkspaceInspector,
+} from "../app/useWorkspaceInspector";
 import { thyraLocalStorage } from "../browserStorage";
 import { t } from "../i18n";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
+import { store } from "../store";
 import type { GitDiffEntry, Pane, Workspace } from "../types";
 import {
   DEFAULT_INSPECTOR_NAVIGATION_RATIO,
   inspectorNavigationRatioAtPosition,
   readInspectorPreferences,
+  resolveWorkspaceForScope,
   resourceOwnerKey,
   resourceStateKey,
   writeInspectorNavigationRatio,
@@ -655,5 +663,130 @@ export function WorkspaceInspectorHost({
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * The host bound to the app's inspector controller: its view, dock,
+ * selection, and navigation callbacks load with the host, not the shell.
+ */
+export function WorkspaceInspectorPanel({
+  inspector,
+  state,
+  visible,
+  mobile,
+  onMobileViewChange,
+  connectionClient,
+}: {
+  inspector: WorkspaceInspector;
+  state: WorkspaceInspectorState;
+  visible: boolean;
+  mobile: boolean;
+  onMobileViewChange: (view: InspectorView) => void;
+  connectionClient: ConnectionClient;
+}) {
+  const {
+    stateRef,
+    commitAndSave,
+    workspace,
+    historyPane,
+    activeFilePreview,
+    openFileExplorerFile,
+    setActiveFilePreview,
+    setActiveDiff,
+  } = inspector;
+  const stateKey = resourceStateKey(state.scope);
+  // Selection reports from a host that has since switched scope are dropped.
+  const isCurrentScope = () => {
+    const current = stateRef.current;
+    return !!current && resourceStateKey(current.scope) === stateKey;
+  };
+  const openDiffFile = useCallback(
+    (entry: ActiveDiffSelection["entry"]) => {
+      const current = stateRef.current;
+      if (!entry || !current) return;
+      const target = resolveWorkspaceForScope(
+        current.scope,
+        store.get().workspaces,
+      );
+      if (target)
+        openFileExplorerFile(target.workspace_id, fileEntry(entry.path));
+    },
+    [openFileExplorerFile, stateRef],
+  );
+  return (
+    <WorkspaceInspectorHost
+      state={state}
+      onReady={inspector.finishFocus}
+      visible={visible}
+      workspace={workspace}
+      historyPane={historyPane}
+      fileSelection={activeFilePreview}
+      previewRequestRef={inspector.previewRequestRef}
+      diffSelection={inspector.activeDiff}
+      connectionClient={connectionClient}
+      onFileSelectionChange={(selection) => {
+        if (isCurrentScope()) setActiveFilePreview(selection);
+      }}
+      onDiffSelectionChange={(selection) => {
+        if (isCurrentScope()) setActiveDiff(selection);
+      }}
+      onRefreshFile={() => {
+        if (workspace && activeFilePreview.entry)
+          inspector.loadFilePreview(
+            workspace.workspace_id,
+            activeFilePreview.entry,
+            activeFilePreview.fragment,
+          );
+      }}
+      onOpenDiffFile={openDiffFile}
+      onOpenDocument={(path, fragment) => {
+        if (workspace)
+          openFileExplorerFile(
+            workspace.workspace_id,
+            fileEntry(path),
+            undefined,
+            fragment,
+          );
+      }}
+      onViewChange={(view) => {
+        const current = stateRef.current;
+        if (!current) return;
+        if (view === "history" && !paneHasAgentHistory(historyPane)) return;
+        commitAndSave({
+          ...current,
+          open: true,
+          view,
+          originPaneId:
+            view === "history" ? historyPane?.pane_id : current.originPaneId,
+        });
+        if (mobile) onMobileViewChange(view);
+      }}
+      onDockChange={(dock) => {
+        const current = stateRef.current;
+        if (!current || current.dock === dock) return;
+        const preferences = readInspectorPreferences(
+          thyraLocalStorage,
+          current.scope,
+        );
+        commitAndSave({
+          ...current,
+          dock,
+          size:
+            dock === "right" ? preferences.rightSize : preferences.bottomSize,
+          expanded: false,
+        });
+      }}
+      onExpandedChange={inspector.setExpanded}
+      onClose={inspector.close}
+      onBack={() => {
+        if (stateRef.current?.view === "files") {
+          inspector.previewRequestRef.current += 1;
+          setActiveFilePreview(emptyActiveFilePreviewSelection());
+        } else {
+          setActiveDiff(emptyActiveDiffSelection());
+        }
+      }}
+    />
   );
 }

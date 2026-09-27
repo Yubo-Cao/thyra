@@ -168,7 +168,7 @@ export function TerminalComposer({
     textarea.setSelectionRange(selection.start, selection.end);
   }, [draftKey, helpOpen, text]);
 
-  // No visualViewport lift here: App.tsx owns keyboard geometry and exposes
+  // No visualViewport lift here: app/viewport.tsx owns keyboard geometry and exposes
   // the measured inset through shared CSS variables.
   const updateText = (textarea: HTMLTextAreaElement) => {
     setText(textarea.value);

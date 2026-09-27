@@ -97,7 +97,7 @@ co-located CSS is valid when static imports cover every rendering path.
 
 The first screen (app shell, switchers, active terminal) is budgeted by `scripts/check-web-assets.mjs`.
 Menus, dialogs, pickers and panels load on first use through `lazyPanel` (`web/src/lazyWithReload.ts`) behind `LazyBoundary`/`Latched` (`components/LazyBoundary.tsx`); their triggers and the styles those need stay eager.
-Add likely-next surfaces to the idle prefetch list in `App.tsx`.
+Add likely-next surfaces to the idle prefetch list in `app/lazySurfaces.tsx`.
 
 ## UI Components
 
