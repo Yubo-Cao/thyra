@@ -11,15 +11,15 @@ function cookieHeader(response: Response): string {
 }
 
 describe("request authentication boundaries", () => {
-  test("brands the login page as Roamgate", async () => {
+  test("brands the login page as Thyra", async () => {
     const handlers = createAuthHandlers({
       authRequired: true,
       password: "fixed-password",
     });
     const html = await handlers.loginPage().text();
 
-    expect(html).toContain("<title>Roamgate login</title>");
-    expect(html).toContain('src="/roamgate-icon-192.png"');
+    expect(html).toContain("<title>Thyra login</title>");
+    expect(html).toContain('src="/thyra-icon-192.png"');
     expect(html).toContain('<label for="pw">Password or token</label>');
     expect(html).toContain('autocomplete="current-password"');
     expect(html).toContain('role="alert"');
@@ -42,7 +42,7 @@ describe("request authentication boundaries", () => {
         .text();
     const zh = await page("zh-CN,zh;q=0.9,en;q=0.8");
     expect(zh).toContain('<html lang="zh-CN">');
-    expect(zh).toContain("<title>登录 Roamgate</title>");
+    expect(zh).toContain("<title>登录 Thyra</title>");
     expect(zh).toContain('<label for="pw">密码或令牌</label>');
     expect(zh).toContain('btn.textContent="登录"');
     expect(await page("en-US,en;q=0.9,zh-CN;q=0.8")).toContain(
@@ -67,7 +67,7 @@ describe("request authentication boundaries", () => {
     };
     const location = {
       href: "/login",
-      hash: "#roamgate-task=example-target",
+      hash: "#thyra-task=example-target",
       replace(value: string) {
         this.href = value;
       },
@@ -78,7 +78,7 @@ describe("request authentication boundaries", () => {
       fetch: async () => ({ ok: true }),
     });
     await elements.login.onsubmit({ preventDefault() {} });
-    expect(location.href).toBe("/#roamgate-task=example-target");
+    expect(location.href).toBe("/#thyra-task=example-target");
   });
 
   test.each(["credentials", "server", "network"])(
@@ -295,7 +295,7 @@ describe("browser logout", () => {
       const logout = handlers.handleLogout(
         new Request("http://example.test/api/logout", {
           method: "POST",
-          headers: { cookie: first, "x-roamgate-logout": "1" },
+          headers: { cookie: first, "x-thyra-logout": "1" },
         }),
       );
       expect(logout.status).toBe(204);
@@ -334,7 +334,7 @@ describe("browser logout", () => {
     }
     for (const headers of [
       new Headers(),
-      new Headers({ "x-roamgate-logout": "1", "sec-fetch-site": "cross-site" }),
+      new Headers({ "x-thyra-logout": "1", "sec-fetch-site": "cross-site" }),
     ]) {
       const response = handlers.handleLogout(
         new Request("http://example.test/api/logout", {
@@ -347,7 +347,7 @@ describe("browser logout", () => {
     }
     const request = new Request("http://upstream.example/api/logout", {
       method: "POST",
-      headers: { "x-roamgate-logout": "1", origin: "https://proxy.example" },
+      headers: { "x-thyra-logout": "1", origin: "https://proxy.example" },
     });
     expect(handlers.handleLogout(request).status).toBe(204);
     expect(handlers.handleLogout(request).status).toBe(204);

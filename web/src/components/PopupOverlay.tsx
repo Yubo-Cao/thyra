@@ -11,7 +11,7 @@ import {
   TERMINAL_FONT_FAMILY,
   terminalFontOptions,
 } from "../appearance";
-import { roamgateLocalStorage } from "../browserStorage";
+import { thyraLocalStorage } from "../browserStorage";
 import { isMobileLayout } from "../layoutPreferences";
 import { terminalPushMatches } from "../terminalConnection";
 import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
@@ -114,7 +114,7 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
       fontFamily: TERMINAL_FONT_FAMILY,
       ...terminalFontOptions(
         isMobileLayout(),
-        normalizeUiScale(roamgateLocalStorage.getItem("uiScale")),
+        normalizeUiScale(thyraLocalStorage.getItem("uiScale")),
       ),
       theme: terminalTheme,
       allowProposedApi: true,

@@ -64,7 +64,7 @@ export default {
   "Close terminal composer, unsent draft": "关闭终端输入框，有未发送的草稿",
   "Open terminal composer, unsent draft": "打开终端输入框，有未发送的草稿",
   Composer: "输入框",
-  "Roamgate {version} is available": "Roamgate {version} 已可用",
+  "Thyra {version} is available": "Thyra {version} 已可用",
   "Current {version}": "当前版本 {version}",
   "ready to update and restart": "可以更新并重启",
   "Updating...": "正在更新...",
@@ -208,7 +208,7 @@ export default {
   "Connection ID": "连接 ID",
   "Control socket path": "控制套接字路径",
   "Render socket path": "渲染套接字路径",
-  "Connect automatically when Roamgate starts": "Roamgate 启动时自动连接",
+  "Connect automatically when Thyra starts": "Thyra 启动时自动连接",
   "Local profiles store socket paths only. SSH commands, credentials, keys, and passphrases are never accepted here.":
     "本地配置仅存储套接字路径。此处绝不接受 SSH 命令、凭据、密钥和密码短语。",
   "Testing...": "正在测试...",
@@ -228,8 +228,8 @@ export default {
   "Remote render socket path (optional)": "远程渲染套接字路径（可选）",
   "Auto: ~/.config/herdr/herdr-client.sock":
     "自动：~/.config/herdr/herdr-client.sock",
-  "Leave the socket paths empty and Roamgate infers the default Herdr sockets under the remote home directory at connect time. Authentication comes from the bridge service user's OpenSSH config, ssh-agent, or system Keychain. Establish host trust outside Roamgate. Passwords, keys, passphrases, commands, ports, and SSH options are never stored here.":
-    "将套接字路径留空，Roamgate 会在连接时推断远程主目录下的默认 Herdr 套接字。身份验证来自桥接服务用户的 OpenSSH 配置、ssh-agent 或系统钥匙串。请在 Roamgate 之外建立主机信任。此处绝不存储密码、密钥、密码短语、命令、端口和 SSH 选项。",
+  "Leave the socket paths empty and Thyra infers the default Herdr sockets under the remote home directory at connect time. Authentication comes from the bridge service user's OpenSSH config, ssh-agent, or system Keychain. Establish host trust outside Thyra. Passwords, keys, passphrases, commands, ports, and SSH options are never stored here.":
+    "将套接字路径留空，Thyra 会在连接时推断远程主目录下的默认 Herdr 套接字。身份验证来自桥接服务用户的 OpenSSH 配置、ssh-agent 或系统钥匙串。请在 Thyra 之外建立主机信任。此处绝不存储密码、密钥、密码短语、命令、端口和 SSH 选项。",
   "Herdr {version} (protocol {protocol})": "Herdr {version}（协议 {protocol}）",
   "Connection succeeded.": "连接成功。",
   "Connection updated.": "连接已更新。",
@@ -267,8 +267,8 @@ export default {
   "To remove this default connection, use Set default on another connection first. If none is available, add a connection first.":
     "要移除此默认连接，请先在另一个连接上使用“设为默认”。如果没有其他连接，请先添加一个连接。",
   "Remove Connection": "移除连接",
-  "Remove connection {name}? This disconnects Roamgate but does not stop the Herdr server.":
-    "移除连接 {name}？这会断开 Roamgate 的连接，但不会停止 Herdr 服务器。",
+  "Remove connection {name}? This disconnects Thyra but does not stop the Herdr server.":
+    "移除连接 {name}？这会断开 Thyra 的连接，但不会停止 Herdr 服务器。",
   "Remove this connection?": "移除此连接？",
   "Connection removed.": "连接已移除。",
   "Browser sync paused": "浏览器同步已暂停",
@@ -292,10 +292,10 @@ export default {
   "HERDR SERVER": "Herdr 服务器",
   "Verified {version}": "已验证 {version}",
   Installed: "已安装",
-  "Keep this page open. Roamgate will reconnect when Herdr is ready.":
-    "请保持此页面打开。Herdr 就绪后 Roamgate 将重新连接。",
-  "This changes the machine running Roamgate, not your browser or a remote SSH host.":
-    "这会更改运行 Roamgate 的机器，而不是你的浏览器或远程 SSH 主机。",
+  "Keep this page open. Thyra will reconnect when Herdr is ready.":
+    "请保持此页面打开。Herdr 就绪后 Thyra 将重新连接。",
+  "This changes the machine running Thyra, not your browser or a remote SSH host.":
+    "这会更改运行 Thyra 的机器，而不是你的浏览器或远程 SSH 主机。",
   "Herdr runs your terminals and agents. Set it up once, then manage your workspace from here.":
     "Herdr 负责运行你的终端和 Agent。只需设置一次，之后即可在此管理你的工作区。",
   "Herdr is installed but isn't running. Start it in the background to reconnect your terminals and agents.":
@@ -307,8 +307,7 @@ export default {
   "Verified release with SHA-256 checks": "经过 SHA-256 校验的已验证版本",
   "Your Herdr binary stays unchanged": "你的 Herdr 可执行文件保持不变",
   "Run as a background service": "作为后台服务运行",
-  "Starts at login, independently of Roamgate":
-    "登录时启动，独立于 Roamgate 运行",
+  "Starts at login, independently of Thyra": "登录时启动，独立于 Thyra 运行",
   "Setup couldn't finish": "设置未能完成",
   "Setting up...": "正在设置...",
   "Try again": "重试",
@@ -316,8 +315,8 @@ export default {
   "Start service": "启动服务",
   "Set up Herdr": "设置 Herdr",
   "Start Herdr": "启动 Herdr",
-  "A user service will be registered on the Roamgate host.":
-    "将在 Roamgate 主机上注册一个用户服务。",
+  "A user service will be registered on the Thyra host.":
+    "将在 Thyra 主机上注册一个用户服务。",
   "Review the details before making any changes.":
     "在进行任何更改之前，请先查看详细信息。",
 

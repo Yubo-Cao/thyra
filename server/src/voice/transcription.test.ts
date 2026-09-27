@@ -39,7 +39,7 @@ describe("voice provider configuration", () => {
     expect(voiceProviderFromEnv({})).toBeNull();
     expect(
       voiceProviderFromEnv({
-        ROAMGATE_VOICE_PROVIDER: "off",
+        THYRA_VOICE_PROVIDER: "off",
         ELEVENLABS_API_KEY: "k",
       }),
     ).toBeNull();
@@ -47,7 +47,7 @@ describe("voice provider configuration", () => {
 
   test("builds the Fun-ASR command from a model directory", () => {
     const provider = voiceProviderFromEnv({
-      ROAMGATE_VOICE_FUNASR_MODEL_DIR: "/models/nano",
+      THYRA_VOICE_FUNASR_MODEL_DIR: "/models/nano",
     });
     expect(provider).toMatchObject({ kind: "command", label: "Fun-ASR" });
     expect(provider?.kind === "command" && provider.argv).toContain("{input}");
@@ -62,15 +62,15 @@ describe("voice provider configuration", () => {
   test("prefers an explicit command and validates it", () => {
     expect(
       voiceProviderFromEnv({
-        ROAMGATE_VOICE_COMMAND: '["asr","{input}"]',
-        ROAMGATE_VOICE_API_KEY: "k",
+        THYRA_VOICE_COMMAND: '["asr","{input}"]',
+        THYRA_VOICE_API_KEY: "k",
       }),
     ).toMatchObject({ kind: "command", argv: ["asr", "{input}"] });
     expect(() =>
-      voiceProviderFromEnv({ ROAMGATE_VOICE_COMMAND: "asr file" }),
+      voiceProviderFromEnv({ THYRA_VOICE_COMMAND: "asr file" }),
     ).toThrow("JSON array");
     expect(() =>
-      voiceProviderFromEnv({ ROAMGATE_VOICE_COMMAND: '["asr"]' }),
+      voiceProviderFromEnv({ THYRA_VOICE_COMMAND: '["asr"]' }),
     ).toThrow("{input}");
   });
 
@@ -78,14 +78,14 @@ describe("voice provider configuration", () => {
     expect(
       voiceProviderFromEnv({
         ELEVENLABS_API_KEY: "k",
-        ROAMGATE_VOICE_FUNASR_MODEL_DIR: "/models/nano",
+        THYRA_VOICE_FUNASR_MODEL_DIR: "/models/nano",
       }),
     ).toMatchObject({ kind: "elevenlabs" });
     expect(
       voiceProviderFromEnv({
         ELEVENLABS_API_KEY: "k",
-        ROAMGATE_VOICE_FUNASR_MODEL_DIR: "/models/nano",
-        ROAMGATE_VOICE_PROVIDER: "funasr",
+        THYRA_VOICE_FUNASR_MODEL_DIR: "/models/nano",
+        THYRA_VOICE_PROVIDER: "funasr",
       }),
     ).toMatchObject({ kind: "command", label: "Fun-ASR" });
   });
@@ -93,8 +93,8 @@ describe("voice provider configuration", () => {
   test("orders the fallback chain behind the primary provider", () => {
     const env = {
       ELEVENLABS_API_KEY: "k",
-      ROAMGATE_VOICE_API_KEY: "o",
-      ROAMGATE_VOICE_FUNASR_MODEL_DIR: "/models/nano",
+      THYRA_VOICE_API_KEY: "o",
+      THYRA_VOICE_FUNASR_MODEL_DIR: "/models/nano",
     };
     expect(voiceProvidersFromEnv(env).map((p) => p.label)).toEqual([
       "ElevenLabs",
@@ -102,31 +102,31 @@ describe("voice provider configuration", () => {
       "Fun-ASR",
     ]);
     expect(
-      voiceProvidersFromEnv({ ...env, ROAMGATE_VOICE_PROVIDER: "funasr" }).map(
+      voiceProvidersFromEnv({ ...env, THYRA_VOICE_PROVIDER: "funasr" }).map(
         (p) => p.label,
       ),
     ).toEqual(["Fun-ASR", "ElevenLabs", "openai-compatible"]);
     expect(
-      voiceProvidersFromEnv({ ...env, ROAMGATE_VOICE_FALLBACK: "off" }),
+      voiceProvidersFromEnv({ ...env, THYRA_VOICE_FALLBACK: "off" }),
     ).toHaveLength(1);
     expect(
       voiceProvidersFromEnv({
         ELEVENLABS_API_KEY: "k",
-        ROAMGATE_VOICE_PROVIDER: "funasr",
+        THYRA_VOICE_PROVIDER: "funasr",
       }),
     ).toEqual([]);
     expect(() =>
-      voiceProvidersFromEnv({ ROAMGATE_VOICE_PROVIDER: "whisper" }),
+      voiceProvidersFromEnv({ THYRA_VOICE_PROVIDER: "whisper" }),
     ).toThrow("unknown");
   });
 
   test("configures an OpenAI-compatible endpoint", () => {
     expect(
       voiceProviderFromEnv({
-        ROAMGATE_VOICE_API_KEY: "secret",
-        ROAMGATE_VOICE_BASE_URL: "https://openrouter.ai/api/v1/",
-        ROAMGATE_VOICE_MODEL: "whisper-large-v3-turbo",
-        ROAMGATE_VOICE_LANGUAGE: "zh",
+        THYRA_VOICE_API_KEY: "secret",
+        THYRA_VOICE_BASE_URL: "https://openrouter.ai/api/v1/",
+        THYRA_VOICE_MODEL: "whisper-large-v3-turbo",
+        THYRA_VOICE_LANGUAGE: "zh",
       }),
     ).toEqual({
       kind: "openai",
@@ -143,7 +143,7 @@ describe("Aoide recognizer settings", () => {
   test("defaults to Scribe v2 and GPT-Transcribe with language hints", () => {
     const [eleven, openai] = voiceProvidersFromEnv({
       ELEVENLABS_API_KEY: "k",
-      ROAMGATE_VOICE_API_KEY: "o",
+      THYRA_VOICE_API_KEY: "o",
     });
     expect(eleven).toEqual({
       kind: "elevenlabs",
@@ -159,9 +159,9 @@ describe("Aoide recognizer settings", () => {
     expect(
       voiceProvidersFromEnv({
         ELEVENLABS_API_KEY: "k",
-        ROAMGATE_VOICE_ELEVENLABS_MODEL: "scribe_v2_medical",
-        ROAMGATE_VOICE_DICTIONARY_KEYTERMS: "on",
-        ROAMGATE_VOICE_ELEVENLABS_ZERO_RETENTION: "true",
+        THYRA_VOICE_ELEVENLABS_MODEL: "scribe_v2_medical",
+        THYRA_VOICE_DICTIONARY_KEYTERMS: "on",
+        THYRA_VOICE_ELEVENLABS_ZERO_RETENTION: "true",
       })[0],
     ).toMatchObject({
       model: "scribe_v2_medical",
@@ -170,8 +170,8 @@ describe("Aoide recognizer settings", () => {
     });
     expect(
       voiceProviderFromEnv({
-        ROAMGATE_VOICE_API_KEY: "o",
-        ROAMGATE_VOICE_LANGUAGE: "zh",
+        THYRA_VOICE_API_KEY: "o",
+        THYRA_VOICE_LANGUAGE: "zh",
       }),
     ).not.toHaveProperty("languages");
   });
@@ -234,7 +234,7 @@ describe("voice audio", () => {
   });
 
   test("runs a local command with the segment path", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "roamgate-voice-test-"));
+    const dir = await mkdtemp(join(tmpdir(), "thyra-voice-test-"));
     try {
       const script = join(dir, "asr.sh");
       await writeFile(

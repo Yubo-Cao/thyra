@@ -784,7 +784,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
           control: {
             type: "pause_connection",
             reason:
-              "Another Roamgate client paused this connection. Resume when you want this browser to sync again.",
+              "Another Thyra client paused this connection. Resume when you want this browser to sync again.",
           },
         }),
         "pause-other-client",
@@ -1357,8 +1357,8 @@ function main() {
           }
           // The login page's logo and favicon must also work before login.
           if (
-            url.pathname === "/roamgate-icon-192.png" ||
-            url.pathname === "/roamgate-icon.svg"
+            url.pathname === "/thyra-icon-192.png" ||
+            url.pathname === "/thyra-icon.svg"
           ) {
             return serveStatic(req, config.publicDir);
           }
@@ -1585,7 +1585,7 @@ function main() {
           logger.warn("Herdr not reachable yet", {
             connection: runtime.identity.id,
             error: sanitizeConnectionError(error),
-            action: "run `roamgate herdr setup`; RPCs retry per request",
+            action: "run `thyra herdr setup`; RPCs retry per request",
           }),
         );
     },

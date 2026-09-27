@@ -1,7 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { syncTaskPush } from "./taskPush";
 
-const origin = "https://roamgate.example";
+const origin = "https://thyra.example";
 const publicKey = btoa(String.fromCharCode(4, ...Array(64).fill(1)))
   .replace(/\+/g, "-")
   .replace(/\//g, "_")
@@ -43,9 +43,9 @@ function fixture() {
         body: options.body ? JSON.parse(String(options.body)) : null,
       });
       expect(options.credentials).toBe("same-origin");
-      expect(
-        (options.headers as Record<string, string>)["X-Roamgate-Push"],
-      ).toBe("1");
+      expect((options.headers as Record<string, string>)["X-Thyra-Push"]).toBe(
+        "1",
+      );
       return Response.json(
         options.method === "GET"
           ? { available: f.available, publicKey }

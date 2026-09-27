@@ -285,7 +285,7 @@ export async function logoutBrowserSession(): Promise<void> {
   const response = await fetch("/api/logout", {
     method: "POST",
     credentials: "same-origin",
-    headers: { "x-roamgate-logout": "1" },
+    headers: { "x-thyra-logout": "1" },
   });
   if (!response.ok) throw new Error(t("Could not log out. Please try again."));
   location.replace("/login");

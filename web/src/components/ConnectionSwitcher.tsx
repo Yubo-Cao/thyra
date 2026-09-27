@@ -363,7 +363,7 @@ function ProfileForm({
           checked={draft.autoConnect}
           onChange={(event) => update("autoConnect", event.target.checked)}
         />
-        {t("Connect automatically when Roamgate starts")}
+        {t("Connect automatically when Thyra starts")}
       </label>
       <p className="connection-profile-security-note">
         {t(
@@ -529,11 +529,11 @@ function SshProfileForm({
           checked={draft.autoConnect}
           onChange={(event) => update("autoConnect", event.target.checked)}
         />
-        {t("Connect automatically when Roamgate starts")}
+        {t("Connect automatically when Thyra starts")}
       </label>
       <p className="connection-profile-security-note">
         {t(
-          "Leave the socket paths empty and Roamgate infers the default Herdr sockets under the remote home directory at connect time. Authentication comes from the bridge service user's OpenSSH config, ssh-agent, or system Keychain. Establish host trust outside Roamgate. Passwords, keys, passphrases, commands, ports, and SSH options are never stored here.",
+          "Leave the socket paths empty and Thyra infers the default Herdr sockets under the remote home directory at connect time. Authentication comes from the bridge service user's OpenSSH config, ssh-agent, or system Keychain. Establish host trust outside Thyra. Passwords, keys, passphrases, commands, ports, and SSH options are never stored here.",
         )}
       </p>
       {feedback ? (
@@ -1060,7 +1060,7 @@ function ConnectionManagerDialog({ onClose }: { onClose: () => void }) {
           message={
             removeTarget
               ? t(
-                  "Remove connection {name}? This disconnects Roamgate but does not stop the Herdr server.",
+                  "Remove connection {name}? This disconnects Thyra but does not stop the Herdr server.",
                   { name: `"${removeTarget.label}"` },
                 )
               : t("Remove this connection?")

@@ -126,7 +126,7 @@ function cssColor(expression: string, fallback: string) {
 /** Define (or refresh) the app theme from the live CSS tokens. */
 export function applyMonacoTheme(theme: "dark" | "light") {
   const dark = theme === "dark";
-  const name = dark ? "roamgate-dark" : "roamgate-light";
+  const name = dark ? "thyra-dark" : "thyra-light";
   const background = cssColor(
     "var(--viewer-content-bg, var(--terminal-bg))",
     dark ? "#0e1014" : "#ffffff",

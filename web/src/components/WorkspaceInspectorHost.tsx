@@ -22,7 +22,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { ConnectionClient } from "../api";
-import { roamgateLocalStorage } from "../browserStorage";
+import { thyraLocalStorage } from "../browserStorage";
 import { t } from "../i18n";
 import {
   type NewReviewAnnotation,
@@ -281,7 +281,7 @@ export function WorkspaceInspectorHost({
     [contentResourceKey],
   );
   const [navigationPreferences, setNavigationPreferences] = useState(() =>
-    readInspectorPreferences(roamgateLocalStorage, state.scope),
+    readInspectorPreferences(thyraLocalStorage, state.scope),
   );
   useShortcutPreferences();
   const defaultNavigationRatio = state.expanded
@@ -333,7 +333,7 @@ export function WorkspaceInspectorHost({
   };
   const commitNavigationRatio = (view: InspectorSplitView, ratio: number) => {
     writeInspectorNavigationRatio(
-      roamgateLocalStorage,
+      thyraLocalStorage,
       state.scope,
       view,
       ratio,
@@ -413,7 +413,7 @@ export function WorkspaceInspectorHost({
 
   useEffect(() => {
     const preferences = readInspectorPreferences(
-      roamgateLocalStorage,
+      thyraLocalStorage,
       state.scope,
     );
     setNavigationPreferences(preferences);

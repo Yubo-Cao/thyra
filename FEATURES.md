@@ -1,4 +1,4 @@
-# Roamgate Features
+# Thyra Features
 
 A Web/PWA client for a running [Herdr](https://herdr.dev) server.
 [Install](./docs/DEPLOYMENT.md) · [Tutorial](./docs/TUTORIAL.md) ·
@@ -284,7 +284,7 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   does not execute; **Send** adds one Enter. Drafts are in-memory per
   connection/pane; closing their pane/tab/workspace asks before discarding.
 - Install as a PWA for an app window; a bundled Nerd Font supplies terminal
-  icons. **PWA is not offline access**: Roamgate must remain reachable.
+  icons. **PWA is not offline access**: Thyra must remain reachable.
   See [installation steps](README.md#install-as-a-pwa).
 
 ## Remote, Multi-Client, and Operations
@@ -304,7 +304,7 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   browser's language; changing it reloads the page. The login page follows the
   browser's `Accept-Language`.
 - **Configuration > Connection > Terminal incremental transport** saves a shared
-  per-connection setting on the server. It reduces Herdr-to-Roamgate traffic,
+  per-connection setting on the server. It reduces Herdr-to-Thyra traffic,
   briefly reconnecting displays without stopping tasks; older servers retain
   their transport.
 - Manage [user services](docs/DEPLOYMENT.md#run-as-a-user-service), use

@@ -1,4 +1,4 @@
-import { roamgateEnv } from "../config/environment";
+import { thyraEnv } from "../config/environment";
 import { serverLogger } from "../utils/logger";
 import {
   applyAliases,
@@ -154,32 +154,31 @@ type Environment = Record<string, string | undefined>;
 /**
  * Cleanup is off unless a key is configured. OpenAI itself gets the Responses
  * API; any other base URL is treated as a Chat Completions endpoint, the one
- * API every OpenAI-compatible provider implements. `ROAMGATE_VOICE_LLM_API`
+ * API every OpenAI-compatible provider implements. `THYRA_VOICE_LLM_API`
  * (`responses` or `chat`) overrides the choice.
  */
 export function voiceCleanupFromEnv(
   environment: Environment = process.env,
 ): VoiceCleanupConfig | null {
-  if (roamgateEnv("VOICE_LLM", environment)?.trim().toLowerCase() === "off")
+  if (thyraEnv("VOICE_LLM", environment)?.trim().toLowerCase() === "off")
     return null;
   const apiKey = (
-    roamgateEnv("VOICE_LLM_API_KEY", environment) ?? environment.OPENAI_API_KEY
+    thyraEnv("VOICE_LLM_API_KEY", environment) ?? environment.OPENAI_API_KEY
   )?.trim();
   if (!apiKey) return null;
   const reasoningEffort =
-    roamgateEnv("VOICE_LLM_REASONING_EFFORT", environment)?.trim() || undefined;
+    thyraEnv("VOICE_LLM_REASONING_EFFORT", environment)?.trim() || undefined;
   const baseUrl = (
-    roamgateEnv("VOICE_LLM_BASE_URL", environment)?.trim() ||
+    thyraEnv("VOICE_LLM_BASE_URL", environment)?.trim() ||
     "https://api.openai.com/v1"
   ).replace(/\/+$/, "");
-  const api = roamgateEnv("VOICE_LLM_API", environment)?.trim().toLowerCase();
+  const api = thyraEnv("VOICE_LLM_API", environment)?.trim().toLowerCase();
   if (api && api !== "chat" && api !== "responses")
-    throw new Error(`unknown ROAMGATE_VOICE_LLM_API: ${api}`);
+    throw new Error(`unknown THYRA_VOICE_LLM_API: ${api}`);
   const chat = api ? api === "chat" : hostOf(baseUrl) !== "api.openai.com";
   return {
     baseUrl,
-    model:
-      roamgateEnv("VOICE_LLM_MODEL", environment)?.trim() || "gpt-5.6-luna",
+    model: thyraEnv("VOICE_LLM_MODEL", environment)?.trim() || "gpt-5.6-luna",
     apiKey,
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(chat ? { api: "chat" as const } : {}),

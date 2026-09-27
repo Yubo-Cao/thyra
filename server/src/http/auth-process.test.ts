@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 // Exercise the real HTTP router and socket cleanup, not a second test router.
 test("logout after reauthentication closes earlier and later tabs, not other browsers", async () => {
-  const root = await mkdtemp(join(tmpdir(), "roamgate-logout-"));
+  const root = await mkdtemp(join(tmpdir(), "thyra-logout-"));
   const sockets: WebSocket[] = [];
   const child = Bun.spawn([process.execPath, "server/src/index.ts"], {
     cwd: join(import.meta.dir, "../../.."),
@@ -17,14 +17,14 @@ test("logout after reauthentication closes earlier and later tabs, not other bro
       HOST: "0.0.0.0",
       PORT: "0",
       OPEN_BROWSER: "0",
-      ROAMGATE_PASSWORD: "logout-test-secret",
-      ROAMGATE_CONNECTIONS_PATH: join(root, "connections.json"),
+      THYRA_PASSWORD: "logout-test-secret",
+      THYRA_CONNECTIONS_PATH: join(root, "connections.json"),
       HERDR_SOCKET_PATH: join(root, "missing-control.sock"),
       HERDR_CLIENT_SOCKET_PATH: join(root, "missing-render.sock"),
       HERDR_SSH_HOST: "",
       HERDR_SESSION: "",
-      ROAMGATE_TLS_CERT: "",
-      ROAMGATE_TLS_KEY: "",
+      THYRA_TLS_CERT: "",
+      THYRA_TLS_KEY: "",
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -119,8 +119,8 @@ test("logout after reauthentication closes earlier and later tabs, not other bro
     ).toMatchObject({ auth_required: true });
     const page = await request("/login");
     expect(page.headers.get("cache-control")).toBe("no-store");
-    expect(await page.text()).toContain("/roamgate-icon-192.png");
-    const logo = await request("/roamgate-icon-192.png");
+    expect(await page.text()).toContain("/thyra-icon-192.png");
+    const logo = await request("/thyra-icon-192.png");
     expect(logo.status).toBe(200);
     expect(logo.headers.get("content-type")).toBe("image/png");
     expect(
@@ -137,7 +137,7 @@ test("logout after reauthentication closes earlier and later tabs, not other bro
     expect(a.readyState).toBe(WebSocket.OPEN);
     const logout = await request("/api/logout", {
       method: "POST",
-      headers: { cookie: currentCookie, "x-roamgate-logout": "1" },
+      headers: { cookie: currentCookie, "x-thyra-logout": "1" },
     });
     expect(logout.status).toBe(204);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");

@@ -10,7 +10,7 @@ async function pushRequest(method: "GET" | "POST" | "DELETE", body?: unknown) {
   const response = await fetch("/api/notifications/push", {
     method,
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "X-Roamgate-Push": "1" },
+    headers: { "Content-Type": "application/json", "X-Thyra-Push": "1" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(10_000),
   });

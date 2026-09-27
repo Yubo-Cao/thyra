@@ -39,8 +39,8 @@ const ConfigurationDialog = lazyWithReload("configuration", () =>
   })),
 );
 const APP_VERSION = packageJson.version;
-const RELEASES_URL = "https://github.com/Yubo-Cao/herdr-studio/releases";
-export const CONFIG_MENU_ID = "roamgate-config-menu";
+const RELEASES_URL = "https://github.com/Yubo-Cao/thyra/releases";
+export const CONFIG_MENU_ID = "thyra-config-menu";
 const CONNECTION_STATUS_LABELS: Record<string, string> = {
   connecting: msg("connecting"),
   connected: msg("connected"),
@@ -204,7 +204,7 @@ export function ConfigMenu({
             <div className="config-dropdown-content">
               <div className="config-summary">
                 <div>
-                  <strong>Roamgate</strong>
+                  <strong>Thyra</strong>
                   <span>
                     {t("Version {version}", { version: APP_VERSION })}
                   </span>

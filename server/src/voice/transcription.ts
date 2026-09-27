@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { roamgateEnv } from "../config/environment";
+import { thyraEnv } from "../config/environment";
 import {
   cleanDictation,
   isVoiceCleanupMode,
@@ -58,10 +58,10 @@ type Environment = Record<string, string | undefined>;
  * utterances, and re-segmenting them drops speech at the split points.
  */
 function funAsrCommand(environment: Environment): string[] | null {
-  const modelDir = roamgateEnv("VOICE_FUNASR_MODEL_DIR", environment)?.trim();
+  const modelDir = thyraEnv("VOICE_FUNASR_MODEL_DIR", environment)?.trim();
   if (!modelDir) return null;
   const cli =
-    roamgateEnv("VOICE_FUNASR_CLI", environment)?.trim() || "llama-funasr-cli";
+    thyraEnv("VOICE_FUNASR_CLI", environment)?.trim() || "llama-funasr-cli";
   return [
     cli,
     "--enc",
@@ -78,7 +78,7 @@ function parseCommand(value: string): string[] {
   try {
     argv = JSON.parse(value);
   } catch {
-    throw new Error("ROAMGATE_VOICE_COMMAND must be a JSON array of strings");
+    throw new Error("THYRA_VOICE_COMMAND must be a JSON array of strings");
   }
   if (
     !Array.isArray(argv) ||
@@ -87,7 +87,7 @@ function parseCommand(value: string): string[] {
     !argv.some((part) => part.includes("{input}"))
   ) {
     throw new Error(
-      'ROAMGATE_VOICE_COMMAND must be a JSON array of strings containing "{input}"',
+      'THYRA_VOICE_COMMAND must be a JSON array of strings containing "{input}"',
     );
   }
   return argv as string[];
@@ -97,27 +97,26 @@ function parseCommand(value: string): string[] {
  * Resolve the speech-to-text chain from the service environment: the primary
  * provider first, then every other configured provider as a fallback. Keys
  * stay on the bridge host; the browser only ever sees provider labels.
- * `ROAMGATE_VOICE_PROVIDER` picks the primary; `ROAMGATE_VOICE_FALLBACK=off`
+ * `THYRA_VOICE_PROVIDER` picks the primary; `THYRA_VOICE_FALLBACK=off`
  * disables fallback.
  */
 export function voiceProvidersFromEnv(
   environment: Environment = process.env,
 ): VoiceProvider[] {
-  const requested = roamgateEnv("VOICE_PROVIDER", environment)
+  const requested = thyraEnv("VOICE_PROVIDER", environment)
     ?.trim()
     .toLowerCase();
   if (requested === "off") return [];
-  const language =
-    roamgateEnv("VOICE_LANGUAGE", environment)?.trim() || undefined;
-  const command = roamgateEnv("VOICE_COMMAND", environment)?.trim();
+  const language = thyraEnv("VOICE_LANGUAGE", environment)?.trim() || undefined;
+  const command = thyraEnv("VOICE_COMMAND", environment)?.trim();
   const funAsr = funAsrCommand(environment);
-  const apiKey = roamgateEnv("VOICE_API_KEY", environment)?.trim();
+  const apiKey = thyraEnv("VOICE_API_KEY", environment)?.trim();
   const elevenLabsKey = environment.ELEVENLABS_API_KEY?.trim();
   const enabled = (name: string) =>
-    /^(1|true|on|yes)$/i.test(roamgateEnv(name, environment)?.trim() ?? "");
+    /^(1|true|on|yes)$/i.test(thyraEnv(name, environment)?.trim() ?? "");
   const openAiModel =
-    roamgateEnv("VOICE_MODEL", environment)?.trim() || "gpt-transcribe";
-  const languages = (roamgateEnv("VOICE_LANGUAGES", environment) ?? "zh,en")
+    thyraEnv("VOICE_MODEL", environment)?.trim() || "gpt-transcribe";
+  const languages = (thyraEnv("VOICE_LANGUAGES", environment) ?? "zh,en")
     .split(",")
     .map((code) => code.trim())
     .filter(Boolean);
@@ -138,7 +137,7 @@ export function voiceProvidersFromEnv(
             label: "ElevenLabs",
             apiKey: elevenLabsKey,
             model:
-              roamgateEnv("VOICE_ELEVENLABS_MODEL", environment)?.trim() ||
+              thyraEnv("VOICE_ELEVENLABS_MODEL", environment)?.trim() ||
               "scribe_v2",
             language,
             ...(enabled("VOICE_DICTIONARY_KEYTERMS") ? { keyterms: true } : {}),
@@ -155,7 +154,7 @@ export function voiceProvidersFromEnv(
             kind: "openai",
             label: "openai-compatible",
             baseUrl: (
-              roamgateEnv("VOICE_BASE_URL", environment)?.trim() ||
+              thyraEnv("VOICE_BASE_URL", environment)?.trim() ||
               "https://api.openai.com/v1"
             ).replace(/\/+$/, ""),
             model: openAiModel,
@@ -175,7 +174,7 @@ export function voiceProvidersFromEnv(
     ],
   ];
   if (requested && !configured.some(([name]) => name === requested))
-    throw new Error(`unknown ROAMGATE_VOICE_PROVIDER: ${requested}`);
+    throw new Error(`unknown THYRA_VOICE_PROVIDER: ${requested}`);
   const ordered = requested
     ? [
         ...configured.filter(([name]) => name === requested),
@@ -186,7 +185,7 @@ export function voiceProvidersFromEnv(
     .map(([, provider]) => provider)
     .filter((provider): provider is VoiceProvider => provider !== null);
   if (requested && ordered[0]?.[1] === null) return [];
-  const fallback = roamgateEnv("VOICE_FALLBACK", environment)
+  const fallback = thyraEnv("VOICE_FALLBACK", environment)
     ?.trim()
     .toLowerCase();
   return fallback === "off" ? providers.slice(0, 1) : providers;
@@ -309,7 +308,7 @@ async function recognize(
   if (provider.kind === "command") {
     const path = join(
       tmpdir(),
-      `roamgate-voice-${randomBytes(8).toString("hex")}.wav`,
+      `thyra-voice-${randomBytes(8).toString("hex")}.wav`,
     );
     await writeFile(path, wav, { mode: 0o600, flag: "wx" });
     try {

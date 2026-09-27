@@ -221,9 +221,9 @@ describe("pane search projection", () => {
     recentPaneIds: ["p1"],
     tabs: [tab("t1", "w1"), tab("t2", "w2"), tab("t3", "w3")],
     workspaces: [
-      workspace("w1", "roamgate"),
+      workspace("w1", "thyra"),
       workspace("w2", "herdr-docs"),
-      workspace("w3", "roamgate-site"),
+      workspace("w3", "thyra-site"),
     ],
   };
 
@@ -243,7 +243,7 @@ describe("pane search projection", () => {
     expect(ids("HERDR")).toEqual(["p2"]);
     expect(ids("codex")).toEqual(["p2"]);
     expect(ids("/repos/w3")).toEqual(["p3"]);
-    expect(ids("roamgate")).toEqual(["p1", "p3"]);
+    expect(ids("thyra")).toEqual(["p1", "p3"]);
     expect(ids("nothing here")).toEqual([]);
   });
 
@@ -252,7 +252,7 @@ describe("pane search projection", () => {
       paneSearchEntries(snapshot, query, "p1").map((entry) => entry.paneId);
 
     expect(ids("codex herdr")).toEqual(["p2"]);
-    expect(ids("codex roamgate")).toEqual([]);
+    expect(ids("codex thyra")).toEqual([]);
     expect(ids("  tab   herdr  ")).toEqual(["p2"]);
   });
 

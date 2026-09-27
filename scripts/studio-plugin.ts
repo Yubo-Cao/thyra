@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Thin Herdr plugin shim for Roamgate. Herdr invokes the verbs below
+// Thin Herdr plugin shim for Thyra. Herdr invokes the verbs below
 // through herdr-plugin.toml actions; the verb names and their argv mapping
 // are a frozen contract because managed installs call the action set cached
 // at install time.
@@ -37,7 +37,7 @@ import {
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BINARY_CANDIDATES =
-  process.platform === "win32" ? ["roamgate.exe", "roamgate"] : ["roamgate"];
+  process.platform === "win32" ? ["thyra.exe", "thyra"] : ["thyra"];
 
 function binaryPath(): string | null {
   for (const name of BINARY_CANDIDATES) {
@@ -81,16 +81,16 @@ export const PLATFORM_ASSETS: Record<
   string,
   { asset: string; binary: string }
 > = {
-  "darwin-arm64": { asset: "roamgate-darwin-arm64", binary: "roamgate" },
-  "darwin-x64": { asset: "roamgate-darwin-x64", binary: "roamgate" },
-  "linux-arm64": { asset: "roamgate-linux-arm64", binary: "roamgate" },
-  "linux-x64": { asset: "roamgate-linux-x64", binary: "roamgate" },
-  "win32-arm64": { asset: "roamgate-windows-arm64", binary: "roamgate.exe" },
-  "win32-x64": { asset: "roamgate-windows-x64", binary: "roamgate.exe" },
+  "darwin-arm64": { asset: "thyra-darwin-arm64", binary: "thyra" },
+  "darwin-x64": { asset: "thyra-darwin-x64", binary: "thyra" },
+  "linux-arm64": { asset: "thyra-linux-arm64", binary: "thyra" },
+  "linux-x64": { asset: "thyra-linux-x64", binary: "thyra" },
+  "win32-arm64": { asset: "thyra-windows-arm64", binary: "thyra.exe" },
+  "win32-x64": { asset: "thyra-windows-x64", binary: "thyra.exe" },
 };
 
-const RELEASE_REPOSITORY = "powerfooI/roamgate";
-const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/studio-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Roamgate tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
+const RELEASE_REPOSITORY = "Yubo-Cao/thyra";
+const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/studio-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Thyra tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
 
 export function releaseAssetFor(
   platform: string,
@@ -140,7 +140,7 @@ async function downloadPrebuilt(): Promise<number> {
     ]);
     if (!checksumResponse.ok || !archiveResponse.ok) {
       console.error(
-        `studio-plugin: download failed for Roamgate v${version} (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}). ${SOURCE_INSTALL_HINT}`,
+        `studio-plugin: download failed for Thyra v${version} (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}). ${SOURCE_INSTALL_HINT}`,
       );
       return 1;
     }
@@ -202,7 +202,7 @@ function buildSource(): number {
 async function ensureBinary(): Promise<string | null> {
   const existing = binaryPath();
   if (existing) return existing;
-  console.error("studio-plugin: roamgate binary missing, downloading it first");
+  console.error("studio-plugin: thyra binary missing, downloading it first");
   if ((await downloadPrebuilt()) !== 0) return null;
   const downloaded = binaryPath();
   if (!downloaded) {
@@ -237,7 +237,7 @@ function readableConfigFile(dir: string, name: string): string {
   if (existsSync(path) || dir !== configDir()) return path;
   const legacy = join(
     legacyDataRoot(),
-    name === "roamgate.env" ? "herdr-gui.env" : name,
+    name === "thyra.env" ? "herdr-gui.env" : name,
   );
   assertSafeDataPath(legacy);
   return legacy;
@@ -268,7 +268,7 @@ export function readServiceEnv(
 }
 
 export function computeUrl(dir = configDir()): string {
-  const envFile = readableConfigFile(dir, "roamgate.env");
+  const envFile = readableConfigFile(dir, "thyra.env");
   let host = "127.0.0.1";
   let port = "8787";
   let usesFixedPassword = false;
@@ -278,7 +278,7 @@ export function computeUrl(dir = configDir()): string {
     port = readServiceEnv(contents, "PORT") ?? port;
     usesFixedPassword =
       (
-        readServiceEnv(contents, "ROAMGATE_PASSWORD") ??
+        readServiceEnv(contents, "THYRA_PASSWORD") ??
         readServiceEnv(contents, "HERDR_GUI_PASSWORD") ??
         ""
       ).length > 0;
@@ -302,7 +302,7 @@ export function computeUrl(dir = configDir()): string {
 }
 
 function printUrl(): number {
-  const envFile = readableConfigFile(configDir(), "roamgate.env");
+  const envFile = readableConfigFile(configDir(), "thyra.env");
   if (!existsSync(envFile)) {
     console.error(
       `studio-plugin: no service environment at ${envFile}, showing defaults`,
@@ -337,7 +337,7 @@ function statusText(): string {
 
 function renderPanel(message: string) {
   const lines = [
-    "Roamgate",
+    "Thyra",
     "",
     `Status:  ${statusText()}`,
     `URL:     ${computeUrl()}`,

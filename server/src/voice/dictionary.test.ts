@@ -55,15 +55,15 @@ describe("voice dictionary", () => {
   test("expands a home-relative path", () => {
     expect(dictionaryPathFromEnv({})).toBeNull();
     expect(
-      dictionaryPathFromEnv({ ROAMGATE_VOICE_DICTIONARY: "~/d.yaml" }),
+      dictionaryPathFromEnv({ THYRA_VOICE_DICTIONARY: "~/d.yaml" }),
     ).toMatch(/\/d\.yaml$/);
     expect(
-      dictionaryPathFromEnv({ ROAMGATE_VOICE_DICTIONARY: "~/d.yaml" }),
+      dictionaryPathFromEnv({ THYRA_VOICE_DICTIONARY: "~/d.yaml" }),
     ).not.toContain("~");
   });
 
   test("reloads on change and keeps the last valid version", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "roamgate-dictionary-"));
+    const dir = await mkdtemp(join(tmpdir(), "thyra-dictionary-"));
     const file = join(dir, "dictionary.yaml");
     try {
       const load = createDictionaryLoader(() => file);

@@ -8,13 +8,13 @@ const asset = async (path: string) =>
 test("brand icons and sharing images have the declared dimensions", async () => {
   const images: [string, number, number][] = [
     ...[32, 180, 192, 512].map((size): [string, number, number] => [
-      `web/public/roamgate-icon-${size}.png`,
+      `web/public/thyra-icon-${size}.png`,
       size,
       size,
     ]),
-    ["web/public/roamgate-mark-48.png", 48, 48],
-    ["web/public/roamgate-mark-72.png", 72, 72],
-    ["site/roamgate-og.png", 1200, 630],
+    ["web/public/thyra-mark-48.png", 48, 48],
+    ["web/public/thyra-mark-72.png", 72, 72],
+    ["site/thyra-og.png", 1200, 630],
     ["site/github-social-preview.png", 1280, 640],
   ];
   for (const [path, width, height] of images) {
@@ -27,13 +27,13 @@ test("brand icons and sharing images have the declared dimensions", async () => 
   }
 });
 
-test("legacy public image URLs serve Roamgate artwork too", async () => {
+test("legacy public image URLs serve Thyra artwork too", async () => {
   for (const [legacy, current] of [
-    ["web/public/herdr-icon.png", "web/public/roamgate-icon-512.png"],
-    ["site/assets/herdr-icon.png", "site/assets/roamgate-icon-96.png"],
-    ["site/assets/herdr-icon-48.png", "site/assets/roamgate-icon-48.png"],
-    ["site/assets/herdr-icon-72.png", "site/assets/roamgate-icon-72.png"],
-    ["site/og.png", "site/roamgate-og.png"],
+    ["web/public/herdr-icon.png", "web/public/thyra-icon-512.png"],
+    ["site/assets/herdr-icon.png", "site/assets/thyra-icon-96.png"],
+    ["site/assets/herdr-icon-48.png", "site/assets/thyra-icon-48.png"],
+    ["site/assets/herdr-icon-72.png", "site/assets/thyra-icon-72.png"],
+    ["site/og.png", "site/thyra-og.png"],
   ]) {
     expect((await asset(legacy)).equals(await asset(current))).toBe(true);
   }

@@ -74,7 +74,7 @@ export function HerdrSetupCard({
       const response = await fetch("/api/herdr/setup", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "x-roamgate-herdr-setup": "1" },
+        headers: { "x-thyra-herdr-setup": "1" },
       });
       const result = await response.json();
       if (!response.ok || result?.ok !== true) {
@@ -157,11 +157,11 @@ export function HerdrSetupCard({
         <p>
           {busy
             ? t(
-                "Keep this page open. Roamgate will reconnect when Herdr is ready.",
+                "Keep this page open. Thyra will reconnect when Herdr is ready.",
               )
             : confirming
               ? t(
-                  "This changes the machine running Roamgate, not your browser or a remote SSH host.",
+                  "This changes the machine running Thyra, not your browser or a remote SSH host.",
                 )
               : missing
                 ? t(
@@ -214,7 +214,7 @@ export function HerdrSetupCard({
             <Server size={18} aria-hidden="true" />
             <div>
               <strong>{t("Run as a background service")}</strong>
-              <span>{t("Starts at login, independently of Roamgate")}</span>
+              <span>{t("Starts at login, independently of Thyra")}</span>
             </div>
           </li>
         </ul>
@@ -267,7 +267,7 @@ export function HerdrSetupCard({
         )}
         <p className="herdr-setup-footnote">
           {confirming
-            ? t("A user service will be registered on the Roamgate host.")
+            ? t("A user service will be registered on the Thyra host.")
             : t("Review the details before making any changes.")}
         </p>
       </div>

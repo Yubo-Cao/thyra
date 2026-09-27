@@ -83,4 +83,4 @@ class VoiceCaptureProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("roamgate-voice-capture", VoiceCaptureProcessor);
+registerProcessor("thyra-voice-capture", VoiceCaptureProcessor);

@@ -120,13 +120,13 @@ export function normalizeUiScale(value: string | null): number {
 
 // The terminal surface cancels page zoom so xterm's mouse coordinates, cell
 // measurements, and IME overlay share CSS pixels. Scale its font explicitly.
-// Every xterm surface shares this stack. The bundled Roamgate Mono (Maple Mono
+// Every xterm surface shares this stack. The bundled Thyra Mono (Maple Mono
 // NF CN: ligatures, Nerd Font icons, CJK at exactly two cells) comes first so
 // phones and desktops share metrics. The
 // Nerd Font families carry the powerline and icon glyphs prompts draw with,
 // and dropping any of them shows tofu boxes wherever earlier fonts lack one.
 export const TERMINAL_FONT_FAMILY =
-  '"Roamgate Mono", SFMono-Regular, Menlo, Monaco, "0xProto Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", Consolas, "Liberation Mono", "Courier New", "Noto Sans Mono CJK SC", "Source Han Mono SC", "Sarasa Mono SC", "Herdr Nerd Symbols", monospace';
+  '"Thyra Mono", SFMono-Regular, Menlo, Monaco, "0xProto Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", Consolas, "Liberation Mono", "Courier New", "Noto Sans Mono CJK SC", "Source Han Mono SC", "Sarasa Mono SC", "Herdr Nerd Symbols", monospace';
 
 export function terminalFontOptions(compact: boolean, uiScale: number) {
   return {

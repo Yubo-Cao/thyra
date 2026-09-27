@@ -6,13 +6,13 @@ import {
   verifyReleaseAssetNames,
 } from "./check-release-assets.mjs";
 
-describe("Roamgate release boundary", () => {
+describe("Thyra release boundary", () => {
   const names = releaseAssetNames("0.7.0");
 
-  test("publishes exactly six Roamgate targets and no legacy discovery paths", () => {
+  test("publishes exactly six Thyra targets and no legacy discovery paths", () => {
     expect(names).toHaveLength(30);
-    expect(names).toContain("roamgate-linux-x64.update.json");
-    expect(names).toContain("roamgate-v0.7.0-windows-arm64.tar.xz.sha256");
+    expect(names).toContain("thyra-linux-x64.update.json");
+    expect(names).toContain("thyra-v0.7.0-windows-arm64.tar.xz.sha256");
     expect(() => verifyReleaseAssetNames(names, "0.7.0")).not.toThrow();
     for (const prefix of ["herdr-gui", "herdr-studio"]) {
       for (const suffix of [
@@ -40,7 +40,7 @@ describe("Roamgate release boundary", () => {
     );
   });
 
-  test("the publish workflow enforces the boundary and installs only Roamgate", async () => {
+  test("the publish workflow enforces the boundary and installs only Thyra", async () => {
     const workflow = await readFile(
       new URL("../.github/workflows/release.yml", import.meta.url),
       "utf8",
@@ -49,7 +49,7 @@ describe("Roamgate release boundary", () => {
     expect(publish).toContain(
       'node scripts/check-release-assets.mjs "${GITHUB_REF_NAME#v}"',
     );
-    expect(publish).toContain("scripts/install-roamgate.sh");
+    expect(publish).toContain("scripts/install-thyra.sh");
     expect(publish).not.toContain("herdr-gui");
     expect(publish).toContain("--latest");
   });

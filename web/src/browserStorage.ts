@@ -1,18 +1,25 @@
-const PREFIX = "roamgate:";
-const DELETED_PREFIX = "roamgate:deleted:";
+const PREFIX = "thyra:";
+const DELETED_PREFIX = "thyra:deleted:";
+// Keys written before the split from Roamgate, then unprefixed herdr-gui keys.
+const LEGACY_PREFIXES = ["roamgate:", ""];
 
 /** Keep legacy originals; deletion markers prevent removed values reappearing. */
-export function roamgateStorage(storage: Storage): Storage {
+export function thyraStorage(storage: Storage): Storage {
   const keys = () => [
     ...new Set(
       Array.from({ length: storage.length }, (_, index) => storage.key(index))
         .filter(
           (key): key is string =>
-            key !== null && !key.startsWith(DELETED_PREFIX),
+            key !== null &&
+            !key.startsWith(DELETED_PREFIX) &&
+            !key.startsWith("roamgate:deleted:"),
         )
-        .map((key) =>
-          key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key,
-        ),
+        .map((key) => {
+          const prefix = [PREFIX, ...LEGACY_PREFIXES].find((candidate) =>
+            key.startsWith(candidate),
+          );
+          return key.slice(prefix?.length ?? 0);
+        }),
     ),
   ];
   return {
@@ -27,7 +34,7 @@ export function roamgateStorage(storage: Storage): Storage {
       if (current !== null) return current;
       if (storage.getItem(DELETED_PREFIX + encodeURIComponent(key)) !== null)
         return null;
-      const legacy = storage.getItem(key);
+      const legacy = legacyItem(storage, key);
       if (legacy !== null) {
         try {
           storage.setItem(PREFIX + key, legacy);
@@ -50,8 +57,18 @@ export function roamgateStorage(storage: Storage): Storage {
   };
 }
 
+function legacyItem(storage: Storage, key: string): string | null {
+  if (storage.getItem(`roamgate:deleted:${encodeURIComponent(key)}`) !== null)
+    return null;
+  for (const prefix of LEGACY_PREFIXES) {
+    const value = storage.getItem(prefix + key);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
 function browserStorage(kind: "localStorage" | "sessionStorage"): Storage {
-  const get = () => roamgateStorage(globalThis[kind]);
+  const get = () => thyraStorage(globalThis[kind]);
   return {
     get length() {
       return get().length;
@@ -78,5 +95,5 @@ function browserStorage(kind: "localStorage" | "sessionStorage"): Storage {
   };
 }
 
-export const roamgateLocalStorage = browserStorage("localStorage");
-export const roamgateSessionStorage = browserStorage("sessionStorage");
+export const thyraLocalStorage = browserStorage("localStorage");
+export const thyraSessionStorage = browserStorage("sessionStorage");

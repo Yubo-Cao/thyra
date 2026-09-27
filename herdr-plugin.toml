@@ -1,5 +1,5 @@
-id = "roamgate"
-name = "Roamgate"
+id = "thyra"
+name = "Thyra"
 version = "0.7.9"
 min_herdr_version = "0.7.2"
 description = "Web and PWA client for Herdr: workspaces, tabs, panes, agent status, session inspection, diffs, and review annotations"
@@ -14,14 +14,14 @@ platforms = ["linux", "macos", "windows"]
 # `herdr plugin link .`; see docs/DEPLOYMENT.md#herdr-plugin.
 # The panel opens as a session-modal popup in the Herdr TUI by default. Open
 # it with --placement split (or tab/zoomed/overlay) to get a regular pane
-# that other Herdr clients, including Roamgate itself, can see.
+# that other Herdr clients, including Thyra itself, can see.
 
 [[build]]
 command = ["bun", "scripts/studio-plugin.ts", "build"]
 
 [[panes]]
 id = "panel"
-title = "Roamgate"
+title = "Thyra"
 placement = "popup"
 width = "72%"
 height = 12
@@ -29,36 +29,36 @@ command = ["bun", "scripts/studio-plugin.ts", "panel"]
 
 [[actions]]
 id = "start"
-title = "Start Roamgate"
+title = "Start Thyra"
 contexts = ["workspace"]
 command = ["bun", "scripts/studio-plugin.ts", "start"]
 
 [[actions]]
 id = "restart"
-title = "Restart Roamgate"
+title = "Restart Thyra"
 contexts = ["workspace"]
 command = ["bun", "scripts/studio-plugin.ts", "restart"]
 
 [[actions]]
 id = "status"
-title = "Roamgate status"
+title = "Thyra status"
 contexts = ["workspace"]
 command = ["bun", "scripts/studio-plugin.ts", "status"]
 
 [[actions]]
 id = "url"
-title = "Show Roamgate URL"
+title = "Show Thyra URL"
 contexts = ["workspace"]
 command = ["bun", "scripts/studio-plugin.ts", "url"]
 
 [[actions]]
 id = "version"
-title = "Show Roamgate version"
+title = "Show Thyra version"
 contexts = ["workspace"]
 command = ["bun", "scripts/studio-plugin.ts", "version"]
 
 [[actions]]
 id = "uninstall"
-title = "Uninstall Roamgate service"
+title = "Uninstall Thyra service"
 contexts = ["workspace"]
 command = ["bun", "scripts/studio-plugin.ts", "uninstall"]

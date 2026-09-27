@@ -1,4 +1,4 @@
-import { roamgateLocalStorage } from "../browserStorage";
+import { thyraLocalStorage } from "../browserStorage";
 import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { connectionStorageKey } from "../connectionStorage";
@@ -127,7 +127,7 @@ function retireExplorerCache(key: string) {
 export function clearFileExplorerResourceCache(
   client: Pick<ConnectionClient, "connectionId" | "generation">,
   resourceKey: string,
-  storage: Pick<Storage, "removeItem"> = roamgateLocalStorage,
+  storage: Pick<Storage, "removeItem"> = thyraLocalStorage,
 ) {
   for (const showHidden of [false, true]) {
     const key = explorerCacheKey(client, undefined, showHidden, resourceKey);

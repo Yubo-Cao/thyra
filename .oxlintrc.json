@@ -15,7 +15,7 @@
     "dist/**",
     "node_modules/**",
     "server/herdr-gui*",
-    "server/roamgate*",
+    "server/thyra*",
     "server/public/**",
     "server/src/public-files.gen.ts",
     "web/dist/**",

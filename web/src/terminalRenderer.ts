@@ -109,7 +109,7 @@ export function terminalLigatureRanges(text: string): [number, number][] {
   return ranges;
 }
 
-export const TERMINAL_WEB_FONT_FAMILY = "Roamgate Mono";
+export const TERMINAL_WEB_FONT_FAMILY = "Thyra Mono";
 
 /**
  * Add the bundled font's unicode-range stylesheet once, without blocking: the

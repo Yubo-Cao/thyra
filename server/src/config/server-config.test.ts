@@ -48,8 +48,8 @@ describe("native TLS", () => {
     expect(() => loadServerTls(undefined, "key.pem")).toThrow("requires both");
     expect(() =>
       loadServerTls(
-        "/nonexistent-roamgate-test/cert.pem",
-        "/nonexistent-roamgate-test/key.pem",
+        "/nonexistent-thyra-test/cert.pem",
+        "/nonexistent-thyra-test/key.pem",
       ),
     ).toThrow("Invalid TLS configuration");
     expect(browserUrlFor("0.0.0.0", 8787)).toBe("http://localhost:8787");
@@ -65,12 +65,12 @@ describe("native TLS", () => {
   test.skipIf(!Bun.which("openssl"))(
     "loads PEM files, honors CLI precedence, and serves trusted HTTPS and WSS",
     async () => {
-      const dir = mkdtempSync(join(tmpdir(), "roamgate-tls-test-"));
+      const dir = mkdtempSync(join(tmpdir(), "thyra-tls-test-"));
       const cert = join(dir, "cert.pem"),
         key = join(dir, "key.pem");
       const originalArgs = process.argv;
-      const originalCert = process.env.ROAMGATE_TLS_CERT;
-      const originalKey = process.env.ROAMGATE_TLS_KEY;
+      const originalCert = process.env.THYRA_TLS_CERT;
+      const originalKey = process.env.THYRA_TLS_KEY;
       try {
         writeFileSync(
           join(dir, "openssl.cnf"),
@@ -100,11 +100,11 @@ describe("native TLS", () => {
         );
         expect(generated.exitCode).toBe(0);
         const tls = loadServerTls(cert, key)!;
-        process.env.ROAMGATE_TLS_CERT = "missing-cert.pem";
-        process.env.ROAMGATE_TLS_KEY = "missing-key.pem";
+        process.env.THYRA_TLS_CERT = "missing-cert.pem";
+        process.env.THYRA_TLS_KEY = "missing-key.pem";
         process.argv = [
           process.execPath,
-          "roamgate",
+          "thyra",
           "--host",
           "127.0.0.1",
           "--tls-cert",
@@ -113,16 +113,16 @@ describe("native TLS", () => {
           key,
         ];
         expect(loadServerConfig("0.0.0").tls).toEqual(tls);
-        process.argv = [process.execPath, "roamgate", "--host", "127.0.0.1"];
-        process.env.ROAMGATE_TLS_CERT = cert;
-        process.env.ROAMGATE_TLS_KEY = key;
+        process.argv = [process.execPath, "thyra", "--host", "127.0.0.1"];
+        process.env.THYRA_TLS_CERT = cert;
+        process.env.THYRA_TLS_KEY = key;
         expect(loadServerConfig("0.0.0").tls).toEqual(tls);
         if (process.platform !== "win32") {
-          const configDir = join(dir, ".config", "roamgate");
+          const configDir = join(dir, ".config", "thyra");
           mkdirSync(configDir, { recursive: true });
           writeFileSync(
-            join(configDir, "roamgate.env"),
-            `HOST=0.0.0.0\nPORT=8443\nROAMGATE_TLS_CERT=${JSON.stringify(cert)}\nROAMGATE_TLS_KEY=${JSON.stringify(key)}\n`,
+            join(configDir, "thyra.env"),
+            `HOST=0.0.0.0\nPORT=8443\nTHYRA_TLS_CERT=${JSON.stringify(cert)}\nTHYRA_TLS_KEY=${JSON.stringify(key)}\n`,
           );
           const logs: string[] = [];
           expect(
@@ -130,8 +130,8 @@ describe("native TLS", () => {
               runtime: {
                 platform: "linux",
                 homeDir: dir,
-                execPath: "/opt/roamgate-test/bin/roamgate",
-                argv: ["/opt/roamgate-test/bin/roamgate", "service", "install"],
+                execPath: "/opt/thyra-test/bin/thyra",
+                argv: ["/opt/thyra-test/bin/thyra", "service", "install"],
                 uid: 1000,
               },
               runCommand: (argv) =>
@@ -208,10 +208,10 @@ describe("native TLS", () => {
         );
       } finally {
         process.argv = originalArgs;
-        if (originalCert === undefined) delete process.env.ROAMGATE_TLS_CERT;
-        else process.env.ROAMGATE_TLS_CERT = originalCert;
-        if (originalKey === undefined) delete process.env.ROAMGATE_TLS_KEY;
-        else process.env.ROAMGATE_TLS_KEY = originalKey;
+        if (originalCert === undefined) delete process.env.THYRA_TLS_CERT;
+        else process.env.THYRA_TLS_CERT = originalCert;
+        if (originalKey === undefined) delete process.env.THYRA_TLS_KEY;
+        else process.env.THYRA_TLS_KEY = originalKey;
         rmSync(dir, { recursive: true, force: true });
       }
     },

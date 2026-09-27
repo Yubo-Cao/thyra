@@ -1,5 +1,5 @@
 import { imageMimeForPath } from "../../../shared/filePreview";
-import { roamgateLocalStorage } from "../browserStorage";
+import { thyraLocalStorage } from "../browserStorage";
 import { shortcutMatches } from "../shortcutPreferences";
 import {
   DEFAULT_THEMES,
@@ -252,17 +252,17 @@ function deepQuerySelector(
 }
 
 function loadDiffViewMode(): DiffViewMode {
-  return roamgateLocalStorage.getItem(DIFF_VIEW_MODE_KEY) === "unified"
+  return thyraLocalStorage.getItem(DIFF_VIEW_MODE_KEY) === "unified"
     ? "unified"
     : "split";
 }
 
 function loadMobileDiffWrap() {
-  return roamgateLocalStorage.getItem(MOBILE_DIFF_WRAP_KEY) === "true";
+  return thyraLocalStorage.getItem(MOBILE_DIFF_WRAP_KEY) === "true";
 }
 
 function loadDesktopDiffWrap() {
-  return roamgateLocalStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
+  return thyraLocalStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
 }
 
 function currentDocumentTheme(): AppTheme {
@@ -1117,13 +1117,13 @@ export function DiffContentView({
     openFileRef.current = onOpenFile;
   }, [onOpenFile]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(DIFF_VIEW_MODE_KEY, viewMode);
+    thyraLocalStorage.setItem(DIFF_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(DESKTOP_DIFF_WRAP_KEY, String(desktopWrap));
+    thyraLocalStorage.setItem(DESKTOP_DIFF_WRAP_KEY, String(desktopWrap));
   }, [desktopWrap]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(MOBILE_DIFF_WRAP_KEY, String(mobileWrap));
+    thyraLocalStorage.setItem(MOBILE_DIFF_WRAP_KEY, String(mobileWrap));
   }, [mobileWrap]);
   useEffect(() => {
     requestedImagePreviewsRef.current.clear();

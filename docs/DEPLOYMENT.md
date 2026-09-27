@@ -1,6 +1,6 @@
 # Installation and Deployment
 
-Configuration reference for Roamgate. For a guided workflow and private remote
+Configuration reference for Thyra. For a guided workflow and private remote
 access, use the [tutorial](./TUTORIAL.md#networking).
 
 ## Requirements
@@ -15,13 +15,13 @@ access, use the [tutorial](./TUTORIAL.md#networking).
 
 This source build supports verified legacy protocols 14–20 (Herdr 0.7.0–0.8.2)
 and **tagged Herdr 0.9.0 / protocol 22**. Protocol 21 and unknown versions are
-rejected at control/binary probes. Use a compatible Roamgate build or separate
+rejected at control/binary probes. Use a compatible Thyra build or separate
 server; **do not downgrade a live server**. Published binaries follow their
-[release notes](https://github.com/Yubo-Cao/herdr-studio/releases).
+[release notes](https://github.com/Yubo-Cao/thyra/releases).
 The [plugin](#herdr-plugin) separately requires Herdr 0.7.2+.
 
 Herdr 0.9.0 uses stable endpoint generation 1, distinct from protocol 22.
-`ROAMGATE_DISABLE_ENDPOINT=1` explicitly selects legacy direct-terminal fallback.
+`THYRA_DISABLE_ENDPOINT=1` explicitly selects legacy direct-terminal fallback.
 
 | Area | Behavior / limitation |
 | --- | --- |
@@ -54,55 +54,55 @@ See [endpoint contracts](./ARCHITECTURE.md#terminal-endpoints) and
 
 ## Install a release
 
-Roamgate 0.7.0+ releases provide Linux/macOS/Windows x86-64 and ARM64 assets.
+Thyra 0.7.0+ releases provide Linux/macOS/Windows x86-64 and ARM64 assets.
 Older releases may lack native Windows ARM64; prefer it when available.
 Unpublished versions require a [source build](#build-a-standalone-executable).
 
-On Linux/macOS, the checksum-verifying installer writes `~/.local/bin/roamgate`:
+On Linux/macOS, the checksum-verifying installer writes `~/.local/bin/thyra`:
 
 ```bash
 curl -fsSL \
-  https://github.com/Yubo-Cao/herdr-studio/releases/latest/download/install-roamgate.sh \
+  https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh \
   | sh
 ```
 
-Add `~/.local/bin` to PATH, run `roamgate --version`, then `roamgate` and open the
+Add `~/.local/bin` to PATH, run `thyra --version`, then `thyra` and open the
 printed URL. Rerun the installer to update.
 
-On Windows, download matching `roamgate-windows-<arch>.tar.xz` and `.sha256`
-files from the [latest release](https://github.com/Yubo-Cao/herdr-studio/releases/latest),
-verify with `Get-FileHash`, extract with Windows 11's `tar.exe`, and run `roamgate.exe`.
+On Windows, download matching `thyra-windows-<arch>.tar.xz` and `.sha256`
+files from the [latest release](https://github.com/Yubo-Cao/thyra/releases/latest),
+verify with `Get-FileHash`, extract with Windows 11's `tar.exe`, and run `thyra.exe`.
 
 Installer overrides apply to the `sh` command above:
 
 | Setting | Example / behavior |
 | --- | --- |
-| Pin a version | `ROAMGATE_VERSION=X.Y.Z sh` (no `v`; empty means latest) |
-| System directory | `sudo env ROAMGATE_INSTALL_DIR=/usr/local/bin sh` (empty rejected) |
-| Release mirror | `ROAMGATE_RELEASE_BASE_URL` selects a compatible flat asset directory |
+| Pin a version | `THYRA_VERSION=X.Y.Z sh` (no `v`; empty means latest) |
+| System directory | `sudo env THYRA_INSTALL_DIR=/usr/local/bin sh` (empty rejected) |
+| Release mirror | `THYRA_RELEASE_BASE_URL` selects a compatible flat asset directory |
 
 Mirrors require HTTPS except loopback testing; URLs cannot contain credentials,
 queries, or fragments. Installer and in-app updater preserve the old executable
-as `roamgate.previous` for manual recovery.
+as `thyra.previous` for manual recovery.
 
 ## Managed Herdr setup
 
 ```bash
-roamgate herdr setup
-roamgate herdr status
+thyra herdr setup
+thyra herdr status
 ```
 
 If absent, setup downloads **Herdr 0.9.0**, verifies build-pinned SHA-256 hashes,
 and installs to `~/.local/bin/herdr` on Unix or
-`%APPDATA%\roamgate\herdr\0.9.0` on Windows. It never replaces a binary it did not
+`%APPDATA%\thyra\herdr\0.9.0` on Windows. It never replaces a binary it did not
 install. If already installed, it uses the first binary on PATH or in those
 locations, leaving it in place. Unix's standard location supports `herdr update`;
-Windows uses Roamgate's private versioned directory, not the official junctioned
-store, and needs a newer verified Roamgate install for replacement.
+Windows uses Thyra's private versioned directory, not the official junctioned
+store, and needs a newer verified Thyra install for replacement.
 
-Setup installs/starts `herdr server` as a user service: `roamgate-herdr.service`
-(Linux), `dev.roamgate.herdr` (macOS), or a per-user Windows scheduled task.
-Definitions carry a Roamgate marker; unrelated existing definitions are untouched.
+Setup installs/starts `herdr server` as a user service: `thyra-herdr.service`
+(Linux), `dev.thyra.herdr` (macOS), or a per-user Windows scheduled task.
+Definitions carry a Thyra marker; unrelated existing definitions are untouched.
 The web UI offers the same confirmed **Set up Herdr / Start Herdr** action when
 the default local server is unreachable, with visible failures/retry.
 
@@ -113,30 +113,30 @@ refused; start Herdr yourself for those configurations.
 To stop and disable, use native tools:
 
 ```bash
-systemctl --user disable --now roamgate-herdr.service  # Linux
-launchctl bootout gui/$(id -u)/dev.roamgate.herdr      # macOS
-# Windows: find dev.roamgate.herdr-<key> in herdr-task.ps1
+systemctl --user disable --now thyra-herdr.service  # Linux
+launchctl bootout gui/$(id -u)/dev.thyra.herdr      # macOS
+# Windows: find dev.thyra.herdr-<key> in herdr-task.ps1
 schtasks /End /TN "<task-name>"
 schtasks /Delete /TN "<task-name>" /F
 ```
 
 Then remove only its generated definition:
-`~/.config/systemd/user/roamgate-herdr.service`,
-`~/Library/LaunchAgents/dev.roamgate.herdr.plist`, or
-`%APPDATA%\roamgate\herdr-task.ps1`. Linux also needs
+`~/.config/systemd/user/thyra-herdr.service`,
+`~/Library/LaunchAgents/dev.thyra.herdr.plist`, or
+`%APPDATA%\thyra\herdr-task.ps1`. Linux also needs
 `systemctl --user daemon-reload`. Remove an installed binary only if unwanted
 and owned by this setup; never delete the shared `~/.local/bin` directory.
 
 ## Transition from Herdr Studio / herdr-gui
 
 **Herdr Studio / herdr-gui 0.6.2 and earlier require manual installation.**
-Roamgate 0.7.0+ publishes only `roamgate-*` assets/manifests and
-`install-roamgate.sh`. Old Latest/update channels no longer deliver fixes and may
+Thyra 0.7.0+ publishes only `thyra-*` assets/manifests and
+`install-thyra.sh`. Old Latest/update channels no longer deliver fixes and may
 error; historical tagged downloads and running processes remain intact.
 Legacy assets are not republished because old clients can discover archives
 without manifests. Custom mirrors/pinned historical downloads are outside this cutoff.
 
-**Service, data, and plugin identity migration requires Roamgate 0.7.1+.**
+**Service, data, and plugin identity migration requires Thyra 0.7.1+.**
 0.7.0 can update its binary through the new channel, but still uses legacy service
 names, paths, and `herdr.studio` plugin ID. Binary updates never rename services
 or migrate plugin registrations automatically.
@@ -145,11 +145,11 @@ or migrate plugin registrations automatically.
    Include `~/.config/herdr-gui/` and Windows `%APPDATA%\herdr-gui\` plus the old
    `~/.config/herdr-gui/` settings/profile location.
 2. Before replacing the executable, stop/uninstall with `herdr-gui service uninstall`
-   or the previous Roamgate binary's `service uninstall`. For custom wrappers,
+   or the previous Thyra binary's `service uninstall`. For custom wrappers,
    stop/disable/archive through the native manager and preserve args/environment.
    Stop unmanaged processes too; never leave both auto-start entries enabled.
-3. Install 0.7.1+ or build source, then explicitly run `roamgate service install`
-   (`./server/roamgate service install` for source). Install rejects existing/loaded
+3. Install 0.7.1+ or build source, then explicitly run `thyra service install`
+   (`./server/thyra service install` for source). Install rejects existing/loaded
    legacy services and detection errors, even with `--force`, before changing files.
 4. Verify status, login, and connections. To roll back, uninstall with the new
    binary, restore the old binary/definition, and enable only that service.
@@ -161,16 +161,16 @@ It preserves name/environment/data and installs nothing automatically. Ambiguous
 old/new services, custom/symlinked definitions, loaded services missing definitions,
 or detection errors require the previous binary/native manager; the CLI never guesses.
 
-New data lives in `~/.config/roamgate` or Windows `%APPDATA%\roamgate`:
+New data lives in `~/.config/thyra` or Windows `%APPDATA%\thyra`:
 
 - Missing tokens/settings/connections copy on first use; service install also
-  copies `herdr-gui.env` to `roamgate.env`. Existing new files win, even empty/invalid.
+  copies `herdr-gui.env` to `thyra.env`. Existing new files win, even empty/invalid.
 - Copies retain originals and restrict permissions to the owner's existing
   read/write bits. Copy failures stop without replacement credentials; legacy
   symlinks are rejected. Explicit registry-path overrides are not migrated.
 - Windows reads old settings/profiles from historical `~/.config/herdr-gui`.
   Stop old writers first: migration is one-way, not synchronization.
-- Browser `roamgate:` keys copy missing legacy values on the **same origin** only.
+- Browser `thyra:` keys copy missing legacy values on the **same origin** only.
   New values win; remembered deletions prevent old drafts reappearing. The website
   checklist follows the same rule. Host/port changes cannot transfer storage.
 
@@ -178,11 +178,15 @@ New data lives in `~/.config/roamgate` or Windows `%APPDATA%\roamgate`:
 
 ### Repository and website addresses
 
-Use [powerfooI/roamgate](https://github.com/powerfooI/roamgate) and
-<https://roamgate.dev/> ([tutorial](https://roamgate.dev/tutorial/)). GitHub redirects
-old `powerfooI/herdr-studio` Git/release URLs; **do not reuse the old repo name**,
-which would remove redirects. The `/roamgate/` Pages URL redirects to the new site;
-do not rely on `/herdr-studio/`.
+Thyra lives at [Yubo-Cao/thyra](https://github.com/Yubo-Cao/thyra), with the
+website at <https://thyra.yubo.fun/> ([tutorial](https://thyra.yubo.fun/tutorial/)).
+It split from [powerfooI/roamgate](https://github.com/powerfooI/roamgate)
+(formerly `herdr-studio`) in September 2026 and does not track that repository.
+Roamgate installs migrate on first start: `THYRA_*` variables override
+`ROAMGATE_*`, which override `HERDR_GUI_*`; files missing from `~/.config/thyra`
+are copied once from `~/.config/roamgate`; browser `roamgate:` keys are copied to
+`thyra:` on the same origin. Replace a `roamgate.service` unit with
+`thyra service install` after stopping it.
 
 ### Install historical Herdr Studio
 
@@ -192,13 +196,13 @@ Pin a historical tag, with no future fixes through that channel:
 
 ```bash
 curl -fsSL \
-  https://github.com/Yubo-Cao/herdr-studio/releases/download/v0.6.2/install-herdr-gui.sh \
+  https://github.com/powerfooI/roamgate/releases/download/v0.6.2/install-herdr-gui.sh \
   | HERDR_GUI_VERSION=0.6.2 sh
 ```
 
 ## Herdr plugin
 
-Requires Herdr 0.7.2+ and Bun for the shim. Plugin ID is `roamgate` from 0.7.1;
+Requires Herdr 0.7.2+ and Bun for the shim. Plugin ID is `thyra` from 0.7.1;
 0.7.0 uses `herdr.studio`. The shim refuses prebuilt downloads through 0.7.0.
 
 **Migrating `herdr.studio`:** stop/uninstall its old service first, close old plugin
@@ -210,26 +214,26 @@ herdr plugin unlink herdr.studio
 ```
 
 Unlink retains checkout/data, including managed checkouts. Keep them for rollback;
-do not run old and new start actions together. Roamgate never edits Herdr's registry.
+do not run old and new start actions together. Thyra never edits Herdr's registry.
 
 For an **unreleased checkout**, build before linking (existing binaries are not
 validated). Keep the checkout and rebuild after updates:
 
 ```bash
-git clone https://github.com/powerfooI/roamgate.git
-cd roamgate
+git clone https://github.com/Yubo-Cao/thyra.git
+cd thyra
 bun scripts/studio-plugin.ts build-source
 herdr plugin link .
 ```
 
-`build-source` installs workspace dependencies and builds `server/roamgate`
-(`roamgate.exe` on Windows). Linking after success skips release download;
+`build-source` installs workspace dependencies and builds `server/thyra`
+(`thyra.exe` on Windows). Linking after success skips release download;
 neither step starts the service.
 
 For a **published release**, replace `X.Y.Z` with 0.7.1 or newer:
 
 ```bash
-herdr plugin install powerfooI/roamgate --ref vX.Y.Z
+herdr plugin install Yubo-Cao/thyra --ref vX.Y.Z
 ```
 
 The manifest downloads/checksum-verifies that version's binary. Failure never
@@ -238,26 +242,26 @@ falls back to compilation or legacy assets; unpublished versions cannot use this
 Plugin actions manage the same [user service](#run-as-a-user-service):
 
 ```bash
-herdr plugin action invoke roamgate.start      # install/start
-herdr plugin action invoke roamgate.url        # login URL
-herdr plugin action invoke roamgate.status
-herdr plugin action invoke roamgate.restart
-herdr plugin action invoke roamgate.uninstall  # remove service, retain data
+herdr plugin action invoke thyra.start      # install/start
+herdr plugin action invoke thyra.url        # login URL
+herdr plugin action invoke thyra.status
+herdr plugin action invoke thyra.restart
+herdr plugin action invoke thyra.uninstall  # remove service, retain data
 ```
 
-Actions are asynchronous. Inspect `herdr plugin log list --plugin roamgate` or
-open `herdr plugin pane open --plugin roamgate --entrypoint panel` for status,
+Actions are asynchronous. Inspect `herdr plugin log list --plugin thyra` or
+open `herdr plugin pane open --plugin thyra --entrypoint panel` for status,
 URL, version, and start/restart/uninstall controls. Default is a session-modal
 popup; `--placement split`, `tab`, `zoomed`, or `overlay` creates a regular pane
 visible to other Herdr clients.
 
 ## Basic runtime configuration
 
-Flags override environment variables, then defaults; `roamgate --help` lists all
+Flags override environment variables, then defaults; `thyra --help` lists all
 options. Standalone ignores cwd `.env`/`bunfig.toml`: export variables, pass flags,
 or edit the service environment file. Source `bun run` retains normal Bun loading.
 
-`ROAMGATE_*` accepts legacy `HERDR_GUI_*` aliases, including installer settings.
+`THYRA_*` accepts legacy `HERDR_GUI_*` aliases, including installer settings.
 The new name wins **even when empty**. Herdr's `HERDR_*` settings are unchanged;
 explicit connection registry paths remain authoritative, including empty values.
 
@@ -265,35 +269,35 @@ explicit connection registry paths remain authoritative, including empty values.
 | --- | --- | --- |
 | `--host <addr>` | `HOST` | `127.0.0.1` |
 | `--port <n>` | `PORT` | `8787` |
-| `--password <pw>` | `ROAMGATE_PASSWORD` | Generated token for non-loopback |
-| `--tls-cert <path>` | `ROAMGATE_TLS_CERT` | Disabled; PEM chain, requires key |
-| `--tls-key <path>` | `ROAMGATE_TLS_KEY` | Disabled; PEM key, requires certificate |
+| `--password <pw>` | `THYRA_PASSWORD` | Generated token for non-loopback |
+| `--tls-cert <path>` | `THYRA_TLS_CERT` | Disabled; PEM chain, requires key |
+| `--tls-key <path>` | `THYRA_TLS_KEY` | Disabled; PEM key, requires certificate |
 | `--socket-path <path>` | `HERDR_SOCKET_PATH` | Default control socket/pipe |
 | `--client-socket-path <path>` | `HERDR_CLIENT_SOCKET_PATH` | Default render socket/pipe |
 | `--ssh-host <user@host>` | `HERDR_SSH_HOST` | Disabled; Linux/macOS only |
 | `--session <name>` | `HERDR_SESSION` | Default session |
 | `--public-dir <path>` | `PUBLIC_DIR` | Embedded assets |
-| `--log-level <level>` | `ROAMGATE_LOG_LEVEL` | `info` |
+| `--log-level <level>` | `THYRA_LOG_LEVEL` | `info` |
 | `--open` | `OPEN_BROWSER=1` | Disabled |
 
 | Additional environment variable | Purpose |
 | --- | --- |
-| `ROAMGATE_UPDATE_BASE_URL` | Latest-release mirror directory |
-| `ROAMGATE_DISABLE_UPDATE_CHECK=1` | Disable update checks |
-| `ROAMGATE_RESTART_SUPERVISOR=0\|1` | Override external supervisor detection |
-| `ROAMGATE_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
+| `THYRA_UPDATE_BASE_URL` | Latest-release mirror directory |
+| `THYRA_DISABLE_UPDATE_CHECK=1` | Disable update checks |
+| `THYRA_RESTART_SUPERVISOR=0\|1` | Override external supervisor detection |
+| `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
 
 Update mirrors need platform archives, `.sha256` files, and
-`roamgate-<platform>.update.json` with `name: "roamgate"`. Missing/legacy manifests
+`thyra-<platform>.update.json` with `name: "thyra"`. Missing/legacy manifests
 fail closed without archive discovery. HTTPS is required except loopback tests;
 credentials, queries, and fragments in URLs are rejected.
 
 ```bash
-roamgate                              # local, no login
-roamgate --host 0.0.0.0 --port 8787     # generated token
+thyra                              # local, no login
+thyra --host 0.0.0.0 --port 8787     # generated token
 ```
 
-For a fixed password, prefer `ROAMGATE_PASSWORD` over process-visible
+For a fixed password, prefer `THYRA_PASSWORD` over process-visible
 `--password`. Read [Security](../SECURITY.md) before non-loopback use.
 
 ### Native HTTPS
@@ -301,7 +305,7 @@ For a fixed password, prefer `ROAMGATE_PASSWORD` over process-visible
 Supply both a PEM chain (leaf first) and matching unencrypted private key:
 
 ```bash
-roamgate --host 0.0.0.0 --port 8443 \
+thyra --host 0.0.0.0 --port 8443 \
   --tls-cert /path/to/cert-chain.pem \
   --tls-key /path/to/private-key.pem
 ```
@@ -317,7 +321,7 @@ Replace this reserved example IP with the host's actual LAN address:
 ```bash
 mkcert -install
 mkcert -cert-file cert.pem -key-file key.pem localhost 127.0.0.1 ::1 192.0.2.10
-roamgate --host 0.0.0.0 --port 8443 \
+thyra --host 0.0.0.0 --port 8443 \
   --tls-cert "$PWD/cert.pem" --tls-key "$PWD/key.pem"
 ```
 
@@ -338,13 +342,13 @@ roamgate --host 0.0.0.0 --port 8443 \
    local-only users should toggle off/on once.
 
 Server push is enabled by default; every device still needs enrollment.
-`ROAMGATE_WEB_PUSH_SUBJECT` optionally sets a `mailto:`/HTTPS operator contact,
-not a delivery destination. Default: `https://github.com/powerfooI/roamgate/issues`.
+`THYRA_WEB_PUSH_SUBJECT` optionally sets a `mailto:`/HTTPS operator contact,
+not a delivery destination. Default: `https://github.com/Yubo-Cao/thyra/issues`.
 An explicitly empty value disables push; restart after changes. Removing the
 variable restores the default and enables delivery.
 
-Private VAPID keys/subscriptions live in `~/.config/roamgate/web-push.json` or
-`%APPDATA%\roamgate\web-push.json`; override with `ROAMGATE_WEB_PUSH_PATH`.
+Private VAPID keys/subscriptions live in `~/.config/thyra/web-push.json` or
+`%APPDATA%\thyra\web-push.json`; override with `THYRA_WEB_PUSH_PATH`.
 **Protect/back up this file, never share/commit it, and use one writer per file.**
 Corrupt data is preserved and push disabled rather than silently rotating keys.
 After intentional key replacement, reopen/toggle notifications to re-enroll.
@@ -353,7 +357,7 @@ Browser profiles/subscriptions are device-specific.
 Delivery needs outbound HTTPS to Apple (`*.push.apple.com`), Google
 (`fcm.googleapis.com`), Mozilla (`*.push.services.mozilla.com`), or Windows
 (`*.notify.windows.com`); other providers are rejected. No public inbound endpoint
-is needed. Devices must reach their provider and Roamgate when opening an alert.
+is needed. Devices must reach their provider and Thyra when opening an alert.
 
 The bridge and relevant Herdr runtimes must stay connected. It observes
 `working -> blocked` and `working -> done/idle` without open browsers; startup
@@ -375,23 +379,23 @@ terminal output, and may appear on lock screens.
 The microphone in each pane header (the floating microphone on touch devices) types dictation into the terminal, and the composer's microphone dictates into its draft.
 The bridge transcribes each speech segment with the first configured provider and falls back to the next configured one when a provider fails, so a cloud outage or exhausted quota degrades to local recognition instead of failing.
 With no provider, the button reports that voice input is unavailable.
-Keys stay in the service environment (`~/.config/roamgate/roamgate.env`) and never reach the browser.
+Keys stay in the service environment (`~/.config/thyra/thyra.env`) and never reach the browser.
 
 | Variable | Provider |
 | --- | --- |
-| `ELEVENLABS_API_KEY` with optional `ROAMGATE_VOICE_ELEVENLABS_MODEL` (default `scribe_v2`) | ElevenLabs Scribe |
-| `ROAMGATE_VOICE_API_KEY` with optional `ROAMGATE_VOICE_BASE_URL` (default OpenAI) and `ROAMGATE_VOICE_MODEL` (default `gpt-transcribe`) | Any OpenAI-compatible `/audio/transcriptions` endpoint |
-| `ROAMGATE_VOICE_FUNASR_MODEL_DIR`, optional `ROAMGATE_VOICE_FUNASR_CLI` | Local Fun-ASR-Nano through `llama-funasr-cli` |
-| `ROAMGATE_VOICE_COMMAND` | A local command as a JSON argv array containing `{input}` (the WAV path); stdout is the transcript |
+| `ELEVENLABS_API_KEY` with optional `THYRA_VOICE_ELEVENLABS_MODEL` (default `scribe_v2`) | ElevenLabs Scribe |
+| `THYRA_VOICE_API_KEY` with optional `THYRA_VOICE_BASE_URL` (default OpenAI) and `THYRA_VOICE_MODEL` (default `gpt-transcribe`) | Any OpenAI-compatible `/audio/transcriptions` endpoint |
+| `THYRA_VOICE_FUNASR_MODEL_DIR`, optional `THYRA_VOICE_FUNASR_CLI` | Local Fun-ASR-Nano through `llama-funasr-cli` |
+| `THYRA_VOICE_COMMAND` | A local command as a JSON argv array containing `{input}` (the WAV path); stdout is the transcript |
 
 The chain order is command, ElevenLabs, OpenAI-compatible, Fun-ASR.
-`ROAMGATE_VOICE_PROVIDER` (`elevenlabs`, `openai`, `funasr`, `command`, or `off`) moves one provider to the front, and `ROAMGATE_VOICE_FALLBACK=off` uses only the first.
-`ROAMGATE_VOICE_LANGUAGE` pins the language; by default providers detect it, and `gpt-transcribe` receives the `ROAMGATE_VOICE_LANGUAGES` hint (default `zh,en`).
-`ROAMGATE_VOICE_ELEVENLABS_ZERO_RETENTION=on` sends `enable_logging=false`, which ElevenLabs honors only for enterprise accounts.
+`THYRA_VOICE_PROVIDER` (`elevenlabs`, `openai`, `funasr`, `command`, or `off`) moves one provider to the front, and `THYRA_VOICE_FALLBACK=off` uses only the first.
+`THYRA_VOICE_LANGUAGE` pins the language; by default providers detect it, and `gpt-transcribe` receives the `THYRA_VOICE_LANGUAGES` hint (default `zh,en`).
+`THYRA_VOICE_ELEVENLABS_ZERO_RETENTION=on` sends `enable_logging=false`, which ElevenLabs honors only for enterprise accounts.
 
 ### Personal dictionary
 
-`ROAMGATE_VOICE_DICTIONARY` names a YAML file in Aoide's format, so both can share `~/.config/aoide/dictionary.yaml`:
+`THYRA_VOICE_DICTIONARY` names a YAML file in Aoide's format, so both can share `~/.config/aoide/dictionary.yaml`:
 
 ```yaml
 terms:
@@ -400,7 +404,7 @@ terms:
 ```
 
 `term` is the canonical spelling and `aliases` are confirmed misrecognitions that are always replaced with it.
-Terms become the OpenAI transcription prompt and cleanup hints; `ROAMGATE_VOICE_DICTIONARY_KEYTERMS=on` also sends them to ElevenLabs as keyterms.
+Terms become the OpenAI transcription prompt and cleanup hints; `THYRA_VOICE_DICTIONARY_KEYTERMS=on` also sends them to ElevenLabs as keyterms.
 Edits apply to the next request; an invalid edit keeps the last valid version.
 The file is limited to 64 KiB, 200 terms, and 20 aliases per term.
 Browsers allow microphone capture only on HTTPS or localhost origins, so a phone needs the tailnet or native HTTPS address.
@@ -414,12 +418,12 @@ If a rewrite loses too much text, English words, numbers, or a dictionary term, 
 
 | Variable | Meaning |
 | --- | --- |
-| `ROAMGATE_VOICE_LLM_API_KEY`, else `OPENAI_API_KEY` | Enables cleanup |
-| `ROAMGATE_VOICE_LLM_BASE_URL` | API base URL (default `https://api.openai.com/v1`; for DeepSeek, `https://api.deepseek.com`) |
-| `ROAMGATE_VOICE_LLM_API` | `responses` or `chat`, overriding the choice made from the base URL |
-| `ROAMGATE_VOICE_LLM_MODEL` | Model (default `gpt-5.6-luna`) |
-| `ROAMGATE_VOICE_LLM_REASONING_EFFORT` | Optional reasoning effort; without it, DeepSeek's thinking mode is turned off |
-| `ROAMGATE_VOICE_LLM=off` | Disables cleanup |
+| `THYRA_VOICE_LLM_API_KEY`, else `OPENAI_API_KEY` | Enables cleanup |
+| `THYRA_VOICE_LLM_BASE_URL` | API base URL (default `https://api.openai.com/v1`; for DeepSeek, `https://api.deepseek.com`) |
+| `THYRA_VOICE_LLM_API` | `responses` or `chat`, overriding the choice made from the base URL |
+| `THYRA_VOICE_LLM_MODEL` | Model (default `gpt-5.6-luna`) |
+| `THYRA_VOICE_LLM_REASONING_EFFORT` | Optional reasoning effort; without it, DeepSeek's thinking mode is turned off |
+| `THYRA_VOICE_LLM=off` | Disables cleanup |
 
 Responses API requests set `store: false`.
 
@@ -427,7 +431,7 @@ Responses API requests set `store: false`.
 
 Logs use one line per event: timestamp, severity, scope, bounded key/value context.
 `info` covers lifecycle/failures, not routine RPC/events/frames/successful auto-sync.
-Use `roamgate --log-level debug` or `ROAMGATE_LOG_LEVEL=debug` temporarily;
+Use `thyra --log-level debug` or `THYRA_LOG_LEVEL=debug` temporarily;
 restart services after editing their environment. Debug can expose paths/IDs;
 return to `info` afterwards. Logs omit URL auth tokens, which remain in protected files.
 
@@ -444,13 +448,13 @@ next/previous-connection shortcut.
 
 SSH requires an already-running remote Herdr and accepts an OpenSSH alias or
 `user@host`. Leave socket paths empty to resolve remote home defaults. Put ports,
-jump hosts, keys, and other options in `~/.ssh/config`; Roamgate stores no SSH
+jump hosts, keys, and other options in `~/.ssh/config`; Thyra stores no SSH
 passwords/keys/passphrases/options. Verify host keys and noninteractive service-user
 authentication first. SSH forwarding requires a Linux/macOS bridge; Windows only
 supports native local profiles because forwarded Unix sockets are not named pipes.
 
-Profiles live atomically in `~/.config/roamgate/connections.json` or Windows
-`%APPDATA%\roamgate\connections.json` (`ROAMGATE_CONNECTIONS_PATH` overrides).
+Profiles live atomically in `~/.config/thyra/connections.json` or Windows
+`%APPDATA%\thyra\connections.json` (`THYRA_CONNECTIONS_PATH` overrides).
 Unix directory/file modes are `0700`/`0600`; registry/direct-parent symlinks are
 rejected. Version 1 migrates on first successful mutation. Invalid files remain
 intact with mutations disabled; repair before retry. Failed durable rollback
@@ -466,7 +470,7 @@ profile. Change those settings to edit it. Old browser preferences migrate once
 into the first real profile without overwriting values.
 
 ```bash
-roamgate --ssh-host user@host
+thyra --ssh-host user@host
 ```
 
 CLI SSH forwards both sockets; file, image-paste, Git, and hooks run remotely.
@@ -505,9 +509,9 @@ Commands run through `sh -c`, remotely for SSH connections.
 | `PASEO_HOOK` | Hook name |
 | `PASEO_CHECKOUT_PATH` | Target path, including former path after removal |
 | `PASEO_SOURCE_CHECKOUT_PATH` | Source checkout when known |
-| `ROAMGATE_HOOK_EVENT` | `worktree.created`, `worktree.opened`, `worktree.before_remove`, or `worktree.removed` |
-| `ROAMGATE_HOOK_CHECKOUT_PATH` | Same target path |
-| `ROAMGATE_HOOK_SOURCE_CHECKOUT_PATH` | Same source path |
+| `THYRA_HOOK_EVENT` | `worktree.created`, `worktree.opened`, `worktree.before_remove`, or `worktree.removed` |
+| `THYRA_HOOK_CHECKOUT_PATH` | Same target path |
+| `THYRA_HOOK_SOURCE_CHECKOUT_PATH` | Same source path |
 
 Legacy `HERDR_GUI_HOOK_*` aliases remain. Notices show bounded diagnostics.
 **Failed teardown stops removal; other failures do not roll back completed actions.**
@@ -518,23 +522,23 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 
 | Command | Behavior |
 | --- | --- |
-| `roamgate service install` | Create/update definition and start |
-| `roamgate service install --force` | Replace a non-Roamgate definition (not a legacy migration bypass) |
-| `roamgate service status` | Native manager status |
-| `roamgate service restart` | Restart after environment changes |
-| `roamgate service reload` | Reload definition, then restart |
-| `roamgate service uninstall` | Stop/remove service; retain configuration/tokens |
+| `thyra service install` | Create/update definition and start |
+| `thyra service install --force` | Replace a non-Thyra definition (not a legacy migration bypass) |
+| `thyra service status` | Native manager status |
+| `thyra service restart` | Restart after environment changes |
+| `thyra service reload` | Reload definition, then restart |
+| `thyra service uninstall` | Stop/remove service; retain configuration/tokens |
 
 | Platform | Definition / behavior |
 | --- | --- |
-| Linux | `~/.config/systemd/user/roamgate.service`, `Restart=always` |
-| macOS | `~/Library/LaunchAgents/dev.roamgate.plist`, label `dev.roamgate`, `KeepAlive`; logs `~/Library/Logs/roamgate.stdout.log` / `roamgate.stderr.log` |
-| Windows | Task `dev.roamgate-<user-key>` (config-path hash), `%APPDATA%\roamgate\roamgate-task.ps1`; login start, normal privileges, restart on failure |
+| Linux | `~/.config/systemd/user/thyra.service`, `Restart=always` |
+| macOS | `~/Library/LaunchAgents/dev.thyra.plist`, label `dev.thyra`, `KeepAlive`; logs `~/Library/Logs/thyra.stdout.log` / `thyra.stderr.log` |
+| Windows | Task `dev.thyra-<user-key>` (config-path hash), `%APPDATA%\thyra\thyra-task.ps1`; login start, normal privileges, restart on failure |
 
 Stop/remove legacy services first via the [migration procedure](#transition-from-herdr-studio--herdr-gui).
 **New services bind `0.0.0.0:8787`**, generate a persistent token, and print
-localhost/LAN token URLs. Config lives in `~/.config/roamgate/roamgate.env` or
-`%APPDATA%\roamgate\roamgate.env`, preserved on reinstall/uninstall. Edit HOST,
+localhost/LAN token URLs. Config lives in `~/.config/thyra/thyra.env` or
+`%APPDATA%\thyra\thyra.env`, preserved on reinstall/uninstall. Edit HOST,
 PORT, password, and Herdr settings there, then restart. For local-only installation,
 set `HOST=127.0.0.1` first. On Windows, allow Private networks only if prompted;
 on Linux, `sudo loginctl enable-linger "$USER"` keeps services after logout.
@@ -543,7 +547,7 @@ on Linux, `sudo loginctl enable-linger "$USER"` keeps services after logout.
 curl -fsS http://127.0.0.1:8787/healthz
 ```
 
-Tokens live in `~/.config/roamgate/auth-token` or `%APPDATA%\roamgate\auth-token`.
+Tokens live in `~/.config/thyra/auth-token` or `%APPDATA%\thyra\auth-token`.
 A `?token=...` visit sets an HttpOnly cookie and removes the URL token. To rotate,
 stop the service, replace the file with a fresh 64-character lowercase hexadecimal
 secret (mode `0600`), then restart. **Deleting only the new file can restore a
@@ -554,10 +558,10 @@ Manual templates live under `deploy/`. Keep systemd as restart owner for wrapper
 ```ini
 [Service]
 ExecStart=
-ExecStart=/absolute/path/service-wrapper -- %h/.local/bin/roamgate --host 0.0.0.0
+ExecStart=/absolute/path/service-wrapper -- %h/.local/bin/thyra --host 0.0.0.0
 ```
 
-The updater saves `roamgate.previous`, atomically installs a verified binary, and
+The updater saves `thyra.previous`, atomically installs a verified binary, and
 exits; it never starts its replacement. Reinstall preserves custom `ExecStart`
 in a managed unit when it still invokes the same binary.
 
@@ -613,15 +617,15 @@ bun run build:linux-x64
 ```
 
 Build Herdr on the target's distribution (or an older glibc) because the Rust
-binary links the build host's glibc; the Roamgate binary needs only glibc 2.17.
-Copy `target/release/herdr`, `server/roamgate-linux-x64`, this repository's
+binary links the build host's glibc; the Thyra binary needs only glibc 2.17.
+Copy `target/release/herdr`, `server/thyra-linux-x64`, this repository's
 `scripts/deploy-herdr-stack-live.sh`, and the `deploy/systemd/` directory to the
 target. Run the deployment script on that target host:
 
 ```bash
 ./scripts/deploy-herdr-stack-live.sh \
   --herdr ./artifacts/herdr \
-  --studio ./artifacts/roamgate-linux-x64 \
+  --studio ./artifacts/thyra-linux-x64 \
   --stock-version 0.9.1 \
   --build-id "$build_id"
 ```
@@ -631,10 +635,10 @@ candidate advertises the requested stock-client version and contains the
 collaboration API, installs a versioned release, applies the systemd drop-in,
 performs the live handoff, and verifies all pre-existing non-server PIDs remain
 in the cgroup. Only after that does it atomically update
-`~/.local/bin/herdr` and `~/.local/bin/roamgate`. It refuses to run while the
+`~/.local/bin/herdr` and `~/.local/bin/thyra`. It refuses to run while the
 legacy `herdr-gui.service` is active; complete the
 [transition](#transition-from-herdr-studio--herdr-gui) first, then run
-`roamgate service install` once. If Roamgate was active, the
+`thyra service install` once. If Thyra was active, the
 script restarts it; if it was inactive, the new binary is installed without
 starting the service. Herdr itself is never restarted. Previous binaries are
 retained as `.previous` files.
@@ -653,7 +657,7 @@ machine that hosts active agents.
 
 ```bash
 bun scripts/studio-plugin.ts build-source
-# Output: server/roamgate (server/roamgate.exe on Windows)
+# Output: server/thyra (server/thyra.exe on Windows)
 ```
 
 This installs dependencies and embeds frontend/Bun. Afterward, `bun run build`
@@ -669,16 +673,16 @@ or `bun run package:<target>`:
 `bun run build:all` builds all targets. Bun downloads runtimes automatically.
 Use glibc Linux x64 for Ubuntu/Debian/Fedora/CentOS; musl is unsupported there
 because Bun's musl binary still dynamically links `libstdc++`/`libgcc_s`.
-Run `./server/roamgate`; `bun run clean` removes generated builds.
+Run `./server/thyra`; `bun run clean` removes generated builds.
 Release packaging/publishing follows [AGENTS.md](../AGENTS.md#release-notes).
 
 ## Troubleshooting
 
 | Symptom | Action |
 | --- | --- |
-| Cannot connect to Herdr | Check server and both socket paths; default local setup can use `roamgate herdr setup`. Override with `--socket-path /path/to/herdr.sock` only deliberately. |
+| Cannot connect to Herdr | Check server and both socket paths; default local setup can use `thyra herdr setup`. Override with `--socket-path /path/to/herdr.sock` only deliberately. |
 | Another device cannot open the page | Check bind, token URL, network/firewall, and [private access setup](./TUTORIAL.md#networking). |
 | SSH connects locally | Remove explicit socket flags/`HERDR_SOCKET_PATH`/`HERDR_CLIENT_SOCKET_PATH`; they override tunnel paths. |
-| Want automatic browser launch | Use `roamgate --open` or `OPEN_BROWSER=1`. |
+| Want automatic browser launch | Use `thyra --open` or `OPEN_BROWSER=1`. |
 
 For step-by-step diagnosis, see [the tutorial](./TUTORIAL.md#troubleshooting).

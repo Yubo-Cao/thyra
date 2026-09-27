@@ -1,26 +1,26 @@
 // Simplified Chinese messages for the core group; keys are the English source.
 export default {
   // Updates
-  "Roamgate {version} is running": "Roamgate {version} 正在运行",
+  "Thyra {version} is running": "Thyra {version} 正在运行",
   "Reloading the application to use the updated frontend.":
     "正在重新加载应用以使用更新后的前端。",
   "Updated server did not become ready": "更新后的服务器未能就绪",
-  "Could not verify Roamgate {version}. Reload the page after checking the server process.":
-    "无法确认 Roamgate {version} 已运行。请检查服务器进程后重新加载页面。",
+  "Could not verify Thyra {version}. Reload the page after checking the server process.":
+    "无法确认 Thyra {version} 已运行。请检查服务器进程后重新加载页面。",
   "Resume the connection before checking for updates.":
     "请先恢复连接，再检查更新。",
   "Update check failed": "检查更新失败",
-  "Roamgate is up to date": "Roamgate 已是最新版本",
+  "Thyra is up to date": "Thyra 已是最新版本",
   "Current version: {version}": "当前版本：{version}",
   "Resume the connection before installing updates.":
     "请先恢复连接，再安装更新。",
-  "Restarting the Roamgate process": "正在重启 Roamgate 进程",
+  "Restarting the Thyra process": "正在重启 Thyra 进程",
   "The binary was updated. Waiting for the external process supervisor to start the new version.":
     "程序已更新，正在等待外部进程管理器启动新版本。",
-  "Roamgate {version} installed": "Roamgate {version} 已安装",
-  "Restart the Roamgate process to use the new version.":
-    "重启 Roamgate 进程以使用新版本。",
-  "Roamgate is already up to date": "Roamgate 已是最新版本",
+  "Thyra {version} installed": "Thyra {version} 已安装",
+  "Restart the Thyra process to use the new version.":
+    "重启 Thyra 进程以使用新版本。",
+  "Thyra is already up to date": "Thyra 已是最新版本",
   "Update install failed": "安装更新失败",
 
   // Task notifications
@@ -29,8 +29,8 @@ export default {
   "Task notifications are unavailable": "任务通知不可用",
   "Enable notifications for this site in the browser settings, then try again.":
     "请在浏览器设置中允许此网站发送通知，然后重试。",
-  "Roamgate agent needs input": "Roamgate Agent 需要输入",
-  "Roamgate task completed": "Roamgate 任务已完成",
+  "Thyra agent needs input": "Thyra Agent 需要输入",
+  "Thyra task completed": "Thyra 任务已完成",
   "Agent needs input": "Agent 需要输入",
   "Task completed": "任务已完成",
   "Open agent": "打开 Agent",
@@ -40,12 +40,12 @@ export default {
   "Notification revocation failed": "撤销通知失败",
   "Task notifications disabled on this device": "已在此设备上关闭任务通知",
   "Browser notifications are not supported": "浏览器不支持通知",
-  "Use a browser with notification support over HTTPS. On iPhone or iPad, open Roamgate from the Home Screen (iOS/iPadOS 16.4 or later).":
-    "请通过 HTTPS 使用支持通知的浏览器。在 iPhone 或 iPad 上，请从主屏幕打开 Roamgate（需要 iOS/iPadOS 16.4 或更高版本）。",
+  "Use a browser with notification support over HTTPS. On iPhone or iPad, open Thyra from the Home Screen (iOS/iPadOS 16.4 or later).":
+    "请通过 HTTPS 使用支持通知的浏览器。在 iPhone 或 iPad 上，请从主屏幕打开 Thyra（需要 iOS/iPadOS 16.4 或更高版本）。",
   "Notification permission failed": "请求通知权限失败",
   "Task notifications enabled": "已开启任务通知",
-  "This device receives completion and input-required notifications even when Roamgate is closed, subject to your platform settings.":
-    "即使 Roamgate 已关闭，此设备也会收到任务完成和需要输入的通知（取决于系统设置）。",
+  "This device receives completion and input-required notifications even when Thyra is closed, subject to your platform settings.":
+    "即使 Thyra 已关闭，此设备也会收到任务完成和需要输入的通知（取决于系统设置）。",
   "Local notifications work while this page is running. Background delivery requires Web Push support and server configuration.":
     "本地通知仅在此页面运行时有效。后台推送需要 Web Push 支持并在服务器上完成配置。",
   "Notification permission was not granted": "未获得通知权限",
@@ -68,8 +68,8 @@ export default {
     "请先恢复连接，再向 Herdr 发送操作。",
   "Browser reconnected": "浏览器已重新连接",
   "Browser sync resumed": "浏览器同步已恢复",
-  "Another Roamgate client paused this connection. Resume when you want this browser to sync again.":
-    "另一个 Roamgate 客户端暂停了此连接。需要此浏览器重新同步时，请恢复连接。",
+  "Another Thyra client paused this connection. Resume when you want this browser to sync again.":
+    "另一个 Thyra 客户端暂停了此连接。需要此浏览器重新同步时，请恢复连接。",
   "This browser will stop syncing until you resume it.":
     "此浏览器将停止同步，直到你恢复连接。",
   "Connection paused": "连接已暂停",

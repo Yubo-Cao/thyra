@@ -47,11 +47,11 @@ function request(
   body?: unknown,
   headers: Record<string, string> = {},
 ) {
-  return new Request("https://roamgate.example/api/notifications/push", {
+  return new Request("https://thyra.example/api/notifications/push", {
     method,
     headers: {
       "content-type": "application/json",
-      "x-roamgate-push": "1",
+      "x-thyra-push": "1",
       ...headers,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -64,7 +64,7 @@ function fixture(
     headers: {},
   })),
 ) {
-  const dir = mkdtempSync(join(tmpdir(), "roamgate-push-"));
+  const dir = mkdtempSync(join(tmpdir(), "thyra-push-"));
   const path = join(dir, "web-push.json");
   const warn = mock();
   const options = { path, subject: "mailto:operator@example.com", send, warn };
@@ -82,23 +82,23 @@ function fixture(
 }
 
 test.each([
-  [undefined, "https://github.com/powerfooI/roamgate/issues"],
+  [undefined, "https://github.com/Yubo-Cao/thyra/issues"],
   ["mailto:operator@example.com", "mailto:operator@example.com"],
   ["", null],
   ["invalid-subject", null],
 ])(
   "push subject %s uses the default, override, or disables delivery",
   async (subject, expected) => {
-    const previous = process.env.ROAMGATE_WEB_PUSH_SUBJECT;
+    const previous = process.env.THYRA_WEB_PUSH_SUBJECT;
     const legacy = process.env.HERDR_GUI_WEB_PUSH_SUBJECT;
-    const dir = mkdtempSync(join(tmpdir(), "roamgate-push-default-"));
+    const dir = mkdtempSync(join(tmpdir(), "thyra-push-default-"));
     const path = join(dir, "web-push.json");
     const send = mock(async () => ({ statusCode: 201, body: "", headers: {} }));
     let service: ReturnType<typeof createWebPushService> | undefined;
     try {
       delete process.env.HERDR_GUI_WEB_PUSH_SUBJECT;
-      if (subject === undefined) delete process.env.ROAMGATE_WEB_PUSH_SUBJECT;
-      else process.env.ROAMGATE_WEB_PUSH_SUBJECT = subject;
+      if (subject === undefined) delete process.env.THYRA_WEB_PUSH_SUBJECT;
+      else process.env.THYRA_WEB_PUSH_SUBJECT = subject;
       service = createWebPushService({ path, send });
       const config = await (await service.handle(request())).json();
       expect(config.available).toBe(expected !== null);
@@ -129,8 +129,8 @@ test.each([
       }
     } finally {
       service?.stop();
-      if (previous === undefined) delete process.env.ROAMGATE_WEB_PUSH_SUBJECT;
-      else process.env.ROAMGATE_WEB_PUSH_SUBJECT = previous;
+      if (previous === undefined) delete process.env.THYRA_WEB_PUSH_SUBJECT;
+      else process.env.THYRA_WEB_PUSH_SUBJECT = previous;
       if (legacy === undefined) delete process.env.HERDR_GUI_WEB_PUSH_SUBJECT;
       else process.env.HERDR_GUI_WEB_PUSH_SUBJECT = legacy;
       rmSync(dir, { recursive: true, force: true });
@@ -191,11 +191,8 @@ test("authenticated, non-CSRF device mutations persist privately across restart 
     const first = device("first"),
       second = device("second");
     expect(
-      (
-        await f.service.handle(
-          request("POST", first, { "x-roamgate-push": "" }),
-        )
-      ).status,
+      (await f.service.handle(request("POST", first, { "x-thyra-push": "" })))
+        .status,
     ).toBe(403);
     expect(
       (
@@ -334,10 +331,10 @@ test.each([
         expect(JSON.parse(payloads.at(-1)!)).toEqual({
           title:
             kind === "blocked"
-              ? "Roamgate agent needs input"
-              : "Roamgate task completed",
+              ? "Thyra agent needs input"
+              : "Thyra task completed",
           body,
-          tag: JSON.stringify(["roamgate-task", input.connectionId, 3, "p1"]),
+          tag: JSON.stringify(["thyra-task", input.connectionId, 3, "p1"]),
           target: {
             connectionId: input.connectionId,
             runtimeGeneration: 3,
@@ -512,8 +509,8 @@ test.each(["older first", "newer first"])(
       expect(
         payloads.map((payload) => [payload.target.paneId, payload.title]),
       ).toEqual([
-        ["p2", "Roamgate agent needs input"],
-        ["p1", "Roamgate task completed"],
+        ["p2", "Thyra agent needs input"],
+        ["p1", "Thyra task completed"],
       ]);
       status("p1", "working");
       status("p1", "blocked");
@@ -637,7 +634,7 @@ test.each([
       data: { pane_id: "p1", workspace_id: "w1", agent_status: "blocked" },
     });
     const payload = JSON.parse(await sent.promise);
-    expect(payload.title).toBe("Roamgate agent needs input");
+    expect(payload.title).toBe("Thyra agent needs input");
     expect(payload.body).toBe(
       mode === "missing" || mode === "malformed"
         ? "Example agent · w1 · t1"

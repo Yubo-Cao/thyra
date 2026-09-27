@@ -12,7 +12,7 @@ describe("voice cleanup configuration", () => {
   test("is off without a key and when disabled", () => {
     expect(voiceCleanupFromEnv({})).toBeNull();
     expect(
-      voiceCleanupFromEnv({ OPENAI_API_KEY: "k", ROAMGATE_VOICE_LLM: "off" }),
+      voiceCleanupFromEnv({ OPENAI_API_KEY: "k", THYRA_VOICE_LLM: "off" }),
     ).toBeNull();
   });
 
@@ -25,10 +25,10 @@ describe("voice cleanup configuration", () => {
     expect(
       voiceCleanupFromEnv({
         OPENAI_API_KEY: "ignored",
-        ROAMGATE_VOICE_LLM_API_KEY: "k",
-        ROAMGATE_VOICE_LLM_BASE_URL: "https://llm.example/v1/",
-        ROAMGATE_VOICE_LLM_MODEL: "m",
-        ROAMGATE_VOICE_LLM_REASONING_EFFORT: "low",
+        THYRA_VOICE_LLM_API_KEY: "k",
+        THYRA_VOICE_LLM_BASE_URL: "https://llm.example/v1/",
+        THYRA_VOICE_LLM_MODEL: "m",
+        THYRA_VOICE_LLM_REASONING_EFFORT: "low",
       }),
     ).toEqual({
       baseUrl: "https://llm.example/v1",
@@ -41,15 +41,15 @@ describe("voice cleanup configuration", () => {
 
   test("uses Chat Completions for OpenAI-compatible providers", () => {
     const deepseek = {
-      ROAMGATE_VOICE_LLM_API_KEY: "k",
-      ROAMGATE_VOICE_LLM_BASE_URL: "https://api.deepseek.com",
+      THYRA_VOICE_LLM_API_KEY: "k",
+      THYRA_VOICE_LLM_BASE_URL: "https://api.deepseek.com",
     };
     expect(voiceCleanupFromEnv(deepseek)).toMatchObject({ api: "chat" });
     expect(
-      voiceCleanupFromEnv({ ...deepseek, ROAMGATE_VOICE_LLM_API: "responses" }),
+      voiceCleanupFromEnv({ ...deepseek, THYRA_VOICE_LLM_API: "responses" }),
     ).not.toHaveProperty("api");
     expect(() =>
-      voiceCleanupFromEnv({ ...deepseek, ROAMGATE_VOICE_LLM_API: "soap" }),
+      voiceCleanupFromEnv({ ...deepseek, THYRA_VOICE_LLM_API: "soap" }),
     ).toThrow("unknown");
     expect(
       chatCleanupBody(

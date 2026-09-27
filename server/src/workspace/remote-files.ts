@@ -678,7 +678,7 @@ if [ -n "$expected" ]; then
 fi
 dir="\${target_real%/*}"
 name="\${target_real##*/}"
-tmp="$(mktemp "$dir/.$name.roamgate-XXXXXX")"
+tmp="$(mktemp "$dir/.$name.thyra-XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 base64 -d > "$tmp"
 size="$(stat -c %s "$tmp" 2>/dev/null || stat -f %z "$tmp")"

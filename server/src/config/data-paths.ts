@@ -25,8 +25,17 @@ export function dataRoot(
     platform === "win32"
       ? (appDataDir ?? join(homeDir, "AppData", "Roaming"))
       : join(homeDir, ".config"),
-    "roamgate",
+    "thyra",
   );
+}
+
+/** Where the same files lived before the split from Roamgate. */
+export function roamgateDataRoot(
+  homeDir = homedir(),
+  platform: string = process.platform,
+  appDataDir = process.env.APPDATA,
+): string {
+  return join(dirname(dataRoot(homeDir, platform, appDataDir)), "roamgate");
 }
 
 export function legacyDataRoot(
@@ -67,7 +76,7 @@ export function publishDataFile(
 ): void {
   assertSafeDataPath(path);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const temporaryPath = join(dirname(path), `.roamgate-${randomUUID()}.tmp`);
+  const temporaryPath = join(dirname(path), `.thyra-${randomUUID()}.tmp`);
   let fd: number | undefined;
   try {
     fd = openSync(
@@ -132,18 +141,39 @@ export function defaultDataFile(
       ? legacyDataRoot(homeDir, platform, appDataDir)
       : join(homeDir, ".config", "herdr-gui");
   const path = join(dataRoot(homeDir, platform, appDataDir), name);
-  if (name === "connections.json") {
-    const cleared = `${path}.legacy-cleared`;
-    assertSafeDataPath(cleared);
-    if (statIfPresent(cleared)) return path;
-  }
-  return migrateDataFile(
-    path,
-    join(legacyRoot, name),
+  const roamgatePath = join(
+    roamgateDataRoot(homeDir, platform, appDataDir),
+    name,
+  );
+  const validate =
     name === "settings.json"
-      ? (contents) => {
+      ? (contents: Buffer) => {
           JSON.parse(contents.toString("utf8"));
         }
-      : undefined,
+      : undefined;
+  if (name === "connections.json") {
+    // A cleared marker means the herdr-gui profiles were dismissed on purpose.
+    const cleared = `${path}.legacy-cleared`;
+    const roamgateCleared = `${roamgatePath}.legacy-cleared`;
+    assertSafeDataPath(cleared);
+    assertSafeDataPath(roamgateCleared);
+    if (statIfPresent(cleared)) return path;
+    if (statIfPresent(roamgateCleared))
+      return migrateDataFile(path, roamgatePath, validate);
+  }
+  migrateDataFile(path, roamgatePath, validate);
+  return migrateDataFile(path, join(legacyRoot, name), validate);
+}
+
+/** A file under the data root, copied once from the Roamgate data root. */
+export function migratedDataFile(
+  name: string,
+  homeDir = homedir(),
+  platform: string = process.platform,
+  appDataDir = process.env.APPDATA,
+): string {
+  return migrateDataFile(
+    join(dataRoot(homeDir, platform, appDataDir), name),
+    join(roamgateDataRoot(homeDir, platform, appDataDir), name),
   );
 }

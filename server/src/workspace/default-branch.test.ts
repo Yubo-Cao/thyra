@@ -44,9 +44,7 @@ describe("origin default branch with real Git", () => {
   ])(
     "creates and syncs from %s, ignoring stale origin/HEAD",
     async (branch) => {
-      const directory = await mkdtemp(
-        join(tmpdir(), "roamgate-default-branch-"),
-      );
+      const directory = await mkdtemp(join(tmpdir(), "thyra-default-branch-"));
       try {
         const seed = join(directory, "seed");
         const remote = join(directory, "remote.git");
@@ -158,9 +156,7 @@ describe("origin default branch with real Git", () => {
   ])(
     "supports a prefix-related default rename from %s to %s",
     async (from, to) => {
-      const directory = await mkdtemp(
-        join(tmpdir(), "roamgate-default-rename-"),
-      );
+      const directory = await mkdtemp(join(tmpdir(), "thyra-default-rename-"));
       try {
         const seed = join(directory, "seed");
         const remote = join(directory, "remote.git");
@@ -215,7 +211,7 @@ describe("origin default branch with real Git", () => {
   );
 
   test("supports a master-only remote", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "roamgate-master-only-"));
+    const directory = await mkdtemp(join(tmpdir(), "thyra-master-only-"));
     try {
       const seed = join(directory, "seed");
       const remote = join(directory, "remote.git");

@@ -360,7 +360,7 @@ export async function writeLocalFile(
   }
   const temporary = join(
     dirname(writeTarget),
-    `.${basename(writeTarget)}.roamgate-${randomBytes(6).toString("hex")}`,
+    `.${basename(writeTarget)}.thyra-${randomBytes(6).toString("hex")}`,
   );
   try {
     await writeFile(temporary, body, { flag: "wx" });

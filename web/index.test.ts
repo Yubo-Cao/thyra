@@ -43,9 +43,9 @@ test("index first paint reads legacy appearance preferences without changing the
   });
 });
 
-test("index first paint uses Roamgate appearance preferences on fresh installs", () => {
+test("index first paint uses Thyra appearance preferences on fresh installs", () => {
   expect(
-    firstPaint({ "roamgate:theme": "light", "roamgate:uiScale": "120" }),
+    firstPaint({ "thyra:theme": "light", "thyra:uiScale": "120" }),
   ).toEqual({
     dataset: { theme: "light" },
     style: { colorScheme: "light", zoom: "1.2" },
@@ -56,9 +56,9 @@ test("index first paint prefers new appearance values over differing legacy valu
   expect(
     firstPaint({
       theme: "light",
-      "roamgate:theme": "dark",
+      "thyra:theme": "dark",
       uiScale: "125",
-      "roamgate:uiScale": "90",
+      "thyra:uiScale": "90",
     }),
   ).toEqual({
     dataset: { theme: "dark" },
@@ -70,9 +70,9 @@ test("index first paint does not fall back from explicitly empty new values", ()
   expect(
     firstPaint({
       theme: "light",
-      "roamgate:theme": "",
+      "thyra:theme": "",
       uiScale: "125",
-      "roamgate:uiScale": "",
+      "thyra:uiScale": "",
     }),
   ).toEqual({
     dataset: { theme: "dark" },
@@ -85,9 +85,9 @@ test("index first paint resolves the new system theme and default scale", () => 
     firstPaint(
       {
         theme: "dark",
-        "roamgate:theme": "system",
+        "thyra:theme": "system",
         uiScale: "125",
-        "roamgate:uiScale": "100",
+        "thyra:uiScale": "100",
       },
       true,
     ),

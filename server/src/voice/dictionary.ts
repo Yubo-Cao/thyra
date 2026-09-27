@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { roamgateEnv } from "../config/environment";
+import { thyraEnv } from "../config/environment";
 import { serverLogger } from "../utils/logger";
 
 /**
@@ -26,7 +26,7 @@ type Environment = Record<string, string | undefined>;
 export function dictionaryPathFromEnv(
   environment: Environment = process.env,
 ): string | null {
-  const path = roamgateEnv("VOICE_DICTIONARY", environment)?.trim();
+  const path = thyraEnv("VOICE_DICTIONARY", environment)?.trim();
   if (!path) return null;
   return path === "~" || path.startsWith("~/")
     ? homedir() + path.slice(1)

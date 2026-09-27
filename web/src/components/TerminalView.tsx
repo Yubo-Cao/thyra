@@ -1458,7 +1458,7 @@ export function TerminalView({
         setTerminalAttachError(
           typeof closed.reason === "string" &&
             closed.reason.includes("taken over")
-            ? t("Terminal stream was taken over by another Roamgate client")
+            ? t("Terminal stream was taken over by another Thyra client")
             : t("Terminal stream closed by the server"),
         );
         return;

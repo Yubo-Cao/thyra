@@ -1,6 +1,6 @@
 # Architecture
 
-Roamgate's system contracts. See [Features](../FEATURES.md) for UI behavior,
+Thyra's system contracts. See [Features](../FEATURES.md) for UI behavior,
 [Deployment](./DEPLOYMENT.md) for configuration, and [Security](../SECURITY.md)
 for the trust model.
 
@@ -114,7 +114,7 @@ The browser reports its terminal colors with `terminal.host_theme`
 (`appearance`, `foreground`, `background`, 16-color `palette`). Every endpoint
 client of that connection forwards them as Herdr `ClientShellHostTheme`
 updates (default colors, palette, then appearance), including right after each
-welcome, so a Roamgate client promoted to foreground never resets panes to an
+welcome, so a Thyra client promoted to foreground never resets panes to an
 empty host theme. A light/dark change also blurs and refocuses the focused pane
 once so apps that re-probe colors on focus pick it up.
 
@@ -183,7 +183,7 @@ zero-based **cropped-pane display cells**, never surface origins or CSS pixels.
 Hover probes are bounded and independently timed out; hover never activates.
 
 Herdr 0.9.1's `pane.link.resolve` returns inclusive visible regions, not URLs.
-Roamgate reconstructs complete HTTP(S) targets, including wrapped/wide cells,
+Thyra reconstructs complete HTTP(S) targets, including wrapped/wide cells,
 but rejects ambiguous viewport-clipped URLs. It never calls `pane.link.activate`,
 which can invoke host plugin handlers. OSC 8 retains explicit destinations even
 for partial labels. Local `file://` targets require decoded absolute host paths
@@ -217,7 +217,7 @@ discarded and ownership/leases rechecked. Same-tab cursor ownership remains shar
 
 Creation uses explicit context and `focus: false`; returned IDs are adopted only
 while the initiating selection and lease remain current. The bridge validates
-and strips Roamgate-only `browser_source`, then uses the existing endpoint's
+and strips Thyra-only `browser_source`, then uses the existing endpoint's
 serialized focus/scroll lane without another endpoint or focus call. Omitting
 synthetic cwd preserves Herdr's `terminal.new_cwd`; explicit cwd wins. Shared
 same-tab focus still controls the `follow` source.
@@ -415,14 +415,14 @@ and reports failure. Host operations share this boundary; see [connection setup]
 ## Distribution model
 
 Production embeds frontend assets and Bun into one executable; targets need no
-Bun/Node.js. Builds use the `roamgate` release identity across binaries, archives,
+Bun/Node.js. Builds use the `thyra` release identity across binaries, archives,
 checksums, and manifests. Missing/legacy manifests fail closed without archive
 discovery. Publication requires all six platform asset sets and no legacy update
 aliases. Old clients require [manual migration](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
 
 ## Trust boundary
 
-Roamgate is trusted single-user administration, not a sandbox or multi-user
+Thyra is trusted single-user administration, not a sandbox or multi-user
 permission system. Listener access and required authentication grant authority;
 see [Security](../SECURITY.md#trust-model) for loopback, TLS, and outer access controls.
 

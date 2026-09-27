@@ -6,7 +6,7 @@ import {
   writeReviewAnnotations,
   type ReviewAnnotation,
 } from "./annotations";
-import { roamgateLocalStorage } from "./browserStorage";
+import { thyraLocalStorage } from "./browserStorage";
 import { store } from "./store";
 import { sameResourceOwner, type ResourceScope } from "./workspaceResource";
 
@@ -27,7 +27,7 @@ export function useReviewAnnotationDraft(runtimeKey: string) {
     const key = annotationDraftStorageKey(owner);
     let draft = drafts.current.get(key);
     if (!draft) {
-      draft = readReviewAnnotations(roamgateLocalStorage, key);
+      draft = readReviewAnnotations(thyraLocalStorage, key);
       drafts.current.set(key, draft);
     }
     return draft;
@@ -62,7 +62,7 @@ export function useReviewAnnotationDraft(runtimeKey: string) {
         return;
       const key = annotationDraftStorageKey(owner);
       drafts.current.set(key, next);
-      const persisted = writeReviewAnnotations(roamgateLocalStorage, key, next);
+      const persisted = writeReviewAnnotations(thyraLocalStorage, key, next);
       if (!persisted && !storageFailed.current) {
         store.notify({
           kind: "error",

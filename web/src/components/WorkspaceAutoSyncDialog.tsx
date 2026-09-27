@@ -130,7 +130,7 @@ export function WorkspaceAutoSyncDialog({
 
         <p className="auto-sync-description">
           {t(
-            "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Roamgate connection.",
+            "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Thyra connection.",
             { minutes: info?.interval_minutes ?? 10 },
           )
             .split("{remote}")

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { roamgateLocalStorage } from "../browserStorage";
+import { thyraLocalStorage } from "../browserStorage";
 import { msg } from "../i18n";
 
 /** How a finished dictation is rewritten by the bridge's language model. */
@@ -25,14 +25,14 @@ const STORAGE_KEY = "voiceCleanupMode";
 const listeners = new Set<() => void>();
 
 export function voiceCleanupMode(): VoiceCleanupMode {
-  const stored = roamgateLocalStorage.getItem(STORAGE_KEY);
+  const stored = thyraLocalStorage.getItem(STORAGE_KEY);
   return VOICE_CLEANUP_OPTIONS.some((option) => option.value === stored)
     ? (stored as VoiceCleanupMode)
     : "tidy";
 }
 
 export function setVoiceCleanupMode(mode: VoiceCleanupMode) {
-  roamgateLocalStorage.setItem(STORAGE_KEY, mode);
+  thyraLocalStorage.setItem(STORAGE_KEY, mode);
   for (const listener of listeners) listener();
 }
 

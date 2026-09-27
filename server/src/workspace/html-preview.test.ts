@@ -15,7 +15,7 @@ const png = Buffer.from(
 );
 
 async function fixture(run: (root: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), "roamgate-html-preview-"));
+  const root = await mkdtemp(join(tmpdir(), "thyra-html-preview-"));
   try {
     await run(root);
   } finally {

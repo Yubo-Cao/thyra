@@ -17,7 +17,7 @@ function unreadableStdinPayload() {
 
 describe("runProcessWithInputTimeout", () => {
   test("does not leak EPIPE when the child exits before reading stdin", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "roamgate-process-"));
+    const directory = await mkdtemp(join(tmpdir(), "thyra-process-"));
     const escaped: unknown[] = [];
     const record = (error: unknown) => {
       escaped.push(error);

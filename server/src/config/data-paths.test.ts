@@ -18,13 +18,15 @@ import {
   defaultDataFile,
   legacyDataRoot,
   migrateDataFile,
+  migratedDataFile,
   publishDataFile,
+  roamgateDataRoot,
 } from "./data-paths";
 import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 
 const roots: string[] = [];
 function home() {
-  const root = mkdtempSync(join(tmpdir(), "roamgate-data-"));
+  const root = mkdtempSync(join(tmpdir(), "thyra-data-"));
   roots.push(root);
   return root;
 }
@@ -39,12 +41,12 @@ afterEach(() => {
 
 test("fresh Unix and Windows data roots respect APPDATA", () => {
   const root = home();
-  expect(dataRoot(root, "linux")).toBe(join(root, ".config", "roamgate"));
+  expect(dataRoot(root, "linux")).toBe(join(root, ".config", "thyra"));
   expect(dataRoot(root, "win32", join(root, "custom"))).toBe(
-    join(root, "custom", "roamgate"),
+    join(root, "custom", "thyra"),
   );
   expect(dataRoot(root, "win32", undefined)).toBe(
-    join(root, "AppData", "Roaming", "roamgate"),
+    join(root, "AppData", "Roaming", "thyra"),
   );
   expect(
     existsSync(defaultDataFile("settings.json", root, "linux")),
@@ -122,7 +124,7 @@ test("refuses legacy file/directory symlinks and permits a safe retry", () => {
 
 test("failed publication leaves no partial target and retries without overwriting", () => {
   const root = home();
-  const target = join(root, "roamgate", "settings.json");
+  const target = join(root, "thyra", "settings.json");
   write(dirname(target), "not a directory");
   expect(() => publishDataFile(target, "first")).toThrow();
   rmSync(dirname(target));
@@ -215,7 +217,7 @@ test("settings caller migrates and saves privately; clearing profiles stays clea
       HOME: root,
       USERPROFILE: root,
       APPDATA: join(root, "AppData", "Roaming"),
-      ROAMGATE_CONNECTIONS_PATH: undefined,
+      THYRA_CONNECTIONS_PATH: undefined,
       HERDR_GUI_CONNECTIONS_PATH: undefined,
     },
     stdout: "ignore",
@@ -276,9 +278,45 @@ test("plugin URL reads legacy files without migrating and prefers new paths", as
   };
   expect(await invoke()).toBe(`http://localhost:8890/?token=${"c".repeat(64)}`);
   expect(existsSync(current)).toBeFalse();
-  write(join(current, "roamgate.env"), "HOST=127.0.0.1\nPORT=8891\n");
+  write(join(current, "thyra.env"), "HOST=127.0.0.1\nPORT=8891\n");
   expect(await invoke()).toBe("http://127.0.0.1:8891");
   expect(readFileSync(join(legacy, "herdr-gui.env"), "utf8")).toBe(
     "HOST=0.0.0.0\nPORT=8890\n",
   );
+});
+
+test("Roamgate data wins over herdr-gui data and copies once", () => {
+  const root = home();
+  const roamgate = roamgateDataRoot(root, "linux");
+  expect(roamgate).toBe(join(root, ".config", "roamgate"));
+  write(join(roamgate, "settings.json"), '{"from":"roamgate"}\n');
+  write(
+    join(root, ".config", "herdr-gui", "settings.json"),
+    '{"from":"gui"}\n',
+  );
+  write(join(roamgate, "web-push.json"), "{}\n");
+  const settings = defaultDataFile("settings.json", root, "linux");
+  expect(readFileSync(settings, "utf8")).toBe('{"from":"roamgate"}\n');
+  expect(
+    readFileSync(migratedDataFile("web-push.json", root, "linux"), "utf8"),
+  ).toBe("{}\n");
+  write(join(roamgate, "settings.json"), '{"from":"later"}\n');
+  expect(
+    readFileSync(defaultDataFile("settings.json", root, "linux"), "utf8"),
+  ).toBe('{"from":"roamgate"}\n');
+});
+
+test("a Roamgate cleared marker skips herdr-gui connections", () => {
+  const root = home();
+  write(
+    join(roamgateDataRoot(root, "linux"), "connections.json.legacy-cleared"),
+    "1\n",
+  );
+  write(
+    join(root, ".config", "herdr-gui", "connections.json"),
+    '{"version":1}\n',
+  );
+  expect(
+    existsSync(defaultDataFile("connections.json", root, "linux")),
+  ).toBeFalse();
 });

@@ -414,7 +414,7 @@ describe("endpoint terminal link provider", () => {
   );
 
   test("resolves a complete parenthesized URL without waiting for an upstream repaint", () => {
-    const url = "https://github.com/powerfool/roamgate/pull/252";
+    const url = "https://github.com/powerfool/thyra/pull/252";
     const text = `See PR #252 (${url}): merged.`;
     const f = fixture(["", text], 100);
     Object.assign(f.term.buffer.active, { viewportY: 0 });

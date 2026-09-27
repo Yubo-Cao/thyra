@@ -2,7 +2,7 @@ export type LoginLocale = "en" | "zh-CN";
 
 const STRINGS = {
   en: {
-    title: "Roamgate login",
+    title: "Thyra login",
     heading: "Welcome back",
     intro: "Log in to access your workspaces.",
     passwordLabel: "Password or token",
@@ -13,7 +13,7 @@ const STRINGS = {
     logIn: "Log in",
     loggingIn: "Logging in...",
     note: "Use the password or token configured on your server.",
-    noscript: "Enable JavaScript to log in to Roamgate.",
+    noscript: "Enable JavaScript to log in to Thyra.",
     footer: "Your workspace, wherever you are.",
     wrongPassword: "Wrong password or token. Try again.",
     loginFailed: "Unable to log in. Please try again.",
@@ -21,7 +21,7 @@ const STRINGS = {
       "Cannot reach the server. Check your connection and try again.",
   },
   "zh-CN": {
-    title: "登录 Roamgate",
+    title: "登录 Thyra",
     heading: "欢迎回来",
     intro: "登录以访问你的工作区。",
     passwordLabel: "密码或令牌",
@@ -32,7 +32,7 @@ const STRINGS = {
     logIn: "登录",
     loggingIn: "正在登录…",
     note: "请使用服务器上配置的密码或令牌。",
-    noscript: "请启用 JavaScript 以登录 Roamgate。",
+    noscript: "请启用 JavaScript 以登录 Thyra。",
     footer: "你的工作区，随你而行。",
     wrongPassword: "密码或令牌错误，请重试。",
     loginFailed: "无法登录，请重试。",
@@ -72,8 +72,8 @@ export function renderLoginHtml(locale: LoginLocale = "en"): string {
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
 <title>${s.title}</title>
-<link rel="icon" type="image/svg+xml" href="/roamgate-icon.svg">
-<link rel="icon" type="image/png" href="/roamgate-icon-192.png">
+<link rel="icon" type="image/svg+xml" href="/thyra-icon.svg">
+<link rel="icon" type="image/png" href="/thyra-icon-192.png">
 <style>
   *{box-sizing:border-box}
   :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#eeeef0;
@@ -118,7 +118,7 @@ export function renderLoginHtml(locale: LoginLocale = "en"): string {
 </head>
 <body>
 <main>
-  <div class="brand"><img src="/roamgate-icon-192.png" alt="" width="48" height="48"><span>Roamgate</span></div>
+  <div class="brand"><img src="/thyra-icon-192.png" alt="" width="48" height="48"><span>Thyra</span></div>
   <section class="card" aria-labelledby="heading">
     <h1 id="heading">${s.heading}</h1>
     <p>${s.intro}</p>

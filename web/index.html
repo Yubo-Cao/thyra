@@ -8,15 +8,15 @@
     />
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
-    <link rel="icon" type="image/svg+xml" href="/roamgate-icon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/roamgate-icon-32.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/roamgate-icon-192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/roamgate-icon-512.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/roamgate-icon-180.png" />
+    <link rel="icon" type="image/svg+xml" href="/thyra-icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/thyra-icon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/thyra-icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/thyra-icon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/thyra-icon-180.png" />
     <meta name="theme-color" content="#0e1014" />
-    <meta name="application-name" content="Roamgate" />
-    <meta name="apple-mobile-web-app-title" content="Roamgate" />
-    <title>Roamgate</title>
+    <meta name="application-name" content="Thyra" />
+    <meta name="apple-mobile-web-app-title" content="Thyra" />
+    <title>Thyra</title>
     <script>
       // Disable pinch zoom for the terminal UI on touch-primary devices
       // (phones and tablets). The viewport directive above covers PWAs and
@@ -36,7 +36,7 @@
       // default dark theme. "system" resolves via the OS color scheme.
       try {
         const storedTheme =
-          localStorage.getItem("roamgate:theme") ?? localStorage.getItem("theme");
+          localStorage.getItem("thyra:theme") ?? localStorage.getItem("theme");
         const resolvedTheme =
           storedTheme === "light" || storedTheme === "dark"
             ? storedTheme
@@ -49,7 +49,7 @@
         // Apply the persisted interface scale too so the first paint matches
         // the Text size preference.
         const storedUiScale =
-          localStorage.getItem("roamgate:uiScale") ?? localStorage.getItem("uiScale");
+          localStorage.getItem("thyra:uiScale") ?? localStorage.getItem("uiScale");
         const uiScale = storedUiScale === null ? 100 : Number(storedUiScale);
         if (Number.isFinite(uiScale) && uiScale !== 100) {
           // Keep in sync with clampUiScale in web/src/appearance.ts.

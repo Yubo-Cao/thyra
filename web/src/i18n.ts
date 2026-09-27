@@ -1,4 +1,4 @@
-import { roamgateLocalStorage } from "./browserStorage";
+import { thyraLocalStorage } from "./browserStorage";
 
 // Interface translation, gettext style: the English text is the message key,
 // so English needs no catalog and untranslated text falls back to English.
@@ -42,13 +42,13 @@ export function resolveLocale(
 
 export function loadLocalePreference(): LocalePreference {
   return normalizeLocalePreference(
-    roamgateLocalStorage.getItem(LOCALE_STORAGE_KEY),
+    thyraLocalStorage.getItem(LOCALE_STORAGE_KEY),
   );
 }
 
 /** Switching reloads so module state and cached labels start over. */
 export function saveLocalePreference(preference: LocalePreference): void {
-  roamgateLocalStorage.setItem(LOCALE_STORAGE_KEY, preference);
+  thyraLocalStorage.setItem(LOCALE_STORAGE_KEY, preference);
   window.location.reload();
 }
 

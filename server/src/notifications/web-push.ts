@@ -11,10 +11,10 @@ import { dirname, join } from "node:path";
 import webpush from "web-push";
 import {
   assertSafeDataPath,
-  dataRoot,
+  migratedDataFile,
   publishDataFile,
 } from "../config/data-paths";
-import { roamgateEnv } from "../config/environment";
+import { thyraEnv } from "../config/environment";
 import type { TaskEvent } from "./task-events";
 
 export interface PushPreferences {
@@ -132,12 +132,12 @@ export function createWebPushService(
 ) {
   const subject =
     options.subject ??
-    roamgateEnv("WEB_PUSH_SUBJECT") ??
-    "https://github.com/powerfooI/roamgate/issues";
+    thyraEnv("WEB_PUSH_SUBJECT") ??
+    "https://github.com/Yubo-Cao/thyra/issues";
   const path =
     options.path ??
-    roamgateEnv("WEB_PUSH_PATH") ??
-    join(dataRoot(), "web-push.json");
+    thyraEnv("WEB_PUSH_PATH") ??
+    migratedDataFile("web-push.json");
   const send: typeof webpush.sendNotification =
     options.send ??
     (async (subscription, payload, settings) => {
@@ -256,8 +256,8 @@ export function createWebPushService(
         JSON.stringify({
           title:
             task.kind === "blocked"
-              ? "Roamgate agent needs input"
-              : "Roamgate task completed",
+              ? "Thyra agent needs input"
+              : "Thyra task completed",
           body: [
             task.agent,
             task.connectionLabel?.trim(),
@@ -268,7 +268,7 @@ export function createWebPushService(
             .map((part) => part.slice(0, 80))
             .join(" · "),
           tag: JSON.stringify([
-            "roamgate-task",
+            "thyra-task",
             task.connectionId,
             task.runtimeGeneration,
             task.paneId,
@@ -327,7 +327,7 @@ export function createWebPushService(
         return new Response("Method not allowed", { status: 405, headers });
       // A custom header and JSON require a same-origin request (no CORS grant).
       if (
-        req.headers.get("x-roamgate-push") !== "1" ||
+        req.headers.get("x-thyra-push") !== "1" ||
         req.headers.get("sec-fetch-site") === "cross-site" ||
         req.headers.get("content-type")?.split(";")[0] !== "application/json"
       )

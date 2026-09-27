@@ -1,4 +1,4 @@
-import { roamgateLocalStorage } from "../browserStorage";
+import { thyraLocalStorage } from "../browserStorage";
 import { shallowEqual, store, useStoreSelector } from "../store";
 import type { GitStatusSummary, Pane, Workspace } from "../types";
 import { shortId } from "../utils";
@@ -247,7 +247,7 @@ export function WorkspaceTree({
   } | null>(null);
   const [agentListPreferences, setAgentListPreferences] = useState(() =>
     parseAgentListPreferences(
-      roamgateLocalStorage.getItem(AGENT_LIST_PREFERENCES_STORAGE_KEY),
+      thyraLocalStorage.getItem(AGENT_LIST_PREFERENCES_STORAGE_KEY),
     ),
   );
   const [collapsedAgentGroups, setCollapsedAgentGroups] = useState<Set<string>>(
@@ -257,11 +257,11 @@ export function WorkspaceTree({
     agentListPreferences.sort === "manual" &&
     agentListPreferences.grouping === "none";
   const [agentPaneOrder, setAgentPaneOrder] = useState<string[]>(() =>
-    parseAgentOrder(roamgateLocalStorage.getItem(agentOrderStorageKey)),
+    parseAgentOrder(thyraLocalStorage.getItem(agentOrderStorageKey)),
   );
   const [agentLayout, setAgentLayout] = useState<WorkspaceAgentLayout>(() =>
     parseWorkspaceAgentLayout(
-      roamgateLocalStorage.getItem(WORKSPACE_AGENT_LAYOUT_STORAGE_KEY),
+      thyraLocalStorage.getItem(WORKSPACE_AGENT_LAYOUT_STORAGE_KEY),
     ),
   );
   const [createOpen, setCreateOpen] = useState(false);
@@ -278,13 +278,13 @@ export function WorkspaceTree({
     COLLAPSED_WORKTREE_GROUPS_STORAGE_KEY,
   );
   const [pinnedWorkspaceKeys, setPinnedWorkspaceKeys] = useState<string[]>(() =>
-    parseWorkspacePins(roamgateLocalStorage.getItem(pinsStorageKey)),
+    parseWorkspacePins(thyraLocalStorage.getItem(pinsStorageKey)),
   );
   const [collapsedWorktreeGroupKeys, setCollapsedWorktreeGroupKeys] = useState<
     string[]
   >(() =>
     parseCollapsedWorktreeGroups(
-      roamgateLocalStorage.getItem(collapsedGroupsStorageKey),
+      thyraLocalStorage.getItem(collapsedGroupsStorageKey),
     ),
   );
   const pinnedWorkspaceSet = new Set(pinnedWorkspaceKeys);
@@ -336,7 +336,7 @@ export function WorkspaceTree({
     ),
   );
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       AGENT_LIST_PREFERENCES_STORAGE_KEY,
       JSON.stringify(agentListPreferences),
     );
@@ -352,25 +352,22 @@ export function WorkspaceTree({
     setAgentDropTarget(null);
   }, [connectionClient]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
-      WORKSPACE_AGENT_LAYOUT_STORAGE_KEY,
-      agentLayout,
-    );
+    thyraLocalStorage.setItem(WORKSPACE_AGENT_LAYOUT_STORAGE_KEY, agentLayout);
   }, [agentLayout]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       agentOrderStorageKey,
       serializeAgentOrder(agentPaneOrder),
     );
   }, [agentOrderStorageKey, agentPaneOrder]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       pinsStorageKey,
       serializeWorkspacePins(pinnedWorkspaceKeys),
     );
   }, [pinnedWorkspaceKeys, pinsStorageKey]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       collapsedGroupsStorageKey,
       serializeCollapsedWorktreeGroups(collapsedWorktreeGroupKeys),
     );

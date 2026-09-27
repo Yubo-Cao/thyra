@@ -13,15 +13,15 @@ import { shQuote } from "../utils/process-utils";
 const darwinRuntime = {
   platform: "darwin",
   arch: "arm64",
-  execPath: "/Applications/roamgate",
-  argv: ["bun", "/$bunfs/root/roamgate-darwin-arm64", "--port", "8781"],
+  execPath: "/Applications/thyra",
+  argv: ["bun", "/$bunfs/root/thyra-darwin-arm64", "--port", "8781"],
 };
 
 const linuxRuntime = {
   platform: "linux",
   arch: "x64",
-  execPath: "/opt/roamgate/roamgate",
-  argv: ["bun", "/$bunfs/root/roamgate-linux-x64", "--port", "8781"],
+  execPath: "/opt/thyra/thyra",
+  argv: ["bun", "/$bunfs/root/thyra-linux-x64", "--port", "8781"],
 };
 
 const launchdEnvironment = {
@@ -45,12 +45,12 @@ function credentialBearingUpdateBaseUrl(): string {
 function updateManifest(
   version: string,
   platform: string,
-  archive = `roamgate-${platform}.tar.xz`,
+  archive = `thyra-${platform}.tar.xz`,
   sha256 = updateSha256,
 ): string {
   return JSON.stringify({
     schema: 1,
-    name: "roamgate",
+    name: "thyra",
     version,
     platform,
     archive,
@@ -77,13 +77,13 @@ describe("update helpers", () => {
     expect(UPDATE_HTTP_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 
-  test("parses bounded Roamgate manifests and rejects legacy identities", () => {
+  test("parses bounded Thyra manifests and rejects legacy identities", () => {
     expect(parseUpdateManifest(updateManifest("0.2.17", "linux-x64"))).toEqual({
       schema: 1,
-      name: "roamgate",
+      name: "thyra",
       version: "0.2.17",
       platform: "linux-x64",
-      archive: "roamgate-linux-x64.tar.xz",
+      archive: "thyra-linux-x64.tar.xz",
       sha256: updateSha256,
     });
     expect(() => parseUpdateManifest("{}")).toThrow("invalid update manifest");
@@ -97,7 +97,7 @@ describe("update helpers", () => {
     for (const legacy of ["herdr-gui", "herdr-studio"]) {
       expect(() =>
         parseUpdateManifest(
-          updateManifest("9.8.7", "linux-x64").replaceAll("roamgate", legacy),
+          updateManifest("9.8.7", "linux-x64").replaceAll("thyra", legacy),
         ),
       ).toThrow("invalid update manifest");
     }
@@ -105,7 +105,7 @@ describe("update helpers", () => {
 
   test("normalizes safe update base URLs without exposing credentials", () => {
     expect(normalizeUpdateBaseUrl(undefined)).toBe(
-      "https://github.com/Yubo-Cao/herdr-studio/releases/latest/download",
+      "https://github.com/Yubo-Cao/thyra/releases/latest/download",
     );
     expect(
       normalizeUpdateBaseUrl(" https://downloads.example.com/herdr/// "),
@@ -140,27 +140,27 @@ describe("update helpers", () => {
   test("maps only published runtime architectures to update packages", () => {
     expect(resolveUpdateTarget("linux", "x64")).toEqual({
       platform: "linux-x64",
-      packageDir: "roamgate-linux-x64",
-      archiveName: "roamgate-linux-x64.tar.xz",
-      manifestName: "roamgate-linux-x64.update.json",
+      packageDir: "thyra-linux-x64",
+      archiveName: "thyra-linux-x64.tar.xz",
+      manifestName: "thyra-linux-x64.update.json",
     });
     expect(resolveUpdateTarget("darwin", "arm64")).toEqual({
       platform: "darwin-arm64",
-      packageDir: "roamgate-darwin-arm64",
-      archiveName: "roamgate-darwin-arm64.tar.xz",
-      manifestName: "roamgate-darwin-arm64.update.json",
+      packageDir: "thyra-darwin-arm64",
+      archiveName: "thyra-darwin-arm64.tar.xz",
+      manifestName: "thyra-darwin-arm64.update.json",
     });
     expect(resolveUpdateTarget("darwin", "x64")).toEqual({
       platform: "darwin-x64",
-      packageDir: "roamgate-darwin-x64",
-      archiveName: "roamgate-darwin-x64.tar.xz",
-      manifestName: "roamgate-darwin-x64.update.json",
+      packageDir: "thyra-darwin-x64",
+      archiveName: "thyra-darwin-x64.tar.xz",
+      manifestName: "thyra-darwin-x64.update.json",
     });
     expect(resolveUpdateTarget("linux", "arm64")).toEqual({
       platform: "linux-arm64",
-      packageDir: "roamgate-linux-arm64",
-      archiveName: "roamgate-linux-arm64.tar.xz",
-      manifestName: "roamgate-linux-arm64.update.json",
+      packageDir: "thyra-linux-arm64",
+      archiveName: "thyra-linux-arm64.tar.xz",
+      manifestName: "thyra-linux-arm64.update.json",
     });
     expect(resolveUpdateTarget("win32", "x64")).toBeNull();
   });
@@ -216,13 +216,13 @@ describe("update helpers", () => {
       can_auto_update: true,
       platform: "darwin-arm64",
       source_url:
-        "https://github.com/Yubo-Cao/herdr-studio/releases/latest/download/roamgate-darwin-arm64.tar.xz",
+        "https://github.com/Yubo-Cao/thyra/releases/latest/download/thyra-darwin-arm64.tar.xz",
     });
     expect(commands).toHaveLength(1);
     expect(commands[0]).toContain("--max-filesize 4096");
-    expect(commands[0]).toContain("roamgate-darwin-arm64.update.json");
+    expect(commands[0]).toContain("thyra-darwin-arm64.update.json");
     expect(commands[0]).not.toContain(".tar.xz");
-    expect(commands[0]).not.toContain("roamgate-linux-x64");
+    expect(commands[0]).not.toContain("thyra-linux-x64");
   });
 
   test("keeps Linux x64 update checks on the Linux archive", async () => {
@@ -249,11 +249,11 @@ describe("update helpers", () => {
       can_auto_update: true,
       platform: "linux-x64",
       source_url:
-        "https://github.com/Yubo-Cao/herdr-studio/releases/latest/download/roamgate-linux-x64.tar.xz",
+        "https://github.com/Yubo-Cao/thyra/releases/latest/download/thyra-linux-x64.tar.xz",
     });
-    expect(commands[0]).toContain("roamgate-linux-x64.update.json");
+    expect(commands[0]).toContain("thyra-linux-x64.update.json");
     expect(commands[0]).not.toContain(".tar.xz");
-    expect(commands[0]).not.toContain("roamgate-darwin-arm64");
+    expect(commands[0]).not.toContain("thyra-darwin-arm64");
   });
 
   test("uses a configured release mirror", async () => {
@@ -279,11 +279,10 @@ describe("update helpers", () => {
     const response = await handlers.handleUpdateCheck(updateCheckRequest());
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      source_url:
-        "https://downloads.example.com/herdr/roamgate-linux-x64.tar.xz",
+      source_url: "https://downloads.example.com/herdr/thyra-linux-x64.tar.xz",
     });
     expect(commands[0]).toContain(
-      "https://downloads.example.com/herdr/roamgate-linux-x64.update.json",
+      "https://downloads.example.com/herdr/thyra-linux-x64.update.json",
     );
   });
 
@@ -326,13 +325,13 @@ describe("update helpers", () => {
         if (commands.length === 2) {
           return {
             code: 0,
-            stdout: "roamgate 0.2.17 linux-x64\n",
+            stdout: "thyra 0.2.17 linux-x64\n",
             stderr: "",
           };
         }
         return {
           code: 0,
-          stdout: `${updateSha256}  roamgate-linux-x64.tar.xz\n`,
+          stdout: `${updateSha256}  thyra-linux-x64.tar.xz\n`,
           stderr: "",
         };
       },
@@ -347,7 +346,7 @@ describe("update helpers", () => {
       error: "manifest not found",
     });
     expect(commands).toHaveLength(1);
-    expect(commands[0].join(" ")).toContain("roamgate-linux-x64.update.json");
+    expect(commands[0].join(" ")).toContain("thyra-linux-x64.update.json");
     expect(commands[0].join(" ")).not.toContain(".tar.xz");
   });
 
@@ -390,7 +389,7 @@ describe("update helpers", () => {
     const body = await response.json();
     expect(response.status).toBe(502);
     expect(body).toEqual({
-      error: "ROAMGATE_UPDATE_BASE_URL must not contain credentials",
+      error: "THYRA_UPDATE_BASE_URL must not contain credentials",
     });
     expect(JSON.stringify(body)).not.toContain("example-password");
   });
@@ -584,24 +583,24 @@ describe("update helpers", () => {
       restart_required: true,
       restart_scheduled: true,
       restart_mode: "supervisor",
-      target_path: "/Applications/roamgate",
+      target_path: "/Applications/thyra",
     });
     expect(commands).toHaveLength(2);
     const installCommand = commands[1][2];
-    expect(installCommand).toContain("roamgate-darwin-arm64.tar.xz");
+    expect(installCommand).toContain("thyra-darwin-arm64.tar.xz");
     expect(installCommand).not.toContain(".sha256");
     expect(installCommand).toContain(`expected_sha256='${updateSha256}'`);
     expect(installCommand).toContain('shasum -a 256 "$archive"');
     expect(installCommand).toContain('sha256sum "$archive"');
     expect(installCommand).toContain('version_file="$package_dir/VERSION"');
-    expect(installCommand).toContain('binary="$package_dir/roamgate"');
+    expect(installCommand).toContain('binary="$package_dir/thyra"');
     expect(installCommand).toContain('tar -xJf "$archive" -C "$tmp"');
-    expect(installCommand).toContain("'roamgate-darwin-arm64/VERSION'");
-    expect(installCommand).toContain("'roamgate-darwin-arm64/roamgate'");
-    expect(installCommand).toContain("target='/Applications/roamgate'");
+    expect(installCommand).toContain("'thyra-darwin-arm64/VERSION'");
+    expect(installCommand).toContain("'thyra-darwin-arm64/thyra'");
+    expect(installCommand).toContain("target='/Applications/thyra'");
     expect(installCommand).toContain('backup="$target.previous"');
     expect(installCommand).toContain('mktemp "$target_dir/.$target_base.new.');
-    expect(installCommand).not.toContain("roamgate-linux-x64");
+    expect(installCommand).not.toContain("thyra-linux-x64");
     expect(
       Bun.spawnSync(["sh", "-n"], {
         stdin: Buffer.from(installCommand),
@@ -766,7 +765,7 @@ describe("update helpers", () => {
       },
       shQuote,
       environment: {
-        ROAMGATE_DISABLE_UPDATE_CHECK: "1",
+        THYRA_DISABLE_UPDATE_CHECK: "1",
         HERDR_GUI_DISABLE_UPDATE_CHECK: "0",
       },
     });
@@ -777,7 +776,7 @@ describe("update helpers", () => {
       update_available: false,
       can_auto_update: false,
       reason:
-        "Update checks are disabled by ROAMGATE_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
+        "Update checks are disabled by THYRA_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
     });
   });
 
@@ -798,7 +797,7 @@ describe("update helpers", () => {
   });
 });
 
-test("Roamgate and legacy confirmation headers share the same update boundary", async () => {
+test("Thyra and legacy confirmation headers share the same update boundary", async () => {
   const handlers = createUpdateHandlers({
     appVersion: "0.7.0",
     runtime: linuxRuntime,
@@ -810,7 +809,7 @@ test("Roamgate and legacy confirmation headers share the same update boundary", 
       stderr: "",
     }),
   });
-  for (const header of ["x-roamgate-update", "x-herdr-gui-update"]) {
+  for (const header of ["x-thyra-update", "x-herdr-gui-update"]) {
     const response = await handlers.handleUpdateCheck(
       new Request("http://localhost/api/update/check", {
         headers: { [header]: "1" },
@@ -826,7 +825,7 @@ test("Roamgate and legacy confirmation headers share the same update boundary", 
   }
   const denied = new Request("http://localhost/api/update/install", {
     method: "POST",
-    headers: { "x-roamgate-update": "", "x-herdr-gui-update": "1" },
+    headers: { "x-thyra-update": "", "x-herdr-gui-update": "1" },
   });
   expect((await handlers.handleUpdateInstall(denied)).status).toBe(403);
 });

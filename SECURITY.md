@@ -12,18 +12,18 @@ GitHub-profile contact address.
 
 ## Trust Model
 
-**UI access grants the Roamgate user's authority:** terminals, repository hooks,
+**UI access grants the Thyra user's authority:** terminals, repository hooks,
 session data, and workspace uploads/deletions. This is privileged administration,
 not a sandbox or multi-user permission system.
 
 The default bind is `127.0.0.1`. Listeners configured as `127.0.0.1`, `localhost`,
-or `::1` **bypass login even with `ROAMGATE_PASSWORD` set**. A VPN, SSH tunnel, or
+or `::1` **bypass login even with `THYRA_PASSWORD` set**. A VPN, SSH tunnel, or
 reverse proxy forwarding to loopback becomes the entire remote access boundary.
 Use an independently authenticated proxy if that boundary is insufficient.
 
-**Do not expose Roamgate directly to the public internet.** For non-loopback:
+**Do not expose Thyra directly to the public internet.** For non-loopback:
 
-- Set a strong `ROAMGATE_PASSWORD`; prefer it to `--password`, which exposes
+- Set a strong `THYRA_PASSWORD`; prefer it to `--password`, which exposes
   secrets in process arguments.
 - Use [native HTTPS](docs/DEPLOYMENT.md#native-https), an HTTPS proxy, or a trusted
   VPN; restrict access with a firewall/reverse proxy.
@@ -52,15 +52,15 @@ mirror) and its manifest/checksums. Checksums detect corruption and bind the
 archive, **not independently verify publisher identity**. Custom mirrors are
 trusted executable-code infrastructure.
 
-`HERDR_GUI_*` aliases `ROAMGATE_*`; explicit new values win, even empty ones.
+`HERDR_GUI_*` aliases `THYRA_*`; explicit new values win, even empty ones.
 Auth-token migration preserves the old secret. Protect both copies and backups;
 see [migration and rotation](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
-Update requests require normal listener authentication plus `x-roamgate-update: 1`.
+Update requests require normal listener authentication plus `x-thyra-update: 1`.
 Legacy `x-herdr-gui-update: 1` is accepted; the new header wins if both appear.
 Neither header replaces login.
 
 Web Push subscription mutations require listener authentication, JSON, and
-`x-roamgate-push: 1`; cross-site browser requests are rejected. Push endpoints
+`x-thyra-push: 1`; cross-site browser requests are rejected. Push endpoints
 are restricted to supported browser-provider HTTPS hosts and are never followed
 through redirects. Treat the private push registry as credentials. Revoking a
 login password or logging out does not revoke device subscriptions: disable Web Push or remove

@@ -14,7 +14,7 @@ import {
   type NewReviewAnnotation,
   type ReviewAnnotation,
 } from "./annotations";
-import { roamgateLocalStorage } from "./browserStorage";
+import { thyraLocalStorage } from "./browserStorage";
 import { LAYOUT_CHANGE_EVENT, useLayoutPreferences } from "./layoutPreferences";
 import {
   shortcutMatches,
@@ -329,12 +329,12 @@ function normalizeSidebarWidth(value: number): number {
 
 function loadSidebarWidth(): number {
   return normalizeSidebarWidth(
-    Number(roamgateLocalStorage.getItem("sidebarWidth")),
+    Number(thyraLocalStorage.getItem("sidebarWidth")),
   );
 }
 
 function loadTheme(): Theme {
-  return normalizeThemePreference(roamgateLocalStorage.getItem(THEME_KEY));
+  return normalizeThemePreference(thyraLocalStorage.getItem(THEME_KEY));
 }
 
 function loadSystemTheme(): ResolvedTheme {
@@ -342,7 +342,7 @@ function loadSystemTheme(): ResolvedTheme {
 }
 
 function loadAccentColor(): AccentColor {
-  return normalizeAccentColor(roamgateLocalStorage.getItem(ACCENT_COLOR_KEY));
+  return normalizeAccentColor(thyraLocalStorage.getItem(ACCENT_COLOR_KEY));
 }
 
 function loadTerminalFontFamily(): string {
@@ -350,36 +350,36 @@ function loadTerminalFontFamily(): string {
 }
 
 function loadUiScale(): number {
-  return normalizeUiScale(roamgateLocalStorage.getItem(UI_SCALE_KEY));
+  return normalizeUiScale(thyraLocalStorage.getItem(UI_SCALE_KEY));
 }
 
 function loadZenMode(): boolean {
-  return normalizeZenMode(roamgateLocalStorage.getItem(ZEN_MODE_KEY));
+  return normalizeZenMode(thyraLocalStorage.getItem(ZEN_MODE_KEY));
 }
 
 function loadTerminalThemeSelection(): TerminalThemeSelection {
   return parseTerminalThemeSelection(
-    roamgateLocalStorage.getItem(TERMINAL_THEME_SELECTION_STORAGE_KEY),
+    thyraLocalStorage.getItem(TERMINAL_THEME_SELECTION_STORAGE_KEY),
   );
 }
 
 function loadCustomTerminalThemes(): CustomTerminalTheme[] {
   return parseCustomTerminalThemes(
-    roamgateLocalStorage.getItem(CUSTOM_TERMINAL_THEMES_STORAGE_KEY),
+    thyraLocalStorage.getItem(CUSTOM_TERMINAL_THEMES_STORAGE_KEY),
   );
 }
 
 function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
-  const current = roamgateLocalStorage.getItem(
+  const current = thyraLocalStorage.getItem(
     MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   );
   if (current !== null) return parseMobileTerminalShortcutRows(current);
-  const legacy = roamgateLocalStorage.getItem(
+  const legacy = thyraLocalStorage.getItem(
     LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   );
   const migrated = parseMobileTerminalShortcutRows(legacy);
   if (legacy !== null) {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
       serializeMobileTerminalShortcutRows(migrated),
     );
@@ -389,7 +389,7 @@ function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
 
 function loadMobileTerminalSideShortcuts(): MobileTerminalSideShortcuts {
   return parseMobileTerminalSideShortcuts(
-    roamgateLocalStorage.getItem(MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY),
+    thyraLocalStorage.getItem(MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY),
   );
 }
 
@@ -1341,14 +1341,14 @@ export default function App() {
   } = useReviewAnnotationDraft(resourceUiKey);
   const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [annotationsFloating, setAnnotationsFloating] = useState(
-    () => roamgateLocalStorage.getItem("annotationPanelMode") !== "fixed",
+    () => thyraLocalStorage.getItem("annotationPanelMode") !== "fixed",
   );
   const annotationsDocked = annotationsOpen && (mobile || !annotationsFloating);
   const toggleAnnotationsFloating = () => {
     const next = !annotationsFloating;
     setAnnotationsFloating(next);
     try {
-      roamgateLocalStorage.setItem(
+      thyraLocalStorage.setItem(
         "annotationPanelMode",
         next ? "floating" : "fixed",
       );
@@ -1697,13 +1697,9 @@ export default function App() {
       const current = inspectorStateRef.current;
       const sameOwner = !!current && sameResourceOwner(current.scope, scope);
       const stageWidth = inspectorStageRef.current?.clientWidth ?? 0;
-      const preferences = readInspectorPreferences(
-        roamgateLocalStorage,
-        scope,
-        {
-          rightSize: stageWidth > 0 ? stageWidth * 0.42 : undefined,
-        },
-      );
+      const preferences = readInspectorPreferences(thyraLocalStorage, scope, {
+        rightSize: stageWidth > 0 ? stageWidth * 0.42 : undefined,
+      });
       const dock = sameOwner ? current.dock : preferences.dock;
       const preferredSize = sameOwner
         ? current.size
@@ -1750,14 +1746,14 @@ export default function App() {
         ? { state: nextState, source: document.activeElement }
         : null;
       commitInspectorState(nextState);
-      writeInspectorPreferences(roamgateLocalStorage, nextState);
+      writeInspectorPreferences(thyraLocalStorage, nextState);
       if (mobile) setMobileView(view);
       if (focusInspector) requestAnimationFrame(finishInspectorFocus);
 
       const selectedPath =
         options.path ??
         (view === "files" && options.initialDirectory === undefined
-          ? readResourceFileSelection(roamgateLocalStorage, scope)
+          ? readResourceFileSelection(thyraLocalStorage, scope)
           : undefined);
       if (view === "files" && !selectedPath) {
         fileQuickOpenRequestRef.current += 1;
@@ -2094,7 +2090,7 @@ export default function App() {
     const sameOwner = !!current && sameResourceOwner(current.scope, scope);
     const view = sameOwner
       ? current.view
-      : readInspectorPreferences(roamgateLocalStorage, scope).view;
+      : readInspectorPreferences(thyraLocalStorage, scope).view;
     const historyPaneId =
       sameOwner && current.originPaneId
         ? current.originPaneId
@@ -2122,7 +2118,7 @@ export default function App() {
       if (inspectorFocusRequestRef.current?.state === current)
         inspectorFocusRequestRef.current.state = next;
       commitInspectorState(next);
-      writeInspectorPreferences(roamgateLocalStorage, next);
+      writeInspectorPreferences(thyraLocalStorage, next);
     },
     [commitInspectorState],
   );
@@ -2508,15 +2504,15 @@ export default function App() {
       clearFileExplorerResourceCache(
         connectionClient,
         resourceKey,
-        roamgateLocalStorage,
+        thyraLocalStorage,
       );
       clearDiffContentResourceState(resourceStateKey(scope));
       clearDiffViewerResourceCache(
         connectionClient,
         resourceKey,
-        roamgateLocalStorage,
+        thyraLocalStorage,
       );
-      writeResourceFileSelection(roamgateLocalStorage, scope, null);
+      writeResourceFileSelection(thyraLocalStorage, scope, null);
       const current = inspectorStateRef.current;
       if (!current || !sameResourceOwner(current.scope, scope)) return;
       fileQuickOpenRequestRef.current += 1;
@@ -2794,7 +2790,7 @@ export default function App() {
     const current = inspectorStateRef.current;
     if (!current || !activeFilePreview.entry?.path) return;
     writeResourceFileSelection(
-      roamgateLocalStorage,
+      thyraLocalStorage,
       current.scope,
       activeFilePreview.entry.path,
     );
@@ -3234,9 +3230,9 @@ export default function App() {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
-    roamgateLocalStorage.setItem(THEME_KEY, theme);
+    thyraLocalStorage.setItem(THEME_KEY, theme);
     document.documentElement.dataset.accent = accentColor;
-    roamgateLocalStorage.setItem(ACCENT_COLOR_KEY, accentColor);
+    thyraLocalStorage.setItem(ACCENT_COLOR_KEY, accentColor);
     document.documentElement.style.zoom =
       uiScale === UI_SCALE_DEFAULT ? "" : String(uiScale / 100);
     if (uiScale === UI_SCALE_DEFAULT) {
@@ -3270,31 +3266,31 @@ export default function App() {
       document.documentElement.style.removeProperty("--popover-portal-zoom");
       document.documentElement.style.removeProperty("--popover-content-zoom");
     }
-    roamgateLocalStorage.setItem(UI_SCALE_KEY, String(uiScale));
+    thyraLocalStorage.setItem(UI_SCALE_KEY, String(uiScale));
   }, [accentColor, resolvedTheme, theme, uiScale]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(ZEN_MODE_KEY, serializeZenMode(zenMode));
+    thyraLocalStorage.setItem(ZEN_MODE_KEY, serializeZenMode(zenMode));
   }, [zenMode]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
       serializeMobileTerminalShortcutRows(mobileTerminalShortcuts),
     );
   }, [mobileTerminalShortcuts]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY,
       serializeMobileTerminalSideShortcuts(mobileTerminalSideShortcuts),
     );
   }, [mobileTerminalSideShortcuts]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       TERMINAL_THEME_SELECTION_STORAGE_KEY,
       serializeTerminalThemeSelection(terminalThemeSelection),
     );
   }, [terminalThemeSelection]);
   useEffect(() => {
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem(
       CUSTOM_TERMINAL_THEMES_STORAGE_KEY,
       serializeCustomTerminalThemes(customTerminalThemes),
     );
@@ -3349,7 +3345,7 @@ export default function App() {
       setSidebarWidth(normalizedWidth);
       return;
     }
-    roamgateLocalStorage.setItem("sidebarWidth", String(normalizedWidth));
+    thyraLocalStorage.setItem("sidebarWidth", String(normalizedWidth));
   }, [sidebarWidth]);
 
   const setInspectorView = (view: InspectorView) => {
@@ -3368,14 +3364,14 @@ export default function App() {
           : current.originPaneId,
     };
     commitInspectorState(next);
-    writeInspectorPreferences(roamgateLocalStorage, next);
+    writeInspectorPreferences(thyraLocalStorage, next);
     if (mobile) setMobileView(view);
   };
   const setInspectorDock = (dock: InspectorDock) => {
     const current = inspectorStateRef.current;
     if (!current || current.dock === dock) return;
     const preferences = readInspectorPreferences(
-      roamgateLocalStorage,
+      thyraLocalStorage,
       current.scope,
     );
     const next = {
@@ -3385,7 +3381,7 @@ export default function App() {
       expanded: false,
     };
     commitInspectorState(next);
-    writeInspectorPreferences(roamgateLocalStorage, next);
+    writeInspectorPreferences(thyraLocalStorage, next);
   };
   const clearInspectorDetail = () => {
     const current = inspectorStateRef.current;
@@ -3427,7 +3423,7 @@ export default function App() {
       ),
     };
     commitInspectorState(next);
-    writeInspectorPreferences(roamgateLocalStorage, next);
+    writeInspectorPreferences(thyraLocalStorage, next);
   };
   const startInspectorResize = (e: React.PointerEvent) => {
     const current = inspectorStateRef.current;
@@ -3479,7 +3475,7 @@ export default function App() {
       if (!latest) return;
       const next = { ...latest, size: finalSize };
       commitInspectorState(next);
-      writeInspectorPreferences(roamgateLocalStorage, next);
+      writeInspectorPreferences(thyraLocalStorage, next);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);
@@ -3515,13 +3511,13 @@ export default function App() {
           <div className="brand">
             <img
               className="logo"
-              src="/roamgate-mark-48.png"
-              srcSet="/roamgate-mark-48.png 2x, /roamgate-mark-72.png 3x"
+              src="/thyra-mark-48.png"
+              srcSet="/thyra-mark-48.png 2x, /thyra-mark-72.png 3x"
               width={24}
               height={24}
               alt=""
             />
-            <span className="brand-title">Roamgate</span>
+            <span className="brand-title">Thyra</span>
             <span className="brand-version">v{packageJson.version}</span>
           </div>
           <ConnectionSwitcher />
@@ -3790,7 +3786,7 @@ export default function App() {
                   <ToastMark kind="info" loading={s.updateInstalling} />
                   <div className="toast-content">
                     <strong>
-                      {t("Roamgate {version} is available", {
+                      {t("Thyra {version} is available", {
                         version: s.updateInfo.latest_version ?? "",
                       })}
                     </strong>

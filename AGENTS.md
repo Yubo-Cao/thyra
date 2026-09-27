@@ -10,7 +10,7 @@ co-located `web/src/components/*.css` files (see the style organization
 guidelines in `CONTRIBUTING.md`).
 Server and bridge code lives in `server/src`. Release helpers live in `scripts/`.
 Generated build output belongs in `web/dist`, `server/public`,
-`server/src/public-files.gen.ts`, `server/roamgate*`, legacy `server/herdr-gui*`,
+`server/src/public-files.gen.ts`, `server/thyra*`, legacy `server/herdr-gui*`,
 and `dist/`; these paths
 are ignored and should not be committed.
 
@@ -84,28 +84,27 @@ and inspect every supported platform archive and checksum.
 
 ## Commit & Pull Request Guidelines
 
-### Sync completed work to the owner's fork
+### Sync completed work to the owner's repository
 
 The owner has requested that completed changes always be committed and pushed
-to their remote fork, `https://github.com/Yubo-Cao/herdr-studio` (`origin`), as
+to `https://github.com/Yubo-Cao/thyra` (`origin`), as
 part of finishing a task. This is standing authorization to commit, integrate,
-and push task changes to this fork's `main`; do not ask for push or merge
+and push task changes to `main`; do not ask for push or merge
 permission again unless the owner changes this instruction.
-"Remote fork" means this GitHub repository, not a remote workstation.
+Thyra is independent: it split from powerfooI/roamgate and has no `upstream`
+remote. Do not add one or port changes back without the owner asking.
 
-- Verify the push destination before writing. Never push to `upstream` as part
-  of this workflow.
+- Verify the push destination before writing.
 - Run the required checks, review the diff, and commit only the task's changes.
   Exclude secrets, generated assets/binaries, and unrelated local work.
 - Default to syncing completed work directly to `origin/main`. If using a task
-  branch, integrate it into the fork's `main` and push that branch. Fetch first,
+  branch, integrate it into `main` and push that branch. Fetch first,
   preserve remote changes, and verify that remote `main` matches local `main`.
-- Do not create pull requests in either the fork or upstream unless the owner
-  explicitly requests one. Routine fork synchronization takes precedence over
-  the upstream PR workflow below; it does not authorize tags or releases.
+- Do not create pull requests unless the owner explicitly requests one.
+  Routine synchronization does not authorize tags or releases.
 - Report the pushed branch/commit and any failed checks. If synchronization is
   blocked, preserve the local work and explain the failure rather than claiming
-  the fork is up to date. Never force-push or discard remote changes to sync.
+  `origin` is up to date. Never force-push or discard remote changes to sync.
 
 Git history uses concise imperative messages, for example `Use built-in CLI
 argument parser` or `Add command palette and release 0.0.3`. Keep commits
@@ -138,7 +137,7 @@ Stable releases use separate prepare and publish phases:
    that tag, which publishes the GitHub release with generated notes.
 
 For local preparation, `bun run release:prepare <X.Y.Z | patch | minor | major>`
-updates the release files without committing, tagging, or pushing. The upstream
-release workflow submits those changes through a normal PR. It does not restrict
-routine direct synchronization to the owner's fork described above; ask for
+updates the release files without committing, tagging, or pushing. The release
+workflow submits those changes through a normal PR. It does not restrict
+routine direct synchronization described above; ask for
 release authorization before starting the release workflow.

@@ -21,21 +21,21 @@ function createUpdateFixture({ badDigest = false } = {}) {
     );
   }
 
-  const root = mkdtempSync(join(tmpdir(), "roamgate-update-test-"));
+  const root = mkdtempSync(join(tmpdir(), "thyra-update-test-"));
   const assets = join(root, "assets");
   const packagePath = join(assets, target.packageDir);
-  const installPath = join(root, "installed", "roamgate");
+  const installPath = join(root, "installed", "thyra");
   mkdirSync(packagePath, { recursive: true });
   mkdirSync(join(root, "installed"), { recursive: true });
   writeFileSync(installPath, "old executable\n", { mode: 0o755 });
   writeFileSync(
-    join(packagePath, "roamgate"),
-    '#!/bin/sh\n[ "${1:-}" = "--version" ] && { echo "roamgate 9.8.7"; exit 0; }\nexit 1\n',
+    join(packagePath, "thyra"),
+    '#!/bin/sh\n[ "${1:-}" = "--version" ] && { echo "thyra 9.8.7"; exit 0; }\nexit 1\n',
     { mode: 0o755 },
   );
   writeFileSync(
     join(packagePath, "VERSION"),
-    `roamgate 9.8.7 ${target.platform}\n`,
+    `thyra 9.8.7 ${target.platform}\n`,
   );
 
   const archive = join(assets, target.archiveName);
@@ -56,7 +56,7 @@ function createUpdateFixture({ badDigest = false } = {}) {
     join(assets, target.manifestName),
     JSON.stringify({
       schema: 1,
-      name: "roamgate",
+      name: "thyra",
       version: "9.8.7",
       platform: target.platform,
       archive: target.archiveName,
@@ -137,7 +137,7 @@ describe("automatic update installation", () => {
         })
           .stdout.toString()
           .trim(),
-      ).toBe("roamgate 9.8.7");
+      ).toBe("thyra 9.8.7");
     } finally {
       fixture.cleanup();
     }

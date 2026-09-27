@@ -35,9 +35,9 @@ function currentReleasePlatform(): string {
 
 function createInstallerFixture(
   checksumName?: string,
-  product: "roamgate" | "herdr-gui" = "roamgate",
+  product: "thyra" | "herdr-gui" = "thyra",
 ) {
-  const root = mkdtempSync(join(tmpdir(), "roamgate-installer-test-"));
+  const root = mkdtempSync(join(tmpdir(), "thyra-installer-test-"));
   temporaryRoots.push(root);
   const assets = join(root, "assets");
   const fakeBin = join(root, "bin");
@@ -114,9 +114,9 @@ function runInstaller(
         HERDR_GUI_RELEASE_BASE_URL: releaseBaseUrl,
         HERDR_GUI_INSTALL_DIR: fixture.installDir,
         HERDR_GUI_VERSION: undefined,
-        ROAMGATE_RELEASE_BASE_URL: undefined,
-        ROAMGATE_INSTALL_DIR: undefined,
-        ROAMGATE_VERSION: undefined,
+        THYRA_RELEASE_BASE_URL: undefined,
+        THYRA_INSTALL_DIR: undefined,
+        THYRA_VERSION: undefined,
         ...environment,
       },
       stdout: "pipe",
@@ -132,10 +132,10 @@ afterEach(() => {
 });
 
 describe("release installer", () => {
-  test("retains the legacy installer without replacing Roamgate", () => {
+  test("retains the legacy installer without replacing Thyra", () => {
     const fixture = createInstallerFixture(undefined, "herdr-gui");
     mkdirSync(fixture.installDir, { recursive: true });
-    writeFileSync(join(fixture.installDir, "roamgate"), "keep Roamgate\n");
+    writeFileSync(join(fixture.installDir, "thyra"), "keep Thyra\n");
     writeFileSync(
       join(fixture.installDir, "herdr-gui"),
       "previous legacy binary\n",
@@ -151,8 +151,8 @@ describe("release installer", () => {
     expect(
       readFileSync(join(fixture.installDir, "herdr-gui.previous"), "utf8"),
     ).toBe("previous legacy binary\n");
-    expect(readFileSync(join(fixture.installDir, "roamgate"), "utf8")).toBe(
-      "keep Roamgate\n",
+    expect(readFileSync(join(fixture.installDir, "thyra"), "utf8")).toBe(
+      "keep Thyra\n",
     );
   });
 
@@ -179,24 +179,24 @@ describe("release installer", () => {
     );
   });
 
-  test("prefers Roamgate variables, including empty VERSION for latest", () => {
+  test("prefers Thyra variables, including empty VERSION for latest", () => {
     const fixture = createInstallerFixture();
     const installDir = join(fixture.root, "new-install");
     const result = runInstaller(fixture, "https://invalid.example/?rejected", {
-      ROAMGATE_RELEASE_BASE_URL: "http://127.0.0.1/releases",
-      ROAMGATE_INSTALL_DIR: installDir,
-      ROAMGATE_VERSION: "",
+      THYRA_RELEASE_BASE_URL: "http://127.0.0.1/releases",
+      THYRA_INSTALL_DIR: installDir,
+      THYRA_VERSION: "",
       HERDR_GUI_VERSION: "invalid-version",
     });
     expect(result.exitCode).toBe(0);
-    expect(existsSync(join(installDir, "roamgate"))).toBe(true);
+    expect(existsSync(join(installDir, "thyra"))).toBe(true);
     expect(existsSync(fixture.installDir)).toBe(false);
   });
 
-  test("rejects an explicitly empty Roamgate installation directory", () => {
+  test("rejects an explicitly empty Thyra installation directory", () => {
     const fixture = createInstallerFixture();
     const result = runInstaller(fixture, undefined, {
-      ROAMGATE_INSTALL_DIR: "",
+      THYRA_INSTALL_DIR: "",
     });
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr.toString()).toContain(
@@ -208,7 +208,7 @@ describe("release installer", () => {
   test("verifies, backs up, and installs the expected platform package", () => {
     const fixture = createInstallerFixture();
     mkdirSync(fixture.installDir, { recursive: true });
-    writeFileSync(join(fixture.installDir, "roamgate"), "previous binary\n", {
+    writeFileSync(join(fixture.installDir, "thyra"), "previous binary\n", {
       mode: 0o755,
     });
     writeFileSync(join(fixture.installDir, "herdr-gui"), "legacy GUI binary\n");
@@ -221,13 +221,13 @@ describe("release installer", () => {
     expect(result.stderr.toString()).toBe("");
 
     const installed = Bun.spawnSync(
-      [join(fixture.installDir, "roamgate"), "--version"],
+      [join(fixture.installDir, "thyra"), "--version"],
       { stdout: "pipe" },
     );
     expect(installed.exitCode).toBe(0);
-    expect(installed.stdout.toString().trim()).toBe("roamgate 9.8.7");
+    expect(installed.stdout.toString().trim()).toBe("thyra 9.8.7");
     expect(
-      readFileSync(join(fixture.installDir, "roamgate.previous"), "utf8"),
+      readFileSync(join(fixture.installDir, "thyra.previous"), "utf8"),
     ).toBe("previous binary\n");
     expect(readFileSync(join(fixture.installDir, "herdr-gui"), "utf8")).toBe(
       "legacy GUI binary\n",
@@ -249,7 +249,7 @@ describe("release installer", () => {
     mkdirSync(fixture.installDir, { recursive: true });
     const outside = join(fixture.root, "outside-binary");
     writeFileSync(outside, "outside\n", { mode: 0o755 });
-    symlinkSync(outside, join(fixture.installDir, "roamgate"));
+    symlinkSync(outside, join(fixture.installDir, "thyra"));
 
     const result = runInstaller(fixture);
     expect(result.exitCode).not.toBe(0);
@@ -261,10 +261,7 @@ describe("release installer", () => {
 
   test("rejects unauthenticated non-loopback release mirrors", () => {
     const fixture = createInstallerFixture();
-    const result = runInstaller(
-      fixture,
-      "http://downloads.example.com/roamgate",
-    );
+    const result = runInstaller(fixture, "http://downloads.example.com/thyra");
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr.toString()).toContain(
       "release base URL must use HTTPS unless the mirror is loopback",

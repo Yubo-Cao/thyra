@@ -1,9 +1,9 @@
-Agent icons used on the Roamgate website
+Agent icons used on the Thyra website
 
 pi.svg: adapted from https://pi.dev/logo-auto.svg
 Copyright (c) 2025 Mario Zechner
 
-codex.svg and kimi.svg: @lobehub/icons-static-svg, as used by Roamgate
+codex.svg and kimi.svg: @lobehub/icons-static-svg, as used by Thyra
 https://github.com/lobehub/lobe-icons
 Copyright (c) 2023 LobeHub
 
@@ -28,4 +28,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Names and logos remain trademarks of their respective owners. Their use
-identifies compatible tools and does not imply endorsement of Roamgate.
+identifies compatible tools and does not imply endorsement of Thyra.

@@ -14,11 +14,11 @@ export function releaseAssetNames(version) {
     "windows-arm64",
     "windows-x64",
   ].flatMap((platform) => [
-    `roamgate-v${version}-${platform}.tar.xz`,
-    `roamgate-v${version}-${platform}.tar.xz.sha256`,
-    `roamgate-${platform}.tar.xz`,
-    `roamgate-${platform}.tar.xz.sha256`,
-    `roamgate-${platform}.update.json`,
+    `thyra-v${version}-${platform}.tar.xz`,
+    `thyra-v${version}-${platform}.tar.xz.sha256`,
+    `thyra-${platform}.tar.xz`,
+    `thyra-${platform}.tar.xz.sha256`,
+    `thyra-${platform}.update.json`,
   ]);
 }
 
@@ -43,6 +43,6 @@ if (
     process.argv[2],
   );
   process.stdout.write(
-    "Verified Roamgate-only release assets; no legacy update or installer aliases.\n",
+    "Verified Thyra-only release assets; no legacy update or installer aliases.\n",
   );
 }

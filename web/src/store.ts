@@ -1,4 +1,4 @@
-import { roamgateLocalStorage, roamgateSessionStorage } from "./browserStorage";
+import { thyraLocalStorage, thyraSessionStorage } from "./browserStorage";
 import { t } from "./i18n";
 import { syncTaskPush, type TaskNotificationPreferences } from "./taskPush";
 import {
@@ -211,7 +211,7 @@ export function emptyServerSessionState(
   };
 }
 
-export const WORKTREE_REMOVED_EVENT = "roamgate:worktree-removed";
+export const WORKTREE_REMOVED_EVENT = "thyra:worktree-removed";
 
 export interface WorktreeRemovedTarget {
   connectionId: string;
@@ -234,7 +234,7 @@ function notificationPermission(): NotificationPermission | "unsupported" {
 function storedTaskNotificationPreferences(): TaskNotificationPreferences {
   try {
     const stored = JSON.parse(
-      roamgateLocalStorage.getItem(TASK_NOTIFICATION_PREFERENCES_KEY) ?? "{}",
+      thyraLocalStorage.getItem(TASK_NOTIFICATION_PREFERENCES_KEY) ?? "{}",
     );
     return {
       completed: stored.completed !== false,
@@ -249,7 +249,7 @@ function storedTaskNotificationsEnabled() {
   return (
     notificationPermission() === "granted" &&
     typeof localStorage !== "undefined" &&
-    roamgateLocalStorage.getItem(TASK_NOTIFICATIONS_KEY) === "true"
+    thyraLocalStorage.getItem(TASK_NOTIFICATIONS_KEY) === "true"
   );
 }
 
@@ -265,14 +265,14 @@ export function automaticUpdateChecksEnabledFromStorage(
 
 function storedAutomaticUpdateChecksEnabled(): boolean {
   return automaticUpdateChecksEnabledFromStorage(
-    typeof localStorage === "undefined" ? undefined : roamgateLocalStorage,
+    typeof localStorage === "undefined" ? undefined : thyraLocalStorage,
   );
 }
 
 function storedPendingRestartVersion(): string | null {
   if (typeof sessionStorage === "undefined") return null;
   try {
-    return roamgateSessionStorage.getItem(PENDING_UPDATE_RELOAD_KEY);
+    return thyraSessionStorage.getItem(PENDING_UPDATE_RELOAD_KEY);
   } catch {
     return null;
   }
@@ -282,9 +282,9 @@ function storePendingRestartVersion(version: string | null) {
   if (typeof sessionStorage === "undefined") return;
   try {
     if (version) {
-      roamgateSessionStorage.setItem(PENDING_UPDATE_RELOAD_KEY, version);
+      thyraSessionStorage.setItem(PENDING_UPDATE_RELOAD_KEY, version);
     } else {
-      roamgateSessionStorage.removeItem(PENDING_UPDATE_RELOAD_KEY);
+      thyraSessionStorage.removeItem(PENDING_UPDATE_RELOAD_KEY);
     }
   } catch {
     // Storage may be unavailable in private or restricted browser contexts.
@@ -308,7 +308,7 @@ const initial: State = {
   status: "disconnected",
   connectionPaused:
     typeof localStorage !== "undefined" &&
-    roamgateLocalStorage.getItem("connectionPaused") === "true",
+    thyraLocalStorage.getItem("connectionPaused") === "true",
   bridgeStatus: null,
   connections: [],
   defaultConnectionId: LEGACY_DEFAULT_CONNECTION_ID,
@@ -322,7 +322,7 @@ const initial: State = {
   taskNotificationsEnabled: storedTaskNotificationsEnabled(),
   taskNotificationPreferences: storedTaskNotificationPreferences(),
   taskNotificationTransport:
-    roamgateLocalStorage.getItem("taskNotificationTransport") === "push"
+    thyraLocalStorage.getItem("taskNotificationTransport") === "push"
       ? "push"
       : "local",
   taskNotificationBusy: false,
@@ -673,7 +673,7 @@ function reloadWhenUpdatedServerIsReady(
               pendingRestartVersion: null,
               notice: {
                 kind: "success",
-                message: t("Roamgate {version} is running", {
+                message: t("Thyra {version} is running", {
                   version: expectedVersion,
                 }),
                 detail: t(
@@ -699,7 +699,7 @@ function reloadWhenUpdatedServerIsReady(
         kind: "error",
         message: t("Updated server did not become ready"),
         detail: t(
-          "Could not verify Roamgate {version}. Reload the page after checking the server process.",
+          "Could not verify Thyra {version}. Reload the page after checking the server process.",
           { version: expectedVersion },
         ),
       },
@@ -852,7 +852,7 @@ function reportTaskNotificationFailure(error: unknown, version: number) {
     },
   });
   try {
-    roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+    thyraLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
   } catch {
     // The runtime preference still reflects the failed notification transport.
   }
@@ -919,7 +919,7 @@ export function taskNotificationTargetIsCurrent(
 
 export function taskNotificationTag(target: TaskNotificationTarget): string {
   return JSON.stringify([
-    "roamgate-task",
+    "thyra-task",
     target.connectionId,
     target.runtimeGeneration,
     target.paneId,
@@ -955,8 +955,8 @@ function notifyTaskCompleted(pane: Pane, workspaces: Workspace[], tabs: Tab[]) {
   if (runtimeGeneration === null) return;
   const body = taskNotificationBody(pane, workspaces, tabs);
   const title = blocked
-    ? t("Roamgate agent needs input")
-    : t("Roamgate task completed");
+    ? t("Thyra agent needs input")
+    : t("Thyra task completed");
   const target = taskNotificationTarget(
     state.activeConnectionId,
     runtimeGeneration,
@@ -1412,7 +1412,7 @@ async function checkForUpdate(showErrors = false) {
   try {
     const r = await fetch("/api/update/check", {
       credentials: "same-origin",
-      headers: { "x-roamgate-update": "1" },
+      headers: { "x-thyra-update": "1" },
     });
     if (!r.ok) {
       if (showErrors) {
@@ -1441,7 +1441,7 @@ async function checkForUpdate(showErrors = false) {
         notice: showErrors
           ? {
               kind: "success",
-              message: t("Roamgate is up to date"),
+              message: t("Thyra is up to date"),
               detail: info.latest_version
                 ? t("Current version: {version}", {
                     version: info.current_version,
@@ -1511,7 +1511,7 @@ function selectConnectionNow(connectionId: string, refresh = true): boolean {
     state.activeConnectionId === LEGACY_DEFAULT_CONNECTION_ID &&
     typeof localStorage !== "undefined"
   ) {
-    migrateLegacyConnectionStorage(roamgateLocalStorage, connectionId);
+    migrateLegacyConnectionStorage(thyraLocalStorage, connectionId);
   }
   stopPolling();
   disposeTerminalConnection(
@@ -2161,7 +2161,7 @@ export const store = {
     initialized = true;
     void store.restoreTaskNotifications();
     window.addEventListener("storage", (event) => {
-      const key = event.key?.replace(/^roamgate:/, "");
+      const key = event.key?.replace(/^thyra:/, "");
       if (
         key === TASK_NOTIFICATIONS_KEY ||
         key === TASK_NOTIFICATION_PREFERENCES_KEY ||
@@ -2258,7 +2258,7 @@ export const store = {
         store.pauseConnection(
           control.reason ??
             t(
-              "Another Roamgate client paused this connection. Resume when you want this browser to sync again.",
+              "Another Thyra client paused this connection. Resume when you want this browser to sync again.",
             ),
         );
       }
@@ -2318,7 +2318,7 @@ export const store = {
     detail = t("This browser will stop syncing until you resume it."),
   ) {
     connectionRecoveryIntent = null;
-    roamgateLocalStorage.setItem("connectionPaused", "true");
+    thyraLocalStorage.setItem("connectionPaused", "true");
     stopPolling();
     disposeTerminalConnection(
       {
@@ -2363,7 +2363,7 @@ export const store = {
 
   resumeConnection() {
     connectionRecoveryIntent = state.connectionPaused ? "resume" : "reconnect";
-    roamgateLocalStorage.setItem("connectionPaused", "false");
+    thyraLocalStorage.setItem("connectionPaused", "false");
     set({
       connectionPaused: false,
       error: null,
@@ -3153,7 +3153,7 @@ export const store = {
         state.taskNotificationPreferences,
       );
       if (version === taskNotificationPreferenceVersion) {
-        roamgateLocalStorage.setItem("taskNotificationTransport", transport);
+        thyraLocalStorage.setItem("taskNotificationTransport", transport);
         set({ taskNotificationTransport: transport });
       }
     } catch (error) {
@@ -3187,8 +3187,8 @@ export const store = {
         preferences,
       );
       if (version !== taskNotificationPreferenceVersion) return;
-      roamgateLocalStorage.setItem("taskNotificationTransport", transport);
-      roamgateLocalStorage.setItem(
+      thyraLocalStorage.setItem("taskNotificationTransport", transport);
+      thyraLocalStorage.setItem(
         TASK_NOTIFICATION_PREFERENCES_KEY,
         JSON.stringify(preferences),
       );
@@ -3230,7 +3230,7 @@ export const store = {
         return;
       }
       if (version !== taskNotificationPreferenceVersion) return;
-      roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+      thyraLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
       set({
         taskNotificationsEnabled: false,
         taskNotificationBusy: false,
@@ -3246,7 +3246,7 @@ export const store = {
     }
 
     if (notificationPermission() === "unsupported") {
-      roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+      thyraLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
       set({
         taskNotificationsEnabled: false,
         taskNotificationPermission: "unsupported",
@@ -3255,7 +3255,7 @@ export const store = {
           kind: "error",
           message: t("Browser notifications are not supported"),
           detail: t(
-            "Use a browser with notification support over HTTPS. On iPhone or iPad, open Roamgate from the Home Screen (iOS/iPadOS 16.4 or later).",
+            "Use a browser with notification support over HTTPS. On iPhone or iPad, open Thyra from the Home Screen (iOS/iPadOS 16.4 or later).",
           ),
         },
       });
@@ -3270,7 +3270,7 @@ export const store = {
       if (version !== taskNotificationPreferenceVersion) return;
     } catch (e) {
       if (version !== taskNotificationPreferenceVersion) return;
-      roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+      thyraLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
       set({
         taskNotificationsEnabled: false,
         taskNotificationBusy: false,
@@ -3305,8 +3305,8 @@ export const store = {
       }
     }
     if (version !== taskNotificationPreferenceVersion) return;
-    roamgateLocalStorage.setItem("taskNotificationTransport", transport);
-    roamgateLocalStorage.setItem(
+    thyraLocalStorage.setItem("taskNotificationTransport", transport);
+    thyraLocalStorage.setItem(
       TASK_NOTIFICATIONS_KEY,
       granted ? "true" : "false",
     );
@@ -3322,7 +3322,7 @@ export const store = {
             detail:
               transport === "push"
                 ? t(
-                    "This device receives completion and input-required notifications even when Roamgate is closed, subject to your platform settings.",
+                    "This device receives completion and input-required notifications even when Thyra is closed, subject to your platform settings.",
                   )
                 : t(
                     "Local notifications work while this page is running. Background delivery requires Web Push support and server configuration.",
@@ -3345,10 +3345,7 @@ export const store = {
 
   setAutomaticUpdateChecksEnabled(enabled: boolean) {
     try {
-      roamgateLocalStorage.setItem(
-        AUTOMATIC_UPDATE_CHECKS_KEY,
-        String(enabled),
-      );
+      thyraLocalStorage.setItem(AUTOMATIC_UPDATE_CHECKS_KEY, String(enabled));
     } catch {
       // The in-memory preference still applies when storage is unavailable.
     }
@@ -3398,7 +3395,7 @@ export const store = {
       const r = await fetch("/api/update/install", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "x-roamgate-update": "1" },
+        headers: { "x-thyra-update": "1" },
       });
       const body = await r.json().catch(() => null);
       if (!r.ok) {
@@ -3415,7 +3412,7 @@ export const store = {
             dismissedUpdateVersion: latestVersion,
             notice: {
               kind: "info",
-              message: t("Restarting the Roamgate process"),
+              message: t("Restarting the Thyra process"),
               detail: t(
                 "The binary was updated. Waiting for the external process supervisor to start the new version.",
               ),
@@ -3431,10 +3428,10 @@ export const store = {
           dismissedUpdateVersion: latestVersion,
           notice: {
             kind: "success",
-            message: t("Roamgate {version} installed", {
+            message: t("Thyra {version} installed", {
               version: installedVersion,
             }),
-            detail: t("Restart the Roamgate process to use the new version."),
+            detail: t("Restart the Thyra process to use the new version."),
           },
         });
         return;
@@ -3445,7 +3442,7 @@ export const store = {
         dismissedUpdateVersion: latestVersion,
         notice: {
           kind: "success",
-          message: t("Roamgate is already up to date"),
+          message: t("Thyra is already up to date"),
         },
       });
     } catch (e) {

@@ -166,7 +166,7 @@ function readPopup(r: SurfaceReader, metadata: boolean): Popup | null {
   });
 }
 
-// The scene precedes delta rows on the wire even though Roamgate does not
+// The scene precedes delta rows on the wire even though Thyra does not
 // render it. Consume every field, without retaining image payloads.
 function skipGraphicsKey(r: SurfaceReader) {
   if (r.number(1) === 0) {

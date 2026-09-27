@@ -135,7 +135,7 @@ export async function startDictation(
     if (!status.available)
       throw new Error(
         status.error ??
-          t("Voice input is not configured on this Roamgate server."),
+          t("Voice input is not configured on this Thyra server."),
       );
 
     callbacks.onPhase("starting");
@@ -169,7 +169,7 @@ function capture(
   const processorOptions: VoiceCaptureOptions = vadWasm
     ? { vadWasm: vadWasm.slice(0) }
     : {};
-  const node = new AudioWorkletNode(context, "roamgate-voice-capture", {
+  const node = new AudioWorkletNode(context, "thyra-voice-capture", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
     channelCount: 1,

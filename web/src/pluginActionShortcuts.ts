@@ -14,7 +14,7 @@ type PluginActionShortcutEvent = Pick<
 
 /**
  * Resolve a keydown into a Herdr plugin action to invoke, from the fixed set
- * of plugin action shortcuts Roamgate currently knows about. There is no
+ * of plugin action shortcuts Thyra currently knows about. There is no
  * plugin action discovery/configuration UI yet, so this list is hardcoded.
  */
 export function pluginActionShortcut(

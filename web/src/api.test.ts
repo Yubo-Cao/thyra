@@ -95,7 +95,7 @@ describe("browser logout", () => {
           expect(init).toMatchObject({
             method: "POST",
             credentials: "same-origin",
-            headers: { "x-roamgate-logout": "1" },
+            headers: { "x-thyra-logout": "1" },
           });
           return response.promise;
         },

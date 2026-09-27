@@ -10,7 +10,7 @@ import {
 import { __storeTesting, emptyServerSessionState, store } from "./store";
 import { bridge, type ConnectionClient } from "./api";
 
-const origin = "https://roamgate.example";
+const origin = "https://thyra.example";
 const target = {
   connectionId: "alpha",
   runtimeGeneration: 1,
@@ -331,7 +331,7 @@ describe("task notification transport", () => {
     const activate = mock();
     const replaceState = mock();
     const location = new URL(
-      origin + "/#roamgate-task=" + encodeURIComponent(JSON.stringify(target)),
+      origin + "/#thyra-task=" + encodeURIComponent(JSON.stringify(target)),
     );
     await withBrowser(
       {
@@ -384,7 +384,7 @@ describe("notification service worker clicks", () => {
     );
     let pending: Promise<void> | undefined;
     const message = {
-      title: "Roamgate agent needs input",
+      title: "Thyra agent needs input",
       body: "Example agent",
       tag: "task",
       target,
@@ -413,7 +413,7 @@ describe("notification service worker clicks", () => {
     });
     await pending;
     expect(showNotification.mock.calls.slice(-1)[0]).toMatchObject([
-      "Roamgate agent update",
+      "Thyra agent update",
       { data: null },
     ]);
   });
@@ -470,7 +470,7 @@ describe("notification service worker clicks", () => {
     listeners.notificationclick(event);
     await pending;
     expect(openWindow).toHaveBeenCalledWith(
-      origin + "/#roamgate-task=" + encodeURIComponent(JSON.stringify(target)),
+      origin + "/#thyra-task=" + encodeURIComponent(JSON.stringify(target)),
     );
   });
 });

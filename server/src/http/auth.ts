@@ -117,7 +117,7 @@ export function createAuthHandlers(args: {
     // Custom headers require a CORS preflight; the bridge grants no CORS access.
     // Unlike an Origin comparison, this also works behind reverse proxies.
     if (
-      req.headers.get("x-roamgate-logout") !== "1" ||
+      req.headers.get("x-thyra-logout") !== "1" ||
       req.headers.get("sec-fetch-site") === "cross-site"
     ) {
       return new Response("forbidden", { status: 403 });

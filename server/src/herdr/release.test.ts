@@ -23,7 +23,7 @@ import {
 
 const trash: string[] = [];
 function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), "roamgate-herdr-release-"));
+  const dir = mkdtempSync(join(tmpdir(), "thyra-herdr-release-"));
   trash.push(dir);
   return dir;
 }

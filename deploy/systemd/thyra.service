@@ -1,13 +1,13 @@
 [Unit]
-Description=Roamgate
-Documentation=https://github.com/Yubo-Cao/herdr-studio
+Description=Thyra
+Documentation=https://github.com/Yubo-Cao/thyra
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=-%h/.config/roamgate/roamgate.env
-ExecStart=%h/.local/bin/roamgate
+EnvironmentFile=-%h/.config/thyra/thyra.env
+ExecStart=%h/.local/bin/thyra
 Restart=always
 RestartSec=2
 TimeoutStopSec=15

@@ -9,7 +9,7 @@ import {
 } from "./gui-settings";
 
 test("terminal codec preferences survive a fresh process and default to enabled", async () => {
-  const home = await mkdtemp(join(tmpdir(), "roamgate-settings-"));
+  const home = await mkdtemp(join(tmpdir(), "thyra-settings-"));
   const source = JSON.stringify(import.meta.resolve("./gui-settings"));
   const run = async (script: string) => {
     const child = Bun.spawn(

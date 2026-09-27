@@ -152,10 +152,10 @@ globalThis.fetch = async (url) => {
         .split("\n");
       expect(requests).toHaveLength(2);
       for (const url of requests) {
-        expect(url).toContain("/releases/download/v9.8.7/roamgate-");
+        expect(url).toContain("/releases/download/v9.8.7/thyra-");
       }
-      expect(existsSync(join(root, "server/roamgate"))).toBe(false);
-      expect(existsSync(join(root, "server/roamgate.exe"))).toBe(false);
+      expect(existsSync(join(root, "server/thyra"))).toBe(false);
+      expect(existsSync(join(root, "server/thyra.exe"))).toBe(false);
     },
   );
 });
@@ -170,16 +170,16 @@ test("prebuilt identity floor compares numeric versions", () => {
 describe("releaseAssetFor", () => {
   test("maps every supported platform to an archive and binary name", () => {
     expect(releaseAssetFor("darwin", "arm64")).toEqual({
-      asset: "roamgate-darwin-arm64",
-      binary: "roamgate",
+      asset: "thyra-darwin-arm64",
+      binary: "thyra",
     });
     expect(releaseAssetFor("linux", "x64")).toEqual({
-      asset: "roamgate-linux-x64",
-      binary: "roamgate",
+      asset: "thyra-linux-x64",
+      binary: "thyra",
     });
-    expect(releaseAssetFor("win32", "x64")?.binary).toBe("roamgate.exe");
+    expect(releaseAssetFor("win32", "x64")?.binary).toBe("thyra.exe");
     expect(releaseAssetFor("win32", "arm64")?.asset).toBe(
-      "roamgate-windows-arm64",
+      "thyra-windows-arm64",
     );
   });
 
@@ -192,7 +192,7 @@ describe("releaseAssetFor", () => {
 describe("parseSha256File", () => {
   test("extracts the digest from shasum output", () => {
     const digest = "a".repeat(64);
-    expect(parseSha256File(`${digest}  roamgate-darwin-arm64.tar.xz\n`)).toBe(
+    expect(parseSha256File(`${digest}  thyra-darwin-arm64.tar.xz\n`)).toBe(
       digest,
     );
   });
@@ -249,7 +249,7 @@ describe("computeUrl", () => {
 
   test("includes the login token only for non-loopback binds", () => {
     const dir = fixture({
-      "roamgate.env": "HOST=0.0.0.0\nPORT=8791\n",
+      "thyra.env": "HOST=0.0.0.0\nPORT=8791\n",
       "auth-token": "abc123\n",
     });
     expect(computeUrl(dir)).toBe("http://localhost:8791/?token=abc123");
@@ -257,7 +257,7 @@ describe("computeUrl", () => {
 
   test("ignores a stale token file on loopback binds", () => {
     const dir = fixture({
-      "roamgate.env": "HOST=127.0.0.1\nPORT=8787\n",
+      "thyra.env": "HOST=127.0.0.1\nPORT=8787\n",
       "auth-token": "abc123\n",
     });
     expect(computeUrl(dir)).toBe("http://127.0.0.1:8787");
@@ -265,21 +265,20 @@ describe("computeUrl", () => {
 
   test("new password values take precedence, including empty values", () => {
     const dir = fixture({
-      "roamgate.env":
-        "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nROAMGATE_PASSWORD=new\n",
+      "thyra.env": "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nTHYRA_PASSWORD=new\n",
       "auth-token": "saved-token\n",
     });
     expect(computeUrl(dir)).toBe("http://localhost:8787");
     writeFileSync(
-      join(dir, "roamgate.env"),
-      "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nROAMGATE_PASSWORD=\n",
+      join(dir, "thyra.env"),
+      "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nTHYRA_PASSWORD=\n",
     );
     expect(computeUrl(dir)).toBe("http://localhost:8787/?token=saved-token");
   });
 
   test("honors exported and quoted entries without a token file", () => {
     const dir = fixture({
-      "roamgate.env": 'export HOST="0.0.0.0"\nPORT = "8799"\n',
+      "thyra.env": 'export HOST="0.0.0.0"\nPORT = "8799"\n',
     });
     expect(computeUrl(dir)).toBe("http://localhost:8799");
   });

@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
-const directory = mkdtempSync(join(tmpdir(), "roamgate-lint-"));
+const directory = mkdtempSync(join(tmpdir(), "thyra-lint-"));
 copyFileSync(
   new URL(".oxlintrc.json", root),
   join(directory, ".oxlintrc.json"),
@@ -174,7 +174,7 @@ test("generated assets, binaries and workspace dependencies stay ignored", () =>
     "dist/fixture.js",
     "node_modules/fixture.js",
     "server/herdr-gui-fixture.js",
-    "server/roamgate-fixture.js",
+    "server/thyra-fixture.js",
     "server/public/fixture.js",
     "server/src/public-files.gen.ts",
     "web/dist/fixture.js",

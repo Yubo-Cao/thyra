@@ -89,7 +89,7 @@ const activateShowcaseTab = (tab) => {
     () => {
       if (showcaseImage instanceof HTMLImageElement && imageSource) {
         showcaseImage.src = imageSource;
-        showcaseImage.alt = imageAlt ?? "Roamgate product view";
+        showcaseImage.alt = imageAlt ?? "Thyra product view";
       }
       if (showcaseLink instanceof HTMLAnchorElement && imageSource) {
         showcaseLink.href = imageSource;
@@ -131,7 +131,7 @@ const copyButton = document.querySelector("[data-copy-command]");
 const copyLabel = copyButton?.querySelector("span");
 const installCommand = document.querySelector("[data-install-command]");
 const commandText =
-  "curl -fsSL https://github.com/Yubo-Cao/herdr-studio/releases/latest/download/install-roamgate.sh | sh";
+  "curl -fsSL https://github.com/Yubo-Cao/thyra/releases/latest/download/install-thyra.sh | sh";
 
 const copyText = async (text) => {
   if (!navigator.clipboard || !window.isSecureContext) {
@@ -180,7 +180,7 @@ if (!reducedMotion.matches && window.matchMedia("(pointer: fine)").matches) {
 
 const starCount = document.querySelector("[data-star-count]");
 
-fetch("https://api.github.com/repos/powerfooI/roamgate", {
+fetch("https://api.github.com/repos/Yubo-Cao/thyra", {
   headers: { Accept: "application/vnd.github+json" },
 })
   .then((response) => {

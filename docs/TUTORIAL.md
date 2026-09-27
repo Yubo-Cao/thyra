@@ -3,7 +3,7 @@
 
 # From your first terminal to a workspace that travels
 
-**Start Roamgate on the Herdr host and open its URL:** begin with [chapter 1](#start).
+**Start Thyra on the Herdr host and open its URL:** begin with [chapter 1](#start).
 Practice one task: ask an agent to improve a README, review it, then check from
 another device. No Git or networking knowledge is needed to start.
 
@@ -17,17 +17,17 @@ terminals alive.**
 <a id="start"></a>
 
 ```text
-Browser / PWA -> Roamgate (HTTP + WebSocket) -> Herdr -> shell / agent
+Browser / PWA -> Thyra (HTTP + WebSocket) -> Herdr -> shell / agent
 ```
 
-Herdr owns terminals; Roamgate supplies the browser UI; agents remain CLIs.
-Roamgate does not provide models or install/sign in to agents. Closing the
+Herdr owns terminals; Thyra supplies the browser UI; agents remain CLIs.
+Thyra does not provide models or install/sign in to agents. Closing the
 browser leaves terminals running; host sleep, shutdown, or process exit can stop work.
 
 1. Start Herdr with a trusted project open; see [herdr.dev](https://herdr.dev).
-   For default local setups, `roamgate herdr setup` can also install/start it
-   after [installing Roamgate](./DEPLOYMENT.md#install-a-release).
-2. Run `roamgate` on that computer and leave it running (`roamgate.exe` on
+   For default local setups, `thyra herdr setup` can also install/start it
+   after [installing Thyra](./DEPLOYMENT.md#install-a-release).
+2. Run `thyra` on that computer and leave it running (`thyra.exe` on
    Windows). Plugin users instead use the [startup action](./DEPLOYMENT.md#herdr-plugin)
    and obtain the URL from its panel/log; the plugin does not add the CLI to PATH.
 3. Open the printed URL, including any token, **on the same computer**. Select
@@ -37,11 +37,11 @@ browser leaves terminals running; host sleep, shutdown, or process exit can stop
 
 Standalone defaults to `127.0.0.1:8787`, which **bypasses login even with a
 password**. A new user/plugin service defaults to `0.0.0.0:8787` with a token.
-Existing Herdr Studio / Roamgate 0.7.0 installations should follow
+Existing Herdr Studio / Thyra 0.7.0 installations should follow
 [migration guidance](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
 before changing services.
 
-![Desktop workspace with project navigation, terminals, and changed files](./images/roamgate-desktop-changes.png)
+![Desktop workspace with project navigation, terminals, and changed files](./images/thyra-desktop-changes.png)
 
 | Object | Meaning |
 | --- | --- |
@@ -87,7 +87,7 @@ For missing records, follow [session inspection guidance](../FEATURES.md#agent-a
 
 **You are done when:** you can identify the change and verify its command.
 
-![File Explorer previewing a README](./images/roamgate-desktop-files.png)
+![File Explorer previewing a README](./images/thyra-desktop-files.png)
 
 Tree search covers loaded files, not repository-wide contents. Right-click or
 long-press opens file actions; `Cmd/Ctrl+Click` on terminal paths opens previews.
@@ -105,7 +105,7 @@ Uploads, deletions, and SSH file operations affect real target-host files.
 not submit.** Drafts belong to this browser/checkout, not GitHub or other devices;
 stale anchors keep their captured quotes.
 
-![Diff annotations on selected changed lines](./images/roamgate-desktop-annotations.png)
+![Diff annotations on selected changed lines](./images/thyra-desktop-annotations.png)
 
 This exercise needs no commit. Before committing, run `git status` and follow
 the project's checks. Staging is not committing; committing is not pushing.
@@ -137,7 +137,7 @@ this exercise; when enabled they fetch/merge, never push.
 Complete [Tailscale + Serve](#tailscale) first. Use its HTTPS URL; `127.0.0.1`
 on a phone points to the phone, not your computer.
 
-1. Open Roamgate on your phone, authenticate if required, and select your project/pane.
+1. Open Thyra on your phone, authenticate if required, and select your project/pane.
 2. Use the floating terminal shortcuts for Ctrl/arrows, then open Changes to review
    the unified diff. Long-press opens file actions.
 3. Adjust **Configuration > Appearance > Text size** if needed and install the PWA:
@@ -149,9 +149,9 @@ on a phone points to the phone, not your computer.
 | Chrome/Edge | Browser menu > Install app |
 
 **You are done when:** the home-screen icon opens your project. Install the stable
-Roamgate service URL, not this tutorial website.
+Thyra service URL, not this tutorial website.
 
-![Mobile terminal with touch shortcuts](./images/roamgate-mobile-terminal.png)
+![Mobile terminal with touch shortcuts](./images/thyra-mobile-terminal.png)
 
 PWA mode is neither offline access nor background keep-alive. Host sleep, stopped
 services, or VPN loss interrupts access. [Notifications](./DEPLOYMENT.md#web-push-notifications)
@@ -168,21 +168,21 @@ has terminal/file authority; do not share this URL like a read-only document.
 | Goal | Route |
 | --- | --- |
 | Regular phone/computer access | [Tailscale + Serve](#tailscale) |
-| Local Roamgate controlling remote Herdr | [SSH profile](#ssh), Linux/macOS bridge |
-| Another computer accessing remote Roamgate | [SSH web-port forwarding](#ssh) |
+| Local Thyra controlling remote Herdr | [SSH profile](#ssh), Linux/macOS bridge |
+| Another computer accessing remote Thyra | [SSH web-port forwarding](#ssh) |
 | Temporary experiment between your computers | [Tailcat](#tailcat) |
 
 These are external tools, not built-in integrations. No router forwarding,
 exit node, or subnet routing is needed.
 
 ```text
-Hop A: Browser -> Roamgate     (Serve / SSH web forwarding / Tailcat)
-Hop B: Roamgate -> Herdr       (local sockets / Roamgate SSH profile)
+Hop A: Browser -> Thyra     (Serve / SSH web forwarding / Tailcat)
+Hop B: Thyra -> Herdr       (local sockets / Thyra SSH profile)
 ```
 
 ### Safety checks
 
-- Admit only fully trusted people/devices. UI access has the Roamgate user's authority.
+- Admit only fully trusted people/devices. UI access has the Thyra user's authority.
 - **Loopback bypasses login even with a password.** A proxy/tunnel forwarding to
   it becomes the entire remote access boundary. Use an independently authenticated
   proxy if that is insufficient; do not widen the bind just to force login.
@@ -196,7 +196,7 @@ Hop B: Roamgate -> Herdr       (local sockets / Roamgate SSH profile)
 ### Tailscale + Serve: regular private access
 
 Tailscale connects authorized devices over WireGuard; Serve supplies a tailnet-only
-HTTPS address forwarding to local Roamgate. Direct connections or DERP relays
+HTTPS address forwarding to local Thyra. Direct connections or DERP relays
 remain encrypted.
 
 1. Install [Tailscale](https://tailscale.com/download) on both devices and join the
@@ -204,16 +204,16 @@ remain encrypted.
    [macOS instructions](https://tailscale.com/docs/install/mac), not a second install.
 2. [Restrict access](https://tailscale.com/docs/features/access-control) to intended
    users/devices on the host's HTTPS port 443. Review broad rules before enabling Serve.
-3. On the Herdr host, start Roamgate on a free loopback port:
+3. On the Herdr host, start Thyra on a free loopback port:
 
    ```bash
-   roamgate --host 127.0.0.1 --port 8787
+   thyra --host 127.0.0.1 --port 8787
    ```
 
    If a user/plugin service already runs it, do not duplicate it. Set
    `HOST=127.0.0.1` and `PORT=8787` in its protected
    [environment file](./DEPLOYMENT.md#run-as-a-user-service), preserving other settings,
-   then run `roamgate service restart` or the plugin's `roamgate.restart` action.
+   then run `thyra service restart` or the plugin's `thyra.restart` action.
    Confirm asynchronous plugin restarts in its log. **Loopback removes the
    token/password gate; Tailscale policy must replace it.**
 
@@ -245,33 +245,33 @@ tailscale serve status
 ```
 
 Avoid `tailscale serve reset`: it clears all Serve configuration. `--bg` persists
-Serve, not Roamgate, and does not prevent sleep. For daily use, configure a
-[Roamgate user service](./DEPLOYMENT.md#run-as-a-user-service) with loopback retained.
+Serve, not Thyra, and does not prevent sleep. For daily use, configure a
+[Thyra user service](./DEPLOYMENT.md#run-as-a-user-service) with loopback retained.
 
 <a id="ssh"></a>
 
 ### SSH: remote Herdr or remote web interface
 
-**Option A — local Roamgate, remote Herdr:** requires a Linux/macOS bridge;
+**Option A — local Thyra, remote Herdr:** requires a Linux/macOS bridge;
 Windows supports native local profiles, not SSH socket forwarding.
 
 1. Verify system SSH, host fingerprint, authentication, and remote Herdr readiness.
    Put keys, ports, and jump hosts in `~/.ssh/config`, for example alias `workbox`.
-2. Add an SSH profile from Roamgate's connection selector: Destination `workbox`,
+2. Add an SSH profile from Thyra's connection selector: Destination `workbox`,
    socket paths empty for automatic resolution. Test/connect and verify `pwd`.
 
 Alternatively, on a free port:
 
 ```bash
-roamgate --ssh-host workbox --host 127.0.0.1
+thyra --ssh-host workbox --host 127.0.0.1
 ```
 
 Files, Git, image uploads, and hooks run remotely. Explicit socket flags/environment
 variables override tunnel paths and can select the wrong host. Profiles store no
 SSH secrets; see [connection configuration](./DEPLOYMENT.md#multiple-and-remote-herdr-connections).
 
-**Option B — forward remote Roamgate's web port:** both services stay remote;
-this works with Windows OpenSSH too. Remote Roamgate uses loopback, so SSH is the
+**Option B — forward remote Thyra's web port:** both services stay remote;
+this works with Windows OpenSSH too. Remote Thyra uses loopback, so SSH is the
 admission boundary. Local processes on the visiting computer also gain access.
 
 On the visiting computer, replace `workbox` with your SSH alias:
@@ -295,10 +295,10 @@ has not been verified end-to-end on two machines by this project.**
 Install matching supported builds from the [official repository](https://github.com/tailscale/tailcat#install)
 on both computers (`brew install tailcat` on macOS). Check `tailcat --help`,
 `tailcat serve --help`, and `tailcat forward --help` for the flags below. The web
-demo is not a general Roamgate proxy; use Tailscale for phones.
+demo is not a general Thyra proxy; use Tailscale for phones.
 
-1. Run and locally verify Roamgate at `127.0.0.1:8787` on your work computer.
-   There is **no Roamgate login gate**; only proceed between computers you control.
+1. Run and locally verify Thyra at `127.0.0.1:8787` on your work computer.
+   There is **no Thyra login gate**; only proceed between computers you control.
 2. In another terminal there, start a single-port service:
 
    ```bash
@@ -330,7 +330,7 @@ authentication-free SSH, or writable-directory sharing. Read the current
 
 Check in order (about 3 minutes):
 
-1. On the Roamgate host, run `curl -fsS http://127.0.0.1:8787/healthz`
+1. On the Thyra host, run `curl -fsS http://127.0.0.1:8787/healthz`
    (`curl.exe` in PowerShell). If refused, check process/port/service status.
    Health is not proof every Herdr feature works.
 2. Open the page locally. If terminals fail, check Herdr, selected profile,

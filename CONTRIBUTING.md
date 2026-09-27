@@ -63,8 +63,8 @@ a real backend for affected changes:
 Record device/browser and results in the PR. Passing unit and server integration
 tests does not establish browser behavior or real-user-experience acceptance.
 
-Workspace types: `bun run --filter roamgate-web typecheck` or
-`bun run --filter roamgate-server typecheck` (builds web assets first).
+Workspace types: `bun run --filter thyra-web typecheck` or
+`bun run --filter thyra-server typecheck` (builds web assets first).
 Frontend changes also need `bun run build:web`; bundling needs `bun run build`.
 Releases must package/inspect every supported archive/checksum; see
 [builds](docs/DEPLOYMENT.md#build-a-standalone-executable) and
@@ -108,10 +108,10 @@ bun run build:site
 
 Serve `.pages-dist/` to check `/tutorial/`, narrow layouts, keyboard navigation,
 and JavaScript-disabled reading. Canonical/social/sitemap URLs use
-<https://roamgate.dev/>. Never commit generated output.
+<https://thyra.yubo.fun/>. Never commit generated output.
 
 **Deploy Pages** runs on `main` pushes or manual retry. Upload requires a published
-Roamgate release as GitHub Latest; the installer probe blocks missing assets,
+Thyra release as GitHub Latest; the installer probe blocks missing assets,
 HTTP/network failures, and source-only builds. After repo renames, align the
 site installer URL and workflow probe.
 

@@ -433,7 +433,7 @@ describe("remote file protocol parsers", () => {
 test.each([...IMAGE_MIME_TYPES])(
   "remote image reads support %s (%s) within preview byte limits",
   async (extension, mime) => {
-    const root = await mkdtemp(join(tmpdir(), "roamgate-image-preview-"));
+    const root = await mkdtemp(join(tmpdir(), "thyra-image-preview-"));
     try {
       const bytes = Buffer.alloc(600 * 1024, 65);
       const path = `image.${extension.toUpperCase()}`;

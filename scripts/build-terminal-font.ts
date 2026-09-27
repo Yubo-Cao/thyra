@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const FAMILY = "Roamgate Mono";
+const FAMILY = "Thyra Mono";
 // [folder, font-weight, font-style, source file]
 const FACES = [
   ["400", "400", "normal", "MapleMono-NF-CN-Regular.ttf"],

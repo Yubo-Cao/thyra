@@ -25,15 +25,15 @@ self.addEventListener("push", (event) => {
       await self.registration.showNotification(
         typeof message?.title === "string"
           ? message.title
-          : "Roamgate agent update",
+          : "Thyra agent update",
         {
           body:
             typeof message?.body === "string"
               ? message.body
-              : "Open Roamgate to check your agents.",
-          tag: typeof message?.tag === "string" ? message.tag : "roamgate-task",
+              : "Open Thyra to check your agents.",
+          tag: typeof message?.tag === "string" ? message.tag : "thyra-task",
           data: valid
-            ? { type: "roamgate:task-notification-activate", target }
+            ? { type: "thyra:task-notification-activate", target }
             : null,
         },
       );
@@ -44,7 +44,7 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data;
-  if (data?.type !== "roamgate:task-notification-activate") return;
+  if (data?.type !== "thyra:task-notification-activate") return;
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({
@@ -70,7 +70,7 @@ self.addEventListener("notificationclick", (event) => {
       }
       const url = new URL("/", self.location.origin);
       url.hash =
-        "roamgate-task=" + encodeURIComponent(JSON.stringify(data.target));
+        "thyra-task=" + encodeURIComponent(JSON.stringify(data.target));
       await self.clients.openWindow(url.href);
     })(),
   );

@@ -16,8 +16,8 @@ export default {
   Copy: "复制",
   "Selection display resumed: pending output reached the 1 MiB limit. Captured comments are preserved.":
     "已恢复选区显示：待处理输出已达到 1 MiB 上限。已捕获的批注会保留。",
-  "Terminal stream was taken over by another Roamgate client":
-    "终端流已被另一个 Roamgate 客户端接管",
+  "Terminal stream was taken over by another Thyra client":
+    "终端流已被另一个 Thyra 客户端接管",
   "Terminal stream closed by the server": "服务器关闭了终端流",
   "browser clipboard API is unavailable": "浏览器剪贴板 API 不可用",
   "Clipboard read timed out": "读取剪贴板超时",
@@ -164,8 +164,8 @@ export default {
   "cleanup failed ({status})": "整理失败（{status}）",
   "Voice input needs a secure origin (HTTPS or localhost) with microphone access.":
     "语音输入需要安全来源（HTTPS 或 localhost）并允许访问麦克风。",
-  "Voice input is not configured on this Roamgate server.":
-    "此 Roamgate 服务器未配置语音输入。",
+  "Voice input is not configured on this Thyra server.":
+    "此 Thyra 服务器未配置语音输入。",
   "The microphone was disconnected.": "麦克风已断开连接。",
   Off: "关闭",
   Tidy: "整理",
@@ -186,8 +186,8 @@ export default {
   "Checking directory...": "正在检查目录...",
 
   // Terminal transport settings
-  "Reduces Herdr-to-Roamgate traffic when the server supports delta and reuse frames. Saved on the Roamgate server for this connection and shared by all viewers. Changes briefly reconnect terminal displays; running tasks are not stopped. Older Herdr servers keep their existing transport.":
-    "当服务器支持增量帧和复用帧时，减少 Herdr 到 Roamgate 的流量。此设置保存在 Roamgate 服务器上，作用于当前连接并由所有查看者共享。更改会让终端显示短暂重新连接，但不会停止正在运行的任务。旧版 Herdr 服务器会保留其现有传输方式。",
+  "Reduces Herdr-to-Thyra traffic when the server supports delta and reuse frames. Saved on the Thyra server for this connection and shared by all viewers. Changes briefly reconnect terminal displays; running tasks are not stopped. Older Herdr servers keep their existing transport.":
+    "当服务器支持增量帧和复用帧时，减少 Herdr 到 Thyra 的流量。此设置保存在 Thyra 服务器上，作用于当前连接并由所有查看者共享。更改会让终端显示短暂重新连接，但不会停止正在运行的任务。旧版 Herdr 服务器会保留其现有传输方式。",
   "Invalid terminal transport settings": "终端传输设置无效",
   "Terminal incremental transport": "终端增量传输",
   "About terminal incremental transport": "关于终端增量传输",

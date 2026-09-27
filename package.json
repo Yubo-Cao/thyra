@@ -1,17 +1,17 @@
 {
-  "name": "roamgate",
+  "name": "thyra",
   "private": true,
   "version": "0.7.9",
-  "description": "Roamgate: an independent community Web and PWA client for Herdr.",
+  "description": "Thyra: an independent community Web and PWA client for Herdr.",
   "license": "MIT",
   "author": "Arthur",
-  "homepage": "https://roamgate.dev/",
+  "homepage": "https://thyra.yubo.fun/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Yubo-Cao/herdr-studio.git"
+    "url": "git+https://github.com/Yubo-Cao/thyra.git"
   },
   "bugs": {
-    "url": "https://github.com/Yubo-Cao/herdr-studio/issues"
+    "url": "https://github.com/Yubo-Cao/thyra/issues"
   },
   "engines": {
     "bun": ">=1.4.1"
@@ -21,24 +21,24 @@
     "server"
   ],
   "scripts": {
-    "dev:server": "bun run --filter roamgate-server dev",
-    "dev:web": "bun run --filter roamgate-web dev",
-    "build:web": "bun run --filter roamgate-web build",
+    "dev:server": "bun run --filter thyra-server dev",
+    "dev:web": "bun run --filter thyra-web dev",
+    "build:web": "bun run --filter thyra-web build",
     "build:site": "bun scripts/build-pages.ts",
-    "build:server": "bun run --filter roamgate-server compile",
+    "build:server": "bun run --filter thyra-server compile",
     "build": "bun run build:web && bun run build:server",
     "postbuild": "bun run clean:bun-build",
-    "build:linux-x64": "bun run build:web && bun run --filter roamgate-server compile:linux-x64",
+    "build:linux-x64": "bun run build:web && bun run --filter thyra-server compile:linux-x64",
     "postbuild:linux-x64": "bun run clean:bun-build",
-    "build:linux-arm64": "bun run build:web && bun run --filter roamgate-server compile:linux-arm64",
+    "build:linux-arm64": "bun run build:web && bun run --filter thyra-server compile:linux-arm64",
     "postbuild:linux-arm64": "bun run clean:bun-build",
-    "build:darwin-x64": "bun run build:web && bun run --filter roamgate-server compile:darwin-x64",
+    "build:darwin-x64": "bun run build:web && bun run --filter thyra-server compile:darwin-x64",
     "postbuild:darwin-x64": "bun run clean:bun-build",
-    "build:darwin-arm64": "bun run build:web && bun run --filter roamgate-server compile:darwin-arm64",
+    "build:darwin-arm64": "bun run build:web && bun run --filter thyra-server compile:darwin-arm64",
     "postbuild:darwin-arm64": "bun run clean:bun-build",
-    "build:windows-x64": "bun run build:web && bun run --filter roamgate-server compile:windows-x64",
-    "build:windows-arm64": "bun run build:web && bun run --filter roamgate-server compile:windows-arm64",
-    "build:all": "bun run build:web && bun run --filter roamgate-server compile:all",
+    "build:windows-x64": "bun run build:web && bun run --filter thyra-server compile:windows-x64",
+    "build:windows-arm64": "bun run build:web && bun run --filter thyra-server compile:windows-arm64",
+    "build:all": "bun run build:web && bun run --filter thyra-server compile:all",
     "postbuild:all": "bun run clean:bun-build",
     "package:linux-x64": "scripts/package-release.sh linux-x64",
     "package:linux-arm64": "scripts/package-release.sh linux-arm64",
@@ -53,13 +53,13 @@
     "lint": "oxlint .",
     "test": "bun test",
     "test:quick": "bun test --parallel=4",
-    "typecheck": "tsc --noEmit && bun run --filter roamgate-web typecheck && bun run --filter roamgate-server typecheck",
+    "typecheck": "tsc --noEmit && bun run --filter thyra-web typecheck && bun run --filter thyra-server typecheck",
     "typecheck:quick": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p server/tsconfig.json",
     "precommit": "bun run format:check && bun run lint && bun run typecheck && bun run test:quick",
     "install-hooks": "git config core.hooksPath .githooks",
     "clean:bun-build": "command find server -maxdepth 1 -name '*.bun-build' -exec rm -rf {} +",
-    "clean": "rm -rf web/dist server/public server/src/public-files.gen.ts server/roamgate server/roamgate.exe server/roamgate-* server/herdr-gui server/herdr-gui-* && bun run clean:bun-build",
-    "start:server": "bun run --filter roamgate-server start"
+    "clean": "rm -rf web/dist server/public server/src/public-files.gen.ts server/thyra server/thyra.exe server/thyra-* server/herdr-gui server/herdr-gui-* && bun run clean:bun-build",
+    "start:server": "bun run --filter thyra-server start"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",

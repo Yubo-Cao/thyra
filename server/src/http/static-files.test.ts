@@ -10,7 +10,7 @@ test("the app links a credentialed standalone manifest with existing install ico
   expect(link).toContain('href="/manifest.json"');
   expect(link).toContain('crossorigin="use-credentials"');
   const response = await serveStatic(
-    new Request("https://roamgate.example/manifest.json"),
+    new Request("https://thyra.example/manifest.json"),
     resolve(web, "public"),
   );
   expect(response.status).toBe(200);
@@ -18,8 +18,8 @@ test("the app links a credentialed standalone manifest with existing install ico
   const manifest = await response.json();
   expect(manifest).toMatchObject({
     id: "/",
-    name: "Roamgate",
-    short_name: "Roamgate",
+    name: "Thyra",
+    short_name: "Thyra",
     start_url: "/",
     scope: "/",
     display: "standalone",
@@ -47,8 +47,8 @@ test("the app links a credentialed standalone manifest with existing install ico
 
 test("source runs fall back to the built public directory", async () => {
   const response = await serveStatic(
-    new Request("https://roamgate.example/manifest.json"),
-    "/nonexistent-roamgate-static-test",
+    new Request("https://thyra.example/manifest.json"),
+    "/nonexistent-thyra-static-test",
   );
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("application/json");
@@ -58,11 +58,11 @@ test("source runs fall back to the built public directory", async () => {
 });
 
 test("text assets are compressed and fingerprinted assets are immutable", async () => {
-  const dir = `${process.env.TMPDIR ?? "/tmp"}/roamgate-static-${process.pid}`;
+  const dir = `${process.env.TMPDIR ?? "/tmp"}/thyra-static-${process.pid}`;
   const script = `console.log(${JSON.stringify("x".repeat(4096))});\n`;
   await Bun.write(`${dir}/assets/app-abc123.js`, script);
   const response = await serveStatic(
-    new Request("https://roamgate.example/assets/app-abc123.js", {
+    new Request("https://thyra.example/assets/app-abc123.js", {
       headers: { "accept-encoding": "gzip, deflate, br" },
     }),
     dir,
@@ -76,7 +76,7 @@ test("text assets are compressed and fingerprinted assets are immutable", async 
   expect(brotliDecompressSync(body).toString("utf8")).toBe(script);
 
   const plain = await serveStatic(
-    new Request("https://roamgate.example/assets/app-abc123.js"),
+    new Request("https://thyra.example/assets/app-abc123.js"),
     dir,
   );
   expect(plain.headers.get("content-encoding")).toBeNull();

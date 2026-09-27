@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 import serverPackage from "../server/package.json";
 
 test("standalone serves native assets without ambient config and retains source maps", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "roamgate-standalone-"));
+  const dir = await mkdtemp(join(tmpdir(), "thyra-standalone-"));
   const runtimeDir = join(dir, "runtime");
   const overrideDir = join(dir, "override");
   const binary = join(
     dir,
-    process.platform === "win32" ? "roamgate.exe" : "roamgate",
+    process.platform === "win32" ? "thyra.exe" : "thyra",
   );
   async function run(argv: string[], cwd: string) {
     const child = Bun.spawn(argv, {
@@ -44,7 +44,7 @@ test("standalone serves native assets without ambient config and retains source 
     );
     await Bun.write(
       join(runtimeDir, ".env"),
-      "ROAMGATE_STANDALONE_TEST=ambient\n",
+      "THYRA_STANDALONE_TEST=ambient\n",
     );
     await Bun.write(
       join(runtimeDir, "bunfig.toml"),
@@ -82,7 +82,7 @@ try {
       cache: response.headers.get("cache-control"), body: Buffer.from(await response.arrayBuffer()).toString("base64") });
   }
   console.log(JSON.stringify({ standalone: Bun.isStandaloneExecutable,
-    ambient: process.env.ROAMGATE_STANDALONE_TEST ?? null, results }));
+    ambient: process.env.THYRA_STANDALONE_TEST ?? null, results }));
 } finally { server.stop(true); }
 `,
     );
@@ -94,7 +94,7 @@ try {
     expect(build.code, build.stderr).toBe(0);
     await rename(join(dir, "public"), join(dir, "source-public"));
     await rename(join(dir, "src"), join(dir, "source-src"));
-    await rm(join(dir, "roamgate.map"), { force: true });
+    await rm(join(dir, "thyra.map"), { force: true });
     const embedded = await run(
       [binary, join(dir, "missing-public")],
       runtimeDir,

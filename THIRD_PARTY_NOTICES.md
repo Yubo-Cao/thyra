@@ -1,12 +1,12 @@
 # Third-Party Notices
 
-Roamgate includes or renders assets from third-party projects. Those assets
+Thyra includes or renders assets from third-party projects. Those assets
 remain under their original licenses and are not relicensed by the project
 MIT license.
 
-## Roamgate artwork
+## Thyra artwork
 
-The Roamgate bird, wordmark, icons, and social images were supplied by the
+The Thyra bird, wordmark, icons, and social images were supplied by the
 project owner. They are not Herdr's official logo. The small application marks
 are resized exports of that artwork, displayed on a warm-white background.
 
@@ -21,7 +21,7 @@ upstream licensing terms documented in
 
 ## Maple Mono NF CN
 
-The terminal's bundled "Roamgate Mono" face is
+The terminal's bundled "Thyra Mono" face is
 [Maple Mono NF CN](https://github.com/subframe7536/maple-font) 7.4 (Regular, Bold,
 and Italic), sliced into unicode-range woff2 chunks under
 `web/public/assets/fonts/maple-mono-nf-cn/` by `scripts/build-terminal-font.ts`
@@ -69,7 +69,7 @@ License. See [`LICENSES/WEBRTC-VAD.txt`](./LICENSES/WEBRTC-VAD.txt).
 
 Herdr, Pi, Codex, Claude, Gemini, Kimi, Grok, and other product names and logos
 are trademarks of their respective owners. Their appearance identifies
-compatible tools and does not imply endorsement of Roamgate.
+compatible tools and does not imply endorsement of Thyra.
 
 JavaScript dependencies retain the licenses declared by their respective
 packages.

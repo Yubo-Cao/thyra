@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 async function tempRoot() {
-  const root = await mkdtemp(join(tmpdir(), "roamgate-muse-"));
+  const root = await mkdtemp(join(tmpdir(), "thyra-muse-"));
   roots.push(root);
   return root;
 }

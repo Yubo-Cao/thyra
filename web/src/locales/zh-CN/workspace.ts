@@ -251,8 +251,8 @@ export default {
   // Automatic branch updates
   "Automatic branch updates": "自动更新分支",
   "Automatic Branch Updates": "自动更新分支",
-  "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Roamgate connection.":
-    "每 {minutes} 分钟获取 {remote} 的默认分支，并将其合并到此工作区的当前分支。有未提交更改的工作区会被跳过，发生冲突的合并会自动中止。仅当此工作区在当前 Roamgate 连接中打开时才会更新。",
+  "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Thyra connection.":
+    "每 {minutes} 分钟获取 {remote} 的默认分支，并将其合并到此工作区的当前分支。有未提交更改的工作区会被跳过，发生冲突的合并会自动中止。仅当此工作区在当前 Thyra 连接中打开时才会更新。",
   "Loading automatic update settings...": "正在加载自动更新设置…",
   "Last run": "上次运行",
   "Keep branch updated": "保持分支最新",
