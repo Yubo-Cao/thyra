@@ -32,7 +32,7 @@
 }
 
 .resizer:hover {
-  background-color: var(--accent-hover);
+  background-color: var(--accent-soft-hover);
 }
 
 .resizer:active {
@@ -254,7 +254,7 @@
 }
 
 .pane-jump-item:hover {
-  background: var(--accent-hover);
+  background: var(--accent-soft-hover);
 }
 
 .pane-jump-item.is-current:not(.is-selected) {
@@ -847,7 +847,7 @@
 .workspace-inspector-resizer:hover,
 .workspace-inspector-resizer:focus-visible {
   outline: none;
-  background: var(--accent-hover);
+  background: var(--accent-soft-hover);
 }
 
 .workspace-stage.is-inspector-expanded .workspace-inspector-slot {

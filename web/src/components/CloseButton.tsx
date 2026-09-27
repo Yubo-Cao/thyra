@@ -18,7 +18,7 @@ export function CloseButton({
   title,
   ...buttonProps
 }: CloseButtonProps) {
-  const classes = ["close-button", `close-button-${variant}`, className]
+  const classes = ["app-close-button", `close-button-${variant}`, className]
     .filter(Boolean)
     .join(" ");
 

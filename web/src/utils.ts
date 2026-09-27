@@ -13,15 +13,15 @@ export function cn(
 export function agentClass(status?: string): string {
   switch ((status ?? "unknown").toLowerCase()) {
     case "working":
-      return "badge badge-working";
+      return "app-badge badge-working";
     case "done":
-      return "badge badge-done";
+      return "app-badge badge-done";
     case "blocked":
-      return "badge badge-blocked";
+      return "app-badge badge-blocked";
     case "idle":
-      return "badge badge-idle";
+      return "app-badge badge-idle";
     default:
-      return "badge badge-unknown";
+      return "app-badge badge-unknown";
   }
 }
 

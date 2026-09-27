@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // Monaco's package exports append `.js` to every subpath, which cannot reach
 // its CSS or worker sources; alias its ESM tree directly instead.
@@ -13,7 +14,7 @@ const monacoEsmRoot = realpathSync(
 // In dev, the web app talks to the bridge through Vite's proxy so the
 // frontend can use a relative /ws URL (same origin, no hardcoded port).
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: [
       {
@@ -27,8 +28,9 @@ export default defineConfig({
     format: "es",
   },
   build: {
-    // Retain Vite 5's browser baseline instead of Vite 7's newer default.
-    target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
+    // HeroUI v3 and Tailwind CSS v4 need cascade layers, @property and
+    // color-mix(), which set the browser floor.
+    target: ["es2022", "edge111", "firefox128", "chrome111", "safari16.4"],
     // The asset check follows static imports from the entry, excluding lazy features.
     manifest: true,
     // Build straight into the server's static dir so the backend can serve it.

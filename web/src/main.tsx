@@ -7,6 +7,7 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/vendor.css";
 import "./styles/ui.css";
+import "./styles/heroui.css";
 import App from "./App";
 import { OverlayScrollbarLayer } from "./components/OverlayScrollbarLayer";
 

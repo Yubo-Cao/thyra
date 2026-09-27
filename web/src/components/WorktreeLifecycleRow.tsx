@@ -56,7 +56,7 @@ export function WorktreeLifecycleRow({
         <div className="lifecycle-row-title">
           <GitBranch size={16} />
           <strong>{title}</strong>
-          <span className="badge">
+          <span className="app-badge">
             {row.worktree.is_linked_worktree ? t("Linked") : t("Main")}
           </span>
           <span

@@ -411,7 +411,7 @@ export function TerminalThemeDialog({
                     {active ? <Check size={13} aria-hidden="true" /> : null}
                     {card.definition.name}
                     {custom ? (
-                      <span className="badge">{t("Custom")}</span>
+                      <span className="app-badge">{t("Custom")}</span>
                     ) : null}
                   </span>
                 </button>

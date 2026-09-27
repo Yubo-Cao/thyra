@@ -3779,7 +3779,7 @@ export default function App() {
             <div className="toast-viewport" aria-live="polite">
               {s.updateInfo?.update_available ? (
                 <div
-                  className={`toast toast-info ${
+                  className={`app-toast toast-info ${
                     s.updateInstalling ? "toast-loading" : ""
                   }`}
                   role="status"
@@ -3834,7 +3834,7 @@ export default function App() {
               ) : null}
               {s.notice ? (
                 <div
-                  className={`toast toast-${s.notice.kind} ${
+                  className={`app-toast toast-${s.notice.kind} ${
                     s.notice.loading ? "toast-loading" : ""
                   }`}
                   role={s.notice.kind === "error" ? "alert" : "status"}

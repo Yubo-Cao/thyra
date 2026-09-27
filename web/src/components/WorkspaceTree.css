@@ -259,7 +259,7 @@
 }
 
 /* ===== badges ===== */
-.tree-row > .badge {
+.tree-row > .app-badge {
   max-width: 72px;
   overflow: hidden;
   flex: 0 1 auto;

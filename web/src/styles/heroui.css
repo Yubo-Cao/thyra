@@ -1,0 +1,176 @@
+/* HeroUI v3 on Tailwind CSS v4, themed from tokens.css.
+ *
+ * Tailwind's preflight is left out on purpose: screens that still use plain
+ * elements (Markdown preview, legacy dialogs) rely on browser defaults. The
+ * small reset below covers only React Aria elements, which carry data-rac.
+ * base.css scopes its element rules to :where(:not([data-rac])) for the same
+ * reason, so the two styling systems never style the same element.
+ */
+@layer theme, base, components, thyra, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+@import "@heroui/styles/base" layer(base);
+/* Only the components wrapped in components/ui; add a line when wrapping more,
+ * keeping HeroUI's order (components/index.css): shared parts come first. */
+@import "@heroui/styles/components/close-button.css" layer(components);
+@import "@heroui/styles/components/description.css" layer(components);
+@import "@heroui/styles/components/error-message.css" layer(components);
+@import "@heroui/styles/components/field-error.css" layer(components);
+@import "@heroui/styles/components/label.css" layer(components);
+@import "@heroui/styles/components/tabs.css" layer(components);
+@import "@heroui/styles/components/button.css" layer(components);
+@import "@heroui/styles/components/button-group.css" layer(components);
+@import "@heroui/styles/components/toggle-button.css" layer(components);
+@import "@heroui/styles/components/toggle-button-group.css" layer(components);
+@import "@heroui/styles/components/dropdown.css" layer(components);
+@import "@heroui/styles/components/list-box-item.css" layer(components);
+@import "@heroui/styles/components/list-box-section.css" layer(components);
+@import "@heroui/styles/components/list-box.css" layer(components);
+@import "@heroui/styles/components/menu-item.css" layer(components);
+@import "@heroui/styles/components/menu-section.css" layer(components);
+@import "@heroui/styles/components/menu.css" layer(components);
+@import "@heroui/styles/components/switch.css" layer(components);
+@import "@heroui/styles/components/chip.css" layer(components);
+@import "@heroui/styles/components/spinner.css" layer(components);
+@import "@heroui/styles/components/toast.css" layer(components);
+@import "@heroui/styles/components/checkbox.css" layer(components);
+@import "@heroui/styles/components/fieldset.css" layer(components);
+@import "@heroui/styles/components/input.css" layer(components);
+@import "@heroui/styles/components/input-group.css" layer(components);
+@import "@heroui/styles/components/number-field.css" layer(components);
+@import "@heroui/styles/components/radio-group.css" layer(components);
+@import "@heroui/styles/components/radio.css" layer(components);
+@import "@heroui/styles/components/textfield.css" layer(components);
+@import "@heroui/styles/components/search-field.css" layer(components);
+@import "@heroui/styles/components/textarea.css" layer(components);
+@import "@heroui/styles/components/header.css" layer(components);
+@import "@heroui/styles/components/separator.css" layer(components);
+@import "@heroui/styles/components/surface.css" layer(components);
+@import "@heroui/styles/components/alert-dialog.css" layer(components);
+@import "@heroui/styles/components/drawer.css" layer(components);
+@import "@heroui/styles/components/modal.css" layer(components);
+@import "@heroui/styles/components/popover.css" layer(components);
+@import "@heroui/styles/components/tooltip.css" layer(components);
+@import "@heroui/styles/components/combo-box.css" layer(components);
+@import "@heroui/styles/components/select.css" layer(components);
+@import "@heroui/styles/components/kbd.css" layer(components);
+@import "@heroui/styles/components/scroll-shadow.css" layer(components);
+@import "@heroui/styles/themes/default";
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";
+
+/* Square geometry and the Thyra type scale for every utility and component. */
+@theme {
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+  --text-2xs: 10px;
+  --text-xs: var(--ui-font-size-xs);
+  --text-sm: var(--ui-font-size);
+  --text-base: 14px;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: var(--mono-font);
+}
+
+@layer base {
+  :where([data-rac]),
+  :where([data-rac])::before,
+  :where([data-rac])::after {
+    box-sizing: border-box;
+    margin: 0;
+    border: 0 solid;
+  }
+
+  :where(button, input, textarea, select)[data-rac] {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background-color: transparent;
+    padding: 0;
+    appearance: none;
+  }
+}
+
+/* HeroUI theme variables resolve to Thyra tokens, so light/dark and accent
+ * switches in tokens.css apply to both systems. Unlayered: wins over the
+ * default theme, which HeroUI declares inside layer(theme). */
+:root {
+  --radius: 0px;
+  --field-radius: 0px;
+  --border-width: 0px;
+  --field-border-width: 0px;
+  --surface-shadow: none;
+  --overlay-shadow: none;
+  --field-shadow: none;
+  --ring-offset-width: 0px;
+
+  --background: var(--bg);
+  --background-secondary: var(--panel);
+  --background-tertiary: var(--panel-2);
+  --foreground: var(--text);
+  --surface: var(--panel);
+  --surface-foreground: var(--text);
+  --surface-hover: var(--panel-2);
+  --surface-secondary: var(--panel-2);
+  --surface-secondary-foreground: var(--text);
+  --surface-tertiary: var(--field-bg-hover);
+  --surface-tertiary-foreground: var(--text);
+  --overlay: var(--panel-2);
+  --overlay-foreground: var(--text);
+  --backdrop: var(--modal-backdrop);
+
+  --default: var(--panel-2);
+  --default-hover: var(--field-bg-hover);
+  --default-foreground: var(--text);
+  --default-soft: var(--panel-2);
+  --default-soft-hover: var(--field-bg-hover);
+  --default-soft-foreground: var(--text);
+
+  --accent-foreground: var(--bg);
+  --accent-hover: color-mix(in srgb, var(--accent) 86%, var(--text-strong));
+  --accent-soft-foreground: var(--accent);
+
+  --danger: var(--red);
+  --danger-hover: color-mix(in srgb, var(--red) 86%, var(--text-strong));
+  --danger-foreground: var(--bg);
+  --danger-soft-foreground: var(--danger-text);
+  --danger-soft-hover: color-mix(in srgb, var(--red) 22%, transparent);
+  --success: var(--green);
+  --success-foreground: var(--bg);
+  --success-soft-foreground: var(--success-text);
+  --warning: var(--yellow);
+  --warning-foreground: var(--bg);
+  --warning-soft-foreground: var(--warning-text);
+
+  --field-background: var(--field-bg);
+  --field-hover: var(--field-bg-hover);
+  --field-focus: var(--field-bg);
+  --field-foreground: var(--text);
+  --field-placeholder: var(--muted);
+  --field-border: transparent;
+  --field-border-hover: transparent;
+  --field-border-focus: var(--accent);
+
+  --focus: var(--accent);
+  --link: var(--accent);
+  --separator: var(--border);
+  --separator-secondary: var(--border-soft);
+  --segment: var(--field-bg-hover);
+  --segment-foreground: var(--text-strong);
+}

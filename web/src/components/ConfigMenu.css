@@ -306,7 +306,7 @@
 }
 
 .config-menu-item.is-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--accent-soft-hover);
 }
 
 .config-menu-item.is-primary .config-item-icon,

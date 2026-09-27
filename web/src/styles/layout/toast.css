@@ -10,7 +10,7 @@
   pointer-events: none;
 }
 
-.toast {
+.app-toast {
   --toast-tone: var(--blue);
   position: relative;
   display: grid;
@@ -36,7 +36,7 @@
     transform 160ms ease;
 }
 
-.toast::before {
+.app-toast::before {
   content: "";
   position: absolute;
   inset: 8px auto 8px 0;
@@ -45,7 +45,7 @@
   box-shadow: 0 0 16px color-mix(in srgb, var(--toast-tone) 52%, transparent);
 }
 
-.toast:hover {
+.app-toast:hover {
   border-color: color-mix(in srgb, var(--toast-tone) 48%, var(--border));
   box-shadow:
     0 20px 48px color-mix(in srgb, black 38%, transparent),
@@ -157,7 +157,7 @@
 }
 
 .toast-action.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--accent-soft-hover);
 }
 
 .toast-info {
@@ -188,11 +188,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toast {
+  .app-toast {
     animation: none;
   }
 
-  .toast {
+  .app-toast {
     transition: none;
   }
 }
@@ -207,7 +207,7 @@
     width: auto;
   }
 
-  .toast {
+  .app-toast {
     grid-template-columns: 24px minmax(0, 1fr) 28px;
     gap: 9px;
     padding: 11px;

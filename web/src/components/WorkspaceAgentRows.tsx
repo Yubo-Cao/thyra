@@ -230,7 +230,7 @@ export function AgentRow({
           </span>
           {pane.memory_incident ? (
             <span
-              className="badge badge-blocked agent-row-status"
+              className="app-badge badge-blocked agent-row-status"
               title={
                 pane.memory_incident.processes === 1
                   ? t(

@@ -8,9 +8,12 @@ const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 const maxFileCount = 170;
 // The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB.
 const maxTotalBytes = 16 * 1024 * 1024;
-const maxInitialJsBytes = 660 * 1024;
-const maxInitialJsGzipBytes = 200 * 1024;
-const maxInitialCssBytes = 196 * 1024;
+// React 19 and HeroUI v3 (React Aria) set the floor; dialogs, menus and
+// other overlays should still load on demand to stay inside this budget.
+const maxInitialJsBytes = 1000 * 1024;
+const maxInitialJsGzipBytes = 300 * 1024;
+// HeroUI component styles are imported per component in styles/heroui.css.
+const maxInitialCssBytes = 420 * 1024;
 // The bundled terminal font is sliced into many small unicode-range chunks that
 // load on demand (scripts/build-terminal-font.ts); budget it on its own.
 const fontDirectory = "assets/fonts";
