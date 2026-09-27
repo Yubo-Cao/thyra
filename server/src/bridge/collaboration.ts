@@ -1,3 +1,5 @@
+import { optionalNumber, optionalString } from "../utils/rpc-params";
+
 type Participant = {
   participant_id: string;
   display_name: string;
@@ -108,15 +110,14 @@ export function createCollaborationService(args: {
     const now = args.now?.() ?? Date.now();
     prune();
     if (method === "collaboration.update") {
-      const participantId = String(params.participant_id ?? "");
+      const participantId = optionalString(params, "participant_id") ?? "";
       if (!participantId) throw new Error("participant_id required");
       const participant: Participant = {
         participant_id: participantId,
-        display_name: String(params.display_name ?? "Collaborator").slice(
-          0,
-          80,
-        ),
-        color: String(params.color ?? "#0969da"),
+        display_name: (
+          optionalString(params, "display_name") ?? "Collaborator"
+        ).slice(0, 80),
+        color: optionalString(params, "color") ?? "#0969da",
         role:
           params.role === "viewer" || params.role === "owner"
             ? params.role
@@ -125,7 +126,7 @@ export function createCollaborationService(args: {
           params.activity === "idle" || params.activity === "away"
             ? params.activity
             : "active",
-        surface: String(params.surface ?? "web").slice(0, 32),
+        surface: (optionalString(params, "surface") ?? "web").slice(0, 32),
         ...(typeof params.workspace_id === "string"
           ? { workspace_id: params.workspace_id }
           : {}),
@@ -153,7 +154,7 @@ export function createCollaborationService(args: {
     }
     if (method === "collaboration.list") return snapshot();
     if (method === "collaboration.leave") {
-      const participantId = String(params.participant_id ?? "");
+      const participantId = optionalString(params, "participant_id") ?? "";
       const released = participants.delete(participantId);
       for (const [paneId, claim] of claims) {
         if (claim.participant_id === participantId) claims.delete(paneId);
@@ -162,8 +163,8 @@ export function createCollaborationService(args: {
       return { type: "collaboration_released", released };
     }
     if (method === "collaboration.claim") {
-      const participantId = String(params.participant_id ?? "");
-      const paneId = String(params.pane_id ?? "");
+      const participantId = optionalString(params, "participant_id") ?? "";
+      const paneId = optionalString(params, "pane_id") ?? "";
       if (!participantId) throw new Error("participant_id required");
       if (!paneId) throw new Error("pane_id required");
       const participant = participants.get(participantId);
@@ -183,7 +184,7 @@ export function createCollaborationService(args: {
       }
       const requestedProtection = Math.min(
         MAX_CONTROL_PROTECTION_MS,
-        Math.max(0, Math.trunc(Number(params.protect_ms ?? 0) || 0)),
+        Math.max(0, Math.trunc(optionalNumber(params, "protect_ms") ?? 0)),
       );
       const previousProtection =
         existing?.participant_id === participantId &&
@@ -214,8 +215,8 @@ export function createCollaborationService(args: {
       return { type: "collaboration_claim", granted: true, claim };
     }
     if (method === "collaboration.release") {
-      const participantId = String(params.participant_id ?? "");
-      const paneId = String(params.pane_id ?? "");
+      const participantId = optionalString(params, "participant_id") ?? "";
+      const paneId = optionalString(params, "pane_id") ?? "";
       if (!participantId) throw new Error("participant_id required");
       if (!paneId) throw new Error("pane_id required");
       const released = claims.get(paneId)?.participant_id === participantId;

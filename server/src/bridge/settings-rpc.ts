@@ -21,6 +21,7 @@ import {
   checkoutPath as workspaceCheckoutPath,
   sourceCheckoutPath as workspaceSourceCheckoutPath,
 } from "../workspace/utils";
+import { optionalString } from "../utils/rpc-params";
 
 type ReadPaseoWorktreeHooks = (
   checkoutPath: string,
@@ -151,7 +152,7 @@ export function createSettingsRpcHandler(args: {
         return reply({ settings, path: guiSettingsPath() });
       }
       if (method === "settings.worktree_hooks.get") {
-        const workspaceId = String(params.workspace_id ?? "");
+        const workspaceId = optionalString(params, "workspace_id") ?? "";
         if (!workspaceId) {
           return fail("settings.worktree_hooks.get requires workspace_id");
         }
@@ -196,7 +197,7 @@ export function createSettingsRpcHandler(args: {
         });
       }
       if (method === "settings.workspace_auto_sync.get") {
-        const workspaceId = String(params.workspace_id ?? "");
+        const workspaceId = optionalString(params, "workspace_id") ?? "";
         if (!workspaceId) {
           return fail("settings.workspace_auto_sync.get requires workspace_id");
         }
@@ -243,7 +244,7 @@ export function createSettingsRpcHandler(args: {
         });
       }
       if (method === "settings.workspace_auto_sync.update_key") {
-        const key = String(params.key ?? "");
+        const key = optionalString(params, "key") ?? "";
         if (!key) {
           return fail("settings.workspace_auto_sync.update_key requires key");
         }
@@ -280,7 +281,7 @@ export function createSettingsRpcHandler(args: {
         return reply({ key, ...entry });
       }
       if (method === "settings.workspace_auto_sync.update") {
-        const workspaceId = String(params.workspace_id ?? "");
+        const workspaceId = optionalString(params, "workspace_id") ?? "";
         if (!workspaceId) {
           return fail(
             "settings.workspace_auto_sync.update requires workspace_id",
@@ -336,7 +337,7 @@ export function createSettingsRpcHandler(args: {
         });
       }
       if (method === "settings.update_repo") {
-        const key = String(params.key ?? "");
+        const key = optionalString(params, "key") ?? "";
         if (!key) return fail("settings.update_repo requires key");
         if (!ownsSettingsKey(key)) {
           return fail("repository settings belong to another connection");

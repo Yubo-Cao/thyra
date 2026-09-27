@@ -103,6 +103,7 @@ import {
 import { voiceCleanupFromEnv } from "./voice/cleanup";
 import { createIdentityServiceFromEnv } from "./identity/from-env";
 import type { ClientContext } from "./identity/identity-service";
+import { optionalString } from "./utils/rpc-params";
 
 const APP_VERSION = packageJson.version;
 const serviceCommandResult = runServiceCommand(process.argv.slice(2));
@@ -1094,7 +1095,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       const sourceWorkspace = await sourceWorkspaceForWorktreeCreate(
         params ?? {},
       );
-      const workspaceId = String(params?.workspace_id ?? "");
+      const workspaceId = optionalString(params, "workspace_id") ?? "";
       const baseSync = await syncWorktreeBase({
         workspaceId,
         resolveGitRoot: async (id) =>
@@ -1146,7 +1147,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method === "worktree.open") {
     try {
-      const workspaceId = String(params?.workspace_id ?? "");
+      const workspaceId = optionalString(params, "workspace_id") ?? "";
       const sourceWorkspace = await sourceWorkspaceForWorktreeCreate(
         params ?? {},
       );
@@ -1175,7 +1176,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method === "worktree.remove") {
     try {
-      const workspaceId = String(params?.workspace_id ?? "");
+      const workspaceId = optionalString(params, "workspace_id") ?? "";
       const result = await worktreeRemovalCoordinator.run(
         workspaceId,
         async () => {

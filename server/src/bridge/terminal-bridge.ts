@@ -24,6 +24,7 @@ import type { Popup, SurfaceBaseline } from "./endpoint-surface";
 import { frameToAnsi, frameToAnsiParts } from "./frame-to-ansi";
 import { TerminalFrameStream } from "./terminal-frame-stream";
 import { isTerminalClipboardPayload } from "./terminal-clipboard";
+import { optionalNumber, optionalString } from "../utils/rpc-params";
 
 type TerminalSession = {
   terminalId: string | null;
@@ -453,8 +454,8 @@ export function createTerminalBridge(args: {
     // is sized only by the browser's active pane. Missing flags retain
     // compatibility with older embedded frontends.
     if (params.relay_active === false) return null;
-    const cols = Number(params.relay_cols);
-    const rows = Number(params.relay_rows);
+    const cols = optionalNumber(params, "relay_cols") ?? Number.NaN;
+    const rows = optionalNumber(params, "relay_rows") ?? Number.NaN;
     if (
       Number.isInteger(cols) &&
       Number.isInteger(rows) &&
@@ -1134,9 +1135,9 @@ export function createTerminalBridge(args: {
       }
 
       if (method === "terminal.attach") {
-        const terminalId = String(params.terminal_id ?? "");
-        let cols = Number(params.cols ?? 100);
-        let rows = Number(params.rows ?? 30);
+        const terminalId = optionalString(params, "terminal_id") ?? "";
+        let cols = optionalNumber(params, "cols") ?? 100;
+        let rows = optionalNumber(params, "rows") ?? 30;
         if (!terminalId) return fail("terminal_id required");
         // A Thyra viewer must not resize a stream owned by another viewer
         // merely by joining it with a differently sized browser window.
@@ -1300,8 +1301,8 @@ export function createTerminalBridge(args: {
       }
 
       if (method === "terminal.relay_resize") {
-        const cols = Number(params.cols);
-        const rows = Number(params.rows);
+        const cols = optionalNumber(params, "cols") ?? Number.NaN;
+        const rows = optionalNumber(params, "rows") ?? Number.NaN;
         if (
           !Number.isInteger(cols) ||
           !Number.isInteger(rows) ||
@@ -1462,7 +1463,7 @@ export function createTerminalBridge(args: {
         if (!thin || thin.isClosed || !shared || !requestedTerminalId) {
           return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         }
-        const b64 = String(params.data ?? "");
+        const b64 = optionalString(params, "data") ?? "";
         if (!b64 || !STANDARD_BASE64_RE.test(b64)) {
           return fail("invalid terminal input");
         }
@@ -1487,8 +1488,8 @@ export function createTerminalBridge(args: {
       }
       if (method === "terminal.resize") {
         if (!thin || !shared) return fail(NO_TERMINAL_ATTACHED_MESSAGE);
-        const cols = Number(params.cols ?? 100);
-        const rows = Number(params.rows ?? 30);
+        const cols = optionalNumber(params, "cols") ?? 100;
+        const rows = optionalNumber(params, "rows") ?? 30;
         const relaySize = relaySizeFromParams(params, { cols, rows });
         thin.resize(cols, rows);
         terminalViewers.get(ws)!.set(requestedTerminalId!, { cols, rows });
@@ -1512,10 +1513,9 @@ export function createTerminalBridge(args: {
       if (method === "terminal.scroll") {
         if (!thin) return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         const direction = params.direction === "up" ? "up" : "down";
-        const lines = Number(params.lines ?? 3);
-        const column =
-          typeof params.column === "number" ? Number(params.column) : null;
-        const row = typeof params.row === "number" ? Number(params.row) : null;
+        const lines = optionalNumber(params, "lines") ?? 3;
+        const column = typeof params.column === "number" ? params.column : null;
+        const row = typeof params.row === "number" ? params.row : null;
         if (
           params.source === "page-key" &&
           thin instanceof EndpointTerminalSession

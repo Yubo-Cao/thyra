@@ -8,6 +8,7 @@ import {
   checkoutPath as workspaceCheckoutPath,
   sourceCheckoutPath as workspaceSourceCheckoutPath,
 } from "../workspace/utils";
+import { optionalString } from "../utils/rpc-params";
 
 type RunProcess = (
   argv: string[],
@@ -202,7 +203,7 @@ export function createWorktreeHookRunner(args: {
     sourceCheckoutPath: string;
     repoSettingsKey: string | null;
   } | null> {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) return null;
     const workspaceResult = await args.herdr.call("workspace.get", {
       workspace_id: workspaceId,
@@ -255,7 +256,7 @@ export function createWorktreeHookRunner(args: {
   async function sourceWorkspaceForWorktreeCreate(
     params: Record<string, unknown>,
   ): Promise<any | null> {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) return null;
     const result = await args.herdr
       .call("workspace.get", { workspace_id: workspaceId })

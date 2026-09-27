@@ -18,6 +18,7 @@ import {
   type SessionProjectionCache,
 } from "./session-projection-cache";
 import { HISTORY_WINDOW_LIMIT, redactHistoryUpdate } from "./session-history";
+import { optionalNumber } from "../utils/rpc-params";
 
 const MAX_MESSAGES_PER_AGENT = 200;
 
@@ -185,7 +186,10 @@ export async function readAgentSessionSummary(
   const includeTrajectory = rawParams.include_trajectory === true;
   const previewLimit = Math.max(
     1,
-    Math.min(Number(rawParams.preview_limit) || 512 * 1024, 2 * 1024 * 1024),
+    Math.min(
+      optionalNumber(rawParams, "preview_limit") || 512 * 1024,
+      2 * 1024 * 1024,
+    ),
   );
   let text: string | null = null;
   let truncated = false;

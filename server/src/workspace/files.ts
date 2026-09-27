@@ -55,6 +55,7 @@ import {
 } from "../../../shared/filePreview";
 import { HtmlPreviewError, readHtmlPreviewFile } from "./html-preview-files";
 import { HTML_PREVIEW_CSP, renderHtmlPreview } from "./html-preview";
+import { optionalString } from "../utils/rpc-params";
 
 const MAX_FILE_RESOLUTION_CANDIDATES = 32;
 const MAX_FILE_RESOLUTION_PATH_LENGTH = 4096;
@@ -124,7 +125,7 @@ export function createFileHandlers({
   }
 
   async function fileTarget(params: Record<string, unknown>, method: string) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error(`${method} requires workspace_id`);
     const path =
       params.scope === "filesystem"
@@ -138,7 +139,7 @@ export function createFileHandlers({
   }
 
   async function downloadTarget(params: Record<string, unknown>) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error("file.download requires workspace_id");
     const path =
       params.scope === "filesystem"
@@ -162,7 +163,7 @@ export function createFileHandlers({
     method: string,
     pathKey: "path" | "directory",
   ) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error(`${method} requires workspace_id`);
     const workspace = await getWorkspace(workspaceId);
     const checkoutPath = await explorerRoot(workspaceId, workspace);
@@ -186,7 +187,7 @@ export function createFileHandlers({
   }
 
   async function listFiles(params: Record<string, unknown>) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error("file.list requires workspace_id");
     const workspace = await getWorkspace(workspaceId);
     const checkoutPath = await explorerRoot(workspaceId, workspace);
@@ -261,7 +262,7 @@ export function createFileHandlers({
   }
 
   async function resolveFiles(params: Record<string, unknown>) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error("file.resolve requires workspace_id");
     const rawPaths = Array.isArray(params.paths) ? params.paths : [];
     const candidates: FileResolution[] = [];
@@ -493,7 +494,7 @@ export function createFileHandlers({
   }
 
   async function writeFile(params: Record<string, unknown>) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error("file.write requires workspace_id");
     const absolute = params.scope === "filesystem";
     const path = absolute
@@ -587,7 +588,7 @@ export function createFileHandlers({
     params: Record<string, unknown>,
     method = "git diff",
   ) {
-    const workspaceId = String(params.workspace_id ?? "");
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error(`${method} requires workspace_id`);
     const workspace = await getWorkspace(workspaceId);
     const root = await gitRoot(workspaceId, workspace);

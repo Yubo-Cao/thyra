@@ -2,6 +2,7 @@ import { sshCommandArgv } from "../bridge/ssh-command";
 import { GIT_DIFF_TIMEOUT_MS } from "./file-constants";
 import { sanitizeExplorerPath } from "./file-paths";
 import type { RunProcessWithCodeTimeout } from "./file-types";
+import { optionalNumber } from "../utils/rpc-params";
 
 export const GIT_FILE_ACTIONS = [
   "stage",
@@ -186,8 +187,8 @@ function sanitizedActionPaths(params: Record<string, unknown>, method: string) {
 function expectedFingerprint(
   params: Record<string, unknown>,
 ): WorktreeFingerprint | undefined {
-  const mtimeMs = Number(params.mtime_ms);
-  const size = Number(params.size);
+  const mtimeMs = optionalNumber(params, "mtime_ms") ?? Number.NaN;
+  const size = optionalNumber(params, "size") ?? Number.NaN;
   if (!Number.isFinite(mtimeMs) || mtimeMs <= 0) return undefined;
   if (!Number.isFinite(size) || size < 0) return undefined;
   return { mtime_ms: mtimeMs, size };
