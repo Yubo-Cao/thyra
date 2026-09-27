@@ -433,7 +433,11 @@ discovery. Publication requires exactly the six platform asset sets.
 Everything under `/assets/` is content-addressed (Vite output and the sliced terminal font) and is served `private, max-age=31536000, immutable`; never write an unfingerprinted file there.
 `index.html`, `/manifest.json`, the service worker and `/thyra-assets.json` are served `no-cache, must-revalidate` with a strong per-encoding `ETag`, so revalidation costs a `304`.
 Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip, compressed once per file version off the event loop.
-At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure and font stylesheet) before the first request.
+At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure and font stylesheets) before the first request.
+
+The first screen downloads only the entry and the terminal view's closure; the page opens its WebSocket before rendering, so the socket does not queue behind those chunks for a browser's six HTTP/1.1 connections.
+Everything else waits for the first terminal output (`startupGate.ts`): the WebGL renderer, the terminal font (a small ASCII/Latin-1/Powerline stylesheet, then the CJK and icon chunks when idle), warmups, prefetches and the service worker.
+The gate's fallback for output that never comes starts only once a terminal attach has completed, so it cannot expire while the terminal code is still downloading.
 Zstandard and compression dictionaries are not offered: WebKit supports neither, and quality-11 Brotli is smaller than zstd for these bundles.
 
 The build splits long-lived vendor code into `vendor-react`, `vendor-xterm`, `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).

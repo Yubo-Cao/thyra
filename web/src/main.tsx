@@ -9,8 +9,8 @@ import "./styles/vendor.css";
 import "./styles/ui.css";
 import "./styles/heroui.css";
 import App from "./App";
+import { store } from "./store";
 import { registerAppServiceWorker } from "./appServiceWorker";
-import { OverlayScrollbarLayer } from "./components/OverlayScrollbarLayer";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -43,6 +43,8 @@ class ErrorBoundary extends React.Component<
 
 initializeLayoutPreferences();
 initializeShortcutPreferences();
+// Connect before the first render requests the terminal chunks.
+store.init();
 // Cache the shell and fingerprinted assets so repeat visits on slow links only
 // fetch what a deploy changed (web/public/task-notifications-sw.js).
 if (import.meta.env.PROD) registerAppServiceWorker();
@@ -53,7 +55,6 @@ void initLocale().then(() => {
     <React.StrictMode>
       <ErrorBoundary>
         <App />
-        <OverlayScrollbarLayer />
       </ErrorBoundary>
     </React.StrictMode>,
   );

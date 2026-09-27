@@ -1262,7 +1262,7 @@ export default function App() {
   const connectionClient = useConnectionClient();
   const { mobile, preferences: layoutPreferences } = useLayoutPreferences();
   // Startup work the terminal and switchers do not need waits for this.
-  const startupReady = useStartupSettled(s.status === "connected");
+  const startupReady = useStartupSettled();
   useEffect(() => {
     activateTerminalComposerDraftScope(
       s.activeConnectionId,
@@ -2263,9 +2263,6 @@ export default function App() {
     setMobileView("session");
   }, [commitInspectorState, resourceUiKey]);
 
-  useEffect(() => {
-    store.init();
-  }, []);
   const idlePrefetchStartedRef = useRef(false);
   const mobileRef = useRef(mobile);
   mobileRef.current = mobile;

@@ -1,22 +1,35 @@
 import { useEffect, useState } from "react";
 
 // On slow links the first terminal output must not share bandwidth with
-// warmups (file lists, diffs, update checks, chunk prefetch). Work that the
-// terminal and the workspace/agent/tab switchers do not need waits until a
-// terminal has rendered output, or a short fallback when none arrives (an
-// empty workspace, a failed attach).
+// warmups (file lists, diffs, update checks, chunk prefetch, the WebGL
+// renderer and the terminal font). Work that the terminal and the
+// workspace/agent/tab switchers do not need waits until a terminal has
+// rendered output. The fallback for output that never comes (an empty pane,
+// a failed attach) starts once a terminal has attached, so it cannot run out
+// while the terminal code itself is still downloading; without any attach,
+// a long ceiling applies.
 
 export const STARTUP_FALLBACK_MS = 4000;
+export const STARTUP_CEILING_MS = 60_000;
+
+type Timers = Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 
 let settled = false;
 const waiters = new Set<() => void>();
+let fallback: { timers: Timers; handle: ReturnType<typeof setTimeout> }[] = [];
 
 function settle() {
   if (settled) return;
   settled = true;
+  for (const { timers, handle } of fallback) timers.clearTimeout(handle);
+  fallback = [];
   const pending = [...waiters];
   waiters.clear();
   for (const run of pending) run();
+}
+
+function settleAfter(ms: number, timers: Timers) {
+  fallback.push({ timers, handle: timers.setTimeout(settle, ms) });
 }
 
 /** Called by a terminal once its first output has been parsed. */
@@ -24,20 +37,20 @@ export function noteTerminalOutput() {
   settle();
 }
 
+/** Called once a terminal attach has completed: output should follow. */
+export function noteTerminalAttached(timers: Timers = globalThis) {
+  if (!settled) settleAfter(STARTUP_FALLBACK_MS, timers);
+}
+
 export function startupSettled() {
   return settled;
 }
 
 /**
- * Run `task` after the first terminal output, or `fallbackMs` after this
- * call, whichever comes first; immediately once startup has settled.
- * Returns a cancel function.
+ * Run `task` after the first terminal output (or the fallback); immediately
+ * once startup has settled. Returns a cancel function.
  */
-export function afterStartup(
-  task: () => void,
-  fallbackMs = STARTUP_FALLBACK_MS,
-  timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout"> = globalThis,
-) {
+export function afterStartup(task: () => void, timers: Timers = globalThis) {
   if (settled) {
     task();
     return () => {};
@@ -46,31 +59,30 @@ export function afterStartup(
   const run = () => {
     if (done) return;
     done = true;
-    timers.clearTimeout(timer);
     waiters.delete(run);
     task();
   };
-  // The fallback settles startup for everyone: nothing is coming first.
-  const timer = timers.setTimeout(settle, fallbackMs);
+  if (!fallback.length) settleAfter(STARTUP_CEILING_MS, timers);
   waiters.add(run);
   return () => {
     done = true;
-    timers.clearTimeout(timer);
     waiters.delete(run);
   };
 }
 
-/** True once startup work may run; `armed` starts the fallback clock. */
-export function useStartupSettled(armed: boolean) {
+/** True once startup work may run. */
+export function useStartupSettled() {
   const [ready, setReady] = useState(settled);
   useEffect(() => {
-    if (ready || !armed) return;
+    if (ready) return;
     return afterStartup(() => setReady(true));
-  }, [armed, ready]);
+  }, [ready]);
   return ready;
 }
 
 export function resetStartupGateForTests() {
   settled = false;
   waiters.clear();
+  for (const { timers, handle } of fallback) timers.clearTimeout(handle);
+  fallback = [];
 }

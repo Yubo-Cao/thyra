@@ -2301,6 +2301,9 @@ export const store = {
       window.addEventListener("focus", refreshOnReturn);
       window.addEventListener("online", refreshOnReturn);
     }
+    // Open the socket right away: on slow HTTP/1.1 links it would otherwise
+    // queue behind the terminal chunks for one of six connections.
+    if (!state.connectionPaused) bridge.connect();
     // If the server requires a password and the session is missing/expired,
     // bounce to the login page instead of spinning on a failing socket.
     fetch("/api/health", {
@@ -2308,16 +2311,14 @@ export const store = {
       cache: "no-store",
     }).then((r) => {
       if (r.status === 401) {
+        bridge.disconnect();
         redirectToLogin();
         return;
       }
       if (state.pendingRestartVersion) {
         void reloadWhenUpdatedServerIsReady(state.pendingRestartVersion);
       }
-      if (!state.connectionPaused) {
-        bridge.connect();
-        startPolling();
-      }
+      if (!state.connectionPaused) startPolling();
     });
   },
 

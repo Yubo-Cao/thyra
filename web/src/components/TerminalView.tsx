@@ -172,7 +172,7 @@ import {
 } from "../terminalScroll";
 import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
 import { applyTerminalTheme } from "../terminalThemes";
-import { noteTerminalOutput } from "../startupGate";
+import { noteTerminalAttached, noteTerminalOutput } from "../startupGate";
 import { paneHasAgentHistory } from "./agentSession";
 import {
   TerminalVoiceButton,
@@ -3010,6 +3010,7 @@ export function TerminalView({
       })
       .then(
         (result) => {
+          noteTerminalAttached();
           if (
             !connectionClient.isCurrent() ||
             !attachWatchdogRef.current?.isCurrent(attachAttempt)
@@ -3086,6 +3087,7 @@ export function TerminalView({
           }
         },
         (e) => {
+          noteTerminalAttached();
           if (
             !connectionClient.isCurrent() ||
             !attachWatchdogRef.current?.isCurrent(attachAttempt)
