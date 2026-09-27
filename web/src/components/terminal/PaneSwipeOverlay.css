@@ -1,0 +1,29 @@
+/* Where a pane swipe landed: one square line near the top of the screen. */
+.pane-swipe-overlay {
+  position: fixed;
+  z-index: 1180;
+  top: calc(max(12px, env(safe-area-inset-top, 0px)) + 44px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  height: var(--ui-control-height);
+  padding-inline: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.pane-swipe-overlay > span,
+.pane-swipe-overlay > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pane-swipe-overlay > strong {
+  color: var(--text-strong);
+  font-weight: 600;
+}

@@ -16,12 +16,35 @@
   touch-action: none;
 }
 
-/* Another device sizes this pane: xterm keeps its size, scaled down to fit. */
+/* Another device sizes this pane: xterm keeps its size, scaled down to fit,
+   or pinch-zoomed past it and panned. */
 .terminal-view.is-following .xterm {
-  width: calc(100% / var(--terminal-follow-scale, 1));
-  height: calc(100% / var(--terminal-follow-scale, 1));
-  transform: scale(var(--terminal-follow-scale, 1));
+  width: max(
+    calc(100% / var(--terminal-follow-scale, 1)),
+    var(--terminal-follow-width, 0px)
+  );
+  height: max(
+    calc(100% / var(--terminal-follow-scale, 1)),
+    var(--terminal-follow-height, 0px)
+  );
+  transform: translate(
+      var(--terminal-follow-x, 0px),
+      var(--terminal-follow-y, 0px)
+    )
+    scale(var(--terminal-follow-scale, 1));
   transform-origin: 0 0;
+}
+/* Pinch zoom level; tapping it restores the default size. */
+.terminal-zoom-badge {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 6;
+  transform: translateX(-50%);
+  --button-bg: var(--panel);
+  box-shadow: var(--shadow-lg);
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
 }
 /* The text preview replaces the (paused) terminal without unmounting it. */
 .terminal-view[data-preview="text"] {

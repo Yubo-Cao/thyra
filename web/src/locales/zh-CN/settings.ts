@@ -50,6 +50,11 @@ export default {
   "Voice cleanup": "语音整理",
   "Rewrites a finished dictation with the server model":
     "使用服务器模型改写已完成的听写内容",
+  "Pane swipe": "滑动切换窗格",
+  "Swipe sideways with several fingers to change panes":
+    "多指左右滑动以切换窗格",
+  "Three fingers": "三指",
+  "Four fingers": "四指",
   "Task notifications": "任务通知",
   "Agent needs input": "Agent 需要输入",
   "Task completed": "任务已完成",

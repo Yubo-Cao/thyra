@@ -332,4 +332,5 @@ export default {
     "接管此窗格的控制，至少保持 15 秒",
   "Another collaborator controls this pane. Try again when its protection ends.":
     "另一位协作者正在控制此窗格。请在其保护期结束后重试。",
+  "Reset terminal zoom, currently {zoom}%": "重置终端缩放，当前为 {zoom}%",
 } satisfies Record<string, string>;

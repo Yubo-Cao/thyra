@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Download,
   GitBranch,
+  Hand,
   Keyboard,
   Languages,
   LayoutDashboard,
@@ -62,6 +63,12 @@ import {
   connectionClientScopeKey,
   useConnectionClient,
 } from "../useConnectionClient";
+import {
+  PANE_SWIPE_OPTIONS,
+  type PaneSwipeFingers,
+  paneSwipeFingers,
+  setPaneSwipeFingers,
+} from "../touchGestures";
 import { cn } from "../utils";
 import { AccountSettings } from "./AccountSettings";
 import { AgentIntegrationsSettings } from "./AgentIntegrationsSettings";
@@ -179,6 +186,9 @@ export function ConfigurationDialog({
     visibleTabs.includes(initialTab) ? initialTab : "Appearance",
   );
   const voiceCleanup = useVoiceCleanupMode();
+  const [swipeFingers, setSwipeFingers] = useState(() =>
+    String(paneSwipeFingers()),
+  );
   // A detail dialog opens on top of this one, which hides until it closes;
   // focus then returns to the row that opened it (WebKit does not focus a
   // clicked button, so the row is remembered explicitly).
@@ -410,6 +420,25 @@ export function ConfigurationDialog({
             label: t(option.label),
           }))}
           onChange={(value) => setVoiceCleanupMode(value as VoiceCleanupMode)}
+        />
+      </PreferenceRow>
+      <PreferenceRow
+        icon={<Hand size={15} />}
+        title={t("Pane swipe")}
+        description={t("Swipe sideways with several fingers to change panes")}
+      >
+        <Select
+          aria-label={t("Pane swipe")}
+          align="end"
+          value={swipeFingers}
+          options={PANE_SWIPE_OPTIONS.map((option) => ({
+            value: option.value,
+            label: t(option.label),
+          }))}
+          onChange={(value) => {
+            setPaneSwipeFingers(Number(value) as PaneSwipeFingers);
+            setSwipeFingers(value);
+          }}
         />
       </PreferenceRow>
       <PreferenceRow
