@@ -13,7 +13,7 @@ import type { AgentSessionFileAccess } from "./session-file-access";
 import type { HerdrCall } from "./session-types";
 
 const tempDirectories: string[] = [];
-const remotePiSessionPath = "/srv/herdr-gui-test/sessions/pi-session.jsonl";
+const remotePiSessionPath = "/srv/thyra-test/sessions/pi-session.jsonl";
 
 afterEach(async () => {
   await Promise.all(
@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 async function createPiSession() {
-  const directory = await mkdtemp(join(tmpdir(), "herdr-gui-pi-session-"));
+  const directory = await mkdtemp(join(tmpdir(), "thyra-pi-session-"));
   tempDirectories.push(directory);
   const path = join(directory, "2026-07-24_pi-session.jsonl");
   const records = [
@@ -314,7 +314,7 @@ describe("Pi agent sessions", () => {
 
   test("reads and exports an Antigravity sqlite session", async () => {
     const { Database } = await import("bun:sqlite");
-    const directory = await mkdtemp(join(tmpdir(), "herdr-gui-agy-session-"));
+    const directory = await mkdtemp(join(tmpdir(), "thyra-agy-session-"));
     tempDirectories.push(directory);
     const sessionId = "test-agy-uuid";
     const path = join(directory, `${sessionId}.db`);

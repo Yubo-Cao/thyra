@@ -1130,7 +1130,7 @@ export function createTerminalBridge(args: {
         let cols = Number(params.cols ?? 100);
         let rows = Number(params.rows ?? 30);
         if (!terminalId) return fail("terminal_id required");
-        // A Studio viewer must not resize a stream owned by another viewer
+        // A Thyra viewer must not resize a stream owned by another viewer
         // merely by joining it with a differently sized browser window.
         const currentShared = sharedTerminals.get(terminalId);
         if (

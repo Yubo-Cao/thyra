@@ -21,7 +21,7 @@ afterEach(async () => {
 
 describe("agent session resolver context", () => {
   test("keeps session path caches isolated per connection context", async () => {
-    const root = await mkdtemp(join(tmpdir(), "herdr-gui-session-cache-"));
+    const root = await mkdtemp(join(tmpdir(), "thyra-session-cache-"));
     tempDirectories.push(root);
     process.env.PI_CODING_AGENT_DIR = root;
     const sessionId = `session-${crypto.randomUUID()}`;

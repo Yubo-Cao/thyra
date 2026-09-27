@@ -53,7 +53,7 @@ async function runShellCommand(command: string, input = "") {
 }
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>) {
-  const dir = await mkdtemp(join(tmpdir(), "herdr-gui-remote-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "thyra-remote-test-"));
   try {
     return await fn(dir);
   } finally {
@@ -64,7 +64,7 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>) {
 describe("remote file protocol parsers", () => {
   test("filters ignored files and follows explicit symlinks remotely", async () => {
     await withTempDir(async (root) => {
-      const outside = await mkdtemp(join(tmpdir(), "herdr-gui-outside-"));
+      const outside = await mkdtemp(join(tmpdir(), "thyra-outside-"));
       try {
         await Bun.spawn(["git", "init", "-q", root]).exited;
         await writeFile(join(root, ".gitignore"), "*.tmp\n!keep.tmp\n");
@@ -471,7 +471,7 @@ test("remote image previews reject oversized files", () => {
 });
 
 test("remote resolution includes directories and explicit symlinks but rejects relative escapes", async () => {
-  const root = await mkdtemp(join(tmpdir(), "herdr-gui-resolve-"));
+  const root = await mkdtemp(join(tmpdir(), "thyra-resolve-"));
   try {
     await mkdir(join(root, "docs"));
     await writeFile(join(root, "docs", "guide.md"), "guide");
@@ -514,7 +514,7 @@ test("remote writes save atomically and reject conflicts and escapes", async () 
     await mkdir(join(root, "src"));
     await writeFile(join(root, "src", "app.ts"), "old");
     await chmod(join(root, "src", "app.ts"), 0o640);
-    const outside = await mkdtemp(join(tmpdir(), "herdr-gui-remote-outside-"));
+    const outside = await mkdtemp(join(tmpdir(), "thyra-remote-outside-"));
     try {
       const write = (
         requestedPath: string,

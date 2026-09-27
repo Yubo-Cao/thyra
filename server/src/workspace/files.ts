@@ -379,7 +379,7 @@ export function createFileHandlers({
     }
     if (inlineMime === "image/svg+xml") {
       // SVGs are inert in <img>. Keep direct navigation to the same endpoint
-      // isolated too, without granting workspace content the Studio origin.
+      // isolated too, without granting workspace content the Thyra origin.
       headers["content-security-policy"] =
         "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:";
     }

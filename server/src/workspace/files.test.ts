@@ -6,7 +6,7 @@ import { shQuote } from "../utils/process-utils";
 import { createFileHandlers } from "./files";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>) {
-  const dir = await mkdtemp(join(tmpdir(), "herdr-gui-handler-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "thyra-handler-test-"));
   try {
     return await fn(dir);
   } finally {

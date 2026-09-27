@@ -37,10 +37,7 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 function tempPath() {
-  const root = join(
-    tmpdir(),
-    `herdr-gui-profile-service-${crypto.randomUUID()}`,
-  );
+  const root = join(tmpdir(), `thyra-profile-service-${crypto.randomUUID()}`);
   roots.push(root);
   mkdirSync(root, { recursive: true });
   return join(root, "private", "connections.json");
@@ -62,7 +59,7 @@ afterEach(async () => {
 function localSocketPath(id: string, client = false): string {
   const name = `${id}${client ? "-client" : ""}.sock`;
   return process.platform === "win32"
-    ? `\\\\.\\pipe\\herdr-gui-test-${name}`
+    ? `\\\\.\\pipe\\thyra-test-${name}`
     : `/tmp/${name}`;
 }
 
@@ -143,16 +140,16 @@ async function startProbeServers(
   welcomeProtocol?: number,
 ) {
   const key = crypto.randomUUID();
-  const root = join(tmpdir(), `herdr-gui-profile-probe-${key}`);
+  const root = join(tmpdir(), `thyra-profile-probe-${key}`);
   roots.push(root);
   mkdirSync(root, { recursive: true });
   const controlPath =
     process.platform === "win32"
-      ? `\\\\.\\pipe\\herdr-gui-profile-probe-${key}-control`
+      ? `\\\\.\\pipe\\thyra-profile-probe-${key}-control`
       : join(root, "control.sock");
   const renderPath =
     process.platform === "win32"
-      ? `\\\\.\\pipe\\herdr-gui-profile-probe-${key}-render`
+      ? `\\\\.\\pipe\\thyra-profile-probe-${key}-render`
       : join(root, "render.sock");
   let controlConnections = 0;
   let renderConnections = 0;

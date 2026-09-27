@@ -24,7 +24,7 @@ import {
 } from "./local-files";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>) {
-  const dir = await mkdtemp(join(tmpdir(), "herdr-gui-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "thyra-test-"));
   try {
     return await fn(dir);
   } finally {
@@ -35,7 +35,7 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>) {
 describe("local workspace file operations", () => {
   test("follows explicit symlinks while rejecting lexical traversal", async () => {
     await withTempDir(async (root) => {
-      const outside = await mkdtemp(join(tmpdir(), "herdr-gui-outside-"));
+      const outside = await mkdtemp(join(tmpdir(), "thyra-outside-"));
       try {
         await mkdir(join(root, "target-dir"));
         await writeFile(join(root, "target-dir", "child.txt"), "child");
@@ -355,7 +355,7 @@ describe("local workspace file operations", () => {
 
   test("saves through symlinks and absolute filesystem paths", async () => {
     await withTempDir(async (root) => {
-      const outside = await mkdtemp(join(tmpdir(), "herdr-gui-outside-"));
+      const outside = await mkdtemp(join(tmpdir(), "thyra-outside-"));
       try {
         await writeFile(join(outside, "notes.txt"), "outside");
         await symlink(join(outside, "notes.txt"), join(root, "notes-link"));

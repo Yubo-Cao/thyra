@@ -5,7 +5,7 @@ export interface EndpointCreationSource {
   terminal_id: string;
 }
 
-/** Studio-only creation context; never forward this field to Herdr. */
+/** Thyra-only creation context; never forward this field to Herdr. */
 export function parseEndpointCreationSource(
   value: unknown,
 ): EndpointCreationSource {

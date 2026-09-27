@@ -22,7 +22,7 @@ import {
 
 const roots: string[] = [];
 function tempRoot() {
-  const root = join(tmpdir(), `herdr-gui-profiles-${crypto.randomUUID()}`);
+  const root = join(tmpdir(), `thyra-profiles-${crypto.randomUUID()}`);
   roots.push(root);
   mkdirSync(root, { recursive: true });
   // A shared (group/world-readable) parent, whatever the process umask is.
@@ -39,7 +39,7 @@ afterEach(() => {
 function localSocketPath(id: string, client = false): string {
   const name = `${id}${client ? "-client" : ""}.sock`;
   return process.platform === "win32"
-    ? `\\\\.\\pipe\\herdr-gui-test-${name}`
+    ? `\\\\.\\pipe\\thyra-test-${name}`
     : `/tmp/${name}`;
 }
 

@@ -17,7 +17,7 @@ const image = new File(["image"], "image.png", { type: "image/png" });
 beforeEach(() => {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { location: { origin: "https://studio.example" } },
+    value: { location: { origin: "https://thyra.example" } },
   });
 });
 

@@ -15,7 +15,7 @@ import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
 const tempDirs: string[] = [];
 
 function tempHome(): string {
-  const path = mkdtempSync(join(tmpdir(), "herdr-gui-auth-token-"));
+  const path = mkdtempSync(join(tmpdir(), "thyra-auth-token-"));
   tempDirs.push(path);
   return path;
 }

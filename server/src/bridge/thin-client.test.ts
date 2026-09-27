@@ -34,7 +34,7 @@ async function startHandshakeServer(
 ) {
   const socketPath = path.join(
     tmpdir(),
-    `herdr-gui-thin-${process.pid}-${crypto.randomUUID()}.sock`,
+    `thyra-thin-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const server = net.createServer((socket) => {
     onConnection();
@@ -88,7 +88,7 @@ async function startMessageServer(
 ) {
   const socketPath = path.join(
     tmpdir(),
-    `herdr-gui-thin-messages-${process.pid}-${crypto.randomUUID()}.sock`,
+    `thyra-thin-messages-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const server = net.createServer((socket) => {
     let input = Buffer.alloc(0);

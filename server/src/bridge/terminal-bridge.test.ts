@@ -158,7 +158,7 @@ async function startThinServer(
 ) {
   const socketPath = path.join(
     tmpdir(),
-    `herdr-gui-terminal-bridge-${process.pid}-${crypto.randomUUID()}.sock`,
+    `thyra-terminal-bridge-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   let appSocket: net.Socket | null = null;
   const server = net.createServer((socket) => {

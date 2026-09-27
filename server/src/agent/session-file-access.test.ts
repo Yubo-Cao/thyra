@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createAgentSessionFileAccess } from "./session-file-access";
 
-const remotePath = "/srv/herdr-gui-test/sessions/pi-session.jsonl";
+const remotePath = "/srv/thyra-test/sessions/pi-session.jsonl";
 const metadata = `42\t1784872800\t${Buffer.from(remotePath).toString("base64")}\t1:42\t1784872800.123:1784872800.456\n`;
 
 function quote(value: string) {

@@ -487,7 +487,7 @@ describe("worktree removal recovery", () => {
 
 describe("worktree removal checkout inspection", () => {
   test("does not mistake a directory inside another repository for a worktree", async () => {
-    const root = await mkdtemp(join(tmpdir(), "herdr-gui-remove-"));
+    const root = await mkdtemp(join(tmpdir(), "thyra-remove-"));
     const child = join(root, "stale-checkout");
     try {
       const initialized = await runProcessWithCodeTimeout(
@@ -510,7 +510,7 @@ describe("worktree removal checkout inspection", () => {
 
   // Shutdown performs several process scans, each allowed up to 10 seconds.
   test("stops a stable process whose cwd is inside the checkout", async () => {
-    const root = await mkdtemp(join(tmpdir(), "herdr-gui-process-"));
+    const root = await mkdtemp(join(tmpdir(), "thyra-process-"));
     const sleeper = Bun.spawn(["sleep", "30"], {
       cwd: root,
       stdout: "ignore",

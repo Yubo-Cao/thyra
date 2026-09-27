@@ -233,7 +233,7 @@ async function startSessionServer(handlers: {
 }) {
   const socketPath = path.join(
     tmpdir(),
-    `herdr-gui-eps-${process.pid}-${crypto.randomUUID()}.sock`,
+    `thyra-eps-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const frame: FrameData = {
     // Tab surface 10x5; pane w1:p1 inner rect is 1,1 8x3 => "abcdefgh" rows.
@@ -2109,7 +2109,7 @@ test("changing surface codecs reconnects every endpoint viewer, but not other co
 test("configuration refresh during handshake still notifies the viewer to retry", async () => {
   const socketPath = path.join(
     tmpdir(),
-    `herdr-gui-handshake-${crypto.randomUUID()}.sock`,
+    `thyra-handshake-${crypto.randomUUID()}.sock`,
   );
   const hello = deferred<void>();
   const closed = deferred<void>();

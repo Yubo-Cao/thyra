@@ -194,7 +194,7 @@ function processIsAlive(pid: number): boolean {
 
 test("production bridge supervises two independent SSH profile tunnels", async () => {
   if (process.platform === "win32") return;
-  const root = join("/tmp", `herdr-gui-ssh-process-${crypto.randomUUID()}`);
+  const root = join("/tmp", `thyra-ssh-process-${crypto.randomUUID()}`);
   roots.push(root);
   const bin = join(root, "bin");
   const state = join(root, "state");

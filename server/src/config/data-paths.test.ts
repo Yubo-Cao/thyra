@@ -179,7 +179,7 @@ test("plugin URL reads only the Thyra env file and token", async () => {
   const legacy = join(dirname(current), "herdr-gui");
   write(join(legacy, "herdr-gui.env"), "HOST=0.0.0.0\nPORT=8890\n");
   write(join(legacy, "auth-token"), `${"c".repeat(64)}\n`);
-  const script = `import { computeUrl } from ${JSON.stringify(join(import.meta.dir, "../../..", "scripts/studio-plugin.ts"))}; console.log(computeUrl());`;
+  const script = `import { computeUrl } from ${JSON.stringify(join(import.meta.dir, "../../..", "scripts/thyra-plugin.ts"))}; console.log(computeUrl());`;
   const invoke = async () => {
     const child = Bun.spawn([process.execPath, "-e", script], {
       env: { ...process.env, HOME: root, USERPROFILE: root, APPDATA: appData },

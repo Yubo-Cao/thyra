@@ -190,10 +190,7 @@ async function waitForHealth(port: number): Promise<void> {
 
 test("production dispatcher isolates two local profiles and profile CRUD", async () => {
   if (process.platform === "win32") return;
-  const root = join(
-    tmpdir(),
-    `herdr-gui-profile-process-${crypto.randomUUID()}`,
-  );
+  const root = join(tmpdir(), `thyra-profile-process-${crypto.randomUUID()}`);
   roots.push(root);
   mkdirSync(root, { recursive: true, mode: 0o700 });
   chmodSync(root, 0o700);

@@ -193,7 +193,7 @@ async function startEndpointServer(
 ) {
   const socketPath = path.join(
     tmpdir(),
-    `herdr-gui-endpoint-${process.pid}-${crypto.randomUUID()}.sock`,
+    `thyra-endpoint-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const server = net.createServer((socket) => {
     sockets.add(socket);
@@ -771,7 +771,7 @@ describe("EndpointClient (endpoint generation 1)", () => {
   test("rejects when the welcome carries a handshake error", async () => {
     const socketPath = path.join(
       tmpdir(),
-      `herdr-gui-endpoint-err-${process.pid}-${crypto.randomUUID()}.sock`,
+      `thyra-endpoint-err-${process.pid}-${crypto.randomUUID()}.sock`,
     );
     const server = net.createServer((socket) => {
       socket.once("data", () => {

@@ -25,7 +25,7 @@ async function startServer(
 ) {
   const socketPath = join(
     tmpdir(),
-    `herdr-gui-herdr-client-${process.pid}-${crypto.randomUUID()}.sock`,
+    `thyra-herdr-client-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const server = net.createServer((socket) => {
     sockets.add(socket);
