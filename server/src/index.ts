@@ -201,8 +201,15 @@ import type { ClientContext } from "./identity/identity-service";
 import { optionalString } from "./utils/rpc-params";
 import { runMcpCommand } from "./mcp/cli";
 import { createThyraMcpService } from "./mcp/service";
+import { runShellIntegrationCommand } from "./shell/cli";
+import { refreshShellScripts } from "./shell/installer";
 
 const APP_VERSION = packageJson.version;
+const shellCommandResult = await runShellIntegrationCommand(
+  process.argv.slice(2),
+  APP_VERSION,
+);
+if (shellCommandResult !== null) process.exit(shellCommandResult);
 const serviceCommandResult = runServiceCommand(process.argv.slice(2));
 if (serviceCommandResult === SERVICE_COMMAND_CONTINUE) {
   process.argv.splice(2);
@@ -228,6 +235,9 @@ if (accountsCommandResult !== null) {
   process.exit(accountsCommandResult);
 }
 const config = loadServerConfig(APP_VERSION);
+await refreshShellScripts().catch(() =>
+  console.warn("[bridge] shell integration script refresh failed"),
+);
 configureServerLogger(config.logLevel);
 const logger = serverLogger;
 const voice = createVoiceHandlers({
@@ -1195,6 +1205,7 @@ const webSocketCleanup = new WebSocketCleanupTracker<
   connectionManager.forEachCurrentRuntime((runtime) => {
     viewedTerminals.push(...runtime.terminalBridge.viewedTerminals(ws));
     runtime.terminalBridge.cleanupWs(ws);
+    runtime.shell.unsubscribe(ws);
   });
   const snapshot = {
     client: clientLabel(ws),
@@ -1589,6 +1600,47 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     return null;
   }
   const connection = route.runtime;
+  if (method.startsWith("shell.")) {
+    try {
+      const result = await connection.shell.rpc(
+        method,
+        params ?? {},
+        ws,
+        (state) => {
+          // Claims and grants can change after subscribing; never reuse the
+          // subscription's authorization for later private shell state.
+          void authorize(
+            {
+              principal: socketPrincipals.get(ws) ?? principal,
+              method: "shell.subscribe",
+              params: { pane_id: state.pane_id },
+              connectionId,
+              participantId: participantIds.get(ws) ?? null,
+            },
+            authzDeps,
+          )
+            .then((decision) => {
+              if (!decision.allowed || !clients.has(ws) || !requestIsCurrent())
+                return;
+              safeSend(
+                ws,
+                encode({
+                  event: "shell.state",
+                  data: connection.shell.state.current(state.pane_id) ?? state,
+                }),
+                "shell-state",
+              );
+            })
+            .catch(() => {});
+        },
+        requestIsCurrent,
+      );
+      sendReply({ id, result }, method);
+    } catch (error) {
+      sendError("shell-rpc-error", error);
+    }
+    return;
+  }
   const {
     sshHost,
     herdr,

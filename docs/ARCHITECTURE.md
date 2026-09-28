@@ -224,6 +224,51 @@ reconnect retire lookups. Unsafe explicit OSC 8 targets and failed endpoint touc
 reads never fall back to URL-looking labels. Legacy touch supports plain-text
 URLs/paths only, without explicit OSC 8 cell metadata.
 
+## Shell input service
+
+The connection-scoped `shell.submit`, `shell.history`, `shell.complete`, and
+`shell.subscribe` RPCs require the same pane write and input-writer authority as
+`pane.send_input`. Types live in `shared/shell.ts`. `shell.subscribe {pane_id,
+enabled?: boolean}` returns a `ShellInputState` snapshot; subscribed sockets
+receive `{event: "shell.state", data: ShellInputState}` in the usual connection
+envelope. Delivery rechecks current grants and claims. No command or history
+text is included in state events.
+
+Interactive Bash, Zsh, and Fish hooks atomically publish private state files.
+Thyra checks file ownership, mode, live PID, and `pane.process_info.shell_pid`.
+A prompt is available only while its shell owns the foreground process group,
+with no subsequent input or submission. Known alternate-screen state from
+endpoint frames also blocks availability; legacy terminal streams without that
+metadata rely on the shell and foreground-process checks. Filesystem events are
+coalesced and a periodic scan recovers missed notifications. Raw input is tied
+to the prompt file at dispatch, including binary terminal input, so a delayed
+watcher cannot accidentally clear dirty state.
+
+`shell.submit {pane_id, seq, text, execute}` revalidates the process and prompt,
+reserves the pane, and sends bracketed paste followed by CR when requested.
+Without bracketed paste, multiline input and control bytes are rejected.
+An uncertain write remains unavailable until another prompt; it is never
+retried automatically. Validation and Herdr's PTY write are separate operations,
+so they cannot provide an atomic guarantee against input sent outside Thyra.
+The state files are not a security boundary against another process of the same
+OS user, which can already control that user's shells.
+
+`shell.history` imports Bash, Zsh, and Fish history once per file and incrementally
+ingests the JSONL spool with a durable SQLite offset. Results deduplicate command
+text and rank exact prefixes before frequency, recency, and current-directory
+matches. `query` accepts a case-insensitive subsequence; `cwd` filters stored
+entries. `latest: true` returns up to 2,000 recent distinct entries for a local
+browser cache. Import files are limited to 32 MiB; spool ingestion reads up to
+8 MiB per request and retains incomplete trailing records.
+
+`shell.complete {pane_id, line, cursor}` returns UTF-16 replacement offsets and
+up to 200 items from shell keywords/builtins, executable PATH entries, files,
+directories, and Git branches. Each source has a 150 ms response budget.
+Completion uses the validated shell's cwd and reported PATH, with `/proc`
+environment fallback; request parameters never select a filesystem cwd.
+Git runs with explicit argv, never a command string. Shell-native completion,
+live aliases/functions, and nested SSH shells are not completion sources.
+
 ## Browser navigation and creation
 
 `browserNavigation.ts` projects endpoint browser-local selections into shared UI

@@ -252,6 +252,28 @@ Optional `~/.config/thyra/mcp.json` adds deny patterns and sets the per-token ra
 
 Each call is logged to `~/.config/thyra/mcp-audit.jsonl` (token, tool, redacted arguments, outcome, duration), with one rotated `.1` file.
 
+## Shell integration
+
+Run `thyra shell-integration install --shell all` on the host running both Thyra
+and the shells. Use `--shell bash`, `zsh`, or `fish` to select one installed shell.
+The installer backs up existing rc files before their first modification and
+adds a guarded, marked source block. Open a new interactive shell in a Herdr
+pane to activate it. `thyra shell-integration status` reports installation and
+verified live pane state; `thyra shell-integration uninstall` removes the blocks.
+
+Scripts live under `${XDG_DATA_HOME:-~/.local/share}/thyra/shell-integration/`.
+Server startup refreshes those scripts without changing rc files. Private state
+files use `${XDG_RUNTIME_DIR:-/tmp/thyra-$UID}/thyra/shell/`; command history uses
+`${XDG_STATE_HOME:-~/.local/state}/thyra/shell-history.jsonl` and
+`shell-history.sqlite`. Commands beginning with a space are excluded from the
+history spool. The [shell RPC contract](ARCHITECTURE.md#shell-input-service)
+requires the pane's input-writer permission, including for history reads.
+
+Existing SSH profiles tunnel Herdr sockets and do not transport this service;
+shell input is unavailable through those profiles. Run Thyra on the shell host
+to use the service there. The integration does not propagate into nested SSH
+shells.
+
 ## Basic runtime configuration
 
 Flags override environment variables, then defaults; `thyra --help` lists all

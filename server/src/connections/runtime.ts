@@ -78,6 +78,7 @@ import {
   createWorktreeRemovalRuntime,
 } from "../worktree/remove";
 import { createAgentStatusSubscriptionLoop } from "./agent-status-subscription";
+import { createShellService } from "../shell/service";
 import { sanitizeConnectionError } from "./manager";
 import { createEventSubscriptionLoop } from "./subscription-loop";
 import { type ConnectionIdentity, LEGACY_DEFAULT_CONNECTION } from "./types";
@@ -183,6 +184,13 @@ export function createLegacyConnectionRuntime(args: {
   const clientSocketPath = config.clientSocketPath;
   const sshHost = () => config.sshHost;
   const herdr = new HerdrClient(socketPath);
+  const shell = createShellService({
+    enabled: !config.sshHost,
+    call: (method, params) => herdr.call(method, params),
+  });
+  herdr.on("pane-input", (pane: string) => {
+    if (!config.sshHost) shell.state.dirty(pane);
+  });
   const ownShellClientsLease = acquireOwnShellClients(
     clientSocketPath,
     () => herdr.call("collaboration.list", {}),
@@ -397,6 +405,11 @@ export function createLegacyConnectionRuntime(args: {
     });
   }
   const terminalBridge = createTerminalBridge({
+    onPaneInput: (pane) => {
+      if (!config.sshHost) shell.state.dirty(pane);
+    },
+    onPaneAlternateScreen: (pane, active) =>
+      shell.state.setAlternate(pane, active),
     connectionId: identity.id,
     broadcast: args.broadcast,
     logger: logger.child("terminal"),
@@ -700,6 +713,9 @@ export function createLegacyConnectionRuntime(args: {
     if (disposed) throw new Error("connection runtime is disposed");
     if (backgroundStarted) return;
     backgroundStarted = true;
+    void shell
+      .start()
+      .catch(() => logger.warn("shell state tracking unavailable"));
     workspaceAutoSync.start();
     subscriptionLoop.start();
     collaborationSubscriptionLoop.start();
@@ -731,6 +747,7 @@ export function createLegacyConnectionRuntime(args: {
     const transportStop =
       transportStart?.catch(() => undefined) ?? Promise.resolve();
     stopTask = Promise.all([
+      shell.stop(),
       autoSyncStop,
       subscriptionStop,
       collaborationSubscriptionStop,
@@ -749,6 +766,7 @@ export function createLegacyConnectionRuntime(args: {
     clientSocketPath,
     sshHost,
     herdr,
+    shell,
     collaboration,
     claims,
     topology,

@@ -87,11 +87,14 @@ export function loadServerTls(
   }
 }
 
-export function loadServerConfig(appVersion: string): ServerConfig {
+export function loadServerConfig(
+  appVersion: string,
+  argv = process.argv.slice(2),
+): ServerConfig {
   let args: CliArgs;
   try {
     args = parseArgs({
-      args: process.argv.slice(2),
+      args: argv,
       options: cliOptions,
       strict: true,
       allowPositionals: false,
@@ -108,6 +111,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
 Usage: thyra [options]
        thyra service <action>
        thyra mcp [token <action>]   read-only MCP server (see \`thyra mcp --help\`)
+       thyra shell-integration install|uninstall|status [--shell bash|zsh|fish|all]
        thyra user|session|grant|share ... accounts, logins and sharing (see \`thyra user --help\`)
 
 Service actions:

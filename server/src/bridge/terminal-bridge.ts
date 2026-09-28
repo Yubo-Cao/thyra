@@ -212,6 +212,8 @@ export function createTerminalBridge(args: {
     paneId: string,
     lines: number,
   ) => Promise<{ text: string; truncated: boolean }>;
+  onPaneInput?: (paneId: string) => void;
+  onPaneAlternateScreen?: (paneId: string, active: boolean) => void;
 }) {
   const logger = args.logger ?? silentLogger;
   const terminals = new Map<ServerWebSocket<unknown>, TerminalSession>();
@@ -1161,6 +1163,9 @@ export function createTerminalBridge(args: {
     });
 
     thin.on("terminal", (t) => {
+      const paneId = knownPanes.get(terminalId);
+      if (paneId && thin instanceof EndpointTerminalSession)
+        args.onPaneAlternateScreen?.(paneId, thin.alternateScreenActive);
       const resolve = shared.resolveFirstFrame;
       if (resolve) {
         shared.resolveFirstFrame = null;
@@ -2055,6 +2060,8 @@ export function createTerminalBridge(args: {
           inputAt: Date.now(),
           session: shared,
         };
+        const inputPane = knownPanes.get(requestedTerminalId);
+        if (inputPane) args.onPaneInput?.(inputPane);
         if (thin instanceof EndpointTerminalSession)
           thin.input(input, claimsGeometry);
         else thin.input(input);
@@ -2126,6 +2133,8 @@ export function createTerminalBridge(args: {
             requestIsCurrent,
           );
           validateAttachment();
+          const inputPane = knownPanes.get(requestedTerminalId);
+          if (inputPane) args.onPaneInput?.(inputPane);
           // Herdr chooses application input versus shell scrollback from the
           // actual PTY modes. pane.scroll always means history and bypasses nano.
           thin.input(

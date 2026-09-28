@@ -32,6 +32,18 @@ export class HerdrClient extends EventEmitter {
     params: Record<string, unknown> = {},
     timeoutMs = 8000,
   ): Promise<any> {
+    if (
+      [
+        "pane.send_input",
+        "pane.send_text",
+        "pane.send_key",
+        "pane.send_keys",
+        "pane.paste",
+      ].includes(method) &&
+      typeof params.pane_id === "string"
+    ) {
+      this.emit("pane-input", params.pane_id);
+    }
     const requestId = `r_${Date.now().toString(36)}_${Math.random()
       .toString(36)
       .slice(2, 6)}`;

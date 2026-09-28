@@ -64,6 +64,10 @@ const RPC_MATRIX: Record<string, string> = {
   "pane.paste": "admin owner editor",
   "pane.resize": "admin owner editor",
   "pane.send_input": "admin owner editor",
+  "shell.submit": "admin owner editor",
+  "shell.history": "admin owner editor",
+  "shell.complete": "admin owner editor",
+  "shell.subscribe": "admin owner editor",
   "pane.send_key": "admin owner editor",
   "pane.send_keys": "admin owner editor",
   "pane.send_text": "admin owner editor",
@@ -305,6 +309,10 @@ describe("authorize", () => {
       for (const method of [
         "terminal.input",
         "pane.send_text",
+        "shell.submit",
+        "shell.history",
+        "shell.complete",
+        "shell.subscribe",
         "terminal.resize",
         "terminal.focus",
       ]) {

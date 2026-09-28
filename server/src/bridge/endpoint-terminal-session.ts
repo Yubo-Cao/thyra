@@ -289,6 +289,13 @@ export class EndpointTerminalSession extends EventEmitter {
     });
   }
 
+  get alternateScreenActive(): boolean {
+    return (
+      this.latestSurface()?.panes.find((pane) => pane.paneId === this.paneId)
+        ?.alternateScreen ?? false
+    );
+  }
+
   private latestSurface(): EndpointSurface | null {
     return this.client.currentSurface;
   }
