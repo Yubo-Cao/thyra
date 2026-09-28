@@ -101,6 +101,9 @@ describe("service definition rendering", () => {
       "EnvironmentFile=-/srv/herdr\\x20gui/config/thyra.env",
     );
     expect(definition).not.toContain('EnvironmentFile="');
+    expect(definition).toContain(
+      "EnvironmentFile=-/srv/herdr\\x20gui/config/auth-providers.env",
+    );
     expect(definition).toContain("ExecStart=/opt/Herdr\\x20%%\\x20GUI/thyra");
     expect(definition).not.toContain('ExecStart="');
     expect(definition).toContain("Restart=always");

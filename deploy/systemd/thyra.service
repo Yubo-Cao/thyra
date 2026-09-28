@@ -7,6 +7,8 @@ After=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-%h/.config/thyra/thyra.env
+# Sign-in provider secrets (Resend, GitHub, Google), mode 0600.
+EnvironmentFile=-%h/.config/thyra/auth-providers.env
 ExecStart=%h/.local/bin/thyra
 Restart=always
 RestartSec=2

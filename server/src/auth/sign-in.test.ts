@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -24,7 +24,7 @@ import {
 import { createOAuthFlowStore } from "./oauth";
 import { createPasskeyService } from "./passkeys";
 import { createAuthenticator, type Principal } from "./principal";
-import { loadAuthProviders } from "./providers";
+import { loadAuthProviders, providerEnvironment } from "./providers";
 import { createAuthRoutes } from "./routes";
 import { createInviteStore } from "./sign-in";
 import { createSignInRoutes } from "./sign-in-routes";
@@ -857,6 +857,31 @@ describe("avatar validation", () => {
 });
 
 describe("provider configuration", () => {
+  test("reads a private auth-providers.env under the environment", () => {
+    const dir = mkdtempSync(join(tmpdir(), "thyra-providers-"));
+    dirs.push(dir);
+    const path = join(dir, "auth-providers.env");
+    writeFileSync(
+      path,
+      "# secrets\nTHYRA_RESEND_API_KEY=re_file\nTHYRA_EMAIL_FROM='Thyra <a@b.c>'\n",
+      { mode: 0o600 },
+    );
+    const loaded = providerEnvironment(
+      { THYRA_RESEND_API_KEY: "re_env" },
+      path,
+    );
+    expect(loaded.env.THYRA_RESEND_API_KEY).toBe("re_env");
+    expect(loaded.env.THYRA_EMAIL_FROM).toBe("Thyra <a@b.c>");
+    expect(loaded.warnings).toEqual([]);
+    if (process.platform !== "win32") {
+      chmodSync(path, 0o644);
+      const refused = providerEnvironment({}, path);
+      expect(refused.env.THYRA_RESEND_API_KEY).toBeUndefined();
+      expect(refused.warnings.join()).toContain("chmod 600");
+    }
+    expect(providerEnvironment({}, join(dir, "missing")).env).toEqual({});
+  });
+
   test("turns each provider on only with its variables, and test URLs only for loopback", () => {
     const none = loadAuthProviders({});
     expect([none.email, none.github, none.google, none.signup]).toEqual([

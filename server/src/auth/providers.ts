@@ -9,13 +9,48 @@
  * - `THYRA_SIGNUP`: `invite` (default; unknown identities get no account)
  *   or `open` (they become members without grants).
  *
+ * The server reads that file too (`providerEnvironment`); variables already
+ * in the environment win.
+ *
  * `THYRA_TEST_RESEND_URL`, `THYRA_TEST_GITHUB_URL` and
  * `THYRA_TEST_GOOGLE_URL` point a provider at a local stub server; they are
  * accepted only for loopback HTTP(S) URLs, so they can never redirect real
  * credentials elsewhere.
  */
 
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { dataRoot } from "../config/data-paths";
+import { parseEnvironmentFile } from "../config/environment";
+
 export type SignupPolicy = "invite" | "open";
+
+export const AUTH_PROVIDERS_FILE = "auth-providers.env";
+
+/**
+ * The process environment over `auth-providers.env` in the data directory,
+ * so providers work whether or not the service manager loaded the file.
+ * The file holds secrets: a copy readable by others is refused.
+ */
+export function providerEnvironment(
+  env: Record<string, string | undefined> = process.env,
+  path = join(dataRoot(), AUTH_PROVIDERS_FILE),
+): { env: Record<string, string | undefined>; warnings: string[] } {
+  const warnings: string[] = [];
+  if (!existsSync(path)) return { env, warnings };
+  if (process.platform !== "win32" && (statSync(path).mode & 0o077) !== 0) {
+    warnings.push(
+      `ignoring ${path}: it is readable by other users; run chmod 600 on it`,
+    );
+    return { env, warnings };
+  }
+  const merged: Record<string, string | undefined> = {
+    ...parseEnvironmentFile(readFileSync(path, "utf8")),
+  };
+  for (const [key, value] of Object.entries(env))
+    if (value !== undefined) merged[key] = value;
+  return { env: merged, warnings };
+}
 
 export type EmailConfig = {
   apiKey: string;

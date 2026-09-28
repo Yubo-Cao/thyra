@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { dataRoot } from "../config/data-paths";
+import { parseEnvironmentFile } from "../config/environment";
 import { browserUrlFor } from "../config/server-config";
 import { parsePublicBaseUrls } from "../http/request-access";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
@@ -80,20 +81,8 @@ type Env = Record<string, string | undefined>;
 export function serviceEnvironment(env: Env = process.env): Env {
   const merged: Env = {};
   const path = env.THYRA_CONFIG_PATH || join(dataRoot(), "thyra.env");
-  if (existsSync(path)) {
-    for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-      const match = line.match(
-        /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/,
-      );
-      if (!match || line.trim().startsWith("#")) continue;
-      const raw = match[2] ?? "";
-      const quoted =
-        raw.length >= 2 &&
-        (raw[0] === "'" || raw[0] === '"') &&
-        raw.at(-1) === raw[0];
-      merged[match[1]!] = quoted ? raw.slice(1, -1) : raw;
-    }
-  }
+  if (existsSync(path))
+    Object.assign(merged, parseEnvironmentFile(readFileSync(path, "utf8")));
   for (const [key, value] of Object.entries(env))
     if (value !== undefined) merged[key] = value;
   return merged;

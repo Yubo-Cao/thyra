@@ -123,7 +123,7 @@ import { avatarUrl, createAvatarFiles } from "./accounts/avatars";
 import { createAccountRoutes } from "./auth/account-routes";
 import { createEmailCodeStore, createResendMailer } from "./auth/email";
 import { createOAuthFlowStore } from "./auth/oauth";
-import { loadAuthProviders } from "./auth/providers";
+import { loadAuthProviders, providerEnvironment } from "./auth/providers";
 import { createInviteStore } from "./auth/sign-in";
 import { createSignInRoutes } from "./auth/sign-in-routes";
 import { createPasskeyService } from "./auth/passkeys";
@@ -413,8 +413,10 @@ const authzDeps: AuthzDeps = {
 };
 const passkeys = createPasskeyService({ store: accountStore });
 // Optional sign-in providers, each on only when its variables are set.
-const authProviders = loadAuthProviders(process.env);
-for (const warning of authProviders.warnings) logger.warn(warning);
+const providerEnv = providerEnvironment(process.env);
+const authProviders = loadAuthProviders(providerEnv.env);
+for (const warning of [...providerEnv.warnings, ...authProviders.warnings])
+  logger.warn(warning);
 const mailer = authProviders.email
   ? createResendMailer(authProviders.email)
   : null;
