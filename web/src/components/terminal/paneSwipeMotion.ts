@@ -1,5 +1,5 @@
 import { groupPanesByTab } from "../../paneIdentity";
-import { PAN_SLOP_PX, PINCH_SLOP_PX } from "../../touchGestures";
+import { PAN_SLOP_PX, twoFingerMode } from "../../touchGestures";
 import type { Pane, Tab, Workspace } from "../../types";
 
 // The decisions behind an interactive pane swipe, free of the DOM: what a
@@ -36,8 +36,10 @@ export function classifySwipe(
   room: (direction: -1 | 1) => number,
 ): "pending" | "pinch" | "pan" | "swipe" {
   const two = fingers === 2;
-  if (two && Math.abs(spread) >= PINCH_SLOP_PX) return "pinch";
-  if (Math.hypot(dx, dy) < SWIPE_SLOP_PX) return "pending";
+  if (two) {
+    const mode = twoFingerMode(spread, dx, dy);
+    if (mode !== "pan") return mode;
+  } else if (Math.hypot(dx, dy) < SWIPE_SLOP_PX) return "pending";
   if (
     Math.abs(dx) <
     (two ? TWO_FINGER_DOMINANCE : SWIPE_DOMINANCE) * Math.abs(dy)
@@ -182,35 +184,6 @@ export function swipeProgress(
   const revealed = target && width > 0 ? Math.abs(offset) / width : 0;
   const armed = target && swipeCommits(revealed, velocity * Math.sign(dx));
   return { offset, revealed, armed };
-}
-
-/** Samples older than this, in ms, no longer count toward the speed. */
-const VELOCITY_WINDOW_MS = 100;
-
-/** Finger speed over the last `VELOCITY_WINDOW_MS`. */
-export class SwipeVelocity {
-  private samples: { time: number; x: number }[] = [];
-
-  add(time: number, x: number) {
-    this.samples.push({ time, x });
-    while (
-      this.samples.length > 2 &&
-      time - this.samples[0].time > VELOCITY_WINDOW_MS
-    )
-      this.samples.shift();
-  }
-
-  /** px/ms at `now`; a finger that has rested reads as still. */
-  at(now: number): number {
-    const recent = this.samples.filter(
-      (sample) => now - sample.time <= VELOCITY_WINDOW_MS,
-    );
-    if (recent.length < 2) return 0;
-    const first = recent[0];
-    const last = recent[recent.length - 1];
-    const elapsed = last.time - first.time;
-    return elapsed > 0 ? (last.x - first.x) / elapsed : 0;
-  }
 }
 
 /**

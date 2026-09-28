@@ -8,7 +8,7 @@ import { activePaneIdForSnapshot } from "../../paneJump";
 import { paneSwipeReversed } from "../../paneSwipeSettings";
 import { store } from "../../store";
 import { captureConnectionLease } from "../../store/core";
-import { terminalScreens } from "../../touchGestures";
+import { terminalScreens, TouchVelocity } from "../../touchGestures";
 import type { Pane } from "../../types";
 import { shortId } from "../../utils";
 import { AgentIcon } from "../AgentIcon";
@@ -22,7 +22,6 @@ import {
   swipeProgress,
   swipeStep,
   SwipeTracker,
-  SwipeVelocity,
 } from "./paneSwipeMotion";
 import {
   FETCH_DEBOUNCE_MS,
@@ -208,7 +207,7 @@ type Gesture = {
   /** The fingers' horizontal travel, and the content's offset (local px). */
   dx: number;
   offset: number;
-  velocity: SwipeVelocity;
+  velocity: TouchVelocity;
   armed: boolean;
   frame: number;
   reduced: boolean;
@@ -385,7 +384,7 @@ function begin(surface: HTMLElement): Gesture {
     direction: 1,
     dx: 0,
     offset: 0,
-    velocity: new SwipeVelocity(),
+    velocity: new TouchVelocity(),
     armed: false,
     frame: 0,
     reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,

@@ -5,7 +5,11 @@ import {
   setPaneSwipeFingers,
   setPaneSwipeReversed,
 } from "../../paneSwipeSettings";
-import { paneSwipeFingers, PinchTracker } from "../../touchGestures";
+import {
+  paneSwipeFingers,
+  PinchTracker,
+  TouchVelocity,
+} from "../../touchGestures";
 import type { Pane } from "../../types";
 import {
   adjacentPane,
@@ -18,7 +22,6 @@ import {
   swipeProgress,
   swipeStep,
   SwipeTracker,
-  SwipeVelocity,
 } from "./paneSwipeMotion";
 
 const WIDTH = 400;
@@ -200,7 +203,7 @@ describe("pane swipe drag", () => {
   });
 
   test("speed comes from the last 100 ms of travel", () => {
-    const velocity = new SwipeVelocity();
+    const velocity = new TouchVelocity();
     // A slow drag for 300 ms, then a fast 100 ms finish.
     for (let time = 0; time <= 300; time += 20) velocity.add(time, time * 0.1);
     for (let time = 320; time <= 400; time += 20)
@@ -208,7 +211,7 @@ describe("pane swipe drag", () => {
     expect(velocity.at(400)).toBeCloseTo(1, 5);
     // Fingers that rested before lifting read as still.
     expect(velocity.at(600)).toBe(0);
-    expect(new SwipeVelocity().at(0)).toBe(0);
+    expect(new TouchVelocity().at(0)).toBe(0);
   });
 });
 
@@ -231,7 +234,7 @@ describe("pane swipe release", () => {
 
   test("the icon arms exactly when a release would switch", () => {
     // A drag frame by frame: fast to 120px, a rest, then on past half.
-    const velocity = new SwipeVelocity();
+    const velocity = new TouchVelocity();
     const frames: [number, number][] = [
       [0, 0],
       [16, 30],

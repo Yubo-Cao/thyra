@@ -61,9 +61,8 @@ The browser only chooses an agent, never the command text.
 
 - Server-rendered terminals support normal input, modified Enter, macOS editing
   keys, multiline paste, IME, and CJK punctuation.
-- Scroll by wheel, trackpad, touch, or explicit half-page history shortcuts.
-  Full page keys route to terminal apps or Herdr history; unavailable endpoint
-  history controls explain missing support.
+- Scroll by wheel, trackpad, touch (one finger or two, with momentum after a quick release), or explicit half-page history shortcuts.
+  Full page keys route to terminal apps or Herdr history; unavailable endpoint history controls explain missing support.
 - Viewers and share-link guests browse a read-only copy of the last 1000 lines instead, so their scrolling never moves anyone else's view; scrolling back to the bottom, Escape, or **Back to live** returns to live output.
 - Pane apps see the browser's terminal colors: OSC 10/11/4 queries and
   color-scheme reports (`?996n`, mode 2031) follow the page's terminal theme,
@@ -261,12 +260,9 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   available; **Done**/Esc exits.
   Scroll first to select older output. Selection freezes the displayed frame,
   not the connection; legacy streams resume at a 1 MiB buffered UTF-16 limit.
-- Pinch the terminal with two fingers to change its font size on this
-  browser; the size shown while pinching applies on release. On a pane this
-  device sizes, the new grid resizes it once; on a pane another device
-  displays, pinching only magnifies the scaled view, two fingers pan it, and
-  the pane is never resized. The percentage appears while pinching and for a
-  moment after; tap it to restore the default size.
+- Pinch the terminal with two fingers to change its font size on this browser; the size shown while pinching applies on release.
+  On a pane this device sizes, the new grid resizes it once; on a pane another device displays, pinching only magnifies the scaled view, two fingers pan it (and scroll the terminal once it reaches its top or bottom edge), and the pane is never resized.
+  The percentage appears while pinching and for a moment after; tap it to restore the default size.
 - Swipe sideways with two fingers across the terminal or pane area to move between panes, which sit side by side in workspace order, then tab order, then pane order within the tab, wrapping from the last to the first.
   Dragging the content right reveals the previous pane on the left; dragging it left reveals the next one on the right.
   The revealed area shows that pane's screen as this browser last drew it, or else its last lines, fetched once and never attaching, resizing, or focusing anything until the switch; its name card stands in while they load.

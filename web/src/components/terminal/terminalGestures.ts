@@ -26,13 +26,56 @@ import {
   swallowEvent,
   type TerminalSession,
 } from "./terminalSession";
+import { TouchScroll } from "./terminalTouchScroll";
 import { isEditableElement } from "../../utils";
 
 const TERMINAL_TOUCH_TAP_SLOP_PX = 8;
 
+/**
+ * The terminal's touch scroll, shared by one-finger drags and two-finger
+ * pans (terminalPinch): Herdr scrolls its scrollback, or forwards wheel input
+ * to a mouse-reporting or full-screen app, and a read-only viewer's request
+ * opens its local history view (paneControl).
+ */
+export function terminalTouchScroll(session: TerminalSession): TouchScroll {
+  const { client, refs, ui, term, presentation, signal } = session;
+  const scroll = new TouchScroll((lines, at) => {
+    session.invalidateLinks();
+    ui.setFileLinkMenu(null);
+    // A selection or the composer owns a mouse-reporting pane's drags.
+    if (
+      presentation.mouseReporting !== undefined &&
+      (term.hasSelection() ||
+        presentation.selectionDrag ||
+        refs.composerOpen.current)
+    )
+      return;
+    const terminalId = refs.desiredTerminal.current;
+    if (
+      !terminalId ||
+      store.terminalScrollReason(terminalId, presentation.mouseReporting)
+    )
+      return;
+    client
+      .call("terminal.scroll", {
+        terminal_id: terminalId,
+        direction: lines < 0 ? "up" : "down",
+        lines: Math.min(term.rows, Math.abs(lines)),
+        source: "wheel",
+        ...terminalCellAtPoint(term, at.x, at.y),
+      })
+      .catch(() => {});
+  });
+  signal.addEventListener("abort", () => scroll.stop());
+  return scroll;
+}
+
 // Mouse selections copy on release and extend through history. Touch drags
 // scroll, a long-press selects, and a tap on the input rows opens the keyboard.
-export function installTerminalGestures(session: TerminalSession): () => void {
+export function installTerminalGestures(
+  session: TerminalSession,
+  scroll: TouchScroll,
+): () => void {
   const { client, refs, ui, container, term } = session;
   const { desiredTerminal } = refs;
   const { signal, applePlatform, presentation, history, touch } = session;
@@ -393,16 +436,15 @@ export function installTerminalGestures(session: TerminalSession): () => void {
 
   let touchStartX: number | null = null;
   let touchStartY: number | null = null;
-  let touchLastY: number | null = null;
+  // One finger drives the shared touch scroll; two drive it from the pinch.
+  let touchScrolls = false;
   let touchMoved = false;
-  let touchRemainder = 0;
   let touchSelectionBeforeTouch = false;
   const resetTouch = () => {
     touchStartX = null;
     touchStartY = null;
-    touchLastY = null;
+    touchScrolls = false;
     touchMoved = false;
-    touchRemainder = 0;
   };
   const onTouchStart = (e: TouchEvent) => {
     lastPointerType = "touch";
@@ -410,72 +452,47 @@ export function installTerminalGestures(session: TerminalSession): () => void {
       session.retireTouchLink();
       touchMoved = true;
       // A finger left over from a pinch or swipe must not scroll.
-      touchLastY = null;
+      touchScrolls = false;
       touch.cancelPending();
       if (!touch.active) presentation.cancelSelection();
       return;
     }
     e.stopPropagation();
     const point = e.touches[0];
-    touchStartX = point.clientX;
-    touchStartY = point.clientY;
-    touchLastY = point.clientY;
+    const at = { x: point.clientX, y: point.clientY };
+    touchStartX = at.x;
+    touchStartY = at.y;
+    touchScrolls = true;
     touchMoved = false;
-    touchRemainder = 0;
     touchSelectionBeforeTouch = touch.active;
-    touch.start({ x: point.clientX, y: point.clientY });
+    scroll.begin(at.y, at, performance.now());
+    touch.start(at);
   };
   const onTouchMove = (e: TouchEvent) => {
-    if (e.touches.length !== 1 || touchLastY === null) return;
+    if (e.touches.length !== 1 || !touchScrolls) return;
     session.invalidateLinks();
     ui.setFileLinkMenu(null);
     const point = e.touches[0];
-    touch.move({ x: point.clientX, y: point.clientY });
+    const at = { x: point.clientX, y: point.clientY };
+    touch.move(at);
     if (
       touchStartX !== null &&
       touchStartY !== null &&
-      Math.hypot(point.clientX - touchStartX, point.clientY - touchStartY) >
+      Math.hypot(at.x - touchStartX, at.y - touchStartY) >
         TERMINAL_TOUCH_TAP_SLOP_PX
     ) {
       touchMoved = true;
       if (!touch.active) presentation.cancelSelection();
     }
-    if (
-      presentation.mouseReporting !== undefined &&
-      (term.hasSelection() ||
-        presentation.selectionDrag ||
-        refs.composerOpen.current)
-    ) {
-      cancelEvent(e);
-      return;
-    }
-    const deltaY = touchLastY - point.clientY;
-    touchLastY = point.clientY;
-    touchRemainder += deltaY;
-
-    const lines = Math.trunc(touchRemainder / 24);
-    if (lines !== 0) {
-      touchRemainder -= lines * 24;
-      const terminalId = desiredTerminal.current;
-      if (
-        terminalId &&
-        !store.terminalScrollReason(terminalId, presentation.mouseReporting)
-      ) {
-        client
-          .call("terminal.scroll", {
-            terminal_id: terminalId,
-            direction: lines < 0 ? "up" : "down",
-            lines: Math.min(term.rows, Math.abs(lines)),
-            source: "wheel",
-            ...terminalCellAtPoint(term, point.clientX, point.clientY),
-          })
-          .catch(() => {});
-      }
-    }
-
+    scroll.move(at.y, at, performance.now());
     cancelEvent(e);
   };
   const onTouchEnd = (e: TouchEvent) => {
+    // A drag flings on; a tap or a selection drag stops.
+    if (touchScrolls) {
+      if (touchMoved && !touch.active) scroll.release(performance.now());
+      else scroll.stop();
+    }
     touch.cancelPending();
     // A long-press that just selected a word copies it on release.
     if (touch.active && !touchSelectionBeforeTouch)
@@ -528,6 +545,7 @@ export function installTerminalGestures(session: TerminalSession): () => void {
     }
   };
   const onTouchCancel = () => {
+    if (touchScrolls) scroll.stop();
     session.retireTouchLink();
     touch.cancelPending();
     if (!touch.active) presentation.cancelSelection();

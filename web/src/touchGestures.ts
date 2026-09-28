@@ -26,6 +26,22 @@ export type PinchMove = {
   dy: number;
 };
 
+/**
+ * What two fingers are doing once they move: a pinch (their distance changed
+ * by `spread`), a pan (their midpoint travelled `dx`, `dy`), whichever
+ * crosses its slop first. The terminal's pinch tracker and the pane swipe
+ * both classify two fingers by this, so they agree on every touch.
+ */
+export function twoFingerMode(
+  spread: number,
+  dx: number,
+  dy: number,
+): PinchMove["mode"] {
+  if (Math.abs(spread) >= PINCH_SLOP_PX) return "pinch";
+  if (Math.hypot(dx, dy) >= PAN_SLOP_PX) return "pan";
+  return "pending";
+}
+
 /** Tells a pinch from a two-finger pan by whichever crosses its slop first. */
 export class PinchTracker {
   private start: { span: number; x: number; y: number } | null = null;
@@ -55,16 +71,43 @@ export class PinchTracker {
     const span = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     const dx = (a.clientX + b.clientX) / 2 - start.x;
     const dy = (a.clientY + b.clientY) / 2 - start.y;
-    if (this.mode === "pending") {
-      if (Math.abs(span - start.span) >= PINCH_SLOP_PX) this.mode = "pinch";
-      else if (Math.hypot(dx, dy) >= PAN_SLOP_PX) this.mode = "pan";
-    }
+    if (this.mode === "pending")
+      this.mode = twoFingerMode(span - start.span, dx, dy);
     const scale = this.mode === "pinch" ? span / start.span : 1;
     return { mode: this.mode, scale, dx, dy };
   }
 
   end() {
     this.start = null;
+  }
+}
+
+/** Samples older than this, in ms, no longer count toward the speed. */
+const VELOCITY_WINDOW_MS = 100;
+
+/** A finger coordinate's speed over the last `VELOCITY_WINDOW_MS`. */
+export class TouchVelocity {
+  private samples: { time: number; value: number }[] = [];
+
+  add(time: number, value: number) {
+    this.samples.push({ time, value });
+    while (
+      this.samples.length > 2 &&
+      time - this.samples[0].time > VELOCITY_WINDOW_MS
+    )
+      this.samples.shift();
+  }
+
+  /** px/ms at `now`; a finger that has rested reads as still. */
+  at(now: number): number {
+    const recent = this.samples.filter(
+      (sample) => now - sample.time <= VELOCITY_WINDOW_MS,
+    );
+    if (recent.length < 2) return 0;
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    const elapsed = last.time - first.time;
+    return elapsed > 0 ? (last.value - first.value) / elapsed : 0;
   }
 }
 

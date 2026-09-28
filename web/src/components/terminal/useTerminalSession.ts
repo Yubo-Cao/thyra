@@ -27,7 +27,10 @@ import { terminalPageScroll } from "../../terminalScroll";
 import { applyTerminalTheme } from "../../terminalThemes";
 import { terminalScreens } from "../../touchGestures";
 import { installTerminalKeyboard } from "./terminalKeyboard";
-import { installTerminalGestures } from "./terminalGestures";
+import {
+  installTerminalGestures,
+  terminalTouchScroll,
+} from "./terminalGestures";
 import { installTerminalPinch } from "./terminalPinch";
 import {
   applyTerminalFollowScale,
@@ -232,9 +235,11 @@ export function useTerminalSession(bindings: TerminalSessionBindings) {
     if (!bindings.container) return;
     const session = openTerminalSession(bindings);
     const disposeKeyboard = installTerminalKeyboard(session);
+    // One finger and two scroll alike, through one driver.
+    const touchScroll = terminalTouchScroll(session);
     // Before the gestures, whose touchend stops later listeners.
-    const disposePinch = installTerminalPinch(session);
-    const disposeGestures = installTerminalGestures(session);
+    const disposePinch = installTerminalPinch(session, touchScroll);
+    const disposeGestures = installTerminalGestures(session, touchScroll);
     return () =>
       session.dispose(() => {
         disposePinch();

@@ -1,6 +1,5 @@
 import {
   clampPinchScale,
-  PinchTracker,
   pinchedTerminalZoom,
   setTerminalZoom,
   TERMINAL_ZOOM_EVENT,
@@ -11,6 +10,7 @@ import {
   terminalDensity,
   type TerminalSession,
 } from "./terminalSession";
+import { type TouchScroll, TwoFingerTouch } from "./terminalTouchScroll";
 
 const ZOOM_BADGE_MS = 2500;
 
@@ -18,11 +18,16 @@ const ZOOM_BADGE_MS = 2500;
  * Two-finger pinch zooms this browser's terminal font. A transform previews
  * the gesture and the font changes once, on release: a device that sizes the
  * pane then refits it and resizes the PTY; one that follows another device's
- * size only magnifies its scaled view, which two fingers also pan.
+ * size only magnifies its scaled view, which two fingers also pan. A pan
+ * scrolls the terminal as one finger does, once a magnified view has reached
+ * its top or bottom edge.
  */
-export function installTerminalPinch(session: TerminalSession) {
+export function installTerminalPinch(
+  session: TerminalSession,
+  scroll: TouchScroll,
+) {
   const { container, term, refs, ui, signal } = session;
-  const pinch = new PinchTracker();
+  const pinch = new TwoFingerTouch(scroll);
   const pan = refs.followPan;
   let start = { zoom: 1, base: 13, x: 0, y: 0, pan: { ...pan.current } };
   let scale = 1;
@@ -41,7 +46,7 @@ export function installTerminalPinch(session: TerminalSession) {
 
   const finish = (commit: boolean) => {
     const pinched = pinch.mode === "pinch";
-    pinch.end();
+    pinch.end(commit, performance.now());
     term.element?.style.removeProperty("transform");
     term.element?.style.removeProperty("transform-origin");
     if (!commit) pan.current = start.pan;
@@ -56,6 +61,8 @@ export function installTerminalPinch(session: TerminalSession) {
   const onTouchStart = (e: TouchEvent) => {
     if (e.touches.length !== 2) {
       if (pinch.active) finish(false);
+      // More fingers stop a fling; one finger restarts it (terminalGestures).
+      else if (e.touches.length > 2) scroll.stop();
       return;
     }
     const [a, b] = [e.touches[0], e.touches[1]];
@@ -69,27 +76,31 @@ export function installTerminalPinch(session: TerminalSession) {
       pan: { ...pan.current },
     };
     scale = 1;
-    pinch.begin(e.touches);
+    pinch.begin(e.touches, performance.now());
   };
   const onTouchMove = (e: TouchEvent) => {
     if (!pinch.active || e.touches.length !== 2) return;
     e.preventDefault();
-    const move = pinch.move(e.touches);
-    if (!move || move.mode === "pending") return;
-    scale = clampPinchScale(start.base, start.zoom, move.scale);
-    if (refs.followShared.current) {
-      // Keep the content under the starting midpoint beneath the fingers.
-      pan.current = {
-        x: start.x + move.dx - (start.x - start.pan.x) * scale,
-        y: start.y + move.dy - (start.y - start.pan.y) * scale,
-      };
-      applyTerminalFollowScale(term, container, true, pan.current, scale);
-    } else if (move.mode === "pinch" && term.element) {
-      term.element.style.transformOrigin = `${start.x}px ${start.y}px`;
-      term.element.style.transform = `scale(${scale})`;
-    }
-    if (move.mode === "pinch")
-      showZoom(pinchedTerminalZoom(start.base, start.zoom, scale), false);
+    pinch.move(e.touches, performance.now(), (move) => {
+      scale = clampPinchScale(start.base, start.zoom, move.scale);
+      if (move.mode === "pinch")
+        showZoom(pinchedTerminalZoom(start.base, start.zoom, scale), false);
+      if (refs.followShared.current) {
+        // Keep the content under the starting midpoint beneath the fingers;
+        // the view stops at its edges, and a pan scrolls on from there.
+        pan.current = {
+          x: start.x + move.dx - (start.x - start.pan.x) * scale,
+          y: start.y + move.dy - (start.y - start.pan.y) * scale,
+        };
+        applyTerminalFollowScale(term, container, true, pan.current, scale);
+        return pan.current.y - start.pan.y;
+      }
+      if (move.mode === "pinch" && term.element) {
+        term.element.style.transformOrigin = `${start.x}px ${start.y}px`;
+        term.element.style.transform = `scale(${scale})`;
+      }
+      return 0;
+    });
   };
   const onTouchEnd = (e: TouchEvent) => {
     if (pinch.active && e.touches.length < 2) finish(true);
