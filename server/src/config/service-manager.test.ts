@@ -591,6 +591,11 @@ describe("service commands", () => {
         argv: ["launchctl", "bootout", "gui/501/dev.thyra"],
         quiet: false,
       },
+      // bootout returns before launchd removes the job; wait until it is gone.
+      {
+        argv: ["launchctl", "print", "gui/501/dev.thyra"],
+        quiet: true,
+      },
       {
         argv: ["launchctl", "bootstrap", "gui/501", plistPath],
         quiet: false,
@@ -602,6 +607,10 @@ describe("service commands", () => {
       {
         argv: ["launchctl", "bootout", "gui/501/dev.thyra"],
         quiet: false,
+      },
+      {
+        argv: ["launchctl", "print", "gui/501/dev.thyra"],
+        quiet: true,
       },
     ]);
     expect(

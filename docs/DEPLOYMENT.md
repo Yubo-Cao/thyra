@@ -95,6 +95,7 @@ Do not run `herdr update` on the pinned build: it installs stock Herdr from herd
 **Upgrades** rerun the same command.
 Thyra restarts immediately.
 A running Herdr server is never restarted, because that ends its panes: it keeps the previous build until you restart it (`systemctl --user restart thyra-herdr.service`, `launchctl kickstart -k gui/$(id -u)/dev.thyra.herdr`, or `thyra herdr uninstall` then `thyra herdr setup` on Windows).
+With the pinned Herdr fork, `herdr server live-handoff --import-exe ~/.local/bin/herdr` moves the panes to the new build without restarting them; on macOS the LaunchAgent keeps supervising the replacement (see [launchd supervision](#keep-a-launchd-herdr-server-supervised-across-live-handoffs)).
 
 | Option (`sh -s -- ...`) | PowerShell | Environment | Behavior |
 | --- | --- | --- | --- |
@@ -154,7 +155,8 @@ It never replaces a binary it did not install.
 If a Herdr binary already exists, it uses the first one on PATH or in those locations and leaves it in place.
 
 Setup installs and starts `herdr server` as a user service: `thyra-herdr.service` (Linux), `dev.thyra.herdr` (macOS), or a per-user Windows scheduled task.
-It does nothing when a Herdr server already answers on the default socket.
+It does nothing when a Herdr server already answers on the default socket, with one exception on macOS: when the `dev.thyra.herdr` job is not loaded, the running server supports live handoff, and the Herdr binary supports `herdr server --adopt`, `thyra herdr setup` loads the job and waits until it has adopted the running server through a live handoff, so the panes keep running under launchd.
+Otherwise it reports why the running server stays unsupervised.
 Definitions carry a Thyra marker; unrelated existing definitions are untouched.
 The web UI offers the same confirmed **Set up Herdr / Start Herdr** action when the default local server is unreachable, with visible failures and retry.
 
@@ -918,6 +920,19 @@ systemctl --user reload herdr.service
 Reserve `stop` and `restart` for an intentional cold shutdown. Test candidate
 handoffs against a disposable named Herdr session before promoting them to a
 machine that hosts active agents.
+
+## Keep a launchd Herdr server supervised across live handoffs
+
+launchd has no cgroup tracking: it supervises only the process it started, and a live handoff replaces that process with a detached successor.
+With a Herdr build that supports it, the `dev.thyra.herdr` LaunchAgent runs `herdr server --adopt` with `KeepAlive` set to `SuccessfulExit = false`:
+
+- After a live handoff, the launchd-started process re-executes itself as a small anchor that follows every later handoff and exits only when the server does: 0 after an intentional stop (`herdr server stop`), non-zero after a crash, which launchd restarts.
+- `launchctl bootout` or `launchctl kickstart -k` sends SIGTERM to the anchor, which stops the server like `systemctl stop` does; both end the panes.
+- If a server is already running when the job starts, the job adopts it through a live handoff instead of failing with "already running"; if another process already supervises it, or adoption is impossible, it exits 0 and leaves the server alone rather than restarting in a loop.
+
+Deploy a new Herdr build on macOS without restarting panes by replacing `~/.local/bin/herdr` and running `herdr server live-handoff --import-exe ~/.local/bin/herdr`.
+`herdr server supervision` prints the server and supervisor pids.
+Service reinstalls wait until `launchctl print` no longer lists the old job before bootstrapping the new one, and retry a bounded number of times when launchd still answers `Bootstrap failed: 5: Input/output error`.
 
 ## Build a standalone executable
 

@@ -23,6 +23,12 @@ import {
   type ServicePaths,
 } from "./service-definitions";
 import { publishDataFile } from "./data-paths";
+import {
+  bootoutLaunchdService,
+  bootstrapLaunchdService,
+  type LaunchdTiming,
+  replaceLaunchdService,
+} from "./launchd";
 import { thyraEnv } from "./environment";
 import {
   browserUrlFor,
@@ -55,6 +61,7 @@ interface ServiceCommandDependencies {
   getLanIPs?: () => string[];
   log?: (message: string) => void;
   error?: (message: string) => void;
+  launchd?: LaunchdTiming;
 }
 
 interface ParsedServiceCommand {
@@ -397,6 +404,7 @@ function installService(
   runCommand: RunCommand,
   resolveLanIPs: () => string[],
   log: (message: string) => void,
+  launchdTiming: LaunchdTiming = {},
 ): number {
   const binaryPath = ensureStandaloneBinary(runtime);
   if (platform === "launchd" && runtime.uid === undefined) {
@@ -450,17 +458,15 @@ function installService(
     }
   } else if (platform === "launchd") {
     const domain = `gui/${runtime.uid}`;
-    const service = `${domain}/${SERVICE_LABEL}`;
-    const loaded =
-      runCommand(["launchctl", "print", service], { quiet: true }) === 0;
-    if (loaded) {
-      code = runCommand(["launchctl", "bootout", service]);
-    } else {
-      code = 0;
-    }
-    if (code === 0) {
-      code = runCommand(["launchctl", "bootstrap", domain, paths.definition]);
-    }
+    // bootout returns before launchd has removed the job; bootstrapping
+    // right away fails with "Bootstrap failed: 5: Input/output error".
+    code = replaceLaunchdService(
+      domain,
+      `${domain}/${SERVICE_LABEL}`,
+      paths.definition,
+      runCommand,
+      launchdTiming,
+    );
   } else {
     code = registerWindowsTask(paths.definition, runCommand);
     if (code === 0) {
@@ -489,6 +495,7 @@ function uninstallService(
   paths: ServicePaths,
   runCommand: RunCommand,
   log: (message: string) => void,
+  launchdTiming: LaunchdTiming = {},
 ): number {
   const definitionExists = existsSync(paths.definition);
   if (!definitionExists && platform !== "windows-task") {
@@ -535,7 +542,11 @@ function uninstallService(
     if (queryCode !== 0 && queryCode !== LAUNCHD_SERVICE_NOT_FOUND_EXIT_CODE)
       return queryCode;
     if (queryCode === 0) {
-      const stopCode = runCommand(["launchctl", "bootout", service]);
+      const stopCode = bootoutLaunchdService(
+        service,
+        runCommand,
+        launchdTiming,
+      );
       if (stopCode !== 0) return stopCode;
     }
     rmSync(paths.definition, { force: true });
@@ -581,6 +592,7 @@ function runServiceAction(
   runtime: ServiceRuntime,
   paths: ServicePaths,
   runCommand: RunCommand,
+  launchdTiming: LaunchdTiming = {},
 ): number {
   const serviceName = basename(paths.definition, ".plist");
   if (action === "reload") {
@@ -611,10 +623,20 @@ function runServiceAction(
     if (queryCode !== 0 && queryCode !== LAUNCHD_SERVICE_NOT_FOUND_EXIT_CODE)
       return queryCode;
     if (queryCode === 0) {
-      const bootoutCode = runCommand(["launchctl", "bootout", service]);
+      const bootoutCode = bootoutLaunchdService(
+        service,
+        runCommand,
+        launchdTiming,
+      );
       if (bootoutCode !== 0) return bootoutCode;
     }
-    return runCommand(["launchctl", "bootstrap", domain, paths.definition]);
+    return bootstrapLaunchdService(
+      domain,
+      service,
+      paths.definition,
+      runCommand,
+      launchdTiming,
+    );
   }
   if (platform === "systemd") {
     return runCommand(
@@ -688,6 +710,7 @@ export function runServiceCommand(
         runCommand,
         dependencies.getLanIPs ?? getLanIPs,
         log,
+        dependencies.launchd,
       );
     }
     const paths = resolveServicePaths(
@@ -696,7 +719,14 @@ export function runServiceCommand(
       runtime.appDataDir,
     );
     if (command.action === "uninstall") {
-      return uninstallService(platform, runtime, paths, runCommand, log);
+      return uninstallService(
+        platform,
+        runtime,
+        paths,
+        runCommand,
+        log,
+        dependencies.launchd,
+      );
     }
     return runServiceAction(
       command.action,
@@ -704,6 +734,7 @@ export function runServiceCommand(
       runtime,
       paths,
       runCommand,
+      dependencies.launchd,
     );
   } catch (cause) {
     error(`thyra service: ${(cause as Error).message}`);

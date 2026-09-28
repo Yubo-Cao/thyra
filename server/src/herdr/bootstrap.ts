@@ -4,17 +4,34 @@ import { delimiter, join } from "node:path";
 import { HerdrClient } from "../bridge/herdr-client";
 import { assertSupportedHerdrProtocol } from "../bridge/protocol-compat";
 import { herdrManagedBinaryPath, installVerifiedHerdr } from "./release";
-import { installHerdrService } from "./service";
+import {
+  type CaptureCommand,
+  herdrLaunchdServiceLoaded,
+  type HerdrSupervision,
+  installHerdrService,
+  probeHerdrSupervision,
+} from "./service";
 
 export type HerdrSetupState =
-  | { state: "running"; version: string; protocol: number }
+  | {
+      state: "running";
+      version: string;
+      protocol: number;
+      liveHandoff?: boolean;
+    }
   | { state: "installed"; binaryPath: string }
   | { state: "missing" };
 
 export type HerdrSetupResult =
-  | { outcome: "already-running"; version: string; protocol: number }
   | {
-      outcome: "started" | "installed-and-started";
+      outcome: "already-running";
+      version: string;
+      protocol: number;
+      /** Why a running server was left outside launchd, if it was. */
+      unsupervised?: string;
+    }
+  | {
+      outcome: "started" | "installed-and-started" | "adopted";
       binaryPath: string;
       version: string;
       protocol: number;
@@ -35,9 +52,22 @@ export interface HerdrBootstrapDeps {
   homeDir?: string;
   appDataDir?: string;
   pathEnv?: string;
-  ping?: () => Promise<{ version: string; protocol: number }>;
+  ping?: () => Promise<{
+    version: string;
+    protocol: number;
+    capabilities?: { live_handoff?: boolean };
+  }>;
   installRelease?: () => Promise<{ binaryPath: string }>;
-  installService?: (binaryPath: string) => void;
+  installService?: (binaryPath: string, options?: { adopt?: boolean }) => void;
+  /**
+   * macOS only: move a running server that launchd does not supervise under
+   * the managed LaunchAgent through a live handoff (`herdr server --adopt`).
+   */
+  adopt?: boolean;
+  launchdServiceLoaded?: () => boolean;
+  probeSupervision?: (binaryPath: string) => HerdrSupervision | null;
+  capture?: CaptureCommand;
+  adoptTimeoutMs?: number;
   startTimeoutMs?: number;
   pollIntervalMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -105,6 +135,7 @@ export async function detectHerdrSetup(
         state: "running",
         version: info.version,
         protocol: info.protocol,
+        liveHandoff: info.capabilities?.live_handoff === true,
       };
     }
   } catch {
@@ -112,6 +143,51 @@ export async function detectHerdrSetup(
   }
   const binaryPath = findHerdrBinary(deps);
   return binaryPath ? { state: "installed", binaryPath } : { state: "missing" };
+}
+
+/**
+ * Waits until the launchd job has handed the running server's panes to a
+ * successor and is supervising it. Adoption is a live handoff, so it may take
+ * as long as one (the source allows 30 s per stage).
+ */
+async function waitForAdoption(
+  binaryPath: string,
+  deps: HerdrBootstrapDeps,
+  probe: (binaryPath: string) => HerdrSupervision | null,
+  ping: NonNullable<HerdrBootstrapDeps["ping"]>,
+  sleep: (ms: number) => Promise<void>,
+): Promise<HerdrSetupResult> {
+  const timeoutMs = deps.adoptTimeoutMs ?? 90_000;
+  const intervalMs = deps.pollIntervalMs ?? 250;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const supervision = probe(binaryPath);
+    const server = supervision?.server;
+    if (
+      supervision?.supervisor_pid &&
+      server?.state === "running" &&
+      server.alive &&
+      server.pid !== supervision.supervisor_pid
+    ) {
+      try {
+        const info = await ping();
+        assertSupportedHerdrProtocol(info?.protocol);
+        return {
+          outcome: "adopted",
+          binaryPath,
+          version: info.version,
+          protocol: info.protocol,
+        };
+      } catch {
+        // The successor may still be binding its sockets.
+      }
+    }
+    if (Date.now() >= deadline) break;
+    await sleep(intervalMs);
+  }
+  throw new Error(
+    `launchd did not adopt the running Herdr server within ${Math.round(timeoutMs / 1000)}s; it keeps running unsupervised. See ~/Library/Logs/thyra-herdr.stderr.log`,
+  );
 }
 
 function defaultSocketPath(): string {
@@ -132,12 +208,51 @@ export async function setupHerdr(
   const ping = deps.ping ?? (() => new HerdrClient(defaultSocketPath()).ping());
 
   const state = await detectHerdrSetup({ ...deps, ping });
+  const platform = deps.platform ?? process.platform;
+  const probe =
+    deps.probeSupervision ??
+    ((path: string) => probeHerdrSupervision(path, deps.capture));
+  const installService =
+    deps.installService ??
+    ((path: string, options: { adopt?: boolean } = {}) =>
+      installHerdrService(path, {
+        homeDir: deps.homeDir,
+        appDataDir: deps.appDataDir,
+        adopt: options.adopt,
+      }));
+
   if (state.state === "running") {
-    return {
+    const alreadyRunning = (unsupervised?: string): HerdrSetupResult => ({
       outcome: "already-running",
       version: state.version,
       protocol: state.protocol,
-    };
+      ...(unsupervised ? { unsupervised } : {}),
+    });
+    if (platform !== "darwin") return alreadyRunning();
+    const loaded = (
+      deps.launchdServiceLoaded ??
+      (() => herdrLaunchdServiceLoaded({ homeDir: deps.homeDir }))
+    )();
+    if (loaded) return alreadyRunning();
+    if (!deps.adopt) {
+      return alreadyRunning(
+        "launchd does not supervise it; run `thyra herdr setup` to adopt it",
+      );
+    }
+    const binaryPath = findHerdrBinary(deps);
+    if (!binaryPath) return alreadyRunning("no herdr binary found to adopt it");
+    if (!state.liveHandoff) {
+      return alreadyRunning(
+        "the running server does not support live handoff; restart it to put it under launchd",
+      );
+    }
+    if (!probe(binaryPath)) {
+      return alreadyRunning(
+        `${binaryPath} does not support \`herdr server --adopt\`; install the Thyra Herdr build to adopt it`,
+      );
+    }
+    installService(binaryPath, { adopt: true });
+    return await waitForAdoption(binaryPath, deps, probe, ping, sleep);
   }
 
   const binaryPath =
@@ -145,14 +260,9 @@ export async function setupHerdr(
       ? state.binaryPath
       : (await (deps.installRelease ?? (() => installVerifiedHerdr(deps)))())
           .binaryPath;
-  (
-    deps.installService ??
-    ((path) =>
-      installHerdrService(path, {
-        homeDir: deps.homeDir,
-        appDataDir: deps.appDataDir,
-      }))
-  )(binaryPath);
+  // A build that supports `--adopt` stays supervised across live handoffs.
+  const adopt = platform === "darwin" && Boolean(probe(binaryPath));
+  installService(binaryPath, { adopt });
 
   const timeoutMs = deps.startTimeoutMs ?? 15000;
   const intervalMs = deps.pollIntervalMs ?? 250;

@@ -7,7 +7,11 @@ import {
   type HerdrSetupState,
   setupHerdr,
 } from "./bootstrap";
-import { herdrServiceStatus, uninstallHerdrService } from "./service";
+import {
+  HERDR_SERVICE_LABEL,
+  herdrServiceStatus,
+  uninstallHerdrService,
+} from "./service";
 import { VERIFIED_HERDR_VERSION } from "./release";
 
 function herdrHelp(): string {
@@ -22,7 +26,10 @@ Setup installs the Thyra-verified Herdr ${VERIFIED_HERDR_VERSION} release
 when no herdr binary is found, then installs and starts a user service running
 \`herdr server\` (systemd user service on Linux, launchd LaunchAgent on macOS,
 per-user Task Scheduler task on Windows). An existing herdr binary is used as
-is and never replaced. Status prints the detected state. Uninstall stops and
+is and never replaced. On macOS, a Herdr build that supports
+\`herdr server --adopt\` stays supervised across live handoffs, and setup moves
+a running server that launchd does not supervise under the LaunchAgent through
+a live handoff, keeping its panes. Status prints the detected state. Uninstall stops and
 removes only the service that setup created, which ends that server's panes;
 it keeps the Herdr binary and Herdr's own data.
 `;
@@ -131,17 +138,23 @@ export async function runHerdrCommand(
       return 0;
     }
 
-    const setup = dependencies.setup ?? (() => setupHerdr({ guard, ping }));
+    const setup =
+      dependencies.setup ?? (() => setupHerdr({ guard, ping, adopt: true }));
     const result = await setup();
     if (result.outcome === "already-running") {
       log(
         `Herdr is already running (version ${result.version}, protocol ${result.protocol}).`,
       );
+      if (result.unsupervised) {
+        log(`It is not supervised by launchd: ${result.unsupervised}.`);
+      }
     } else {
       log(
-        result.outcome === "started"
-          ? `Started Herdr ${result.version} as a user service.`
-          : `Installed Herdr ${result.version} and started it as a user service.`,
+        result.outcome === "adopted"
+          ? `Moved the running Herdr ${result.version} under launchd (${HERDR_SERVICE_LABEL}) through a live handoff; its panes kept running.`
+          : result.outcome === "started"
+            ? `Started Herdr ${result.version} as a user service.`
+            : `Installed Herdr ${result.version} and started it as a user service.`,
       );
       log(`Binary: ${result.binaryPath}`);
     }

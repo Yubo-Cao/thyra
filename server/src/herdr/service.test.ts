@@ -14,6 +14,7 @@ import {
   HERDR_SERVICE_MARKER,
   herdrServiceStatus,
   installHerdrService,
+  probeHerdrSupervision,
   renderHerdrLaunchdService,
   renderHerdrSystemdService,
   renderHerdrWindowsTask,
@@ -111,31 +112,53 @@ describe("installHerdrService", () => {
     ]);
   });
 
-  test("replaces a loaded launchd service before bootstrapping", () => {
+  test("replaces a loaded launchd service only after it has unloaded", () => {
     const homeDir = scratch();
     const commands: string[][] = [];
-    installHerdrService("/usr/local/bin/herdr", {
+    const sleeps: number[] = [];
+    // launchd keeps listing the job for two polls after bootout returns.
+    let listedAfterBootout = -1;
+    const paths = installHerdrService("/usr/local/bin/herdr", {
       platform: "launchd",
       homeDir,
       uid: 501,
+      launchd: { sleep: (ms) => sleeps.push(ms) },
       runCommand: (argv) => {
         commands.push(argv);
-        // launchctl print succeeds: a service is already loaded.
-        return 0;
+        if (argv[1] === "bootout") listedAfterBootout = 2;
+        if (argv[1] !== "print") return 0;
+        if (listedAfterBootout < 0) return 0;
+        return listedAfterBootout-- > 0 ? 0 : 113;
       },
     });
-    expect(commands[0]).toEqual([
-      "launchctl",
-      "print",
-      `gui/501/${HERDR_SERVICE_LABEL}`,
+    const service = `gui/501/${HERDR_SERVICE_LABEL}`;
+    expect(commands).toEqual([
+      ["launchctl", "print", service],
+      ["launchctl", "bootout", service],
+      ["launchctl", "print", service],
+      ["launchctl", "print", service],
+      ["launchctl", "print", service],
+      ["launchctl", "bootstrap", "gui/501", paths.definition],
     ]);
-    expect(commands[1]).toEqual([
-      "launchctl",
-      "bootout",
-      `gui/501/${HERDR_SERVICE_LABEL}`,
-    ]);
-    expect(commands[2][0]).toBe("launchctl");
-    expect(commands[2][1]).toBe("bootstrap");
+    expect(sleeps).toEqual([50, 100]);
+  });
+
+  test("launchd runs --adopt with restart only after a failure when supported", () => {
+    const homeDir = scratch();
+    const paths = installHerdrService("/usr/local/bin/herdr", {
+      platform: "launchd",
+      homeDir,
+      uid: 501,
+      adopt: true,
+      runCommand: (argv) => (argv[1] === "print" ? 113 : 0),
+    });
+    const plist = readFileSync(paths.definition, "utf8");
+    expect(plist).toContain(
+      "<string>server</string>\n    <string>--adopt</string>",
+    );
+    expect(plist).toContain(
+      "<key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>",
+    );
   });
 
   test("fails when an activation command fails", () => {
@@ -264,16 +287,22 @@ describe("uninstallHerdrService", () => {
     mkdirSync(dirname(paths.definition), { recursive: true });
     writeFileSync(paths.definition, HERDR_SERVICE_MARKER);
     const commands: string[][] = [];
+    let loaded = true;
     uninstallHerdrService({
       platform: "launchd",
       homeDir,
       uid: 501,
       runCommand: (argv) => {
         commands.push(argv);
-        return 0;
+        if (argv[1] === "bootout") loaded = false;
+        return argv[1] === "print" && !loaded ? 113 : 0;
       },
     });
-    expect(commands.map((argv) => argv[1])).toEqual(["print", "bootout"]);
+    expect(commands.map((argv) => argv[1])).toEqual([
+      "print",
+      "bootout",
+      "print",
+    ]);
     expect(existsSync(paths.definition)).toBe(false);
   });
 
@@ -312,5 +341,37 @@ describe("uninstallHerdrService", () => {
       "/F",
     ]);
     expect(existsSync(paths.definition)).toBe(false);
+  });
+});
+
+describe("probeHerdrSupervision", () => {
+  test("recognizes builds that support --adopt", () => {
+    const argvs: string[][] = [];
+    const status = probeHerdrSupervision("/opt/herdr", (argv) => {
+      argvs.push(argv);
+      return {
+        code: 0,
+        stdout:
+          '{"adopt":true,"api_socket":"/x/herdr.sock","server":{"pid":2,"state":"running","alive":true},"supervisor_pid":1}\n',
+      };
+    });
+    expect(argvs).toEqual([["/opt/herdr", "server", "supervision"]]);
+    expect(status?.supervisor_pid).toBe(1);
+    expect(status?.server?.pid).toBe(2);
+  });
+
+  test("treats older builds and broken output as unsupported", () => {
+    // Older builds print server help and exit 2 for unknown subcommands.
+    expect(
+      probeHerdrSupervision("/opt/herdr", () => ({ code: 2, stdout: "" })),
+    ).toBeNull();
+    expect(
+      probeHerdrSupervision("/opt/herdr", () => ({ code: 0, stdout: "nope" })),
+    ).toBeNull();
+    expect(
+      probeHerdrSupervision("/opt/herdr", () => {
+        throw new Error("ENOENT");
+      }),
+    ).toBeNull();
   });
 });

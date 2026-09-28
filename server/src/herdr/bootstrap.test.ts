@@ -99,7 +99,18 @@ describe("detectHerdrSetup", () => {
       state: "running",
       version: VERIFIED_HERDR_VERSION,
       protocol: 22,
+      liveHandoff: false,
     });
+    expect(
+      await detectHerdrSetup({
+        ping: () =>
+          Promise.resolve({
+            version: VERIFIED_HERDR_VERSION,
+            protocol: 22,
+            capabilities: { live_handoff: true },
+          }),
+      }),
+    ).toMatchObject({ state: "running", liveHandoff: true });
   });
 
   test("distinguishes installed-but-down from missing", async () => {
@@ -213,5 +224,152 @@ describe("setupHerdr", () => {
     await expect(
       setupHerdr({ guard: { sshHost: "box" }, ping: failingPing }),
     ).rejects.toThrow("only available for the local Herdr server");
+  });
+});
+
+describe("setupHerdr under launchd", () => {
+  const handoffPing = () =>
+    Promise.resolve({
+      version: VERIFIED_HERDR_VERSION,
+      protocol: 22,
+      capabilities: { live_handoff: true },
+    });
+  const supervised = {
+    adopt: true,
+    server: { pid: 200, state: "running" as const, alive: true },
+    supervisor_pid: 100,
+  };
+  const unsupervised = { adopt: true, server: null, supervisor_pid: null };
+
+  function herdrOnPath(): string {
+    const pathDir = scratch();
+    writeFileSync(join(pathDir, "herdr"), "");
+    return pathDir;
+  }
+
+  test("adopts a running server launchd does not supervise", async () => {
+    const pathDir = herdrOnPath();
+    const installs: Array<{ path: string; adopt?: boolean }> = [];
+    let probes = 0;
+    const result = await setupHerdr({
+      platform: "darwin",
+      adopt: true,
+      pathEnv: pathDir,
+      ping: handoffPing,
+      launchdServiceLoaded: () => false,
+      probeSupervision: () => {
+        probes += 1;
+        // Supported before install; supervising a successor two polls later.
+        return probes < 3 ? unsupervised : supervised;
+      },
+      installService: (path, options) => {
+        installs.push({ path, adopt: options?.adopt });
+      },
+      sleep: () => Promise.resolve(),
+    });
+    expect(result).toEqual({
+      outcome: "adopted",
+      binaryPath: join(pathDir, "herdr"),
+      version: VERIFIED_HERDR_VERSION,
+      protocol: 22,
+    });
+    expect(installs).toEqual([{ path: join(pathDir, "herdr"), adopt: true }]);
+  });
+
+  test("leaves a supervised or unadoptable server alone", async () => {
+    const pathDir = herdrOnPath();
+    let installs = 0;
+    const base = {
+      platform: "darwin",
+      pathEnv: pathDir,
+      installService: () => {
+        installs += 1;
+      },
+      probeSupervision: () => unsupervised,
+    };
+    const loaded = await setupHerdr({
+      ...base,
+      adopt: true,
+      ping: handoffPing,
+      launchdServiceLoaded: () => true,
+    });
+    expect(loaded).toEqual({
+      outcome: "already-running",
+      version: VERIFIED_HERDR_VERSION,
+      protocol: 22,
+    });
+
+    const notRequested = await setupHerdr({
+      ...base,
+      ping: handoffPing,
+      launchdServiceLoaded: () => false,
+    });
+    expect(notRequested).toMatchObject({ outcome: "already-running" });
+    expect(notRequested).toHaveProperty("unsupervised");
+
+    const stockServer = await setupHerdr({
+      ...base,
+      adopt: true,
+      ping: reachablePing,
+      launchdServiceLoaded: () => false,
+    });
+    expect(stockServer).toMatchObject({ outcome: "already-running" });
+    expect((stockServer as { unsupervised: string }).unsupervised).toContain(
+      "live handoff",
+    );
+
+    const oldBinary = await setupHerdr({
+      ...base,
+      adopt: true,
+      ping: handoffPing,
+      launchdServiceLoaded: () => false,
+      probeSupervision: () => null,
+    });
+    expect((oldBinary as { unsupervised: string }).unsupervised).toContain(
+      "--adopt",
+    );
+    expect(installs).toBe(0);
+  });
+
+  test("reports an adoption that never completes", async () => {
+    await expect(
+      setupHerdr({
+        platform: "darwin",
+        adopt: true,
+        pathEnv: herdrOnPath(),
+        ping: handoffPing,
+        launchdServiceLoaded: () => false,
+        probeSupervision: () => unsupervised,
+        installService: () => {},
+        adoptTimeoutMs: 1,
+        sleep: () => Promise.resolve(),
+      }),
+    ).rejects.toThrow("did not adopt the running Herdr server");
+  });
+
+  test("a cold start uses --adopt only when the binary supports it", async () => {
+    for (const [support, expected] of [
+      [unsupervised, true],
+      [null, false],
+    ] as const) {
+      const pathDir = herdrOnPath();
+      const adopts: Array<boolean | undefined> = [];
+      let pings = 0;
+      await setupHerdr({
+        platform: "darwin",
+        pathEnv: pathDir,
+        homeDir: scratch(),
+        ping: () => {
+          pings += 1;
+          return pings < 2 ? failingPing() : reachablePing();
+        },
+        probeSupervision: () => support,
+        installService: (_path, options) => {
+          adopts.push(options?.adopt);
+        },
+        sleep: () => Promise.resolve(),
+      });
+      expect(adopts).toEqual([expected]);
+    }
   });
 });

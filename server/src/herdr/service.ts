@@ -17,6 +17,12 @@ import {
   xmlEscape,
 } from "../config/service-definitions";
 import {
+  bootoutLaunchdService,
+  type LaunchdTiming,
+  launchdServiceLoaded,
+  replaceLaunchdService,
+} from "../config/launchd";
+import {
   defaultRunCommand,
   queryWindowsTask,
   registerWindowsTask,
@@ -40,6 +46,13 @@ export interface HerdrServiceDeps {
   appDataDir?: string;
   uid?: number;
   runCommand?: RunCommand;
+  launchd?: LaunchdTiming;
+  /**
+   * The binary supports `herdr server --adopt` (see `probeHerdrSupervision`).
+   * launchd then supervises it across live handoffs and adopts a server that
+   * is already running instead of failing with "already running".
+   */
+  adopt?: boolean;
 }
 
 export function resolveHerdrServicePaths(
@@ -103,13 +116,32 @@ WantedBy=default.target
 `;
 }
 
+/**
+ * With `adopt`, the job runs `herdr server --adopt`: the launchd-tracked
+ * process stays alive as a small anchor across live handoffs and exits 0 only
+ * after an intentional stop, so KeepAlive restarts it only after a crash, and
+ * an "already running" start adopts that server instead of spinning. Without
+ * it (a Herdr build that lacks `--adopt`), a live handoff leaves the server
+ * unsupervised.
+ */
 export function renderHerdrLaunchdService(
   binaryPath: string,
   paths: HerdrServicePaths,
+  options: { adopt?: boolean } = {},
 ): string {
-  const programArguments = [binaryPath, "server"]
+  const programArguments = [
+    binaryPath,
+    "server",
+    ...(options.adopt ? ["--adopt"] : []),
+  ]
     .map((argument) => `    <string>${xmlEscape(argument)}</string>`)
     .join("\n");
+  const keepAlive = options.adopt
+    ? `<dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>`
+    : "<true/>";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!-- ${HERDR_SERVICE_MARKER} -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -127,9 +159,9 @@ ${programArguments}
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  ${keepAlive}
   <key>ThrottleInterval</key>
-  <integer>2</integer>
+  <integer>${options.adopt ? 10 : 2}</integer>
   <key>ProcessType</key>
   <string>Background</string>
 
@@ -200,6 +232,7 @@ function resolveDeps(deps: HerdrServiceDeps) {
     appDataDir: deps.appDataDir ?? process.env.APPDATA,
     uid: deps.uid ?? process.getuid?.(),
     runCommand: deps.runCommand ?? defaultRunCommand,
+    launchd: deps.launchd ?? {},
   };
 }
 
@@ -217,7 +250,8 @@ export function installHerdrService(
   binaryPath: string,
   deps: HerdrServiceDeps = {},
 ): HerdrServicePaths {
-  const { platform, homeDir, appDataDir, uid, runCommand } = resolveDeps(deps);
+  const { platform, homeDir, appDataDir, uid, runCommand, launchd } =
+    resolveDeps(deps);
   const paths = resolveHerdrServicePaths(platform, homeDir, appDataDir);
   assertHerdrDefinitionWritable(paths.definition);
   if (paths.stdoutLog) mkdirSync(dirname(paths.stdoutLog), { recursive: true });
@@ -249,18 +283,17 @@ export function installHerdrService(
     }
     writeHerdrDefinition(
       paths.definition,
-      renderHerdrLaunchdService(binaryPath, paths),
+      renderHerdrLaunchdService(binaryPath, paths, { adopt: deps.adopt }),
     );
     const domain = `gui/${uid}`;
-    const service = `${domain}/${HERDR_SERVICE_LABEL}`;
-    if (runCommand(["launchctl", "print", service], { quiet: true }) === 0) {
-      assertRunSucceeded(
-        runCommand(["launchctl", "bootout", service]),
-        "launchd service replacement",
-      );
-    }
     assertRunSucceeded(
-      runCommand(["launchctl", "bootstrap", domain, paths.definition]),
+      replaceLaunchdService(
+        domain,
+        `${domain}/${HERDR_SERVICE_LABEL}`,
+        paths.definition,
+        runCommand,
+        launchd,
+      ),
       "launchd service start",
     );
     return paths;
@@ -290,7 +323,8 @@ export function uninstallHerdrService(deps: HerdrServiceDeps = {}): {
   removed: boolean;
   definition: string;
 } {
-  const { platform, homeDir, appDataDir, uid, runCommand } = resolveDeps(deps);
+  const { platform, homeDir, appDataDir, uid, runCommand, launchd } =
+    resolveDeps(deps);
   const paths = resolveHerdrServicePaths(platform, homeDir, appDataDir);
   const definitionExists = existsSync(paths.definition);
   if (
@@ -330,9 +364,9 @@ export function uninstallHerdrService(deps: HerdrServiceDeps = {}): {
       throw new Error("cannot determine the current user id for launchd");
     }
     const service = `gui/${uid}/${HERDR_SERVICE_LABEL}`;
-    if (runCommand(["launchctl", "print", service], { quiet: true }) === 0) {
+    if (launchdServiceLoaded(service, runCommand)) {
       assertRunSucceeded(
-        runCommand(["launchctl", "bootout", service]),
+        bootoutLaunchdService(service, runCommand, launchd),
         "launchd service stop",
       );
     }
@@ -401,4 +435,57 @@ export function herdrServiceStatus(deps: HerdrServiceDeps = {}): {
   if (!paths.taskName) return { installed, active: false };
   const query = queryWindowsTask(paths.taskName, runCommand);
   return { installed, active: query.status === "exists" && query.active };
+}
+
+/** `herdr server supervision` output, from a build that supports `--adopt`. */
+export interface HerdrSupervision {
+  adopt: boolean;
+  server: { pid: number; state: "running" | "stopped"; alive: boolean } | null;
+  supervisor_pid: number | null;
+}
+
+export type CaptureCommand = (argv: string[]) => {
+  code: number;
+  stdout: string;
+};
+
+export function defaultCaptureCommand(argv: string[]) {
+  const result = Bun.spawnSync(argv, {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  return { code: result.exitCode ?? 1, stdout: result.stdout.toString() };
+}
+
+/**
+ * Asks the binary for its supervision state. Builds without `--adopt` reject
+ * the subcommand, which yields null.
+ */
+export function probeHerdrSupervision(
+  binaryPath: string,
+  capture: CaptureCommand = defaultCaptureCommand,
+): HerdrSupervision | null {
+  let result: { code: number; stdout: string };
+  try {
+    result = capture([binaryPath, "server", "supervision"]);
+  } catch {
+    return null;
+  }
+  if (result.code !== 0) return null;
+  try {
+    const parsed = JSON.parse(result.stdout.trim()) as HerdrSupervision;
+    return parsed && parsed.adopt === true ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the managed launchd job is loaded (only meaningful on macOS). */
+export function herdrLaunchdServiceLoaded(
+  deps: HerdrServiceDeps = {},
+): boolean {
+  const { uid, runCommand } = resolveDeps(deps);
+  if (uid === undefined) return false;
+  return launchdServiceLoaded(`gui/${uid}/${HERDR_SERVICE_LABEL}`, runCommand);
 }
