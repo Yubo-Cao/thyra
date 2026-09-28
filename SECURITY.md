@@ -33,6 +33,13 @@ Grant **editor** only to people you would give a shell account on the host.
   The public listener redeems it in the shared database for its own `__Host-thyra_session`; a redirect-flow callback must also match the state in the browser's short-lived `__Host-` cookie, so a code sent to someone else's browser is useless.
   Code requests are rate-limited per tailnet address, failed redemptions per client address, and both are audited.
   Logging out on the public address stops the silent attempt in that browser until the next sign-in.
+- **Email, GitHub and Google** (optional; see [sign-in providers](docs/DEPLOYMENT.md#sign-in-providers)).
+  A mailed 6-digit code and one-time link (10 minutes, single use, SHA-256 at rest, five wrong codes per message) prove an address; requests answer alike for every address, one message per address per minute and a per-client limit stop mail floods.
+  GitHub and Google use the authorization code flow with PKCE and a single-use state; identities are keyed by the provider's user id, and an address links a new identity to an existing account only when both are verified (GitHub's primary verified address, Google's `email_verified`).
+  Unknown identities get no account (`THYRA_SIGNUP=invite`, the default).
+  A provider that returns to a browser without the flow's cookie cannot sign that browser in: it shows the flow's pairing number and asks before handing the session to the starting page, which alone holds the poll secret.
+  Invitations (7 days, single use, SHA-256 at rest) are mailed by workspace owners and sign their holder in to the pending account.
+  Linking, unlinking, sign-ins, refusals and revocations are audited; the last sign-in method of an account cannot be removed.
 - **Passkeys** (WebAuthn) for everyone else.
   `thyra user add <name>` on the host prints a single-use enrollment link, valid for 24 hours, whose secret is in the URL fragment (never sent to servers or logs).
   A passkey belongs to the host name it was created on and needs HTTPS or `localhost`; plain HTTP to a LAN address cannot log in.
@@ -48,6 +55,7 @@ Grant **editor** only to people you would give a shell account on the host.
   **Leave shared view** in the guest badge ends the guest session on the server, clears its cookies and returns to the login page.
 
 There is no shared password or token login.
+State-changing sign-in and account routes are JSON `POST`s that the listeners accept only with the listener's own `Origin` (the silent tailnet code request excepted, above), so other sites cannot forge them; OAuth callbacks are bound to their single-use state, and every redirect goes to this origin.
 The session cookie `thyra_session` holds a random 256-bit id; the database stores only its SHA-256 digest.
 Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, and last 30 days.
 When a user's role, grants or status change, their sessions are rotated to a new id on the next request, and their open pages are disconnected (close code 4003) and reconnect under the new authority.

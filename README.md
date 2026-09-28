@@ -134,6 +134,7 @@ Thyra 能控制终端，也会修改真实文件。请保持默认的仅本机�
 tailnet 用户自动以管理员身份登录，其他人使用通行密钥登录，工作区可按查看者、编辑者或所有者共享（见[账户与登录](./docs/DEPLOYMENT.md#accounts-and-login)）。
 无需账户的访客可通过会过期、可撤销的只读共享链接观看一个工作区或窗格（见[只读共享链接](./docs/DEPLOYMENT.md#read-only-share-links)）。
 通过 Cloudflare Tunnel 公开访问时，tailnet 中的设备会凭 Tailscale 身份自动登录（见 [tailnet 登录](./docs/DEPLOYMENT.md#tailnet-sign-in-on-the-public-address)）。
+可选的邮箱、GitHub 和 Google 登录默认仅限受邀者，所有者可在“共享工作区”中通过邮箱邀请他人（见[登录方式](./docs/DEPLOYMENT.md#sign-in-providers)）。
 
 ## 许可证
 

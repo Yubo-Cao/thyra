@@ -138,6 +138,7 @@ binding; read [SECURITY.md](./SECURITY.md) before allowing another device access
 Tailnet users log in automatically as admins, everyone else with a passkey, and workspaces are shared as viewer, editor or owner ([accounts and login](./docs/DEPLOYMENT.md#accounts-and-login)).
 Guests without an account can watch one workspace or pane through an expiring, revocable read-only link ([read-only share links](./docs/DEPLOYMENT.md#read-only-share-links)).
 Behind a public Cloudflare Tunnel address, tailnet devices are signed in automatically by their Tailscale identity ([tailnet sign-in](./docs/DEPLOYMENT.md#tailnet-sign-in-on-the-public-address)).
+Optional email, GitHub and Google sign-in is invite-only by default, and owners invite people by email from **Share workspace** ([sign-in providers](./docs/DEPLOYMENT.md#sign-in-providers)).
 
 ## License
 

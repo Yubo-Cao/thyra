@@ -597,20 +597,27 @@ A live share-link guest cookie yields a `guest` principal (see share links below
 A session whose privilege epoch is older than its user's is rotated to a new id on its next request.
 `requireLogin(req, access)` returns the principal and cookie headers, or the login redirect/401, for listeners that require an account.
 Passkey registration and login (`server/src/auth/passkeys.ts`, `@simplewebauthn/server`) use discoverable credentials; the relying party is the effective host name, and challenges are single-use and held in memory for five minutes.
+**Sign-in providers.** `server/src/auth/providers.ts` turns email (Resend), GitHub and Google on from their variables (and `auth-providers.env`); `sign-in-routes.ts` serves the email code and link, OAuth start, callback, confirmation and poll, and invitation routes, and `sign-in.ts` maps a verified identity to an account (by subject; by verified address only when both sides are verified; otherwise "no access" or, with `THYRA_SIGNUP=open`, a new member).
+OAuth goes through arctic's `OAuth2Client` with PKCE; a flow is a row keyed by its state, the starting page holds its poll secret and pairing number, a callback with the flow cookie signs that browser in, and one without asks first and leaves the session for the poll.
+`account-routes.ts` serves the account page: profile, avatar (WebP or JPEG up to 256x256 and 128 KiB, stored under its SHA-256 in `avatars/` beside the database and served with an immutable cache), sign-in methods with last-method protection, other sessions, and invitations by email.
+A profile change closes the account's sockets with 4003 so presence picks up the new name and picture.
 The login and enrollment pages are small server-rendered documents outside the application bundle; their strings travel in a JSON data block and their logic is the same-origin `/auth/passkey.js`, so they need no inline script under the public listener's CSP.
 
 **Account database.** `server/src/accounts/` keeps a `bun:sqlite` database (`thyra.db`, WAL, mode `0600`) with numbered migrations in `PRAGMA user_version`:
 
 | Table | Contents |
 | --- | --- |
-| `users` | id, unique name, display name, instance role (`admin`/`member`), disabled flag, privilege epoch |
-| `identities` | `(provider, subject)` linked to a user: `tailscale`/login today, `oidc:<issuer>`/`sub` for future OIDC providers |
+| `users` | id, unique name, display name, instance role (`admin`/`member`), disabled flag, privilege epoch, avatar file (content hash) |
+| `identities` | `(provider, subject)` linked to a user: `tailscale`/login, `email`/address, `github`/user id, `google`/`sub`; address, whether it is verified, picture URL |
 | `sessions` | SHA-256 of the cookie value, public id, user, method, epoch, user agent, created/last seen/expiry |
 | `passkeys` | credential id, user, COSE public key, counter, transports, RP ID, name |
 | `enrollments` | SHA-256 of single-use enrollment secrets, user, expiry |
 | `workspace_grants` | `(connection, workspace id, user)` with `owner`/`editor`/`viewer` and who granted it |
 | `share_links` | public id, SHA-256 of the link secret, connection, workspace, optional pane, role (`viewer` only), label, creator, expiry, max uses, uses, revocation time |
 | `guest_sessions` | SHA-256 of a guest cookie value, public id, link, user agent, created/last seen/expiry (the link's) |
+| `email_codes` | mailed sign-in and verification codes: SHA-256 of the 6-digit code and of the link secret, address, purpose, attempts, expiry (10 minutes), use |
+| `oauth_flows` | GitHub/Google flows in progress: SHA-256 of state and poll secret, PKCE verifier, intent (`login`/`link`), pairing number, status and result |
+| `invites` | SHA-256 of invitation secrets, invited account, address, expiry (7 days) |
 | `tailnet_sso_codes` | SHA-256 of single-use tailnet sign-in codes, user, PKCE challenge, return origin, expiry (60 seconds) |
 | `audit_log` | account, session, passkey, grant and share-link changes (bounded) |
 

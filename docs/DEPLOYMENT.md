@@ -284,6 +284,10 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_PUBLIC_LISTEN` | Second, internet-facing listener (`127.0.0.1:8788`) for Cloudflare Tunnel; see [public access](#public-access-through-cloudflare-tunnel) |
 | `THYRA_PUBLIC_ORIGIN` | The one HTTPS origin served by the public listener, such as `https://thyra.example.com` |
 | `THYRA_PUBLIC_TRUSTED_PROXIES` | Peers whose `CF-Connecting-IP` the public listener believes (default `loopback`) |
+| `THYRA_RESEND_API_KEY`, `THYRA_EMAIL_FROM` | Email sign-in codes and invitations through Resend; see [sign-in providers](#sign-in-providers) |
+| `THYRA_GITHUB_CLIENT_ID`, `THYRA_GITHUB_CLIENT_SECRET` | "Continue with GitHub"; see [sign-in providers](#sign-in-providers) |
+| `THYRA_GOOGLE_CLIENT_ID`, `THYRA_GOOGLE_CLIENT_SECRET` | "Continue with Google"; see [sign-in providers](#sign-in-providers) |
+| `THYRA_SIGNUP=invite\|open` | Whether unknown verified identities get a member account (default `invite`: they do not) |
 | `THYRA_TAILNET_SSO_URL` | HTTPS origin of the tailnet listener (`https://dev.example.com`); tailnet devices then sign in to the public address automatically; see [tailnet sign-in](#tailnet-sign-in-on-the-public-address) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
@@ -327,7 +331,35 @@ An enrollment link is single-use, valid for 24 hours, and carries its secret in 
 It points at `--base-url`, else the first HTTPS `THYRA_PUBLIC_BASE_URL`, else `http://localhost:$PORT`.
 **A passkey belongs to one host name** and works only in a secure context: HTTPS, or `localhost` (an SSH port forward).
 Open the link on the device or password manager that keeps the passkey; a logged-in user adds passkeys for the host they are on under **Configuration > Account**, which also lists and signs out login sessions.
-Workspace owners share a workspace from its context menu (**Share workspace…**) with existing users, by user name or linked login.
+Workspace owners share a workspace from its context menu (**Share workspace…**) with existing users, by user name or linked login, or, with email sign-in on, by email address: someone without an account gets a pending member account with that grant and a one-time invitation link (valid 7 days) that signs them in and then links whichever method they choose.
+
+### Sign-in providers
+
+Besides passkeys and tailnet login, Thyra can sign people in by email, GitHub and Google.
+Each provider is off until its variables are set; put them in `~/.config/thyra/auth-providers.env` (mode `0600`), which the server reads at startup (a copy readable by others is ignored) and the systemd unit also loads with `EnvironmentFile=-%h/.config/thyra/auth-providers.env`:
+
+```bash
+# ~/.config/thyra/auth-providers.env  (chmod 600)
+THYRA_RESEND_API_KEY=re_...
+THYRA_EMAIL_FROM="Thyra <login@example.com>"
+THYRA_GITHUB_CLIENT_ID=...
+THYRA_GITHUB_CLIENT_SECRET=...
+THYRA_GOOGLE_CLIENT_ID=...
+THYRA_GOOGLE_CLIENT_SECRET=...
+```
+
+- **Email** (Resend): verify the sending domain of `THYRA_EMAIL_FROM` in Resend (its SPF and DKIM records), then create an API key with sending access.
+  The login page asks for an address and mails a 6-digit code and a one-time link, both valid for 10 minutes and usable once; on an iOS Home Screen app, whose mailed links open in Safari, type the code into the app.
+  Every address gets the same answer; each address gets at most one message a minute, each client address ten every ten minutes, and five wrong codes end a message.
+- **GitHub**: create an OAuth app (GitHub **Settings > Developer settings > OAuth Apps**) with the callback URL `https://thyra.example.com/auth/oauth/github/callback`.
+- **Google**: create an OAuth client of type **Web application** in the Google Cloud console with the redirect URI `https://thyra.example.com/auth/oauth/google/callback` and the `openid`, `email` and `profile` scopes.
+
+The callback host is the address people sign in on, normally `THYRA_PUBLIC_ORIGIN`; register one callback per address you use.
+Identities are linked by the provider's user id; a new GitHub or Google identity joins an existing account only when a signed-in person links it under **Configuration > Account**, when it arrives through an invitation, or when its address is verified (GitHub's primary verified address, Google's `email_verified`) and matches exactly one account's verified address.
+Anyone else who signs in gets "Signed in as … Ask the owner for access" and no account, unless `THYRA_SIGNUP=open` makes them members without grants.
+When the provider returns to a browser other than the one that started (an iOS Home Screen app opens it in Safari), that browser shows a 4-digit number and asks before finishing; the app, still polling, then signs in.
+
+**Configuration > Account** edits the display name and picture (cropped and scaled to 256 px in the browser, or imported from a linked GitHub or Google account), adds and removes passkeys, GitHub, Google and email addresses (never the last way to sign in), and lists sessions with their device, method and last activity, one of which or all others can be signed out.
 
 ### Read-only share links
 
@@ -492,7 +524,8 @@ THYRA_TAILNET_SSO_URL=https://dev.example.com
 Tailnet login must be on (`THYRA_TAILNET_AUTH` is not `off`), the same Thyra process must serve both listeners (codes are redeemed in its database), and tailnet devices must reach `THYRA_TAILNET_SSO_URL` over HTTPS; Caddy passes the CORS preflight (`OPTIONS`) through unchanged.
 The public Content Security Policy's `connect-src` names that origin.
 Startup fails if `THYRA_TAILNET_SSO_URL` is not an HTTPS origin without a path, equals `THYRA_PUBLIC_ORIGIN`, or is set without the public listener.
-Chrome's Local Network Access counts Tailscale's IPv4 addresses (`100.64.0.0/10`) as public, so no prompt appears; a name that also resolves to a Tailscale IPv6 address (`fd7a:115c:a1e0::/48`, a unique local address) may make Chrome ask once whether the public site may reach the local network, and until that is allowed the silent attempt times out and the buttons appear, so publish only the IPv4 address for it.
+Desktop Chrome's Local Network Access asks once, per browser profile, whether the public site may reach devices on the local network, because the tailnet name resolves to a Tailscale address.
+While it asks, the login buttons appear after 1.8 seconds and allowing still signs in; after a refusal the page skips the attempt and shows the buttons at once.
 Safari's tracking prevention does not affect it: nothing depends on cookies at the tailnet address.
 
 **Home Screen app (iOS and iPadOS).** Both ways work in standalone mode.
