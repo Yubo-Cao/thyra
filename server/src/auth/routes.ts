@@ -23,6 +23,7 @@ import {
   renderShareEndedPage,
 } from "./pages";
 import type { ShareRoutes } from "./share-routes";
+import type { TailnetSso } from "./tailnet-sso";
 import { PasskeyError, type PasskeyService, passkeyOrigin } from "./passkeys";
 import {
   type Authenticator,
@@ -104,6 +105,8 @@ export function createAuthRoutes(args: {
   shareRoutes?: ShareRoutes;
   /** Guest sessions that ended (the guest left). */
   onGuestsEnded?: (idHashes: string[]) => void;
+  /** Tailnet sign-in: its routes, and the public login page's silent attempt. */
+  tailnetSso?: TailnetSso | null;
   logger?: Logger;
 }) {
   const logger = args.logger ?? silentLogger;
@@ -155,12 +158,13 @@ export function createAuthRoutes(args: {
     return origin;
   }
 
+  /** Start a session: the cookies to set. */
   function login(
     user: User,
     method: string,
     req: Request,
     access: RequestAccess,
-  ) {
+  ): Headers {
     const { token } = args.store.createSession({
       userId: user.id,
       authMethod: method,
@@ -168,7 +172,14 @@ export function createAuthRoutes(args: {
     });
     args.store.audit(user.id, "session.create", user.id, { method });
     args.limiter.success(access.clientAddress ?? "unknown");
-    return args.authenticator.sessionCookie(token, access);
+    const headers = new Headers({
+      ...NO_STORE,
+      "set-cookie": args.authenticator.sessionCookie(token, access),
+    });
+    // Signing in again re-enables silent tailnet sign-in after a logout.
+    if (access.listener === "public" && args.tailnetSso)
+      headers.append("set-cookie", args.tailnetSso.signedOutCookie(false));
+    return headers;
   }
 
   async function grants(
@@ -247,6 +258,10 @@ export function createAuthRoutes(args: {
       return args.shareRoutes
         ? args.shareRoutes.handle(route, req, url, access, principal)
         : null;
+    if (route.startsWith("sso."))
+      return args.tailnetSso
+        ? args.tailnetSso.handle(route, req, url, access)
+        : new Response("not found", { status: 404, headers: NO_STORE });
     try {
       switch (route) {
         case "login.page": {
@@ -260,7 +275,12 @@ export function createAuthRoutes(args: {
             );
             return ended;
           }
-          return htmlPage(req, renderLoginPage);
+          // The public listener first tries silent tailnet sign-in.
+          const tailnet =
+            access.listener === "public" && args.tailnetSso
+              ? args.tailnetSso.loginState(req, url)
+              : null;
+          return htmlPage(req, (locale) => renderLoginPage(locale, tailnet));
         }
         case "enroll.page":
           return htmlPage(req, renderEnrollPage);
@@ -283,9 +303,10 @@ export function createAuthRoutes(args: {
             await readJson(req),
           );
           logger.info("passkey login", { user: user.name });
-          return json({ ok: true }, 200, {
-            "set-cookie": login(user, "passkey", req, access),
-          });
+          return Response.json(
+            { ok: true },
+            { headers: login(user, "passkey", req, access) },
+          );
         }
         case "passkey.register": {
           const blocked = limited(access);
@@ -328,13 +349,12 @@ export function createAuthRoutes(args: {
           logger.info("passkey registered", { user: user.name });
           const same =
             principal?.kind === "user" && principal.user.id === user.id;
-          return json(
-            { ok: true },
-            200,
-            same
-              ? {}
-              : { "set-cookie": login(user, "enrollment", req, access) },
-          );
+          return same
+            ? json({ ok: true })
+            : Response.json(
+                { ok: true },
+                { headers: login(user, "enrollment", req, access) },
+              );
         }
         case "logout": {
           // Custom headers require a CORS preflight; the bridge grants none.
@@ -381,13 +401,14 @@ export function createAuthRoutes(args: {
             args.onSessionEnded(resolved.session.idHash);
             args.onChange();
           }
-          return new Response(null, {
-            status: 204,
-            headers: {
-              ...NO_STORE,
-              "set-cookie": args.authenticator.clearCookie(access),
-            },
+          const headers = new Headers({
+            ...NO_STORE,
+            "set-cookie": args.authenticator.clearCookie(access),
           });
+          // Stay signed out: no silent tailnet sign-in until the next login.
+          if (access.listener === "public" && args.tailnetSso)
+            headers.append("set-cookie", args.tailnetSso.signedOutCookie(true));
+          return new Response(null, { status: 204, headers });
         }
         default:
           break;

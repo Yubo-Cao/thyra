@@ -584,6 +584,7 @@ The login and enrollment pages are small server-rendered documents outside the a
 | `workspace_grants` | `(connection, workspace id, user)` with `owner`/`editor`/`viewer` and who granted it |
 | `share_links` | public id, SHA-256 of the link secret, connection, workspace, optional pane, role (`viewer` only), label, creator, expiry, max uses, uses, revocation time |
 | `guest_sessions` | SHA-256 of a guest cookie value, public id, link, user agent, created/last seen/expiry (the link's) |
+| `tailnet_sso_codes` | SHA-256 of single-use tailnet sign-in codes, user, PKCE challenge, return origin, expiry (60 seconds) |
 | `audit_log` | account, session, passkey, grant and share-link changes (bounded) |
 
 Every change to a user's role, grants or status bumps its privilege epoch.
@@ -624,6 +625,8 @@ No header changes a request's kind.
 On `public`, the policy accepts only `THYRA_PUBLIC_ORIGIN` as host and origin, is never local, treats the scheme as HTTPS, and takes the client address from `CF-Connecting-IP` of a trusted peer only (never loopback or tailnet values); tailnet login refuses anything but the `tailnet` kind and any request with Cloudflare headers.
 The public router (`publicFetch` in `server/src/index.ts`) rate-limits per client, then asks its `PublicAuthenticator` (`server/src/auth/public.ts`, interface in `server/src/http/public-auth.ts`) to serve the login, enrollment, passkey, share-link and logout routes and to resolve the principal from its own `__Host-thyra_session` or `__Host-thyra_guest` cookie.
 It shares the account database and routes with the primary listener, but its authenticator has no local bypass and no tailnet login, and the primary listener's cookie name differs, so neither listener accepts the other's cookie.
+**Tailnet sign-in** (`server/src/auth/tailnet-sso.ts`, `THYRA_TAILNET_SSO_URL`) bridges the two: the `tailnet` listener issues a code (`sso.code` for the public login page's silent CORS request, `sso.authorize` for the redirect flow) to the account that Tailscale `whois` names for the proxied connection, and the `public` listener redeems it (`sso.redeem`, `sso.callback` after `sso.start`) for its own session; each route answers `404` on the other listener kind.
+Codes live in `tailnet_sso_codes`, bound to a PKCE challenge and `THYRA_PUBLIC_ORIGIN`, and are deleted by the redeeming `DELETE … RETURNING`, so a replay finds nothing; the primary listener skips its Origin allowlist only for `sso.code`, whose handler allows exactly the public origin.
 Without a principal only those routes and fingerprinted assets are served and everything else is `401` or a redirect to `/login`; with one, requests go through the same HTTP and RPC authorization as on the primary listener, and MCP is never served.
 Public responses add HSTS, a strict CSP (the SPA entry's inline scripts are allowed by hash), and `__Host-` cookies.
 

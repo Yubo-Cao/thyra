@@ -10,7 +10,8 @@ import { targetResolvers } from "./policy";
  * that matches nothing is refused. Scopes:
  *
  * - `public`: no login (health, login and enrollment, logout, the login
- *   page's icons, share-link pages and redemption, and `/mcp`, which
+ *   page's icons, share-link pages and redemption, tailnet sign-in, and
+ *   `/mcp`, which
  *   authenticates with its own bearer tokens).
  * - `session`: any logged-in principal; the handler acts on its own data.
  *   Share-link guests reach only the routes marked `guest`.
@@ -60,6 +61,15 @@ export const HTTP_POLICY = {
   // stays in the URL fragment until the page posts it.
   "share.page": { class: "read", scope: "public" },
   "share.redeem": { class: "write", scope: "public" },
+  // Tailnet sign-in (auth/tailnet-sso.ts). The tailnet listener issues a
+  // single-use code to a Tailscale-identified caller (`code`: CORS for the
+  // public origin only; `authorize`: the redirect flow); the public listener
+  // starts the redirect flow and redeems codes for sessions.
+  "sso.code": { class: "write", scope: "public" },
+  "sso.authorize": { class: "write", scope: "public" },
+  "sso.start": { class: "read", scope: "public" },
+  "sso.callback": { class: "write", scope: "public" },
+  "sso.redeem": { class: "write", scope: "public" },
 
   "auth.me": { class: "read", scope: "session", guest: true },
   "auth.sessions": { class: "read", scope: "session" },
@@ -155,6 +165,11 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/auth/passkey.js": { GET: "login.script", HEAD: "login.script" },
   "/thyra-icon-192.png": { GET: "login.icon", HEAD: "login.icon" },
   "/thyra-icon.svg": { GET: "login.icon", HEAD: "login.icon" },
+  "/auth/tailnet-sso/code": { POST: "sso.code", OPTIONS: "sso.code" },
+  "/auth/tailnet-sso/authorize": { GET: "sso.authorize" },
+  "/auth/tailnet-sso/start": { GET: "sso.start" },
+  "/auth/tailnet-sso/callback": { GET: "sso.callback" },
+  "/auth/tailnet-sso/redeem": { POST: "sso.redeem" },
   "/api/auth/passkey/login/options": { POST: "passkey.login" },
   "/api/auth/passkey/login/verify": { POST: "passkey.login" },
   "/api/auth/passkey/register/options": { POST: "passkey.register" },

@@ -6,6 +6,8 @@
  * data block.
  */
 
+import type { TailnetSsoLogin } from "./tailnet-sso";
+
 export const AUTH_SCRIPT_PATH = "/auth/passkey.js";
 
 export type PageLocale = "en" | "zh-CN";
@@ -19,6 +21,14 @@ const STRINGS = {
     loggingIn: "Waiting for your passkey...",
     loginNote:
       "Devices on the owner's tailnet log in automatically. Everyone else needs an enrollment link from the owner.",
+    tailnetChecking: "Checking for the owner's tailnet...",
+    tailnetButton: "Sign in with tailnet",
+    tailnetHint:
+      "Only for devices on the owner's tailnet: it opens {host}, which does not load anywhere else.",
+    tailnet_unavailable:
+      "This device is not on the owner's tailnet. Log in with a passkey instead.",
+    tailnet_failed: "Tailnet sign-in did not complete. Try again.",
+    tailnet_expired: "Tailnet sign-in took too long. Try again.",
     enrollTitle: "Set up a passkey",
     enrollHeading: "Set up a passkey",
     enrollFor: "Create a passkey for {name}.",
@@ -78,6 +88,13 @@ const STRINGS = {
     loggingIn: "正在等待通行密钥…",
     loginNote:
       "所有者 tailnet 中的设备会自动登录。其他用户需要所有者提供的注册链接。",
+    tailnetChecking: "正在检查所有者的 tailnet…",
+    tailnetButton: "通过 tailnet 登录",
+    tailnetHint:
+      "仅适用于所有者 tailnet 中的设备：它会打开 {host}，该地址在其他网络中无法加载。",
+    tailnet_unavailable: "此设备不在所有者的 tailnet 中。请改用通行密钥登录。",
+    tailnet_failed: "tailnet 登录未完成，请重试。",
+    tailnet_expired: "tailnet 登录超时，请重试。",
     enrollTitle: "设置通行密钥",
     enrollHeading: "设置通行密钥",
     enrollFor: "为 {name} 创建通行密钥。",
@@ -175,6 +192,9 @@ const STYLE = `
   .secondary{width:100%;min-height:44px;padding:10px;margin-top:12px;border:1px solid var(--muted);
     border-radius:0;background:transparent;color:inherit;font-size:14px;font-weight:600}
   .secondary:disabled{opacity:.65;cursor:wait}
+  a.secondary{display:flex;align-items:center;justify-content:center;text-decoration:none}
+  [hidden]{display:none!important}
+  .tailnet-hint{margin-top:8px}
   .account{margin-top:16px;color:inherit}
   .status{font-size:13px;line-height:1.5;min-height:24px;margin-top:12px}
   .status.error{color:var(--error)}
@@ -260,6 +280,29 @@ if(data.page==='login'){
     }catch{show(S.unreachable,true);}
     finally{btn.disabled=!secure;btn.textContent=S.loginButton;}
   };
+  const choices=document.getElementById('choices');
+  const tailnet=data.tailnet;
+  if(!tailnet||!tailnet.silent||!window.isSecureContext||!crypto.subtle){choices.hidden=false;if(tailnet&&tailnet.silent&&window.isSecureContext)show('',false);return;}
+  // Silent tailnet sign-in: ask the tailnet listener, which knows this
+  // device by its Tailscale identity, for a single-use code bound to a PKCE
+  // challenge, then redeem it here with the verifier. A device off the
+  // tailnet cannot reach it; after a short wait the buttons appear.
+  (async()=>{
+    try{
+      const verifier=b64(crypto.getRandomValues(new Uint8Array(32)));
+      const challenge=b64(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
+      const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),1800);
+      let r;
+      try{r=await fetch(tailnet.url+'/auth/tailnet-sso/code',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',headers:{'content-type':'application/json'},body:JSON.stringify({code_challenge:challenge}),signal:abort.signal});}
+      finally{clearTimeout(timer);}
+      if(r.ok){
+        const issued=await r.json();
+        const done=await post('/auth/tailnet-sso/redeem',{code:issued.code,code_verifier:verifier});
+        if(done.ok){location.replace('/'+location.hash);return;}
+      }
+    }catch{}
+    show('',false);choices.hidden=false;
+  })();
   return;
 }
 // The secret is in the fragment, which browsers never send to servers;
@@ -303,6 +346,7 @@ function page(
     page: "login" | "enroll" | "share";
     s: Strings;
     account?: { name: string | null };
+    tailnet?: { url: string; silent: boolean };
   } | null,
 ) {
   return `<!doctype html>
@@ -371,20 +415,56 @@ export function renderShareEndedPage(locale: PageLocale): string {
   );
 }
 
-export function renderLoginPage(locale: PageLocale): string {
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * The login page. On the public listener with tailnet sign-in
+ * (`tailnet`), the page first asks the tailnet listener for a code without
+ * showing any button (`silent`), and reveals the passkey button and a
+ * "Sign in with tailnet" redirect button when that fails.
+ */
+export function renderLoginPage(
+  locale: PageLocale,
+  tailnet: TailnetSsoLogin | null = null,
+): string {
   const s = STRINGS[locale];
+  const hint = tailnet
+    ? escapeHtml(s.tailnetHint.replace("{host}", new URL(tailnet.url).host))
+    : "";
+  const message = tailnet?.message
+    ? s[`tailnet_${tailnet.message}` as const]
+    : "";
+  const silent = Boolean(tailnet?.silent);
   return page(
     locale,
     s.loginTitle,
     `  <section class="card" aria-labelledby="heading">
     <h1 id="heading">${s.loginHeading}</h1>
     <p>${s.loginIntro}</p>
+    <div id="choices"${silent ? " hidden" : ""}>
     <button class="submit" id="btn" type="button">${s.loginButton}</button>
-    <div class="status" id="status" role="alert" aria-live="polite"></div>
+${
+  tailnet
+    ? `    <a class="secondary" id="tailnet" href="/auth/tailnet-sso/start" title="${hint}">${s.tailnetButton}</a>
+    <p class="note tailnet-hint">${hint}</p>
+`
+    : ""
+}    </div>
+    <div class="status${message ? " error" : ""}" id="status" role="alert" aria-live="polite">${silent ? s.tailnetChecking : message}</div>
     <noscript><p class="status error">${s.noscript}</p></noscript>
     <p class="note">${s.loginNote}</p>
   </section>`,
-    { page: "login", s },
+    {
+      page: "login",
+      s,
+      ...(tailnet ? { tailnet: { url: tailnet.url, silent } } : {}),
+    },
   );
 }
 

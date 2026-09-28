@@ -24,7 +24,7 @@ describe("account database", () => {
     if (process.platform !== "win32")
       expect(statSync(path).mode & 0o777).toBe(0o600);
     migrate(db);
-    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 2 });
+    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
     db.run("PRAGMA user_version = 99");
     expect(() => migrate(db)).toThrow("newer than this Thyra");
     db.close();

@@ -283,6 +283,7 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_PUBLIC_LISTEN` | Second, internet-facing listener (`127.0.0.1:8788`) for Cloudflare Tunnel; see [public access](#public-access-through-cloudflare-tunnel) |
 | `THYRA_PUBLIC_ORIGIN` | The one HTTPS origin served by the public listener, such as `https://thyra.example.com` |
 | `THYRA_PUBLIC_TRUSTED_PROXIES` | Peers whose `CF-Connecting-IP` the public listener believes (default `loopback`) |
+| `THYRA_TAILNET_SSO_URL` | HTTPS origin of the tailnet listener (`https://dev.example.com`); tailnet devices then sign in to the public address automatically; see [tailnet sign-in](#tailnet-sign-in-on-the-public-address) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
 | `THYRA_IDENTITY_PATH` | Collaborator identity file (default `~/.config/thyra/identities.json`) |
@@ -425,11 +426,11 @@ Set `THYRA_TAILNET_AUTH=off` if the proxy is also reachable from outside the tai
 Thyra can serve a public address from a second listener while the primary listener stays private (tailnet or loopback).
 **The listener, never a request header, decides trust.** Requests on the public listener are always public:
 
-- Only a passkey session in the listener's own `__Host-thyra_session` cookie, or a [share link](#read-only-share-links)'s `__Host-thyra_guest` cookie, authenticates there; tailnet login, direct-local bypass and the primary listener's cookies never do, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
+- Only a session in the listener's own `__Host-thyra_session` cookie (from a passkey or [tailnet sign-in](#tailnet-sign-in-on-the-public-address)), or a [share link](#read-only-share-links)'s `__Host-thyra_guest` cookie, authenticates there; tailnet login, direct-local bypass and the primary listener's cookies never do, whatever `X-Forwarded-For`, `CF-Connecting-IP` or Tailscale headers claim.
 - Only `THYRA_PUBLIC_ORIGIN` is accepted as `Host` and `Origin` (anything else gets `421` or `403`); `X-Forwarded-*` headers are ignored.
 - The client address (login and request rate limits, 300 requests a minute per address) is `CF-Connecting-IP` when the peer is in `THYRA_PUBLIC_TRUSTED_PROXIES` (default `loopback`, the local `cloudflared`), otherwise the peer.
 - Responses carry HSTS, a strict Content Security Policy, `nosniff` and `frame-ancestors 'none'`; cookies set there use the `__Host-` prefix.
-- Before login it serves only the passkey login and enrollment pages, share-link landing pages (`/s/<id>`) and redemption, their script (`/auth/passkey.js`) and static assets; every other page redirects to login, and every API and WebSocket request gets `401`.
+- Before login it serves only the passkey login and enrollment pages, tailnet sign-in's start, callback and redemption, share-link landing pages (`/s/<id>`) and redemption, their script (`/auth/passkey.js`) and static assets; every other page redirects to login, and every API and WebSocket request gets `401`.
   MCP is never served there.
 
 Cloudflare Tunnel (`cloudflared`) connects outbound, so no inbound port opens.
@@ -463,7 +464,39 @@ Startup fails if `THYRA_PUBLIC_LISTEN` is set without a valid HTTPS `THYRA_PUBLI
 
 Passkeys belong to the host name they were created on, so a passkey from the tailnet address does not work at the public address.
 Enroll each person for the public host with `thyra user enroll <name> --base-url https://thyra.example.com` (or `thyra user add <name> --base-url ...` for a new account) and open the printed link there; a logged-in user can also add a passkey for the current host under **Configuration > Account**.
-Tailnet login never applies on the public listener, so an instance admin who only ever used tailnet login needs such a passkey before using the public address.
+Tailnet login never applies on the public listener; tailnet devices sign in there through [tailnet sign-in](#tailnet-sign-in-on-the-public-address), and every other device needs such a passkey.
+
+### Tailnet sign-in on the public address
+
+With `THYRA_TAILNET_SSO_URL` set to the tailnet listener's HTTPS origin (the Caddy address in `THYRA_PUBLIC_BASE_URL`), devices on the tailnet open the public address already logged in, without a click or a passkey:
+
+```bash
+# ~/.config/thyra/thyra.env
+THYRA_PUBLIC_LISTEN=127.0.0.1:8788
+THYRA_PUBLIC_ORIGIN=https://thyra.example.com
+THYRA_TAILNET_SSO_URL=https://dev.example.com
+```
+
+- **Silent sign-in.** Before showing any button, the public login page creates a PKCE verifier and challenge and sends `POST https://dev.example.com/auth/tailnet-sso/code` with the challenge and no cookies, waiting at most 1.8 seconds.
+  The tailnet listener identifies the device only by Tailscale `whois` of the proxied connection, under [tailnet login](#accounts-and-login)'s rules (trusted proxy, tailnet address, no Cloudflare headers), creating the account on first sight like tailnet login does.
+  It answers with a single-use code: 256 random bits, stored only as a SHA-256 digest, valid for 60 seconds, and bound to that account, the challenge and `THYRA_PUBLIC_ORIGIN`.
+  CORS allows exactly `THYRA_PUBLIC_ORIGIN`, without credentials; other origins get neither a code nor CORS headers, and the preflight grants Private Network Access (`Access-Control-Allow-Private-Network: true`) when asked.
+  The page posts the code and its verifier to `/auth/tailnet-sso/redeem` on the public listener, which checks them against the database and starts a normal `__Host-thyra_session`.
+- **Fallback.** A device off the tailnet cannot reach the tailnet address, so the request fails or times out and the page shows the passkey button and **Sign in with tailnet**, whose note says it works only on the tailnet.
+- **Sign in with tailnet** does the same exchange with same-window redirects: `/auth/tailnet-sso/start` keeps a random state and the verifier in a five-minute `__Host-thyra_tailnet_sso` cookie and opens `/auth/tailnet-sso/authorize` on the tailnet listener, which redirects only to `THYRA_PUBLIC_ORIGIN` (`/auth/tailnet-sso/callback?code=…&state=…`); the callback checks the state against the cookie before redeeming.
+  A device that reaches the tailnet listener without a Tailscale identity returns to the login page with an explanation.
+- **Logging out** on the public address turns the silent attempt off in that browser (`__Host-thyra_signed_out`) until its next sign-in, so a revoked or ended session never signs itself back in.
+- Code requests are limited to 20 a minute per tailnet address, and failed redemptions count toward the same kind of per-address block as failed passkey attempts; issued codes, refusals and sign-ins are audited.
+
+Tailnet login must be on (`THYRA_TAILNET_AUTH` is not `off`), the same Thyra process must serve both listeners (codes are redeemed in its database), and tailnet devices must reach `THYRA_TAILNET_SSO_URL` over HTTPS; Caddy passes the CORS preflight (`OPTIONS`) through unchanged.
+The public Content Security Policy's `connect-src` names that origin.
+Startup fails if `THYRA_TAILNET_SSO_URL` is not an HTTPS origin without a path, equals `THYRA_PUBLIC_ORIGIN`, or is set without the public listener.
+Chrome's Local Network Access counts Tailscale's IPv4 addresses (`100.64.0.0/10`) as public, so no prompt appears; a name that also resolves to a Tailscale IPv6 address (`fd7a:115c:a1e0::/48`, a unique local address) may make Chrome ask once whether the public site may reach the local network, and until that is allowed the silent attempt times out and the buttons appear, so publish only the IPv4 address for it.
+Safari's tracking prevention does not affect it: nothing depends on cookies at the tailnet address.
+
+**Home Screen app (iOS and iPadOS).** Both ways work in standalone mode.
+The silent sign-in is a background request, so the app never leaves its window.
+**Sign in with tailnet** is an ordinary link in the same window (never a new tab, which would open Safari and its separate cookie store): iOS keeps the navigation inside the app, showing the tailnet host in a bar while the page is outside the app's scope, and the callback lands back on the public origin, where the session cookie goes into the app's own store.
 
 ## Collaborator identity
 

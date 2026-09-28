@@ -13,6 +13,20 @@ const PUBLIC_AUTH_ROUTES: ReadonlySet<HttpRouteId> = new Set([
   "logout",
   "share.page",
   "share.redeem",
+  "sso.start",
+  "sso.callback",
+  "sso.redeem",
+]);
+
+/** Routes that never read or start a session before their handler runs. */
+const SESSIONLESS_ROUTES: ReadonlySet<HttpRouteId> = new Set([
+  "logout",
+  "login.script",
+  "share.page",
+  "share.redeem",
+  "sso.start",
+  "sso.callback",
+  "sso.redeem",
 ]);
 
 /**
@@ -27,13 +41,9 @@ export function createPublicAuthenticator(args: {
     async handle(req, url, context) {
       const route = matchHttpRoute(req.method, url.pathname);
       if (!route || !PUBLIC_AUTH_ROUTES.has(route)) return null;
-      const auth =
-        route === "logout" ||
-        route === "login.script" ||
-        route === "share.page" ||
-        route === "share.redeem"
-          ? { principal: null }
-          : await args.authenticator.authenticate(req, context.access);
+      const auth = SESSIONLESS_ROUTES.has(route)
+        ? { principal: null }
+        : await args.authenticator.authenticate(req, context.access);
       if (route === "login.page" && auth.principal) {
         const headers = new Headers({
           location: "/",

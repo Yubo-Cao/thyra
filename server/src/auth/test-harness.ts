@@ -66,12 +66,19 @@ export async function startTestServer(
   });
   const errors = new Response(child.stderr).text();
   const ready = Promise.withResolvers<string>();
+  const wantsPublic = Boolean(env.THYRA_PUBLIC_LISTEN);
+  let publicBase = "";
   let logs = "";
   const output = (async () => {
     for await (const chunk of child.stdout) {
       logs += new TextDecoder().decode(chunk);
       const port = logs.match(/\bINFO bridge listening\b[^\r\n]*:(\d+)\b/)?.[1];
-      if (port) ready.resolve(`http://127.0.0.1:${port}`);
+      const publicPort = logs.match(
+        /\bINFO bridge public listener\b[^\r\n]*listen=http:\/\/[^:\s]+:(\d+)/,
+      )?.[1];
+      if (publicPort) publicBase = `http://127.0.0.1:${publicPort}`;
+      if (port && (!wantsPublic || publicPort))
+        ready.resolve(`http://127.0.0.1:${port}`);
     }
     ready.reject(
       new Error(`Server exited before listening: ${logs}\n${await errors}`),
@@ -178,6 +185,8 @@ export async function startTestServer(
 
   return {
     base,
+    /** The public listener, when `THYRA_PUBLIC_LISTEN` is set. */
+    publicBase,
     root,
     proxy,
     request,

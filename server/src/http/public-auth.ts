@@ -102,14 +102,18 @@ export function inlineScriptHashes(html: string): string[] {
  * of the SPA entry); WebAssembly is needed for voice activity detection.
  * Inline styles stay allowed for React style attributes and xterm.
  */
-export function publicContentSecurityPolicy(scriptHashes: string[]): string {
+export function publicContentSecurityPolicy(
+  scriptHashes: string[],
+  /** Other origins pages may `fetch` (the tailnet sign-in listener). */
+  connectOrigins: readonly string[] = [],
+): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'wasm-unsafe-eval'${scriptHashes.map((hash) => ` ${hash}`).join("")}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self'${connectOrigins.map((origin) => ` ${origin}`).join("")}`,
     "media-src 'self' blob:",
     "worker-src 'self' blob:",
     "frame-src 'self' blob:",

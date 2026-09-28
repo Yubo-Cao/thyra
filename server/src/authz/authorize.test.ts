@@ -158,6 +158,13 @@ const HTTP_MATRIX: Record<string, string> = {
   "share.redeem":
     "admin owner editor viewer outsider guest guest-pane anonymous",
   "share.revoke": "admin owner",
+  "sso.authorize":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "sso.callback":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "sso.code": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "sso.redeem": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "sso.start": "admin owner editor viewer outsider guest guest-pane anonymous",
   static: "admin owner editor viewer outsider guest guest-pane",
   "update.check": "admin",
   "update.install": "admin",

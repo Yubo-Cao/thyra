@@ -132,6 +132,11 @@ import { createPublicAuthenticator } from "./auth/public";
 import { createAuthRoutes } from "./auth/routes";
 import { createShareRoutes } from "./auth/share-routes";
 import {
+  createSsoCodeStore,
+  createTailnetSso,
+  parseTailnetSsoUrl,
+} from "./auth/tailnet-sso";
+import {
   type ListenerKind,
   loadPublicListenerConfig,
   primaryListenerKind,
@@ -265,6 +270,18 @@ try {
   process.exit(2);
 }
 for (const warning of publicListener?.warnings ?? []) logger.warn(warning);
+// Tailnet sign-in for the public listener: its login page asks the tailnet
+// listener at this origin for a single-use code.
+let tailnetSsoOrigin: string | null = null;
+try {
+  tailnetSsoOrigin = parseTailnetSsoUrl(
+    thyraEnv("TAILNET_SSO_URL"),
+    publicListener?.origin ?? null,
+  );
+} catch (error) {
+  console.error(`[bridge] ${(error as Error).message}`);
+  process.exit(2);
+}
 const publicAccessPolicy = publicListener
   ? createRequestAccessPolicy({
       listenerKind: "public",
@@ -283,7 +300,11 @@ function publicPagePolicy(): Promise<string> {
   publicHtmlPolicy ??= readStaticText(config.publicDir, "/index.html")
     .catch(() => null)
     .then((html) =>
-      publicContentSecurityPolicy(inlineScriptHashes(html ?? "")),
+      publicContentSecurityPolicy(
+        inlineScriptHashes(html ?? ""),
+        // The login page's silent tailnet sign-in fetches a code there.
+        tailnetSsoOrigin ? [tailnetSsoOrigin] : [],
+      ),
     );
   return publicHtmlPolicy;
 }
@@ -369,6 +390,25 @@ const authzDeps: AuthzDeps = {
     participantPrincipals.get(participantId) ?? null,
 };
 const passkeys = createPasskeyService({ store: accountStore });
+const tailnetSsoCodes = createSsoCodeStore(accountStore);
+/** Tailnet sign-in, when the public listener has a tailnet listener to ask. */
+const tailnetSso =
+  publicListener && tailnetSsoOrigin
+    ? createTailnetSso({
+        store: accountStore,
+        codes: tailnetSsoCodes,
+        publicOrigin: publicListener.origin,
+        tailnetOrigin: tailnetSsoOrigin,
+        tailnetAccount: authenticator.tailnetAccountFor,
+        sessionCookie: publicAuthenticator.sessionCookie,
+        logger: logger.child("auth"),
+      })
+    : null;
+if (tailnetSso && tailnetAuth.mode === "off") {
+  logger.warn(
+    "THYRA_TAILNET_SSO_URL is set but tailnet login is off; tailnet sign-in on the public listener will always fall back to passkeys",
+  );
+}
 function accountRoutes(
   listenerAuthenticator: typeof authenticator,
   limiter: ReturnType<typeof createLoginRateLimiter>,
@@ -396,6 +436,7 @@ function accountRoutes(
       ),
     shares: shareLinks,
     onGuestsEnded: closeGuestSockets,
+    tailnetSso,
     shareRoutes: createShareRoutes({
       store: accountStore,
       shares: shareLinks,
@@ -493,6 +534,7 @@ setInterval(() => {
 setInterval(() => {
   accountStore.pruneExpired();
   shareLinks.pruneExpired();
+  tailnetSsoCodes.pruneExpired();
   checkLiveSessions(true);
 }, 60_000).unref();
 
@@ -2308,8 +2350,11 @@ async function primaryFetch(
     });
     return hostNotAllowedResponse(access.host);
   }
+  const route = httpRoute(req, url, requestPathname);
   const originMode = originCheckMode(url.pathname, req.method);
-  if (originMode !== "none") {
+  // The silent tailnet sign-in is a CORS request from the public origin; its
+  // handler allows exactly that origin.
+  if (originMode !== "none" && route.routeId !== "sso.code") {
     const decision = accessPolicy.checkOrigin(
       req,
       access,
@@ -2324,19 +2369,20 @@ async function primaryFetch(
       return forbiddenResponse(decision.reason);
     }
   }
-  const route = httpRoute(req, url, requestPathname);
   if (!route.routeId) return unmatchedRoute(url);
   const routeId = route.routeId;
 
   // Direct local use, the session cookie, or tailnet login. Bearer MCP,
-  // icons, the login script, logout and share links never start a session.
+  // icons, the login script, logout, share links and tailnet sign-in (which
+  // runs `whois` itself) never start a session.
   const auth: AuthResult =
     routeId === "mcp" ||
     routeId === "login.icon" ||
     routeId === "login.script" ||
     routeId === "logout" ||
     routeId === "share.page" ||
-    routeId === "share.redeem"
+    routeId === "share.redeem" ||
+    routeId.startsWith("sso.")
       ? { principal: null }
       : await authenticator.authenticate(req, access);
   const principal = auth.principal;

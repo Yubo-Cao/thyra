@@ -382,9 +382,30 @@ export function createAuthenticator(args: {
     };
   }
 
+  /**
+   * The account of this request's Tailscale login, created and linked on
+   * first sight like tailnet login, without starting a session here (tailnet
+   * sign-in for the public listener). Null unless `whois` of a proxied
+   * tailnet connection names a user on the tailnet listener.
+   */
+  async function tailnetAccountFor(
+    _req: Request,
+    access: RequestAccess,
+  ): Promise<User | null> {
+    const identity = await tailnetUser({
+      mode: args.tailnetMode,
+      access,
+      lookupUser: args.tailnetUser,
+    });
+    return identity
+      ? tailnetAccount(identity.login, identity.displayName)
+      : null;
+  }
+
   return {
     authenticate,
     signedInAccount,
+    tailnetAccountFor,
     prefersGuest,
     asGuestCookie,
     bypassesLogin,

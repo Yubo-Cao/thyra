@@ -128,6 +128,19 @@ const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX guest_sessions_link ON guest_sessions(link_id);
   `,
+  `
+  -- Single-use tailnet sign-in codes: the tailnet listener issues one to a
+  -- Tailscale-identified account, bound to a PKCE challenge and the public
+  -- origin that may redeem it. Only the code's SHA-256 is stored.
+  CREATE TABLE tailnet_sso_codes (
+    code_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    challenge TEXT NOT NULL,
+    return_origin TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export function defaultDatabasePath(

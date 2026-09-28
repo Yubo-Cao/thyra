@@ -27,6 +27,12 @@ Grant **editor** only to people you would give a shell account on the host.
   Restrict who reaches the proxy with Tailscale ACLs.
   Tagged nodes, unknown peers and `whois` failures get the login page.
   Never enable tailnet login on a proxy or listener reachable from outside the tailnet, such as a public tunnel.
+- **Tailnet sign-in on the public address** (`THYRA_TAILNET_SSO_URL`).
+  The public listener's login page asks the tailnet listener, by a cookie-less CORS request, for a single-use code; the tailnet listener identifies the device only by Tailscale `whois` of its proxied connection, under the tailnet login rules above, and never by a header.
+  A code has 256 random bits, is stored as its SHA-256, lives 60 seconds, is deleted on first use, and is bound to the account, a PKCE challenge whose verifier only the requesting page holds, and `THYRA_PUBLIC_ORIGIN`, the only origin CORS lets read it and the only origin the redirect variant returns to.
+  The public listener redeems it in the shared database for its own `__Host-thyra_session`; a redirect-flow callback must also match the state in the browser's short-lived `__Host-` cookie, so a code sent to someone else's browser is useless.
+  Code requests are rate-limited per tailnet address, failed redemptions per client address, and both are audited.
+  Logging out on the public address stops the silent attempt in that browser until the next sign-in.
 - **Passkeys** (WebAuthn) for everyone else.
   `thyra user add <name>` on the host prints a single-use enrollment link, valid for 24 hours, whose secret is in the URL fragment (never sent to servers or logs).
   A passkey belongs to the host name it was created on and needs HTTPS or `localhost`; plain HTTP to a LAN address cannot log in.
@@ -50,10 +56,11 @@ Passkey and enrollment attempts allow 10 failures a minute per client address (f
 
 **Listeners decide trust, never headers.**
 The primary listener (`HOST`/`PORT`) is `tailnet` when tailnet login is on and `local` otherwise.
-The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always `public`: only a passkey session in its own `__Host-thyra_session` cookie (or a share link's `__Host-thyra_guest`) authenticates there, never the loopback bypass, tailnet login or the primary listener's cookies.
+The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) is always `public`: only a session in its own `__Host-thyra_session` cookie (from a passkey or a tailnet sign-in code) or a share link's `__Host-thyra_guest` authenticates there, never the loopback bypass, tailnet login or the primary listener's cookies.
+Thyra is the only authentication layer: tailnet devices authenticate by their Tailscale identity, other devices with a passkey, and share-link visitors are read-only guests; it does not rely on an edge login such as Cloudflare Access.
 On the public listener `X-Forwarded-*` and Tailscale headers are ignored, `CF-Connecting-IP` sets only the rate-limit address (and only from `THYRA_PUBLIC_TRUSTED_PROXIES`, loopback by default), and `Host` and `Origin` must be `THYRA_PUBLIC_ORIGIN`.
 It sends HSTS and a strict Content Security Policy (the login page's script is the same-origin `/auth/passkey.js`), and sets only `__Host-` cookies.
-Before login it serves the login and enrollment pages, the passkey ceremonies, share-link landing and redemption, and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
+Before login it serves the login and enrollment pages, the passkey ceremonies, tailnet sign-in's start, callback and redemption, share-link landing and redemption, and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
 On the primary listener, the public host gets `421` and a request carrying Cloudflare headers never gets tailnet login, so a misrouted tunnel fails closed.
 See [public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
 
@@ -89,6 +96,7 @@ Browser requests are bound to Thyra's own origin, so another web page open in a 
 - **Origin allowlist.** WebSocket upgrades and every non-GET/HEAD request need an `Origin` equal to the request's own origin (as seen through a trusted proxy), a `THYRA_PUBLIC_BASE_URL` origin, or `http://localhost:<port>`/`127.0.0.1:<port>`.
   Without `Origin` they are accepted only as direct local use.
   API reads are also refused for a foreign `Origin` or a cross-site/same-site `Sec-Fetch-Site`.
+  The one cross-origin request the primary listener serves is tailnet sign-in's cookie-less code request, and only from exactly `THYRA_PUBLIC_ORIGIN`.
 - **Deny by default.** Every WebSocket method and HTTP route is looked up in a policy table (`server/src/authz/policy.ts`, `server/src/authz/http-policy.ts`) that names its class, scope and target; anything unlisted is refused.
   Herdr methods the web client does not use, such as `server.stop`, `plugin.enable`, `integration.install` or `agent.prompt`, are rejected for everyone.
 - **Presence.** The bridge assigns each page's collaboration participant id and role; a page can claim, release, or leave only as itself.

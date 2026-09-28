@@ -89,6 +89,7 @@ function since(timestamp: number): string {
 const METHOD_LABELS: Record<string, string> = {
   passkey: "Passkey",
   tailscale: "Tailscale",
+  "tailnet-sso": "Tailscale",
   enrollment: "Passkey",
 };
 
