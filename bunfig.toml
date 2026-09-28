@@ -1,0 +1,3 @@
+[test]
+# Never let tests touch the real ~/.config/thyra (see the script).
+preload = ["./scripts/test-isolated-home.ts"]
