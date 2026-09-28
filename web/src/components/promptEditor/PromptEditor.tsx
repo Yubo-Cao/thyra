@@ -98,6 +98,8 @@ export type PromptEditorProps = {
   coarsePointer: boolean;
   /** Focus may move on the user's behalf (see programmaticFocusAllowed). */
   focusAllowed: boolean;
+  /** Enter sends; false with an on-screen keyboard, whose Return has no Shift. */
+  enterSends: boolean;
   /** The pane shows a text preview instead of the screen: dock at the bottom. */
   dockOnly: boolean;
   controlRef: RefObject<PromptEditorControl | null>;
@@ -157,14 +159,12 @@ function sameMetrics(a: TerminalMetrics | null, b: TerminalMetrics | null) {
  * Loads Monaco: at idle after startup on a fast 4G link, otherwise once the
  * editor is first used (`used`), and never under Data Saver or on 2G.
  */
-function useRichSurface(used: boolean, coarsePointer: boolean) {
+function useRichSurface(used: boolean) {
   const settled = useStartupSettled();
-  const [ready, setReady] = useState(
-    () => !coarsePointer && promptMonacoPanel.isLoaded(),
-  );
+  const [ready, setReady] = useState(() => promptMonacoPanel.isLoaded());
   useEffect(() => {
     if (!settled || ready) return;
-    const policy = richEditorLoadPolicy(undefined, coarsePointer);
+    const policy = richEditorLoadPolicy();
     if (policy === "never" || (policy === "on-demand" && !used)) return;
     let cancelled = false;
     const load = () =>
@@ -185,7 +185,7 @@ function useRichSurface(used: boolean, coarsePointer: boolean) {
       if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
       else window.clearTimeout(idle);
     };
-  }, [coarsePointer, ready, settled, used]);
+  }, [ready, settled, used]);
   return ready;
 }
 
@@ -211,6 +211,7 @@ export function PromptEditor({
   terminalTheme,
   active,
   coarsePointer,
+  enterSends,
   focusAllowed,
   dockOnly,
   controlRef,
@@ -390,7 +391,7 @@ export function PromptEditor({
 
   // Swap the textarea for Monaco when it arrives, never mid-composition.
   const [used, setUsed] = useState(false);
-  const richReady = useRichSurface(used, coarsePointer);
+  const richReady = useRichSurface(used);
   const [rich, setRich] = useState(richReady);
   const focusRich = useRef(false);
   useEffect(() => {
@@ -432,6 +433,7 @@ export function PromptEditor({
       empty,
       applicationCursor: term.modes.applicationCursorKeysMode,
       bindings: getShortcutSnapshot().preset.bindings,
+      enterSends,
     });
     if (!action) return false;
     if (action.type === "send") void send();
@@ -526,7 +528,9 @@ export function PromptEditor({
       ? t("Uploading image…")
       : submissionPending
         ? t("Sending…")
-        : `${sendKeys()} ${t("Send")}`;
+        : enterSends
+          ? `↵ ${t("Send")} · ⇧↵ ${t("New line")}`
+          : `${sendKeys()} ${t("Send")}`;
   const marker = PROMPT_MARKERS[agent] ?? ">";
 
   return (

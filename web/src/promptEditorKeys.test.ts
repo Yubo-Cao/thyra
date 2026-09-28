@@ -25,14 +25,24 @@ function key(
   };
 }
 
-const draft = { empty: false, applicationCursor: false, bindings: linux };
-const empty = { empty: true, applicationCursor: false, bindings: linux };
+const draft = {
+  empty: false,
+  applicationCursor: false,
+  bindings: linux,
+  enterSends: true,
+};
+const empty = { ...draft, empty: true };
 
 describe("prompt editor keys", () => {
-  test("Enter, Shift+Enter and Alt+Enter break the line", () => {
-    // The editor's own Enter inserts the break, keeping auto-indent, suggest
-    // and undo intact.
-    expect(promptEditorKeyAction(key("Enter"), draft)).toBeNull();
+  test("Enter sends; Shift+Enter and Alt+Enter break the line", () => {
+    expect(promptEditorKeyAction(key("Enter"), draft)).toEqual({
+      type: "send",
+    });
+    // An on-screen keyboard's Return has no Shift: it stays the editor's
+    // own line break, keeping auto-indent, suggest and undo intact.
+    expect(
+      promptEditorKeyAction(key("Enter"), { ...draft, enterSends: false }),
+    ).toBeNull();
     expect(
       promptEditorKeyAction(key("Enter", { shiftKey: true }), draft),
     ).toEqual({ type: "newline" });

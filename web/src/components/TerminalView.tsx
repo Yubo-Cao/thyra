@@ -958,6 +958,7 @@ export function TerminalView({
                 active={isActivePane}
                 coarsePointer={coarsePointer}
                 focusAllowed={focusAllowed}
+                enterSends={!coarsePointer || keyboardKind === "hardware"}
                 dockOnly={framesPaused}
                 controlRef={refs.promptEditor}
                 onSubmit={(text) => submitTerminalComposer(text, true)}

@@ -142,6 +142,7 @@ export default {
   "About Input Composer": "关于输入框",
   "Uploading image…": "正在上传图片…",
   "Sending…": "正在发送…",
+  "New line": "换行",
   "Insert into the terminal without executing": "插入终端但不执行",
   "Insert draft into the terminal": "将草稿插入终端",
   Insert: "插入",

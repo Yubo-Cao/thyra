@@ -34,8 +34,10 @@ function ctrlOnly(event: PromptEditorKeyEvent, key: string) {
 
 /**
  * What a key press in the prompt editor does, or null to leave it to the
- * editor. The composer send shortcut (Ctrl+Enter, Cmd+Enter on macOS) sends;
- * Enter, Shift+Enter and Alt+Enter break the line. With an empty draft
+ * editor. Enter sends and Shift+Enter or Alt+Enter break the line, except
+ * with an on-screen keyboard (`enterSends` false), whose Return has no
+ * Shift and so breaks the line. The composer send shortcut (Ctrl+Enter,
+ * Cmd+Enter on macOS) always sends. With an empty draft
  * the keys an agent reads outside its text (interrupt, history, mode toggle,
  * menus) go straight to the terminal, so they keep working with the editor
  * on top. IME composition always belongs to the editor.
@@ -46,18 +48,23 @@ export function promptEditorKeyAction(
     empty,
     applicationCursor,
     bindings,
+    enterSends,
   }: {
     empty: boolean;
     applicationCursor: boolean;
     bindings: ShortcutBindings;
+    enterSends: boolean;
   },
 ): PromptEditorKeyAction | null {
   if (event.isComposing || event.keyCode === 229) return null;
   if (matchesShortcut(event, "composer.send", bindings))
     return empty ? null : { type: "send" };
   if (event.key === "Enter") {
-    // A plain Enter in a draft is the editor's own line break.
-    if (plain(event)) return empty ? { type: "forward", data: "\r" } : null;
+    if (plain(event)) {
+      if (empty) return { type: "forward", data: "\r" };
+      // Without enterSends, Return is the editor's own line break.
+      return enterSends ? { type: "send" } : null;
+    }
     if (!event.ctrlKey && !event.metaKey) return { type: "newline" };
   }
   if (!empty) return null;
