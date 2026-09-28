@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { bridge } from "../api";
 import { t } from "../i18n";
@@ -15,7 +15,7 @@ import { terminalPushMatches } from "../terminalConnection";
 import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
 import { attachTerminalRenderer, TerminalFit } from "../terminalRenderer";
 import { b64toText, bytesToB64 } from "../utils";
-import { CloseButton } from "./ui/CloseButton";
+import { Dialog } from "./ui/Dialog";
 import "./PopupOverlay.css";
 
 const RESIZE_DEBOUNCE_MS = 150;
@@ -48,7 +48,8 @@ function cssSizeFrom(
 export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
   const popup = useStoreSelector((s) => s.popup);
   const connectionClient = useConnectionClient();
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  // The dialog renders its body once the overlay chunk has loaded.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<TerminalFit | null>(null);
   const attachedTerminalIdRef = useRef<string | null>(null);
@@ -59,7 +60,6 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
   // stream out from under it and the overlay never receives a frame.
   const liveAttachmentsRef = useRef(0);
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const closedAttemptsRef = useRef<number[]>([]);
   const [attachRetry, retryAttach] = useState(0);
 
@@ -75,17 +75,8 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
   // is not expected today, since Herdr allows only one at a time, but is
   // handled the same way as a fresh mount for safety).
   useEffect(() => {
-    const container = containerRef.current;
     if (!popup || !container) return;
     const terminalId = popup.terminal_id;
-    const activeElement = document.activeElement;
-    if (
-      !previousFocusRef.current?.isConnected &&
-      activeElement instanceof HTMLElement &&
-      !activeElement.closest(".popup-overlay-backdrop")
-    ) {
-      previousFocusRef.current = activeElement;
-    }
     // Same font stack and density as a normal pane: the popup is a terminal
     // like any other, and a prompt drawing Nerd Font glyphs must not fall back
     // to tofu just because it renders here.
@@ -266,46 +257,33 @@ export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
-      if (
-        !store.get().popup &&
-        client.isCurrent() &&
-        previousFocusRef.current?.isConnected
-      ) {
-        previousFocusRef.current.focus();
-        previousFocusRef.current = null;
-      }
     };
     // Title/size render separately; the theme is updated without reattaching.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popup?.terminal_id, connectionClient, attachRetry]);
+  }, [popup?.terminal_id, connectionClient, attachRetry, container]);
 
   if (!popup) return null;
 
+  // A pointer press outside closes it; Escape belongs to the popup's program.
   return (
-    <div
-      className="popup-overlay-backdrop"
-      onPointerDown={(e) => {
-        // Click outside the popup body closes it; inside, let it through.
-        if (e.target === e.currentTarget) void store.closePopup();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) void store.closePopup();
       }}
-    >
-      <div
-        className="popup-overlay-body"
-        style={{
-          width: cssSizeFrom(popup.width, 85, "1ch"),
+      title={popup.title}
+      closeLabel={t("Close popup")}
+      keyboardDismissable={false}
+      className="popup-overlay"
+      bodyClassName="popup-overlay-body"
+      style={
+        {
+          "--ui-dialog-width": cssSizeFrom(popup.width, 85, "1ch"),
           height: cssSizeFrom(popup.height, 80, "1.4em"),
-        }}
-      >
-        <div className="ui-bar popup-overlay-bar">
-          <span className="ui-bar-title">{popup.title}</span>
-          <span className="ui-bar-spacer" />
-          <CloseButton
-            label={t("Close popup")}
-            onClick={() => void store.closePopup()}
-          />
-        </div>
-        <div ref={containerRef} className="popup-overlay-terminal" />
-      </div>
-    </div>
+        } as CSSProperties
+      }
+    >
+      <div ref={setContainer} className="popup-overlay-terminal" />
+    </Dialog>
   );
 }

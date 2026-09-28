@@ -1,31 +1,20 @@
-/* Herdr popup terminal (e.g. a plugin's floating pane) over the app. */
-.popup-overlay-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.25);
+/* Herdr popup terminal (e.g. a plugin's floating pane): a Dialog sized from
+   the popup's configuration, its body the terminal edge to edge. */
+.ui-dialog.popup-overlay {
+  max-height: 100%;
 }
 
-.popup-overlay-body {
-  max-width: 96vw;
-  max-height: 92vh;
+.ui-dialog .popup-overlay-body {
   display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
   overflow: hidden;
   background: var(--terminal-bg);
-  box-shadow: var(--shadow-lg);
-}
-
-.popup-overlay-bar {
-  flex: 0 0 auto;
-  border-bottom: 0;
-  background: var(--shell-panel);
 }
 
 .popup-overlay-terminal {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
 }

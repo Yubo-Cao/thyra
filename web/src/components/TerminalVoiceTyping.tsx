@@ -26,6 +26,7 @@ import { voiceCleanupMode } from "../voice/voicePreferences";
 import "./TerminalVoiceTyping.css";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { keyboardOverlayOpen } from "./ui/overlayState";
 
 export type TerminalVoiceTyping = ReturnType<typeof useTerminalVoiceTyping>;
 
@@ -149,10 +150,7 @@ export function useTerminalVoiceTyping({
       at: number;
       finished: boolean;
     } | null = null;
-    const blocked = () =>
-      document.querySelector(
-        ".modal-backdrop, .ui-dialog-backdrop, .command-popover, .context-menu, .ui-menu-popover",
-      );
+    const blocked = keyboardOverlayOpen;
     const release = () => {
       const press = held;
       held = null;

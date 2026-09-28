@@ -2,6 +2,7 @@ import { workspaceCan } from "../capabilities";
 import { useEffect } from "react";
 import { CONFIG_MENU_ID } from "../components/ConfigMenu";
 import { requestClosePane, requestCloseTab } from "../components/TabBar";
+import { keyboardOverlayOpen } from "../components/ui/overlayState";
 import { activePaneIdForSnapshot } from "../paneJump";
 import { paneShortcutAction } from "../paneShortcuts";
 import { pluginActionShortcut } from "../pluginActionShortcuts";
@@ -16,17 +17,6 @@ import {
 import { isWorkspaceInspectorShortcut } from "../workspaceResource";
 import type { PaneJump } from "./paneJump";
 import type { WorkspaceInspector } from "./useWorkspaceInspector";
-
-// While a dialog, menu, or picker is open, window shortcuts stand down.
-// Legacy classes cover screens not yet on the ui/ overlays.
-const BLOCKING_OVERLAY_SELECTOR = [
-  ".ui-dialog-backdrop",
-  ".ui-menu-popover",
-  ".ui-select-popover",
-  ".modal-backdrop",
-  ".command-popover",
-  ".context-menu",
-].join(", ");
 
 // The prompt editor stands in for the terminal's input, so workspace, tab
 // and pane shortcuts work from it as they do from the terminal.
@@ -76,10 +66,8 @@ export function useAppShortcuts({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
-      if (
-        document.querySelector(BLOCKING_OVERLAY_SELECTOR) ||
-        document.getElementById(CONFIG_MENU_ID)
-      )
+      // While a dialog, menu, or picker is open, window shortcuts stand down.
+      if (keyboardOverlayOpen() || document.getElementById(CONFIG_MENU_ID))
         return;
       const claim = () => {
         e.preventDefault();
@@ -89,10 +77,7 @@ export function useAppShortcuts({
       // down, so the browser never acts on them.
       const claimUnlessEditing = () => {
         claim();
-        return (
-          isEditableElement(e.target) ||
-          !!document.querySelector(".modal-backdrop")
-        );
+        return isEditableElement(e.target);
       };
       if (paneJumpOpen) {
         const navigate = () => {

@@ -1,4 +1,9 @@
-import { Suspense, type FormEvent, type ReactNode } from "react";
+import {
+  Suspense,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { LazyDialog, useOpenedOnce } from "./lazyOverlays";
 
 export type DialogSize = "sm" | "md" | "lg" | "full";
@@ -38,6 +43,8 @@ export type DialogProps = {
   /** Marks the dialog busy (aria-busy) while it works. */
   busy?: boolean;
   className?: string;
+  /** Inline style for the panel, e.g. `--ui-dialog-width` for a sized dialog. */
+  style?: CSSProperties;
   bodyClassName?: string;
 };
 

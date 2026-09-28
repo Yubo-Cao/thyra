@@ -24,6 +24,7 @@ export function DialogImpl({
   role = "dialog",
   busy,
   className,
+  style,
   bodyClassName,
 }: DialogProps) {
   const content = (
@@ -72,6 +73,7 @@ export function DialogImpl({
           data-slot="modal-dialog"
           data-placement={placement}
           data-size={size}
+          style={style}
           className={cn(
             "modal__dialog modal__dialog--scroll-inside ui-dialog",
             className,

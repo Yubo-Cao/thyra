@@ -7,7 +7,6 @@ import {
 describe("overlay scrollbar exclusions", () => {
   test("excludes dialogs, popovers, menus, and mobile shortcut panels", () => {
     for (const match of [
-      ".modal-backdrop",
       ".popover-content",
       ".config-dropdown",
       ".context-menu",

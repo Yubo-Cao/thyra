@@ -1,5 +1,4 @@
 export const OVERLAY_SCROLLBAR_EXCLUDED_SELECTOR = [
-  ".modal-backdrop",
   ".popover-content",
   ".config-dropdown",
   ".context-menu",

@@ -8,7 +8,7 @@
  * must not steal focus from any of those surfaces.
  */
 const TERMINAL_FOCUS_OVERLAY_SELECTOR =
-  '.ui-popover, .modal-backdrop, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, .pane-jump-backdrop, .popup-overlay-backdrop, [role="dialog"], [role="menu"]';
+  '.ui-popover, .workspace-tree-panel, .workspace-inspector, .tabbar-utilities, .mobile-nav, .pane-jump-backdrop, [role="dialog"], [role="menu"]';
 const OPEN_POPOVER = ".ui-popover";
 
 type FocusableLike = Pick<Element, "closest">;

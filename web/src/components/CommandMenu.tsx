@@ -12,6 +12,7 @@ import type { CommandComboboxProps } from "./CommandCombobox";
 import { LazyBoundary } from "./LazyBoundary";
 import { isEditableElement } from "../utils";
 import { Button } from "./ui/Button";
+import { MODAL_OVERLAY_SELECTOR } from "./ui/overlayState";
 // The trigger's styles (.command-trigger) live with the command primitives.
 import "./ui/command.css";
 
@@ -26,9 +27,7 @@ export function isCommandMenuShortcut(e: KeyboardEvent) {
   // shortcut. Both handlers run on window, so listener order cannot decide.
   if (
     e.defaultPrevented ||
-    document.querySelector(
-      ".ui-dialog-backdrop, .modal-backdrop, .pane-jump-backdrop",
-    )
+    document.querySelector(`${MODAL_OVERLAY_SELECTOR}, .pane-jump-backdrop`)
   )
     return false;
   if (!shortcutMatches(e, "command.menu") || e.repeat) return false;
