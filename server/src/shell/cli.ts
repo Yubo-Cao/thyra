@@ -35,7 +35,7 @@ export async function runShellIntegrationCommand(
     );
     for (const row of result)
       console.log(
-        `${row.shell}: ${row.installed ? "installed" : "not installed"}${row.exists ? "" : " (shell not found)"}`,
+        `${row.shell}: ${row.installed ? "installed" : "not installed"}${row.exists ? (row.rc === false ? " (no rc file)" : "") : " (shell not found)"}`,
       );
     if (action === "status") {
       const dir = shellPaths().runtime;

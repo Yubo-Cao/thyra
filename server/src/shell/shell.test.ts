@@ -395,6 +395,20 @@ describe("installer and protocol", () => {
       env,
       (shell) => shell !== "fish",
     );
+    // A shell without an rc file is left alone rather than given one.
+    expect(await readdir(home)).not.toContain(".zshrc");
+    const zdotdir = join(home, "zdot");
+    await mkdir(zdotdir);
+    await writeFile(join(zdotdir, ".zshrc"), "# zsh rc");
+    await shellIntegration(
+      "install",
+      ["zsh"],
+      { ...env, ZDOTDIR: zdotdir },
+      () => true,
+    );
+    expect(await readFile(join(zdotdir, ".zshrc"), "utf8")).toMatch(
+      /^# zsh rc\n# >>> thyra shell integration >>>\n/,
+    );
     const first = await readFile(join(home, ".bashrc"), "utf8");
     await shellIntegration("install", ["bash", "zsh"], env, () => true);
     expect(await readFile(join(home, ".bashrc"), "utf8")).toBe(first);

@@ -44,22 +44,36 @@ export async function shellIntegration(
 ) {
   const paths = shellPaths(env);
   if (action === "install") await refreshShellScripts(env);
-  const result: { shell: ShellName; installed: boolean; exists: boolean }[] =
-    [];
+  const result: {
+    shell: ShellName;
+    installed: boolean;
+    exists: boolean;
+    /** False when the shell has no rc file to edit. */
+    rc?: boolean;
+  }[] = [];
   for (const shell of shells) {
     if (!exists(shell)) {
       result.push({ shell, installed: false, exists: false });
       continue;
     }
     const rc =
-      shell === "fish" ? paths.fishConfig : join(paths.home, `.${shell}rc`);
+      shell === "fish"
+        ? paths.fishConfig
+        : join((shell === "zsh" && env.ZDOTDIR) || paths.home, `.${shell}rc`);
     const old = await readFile(rc, "utf8").catch((error) => {
-      if (error.code === "ENOENT") return "";
+      if (error.code === "ENOENT") return null;
       throw error;
     });
-    let next = old;
+    // Creating a missing rc changes shell startup (zsh skips its new-user
+    // wizard), so only edit rc files the user already has. The fish conf.d
+    // file is ours alone.
+    if (old === null && shell !== "fish") {
+      result.push({ shell, installed: false, exists: true, rc: false });
+      continue;
+    }
+    let next = old ?? "";
     if (action !== "status") {
-      next = old.replace(block, "");
+      next = next.replace(block, "");
       if (action === "install") {
         const source = quote(join(paths.scripts, `thyra.${shell}`));
         const line =
@@ -67,13 +81,14 @@ export async function shellIntegration(
             ? `if set -q HERDR_PANE_ID; and test -r ${source}; source ${source}; end`
             : `[ -n "$HERDR_PANE_ID" ] && [ -r ${source} ] && . ${source}`;
         const integration = `${begin}\n${line}\n${end}\n`;
-        // Do not manufacture an unrelated newline that uninstall cannot undo.
+        // Append so the hooks load after the user's prompt setup (ble.sh,
+        // starship, ...), which they must wrap rather than precede.
         next =
           next && !next.endsWith("\n")
-            ? integration + next
+            ? `${next}\n${integration}`
             : next + integration;
       }
-      if (next !== old) {
+      if (next !== (old ?? "")) {
         await mkdir(dirname(rc), { recursive: true });
         const backedUp = (await readdir(dirname(rc))).some((name) =>
           join(dirname(rc), name).startsWith(`${rc}.bak-thyra-`),
