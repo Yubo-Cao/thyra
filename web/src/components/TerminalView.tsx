@@ -44,7 +44,7 @@ import {
   terminalComposerCloseWarning,
   terminalComposerDraftKey,
   terminalComposerDraftPaneIds,
-  terminalComposerRequest,
+  terminalComposerSend,
 } from "../terminalComposer";
 import { agentKind } from "../agentKind";
 import { useLayoutPreferences } from "../layoutPreferences";
@@ -96,7 +96,7 @@ import {
   useTerminalInput,
   useTerminalRefs,
 } from "./terminal/terminalSession";
-import { isEditableElement } from "../utils";
+import { bytesToB64, isEditableElement } from "../utils";
 import {
   useTerminalAppearance,
   useTerminalAttach,
@@ -121,6 +121,8 @@ const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 const ConfirmDialog = terminalConfirmDialog.Component;
 const Dialog = terminalMessageDialog.Component;
 
+// Between a typed single-line draft and its Enter; see submitTerminalComposer.
+const TYPED_ENTER_DELAY_MS = 200;
 // Dialogs and menus own the keyboard while open.
 const BLOCKING_OVERLAYS =
   ".modal-backdrop, .ui-dialog-backdrop, .command-popover, .ui-menu-popover";
@@ -700,8 +702,29 @@ export function TerminalView({
   const submitTerminalComposer = async (text: string, submit: boolean) => {
     const targetPaneId = refs.paneId.current;
     if (!targetPaneId) throw new Error(t("No active pane"));
-    const request = terminalComposerRequest(targetPaneId, text, submit);
-    await connectionClient.call(request.method, request.params);
+    const send = terminalComposerSend(targetPaneId, text, submit);
+    if (send.kind === "paste") {
+      await connectionClient.call(send.request.method, send.request.params);
+    } else {
+      const terminalId =
+        refs.desiredTerminal.current ?? refs.paneTerminalId.current;
+      if (!terminalId) throw new Error(t("No active pane"));
+      const type = (data: string) =>
+        connectionClient.call("terminal.input", {
+          terminal_id: terminalId,
+          data: bytesToB64(new TextEncoder().encode(data)),
+        });
+      if (send.text) await type(send.text);
+      if (send.enter) {
+        // Codex reads an Enter that arrives with a burst of characters as a
+        // line break in a paste; a pause makes it the submit key.
+        if (send.text)
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, TYPED_ENTER_DELAY_MS),
+          );
+        await type("\r");
+      }
+    }
     if (framesPaused) setInputEpoch((value) => value + 1);
   };
   const voiceTypingDisabledReason = control.access.viewOnly

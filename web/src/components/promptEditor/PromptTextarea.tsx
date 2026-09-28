@@ -18,6 +18,7 @@ export function PromptTextarea({
   onPasteFiles,
   onContentHeight,
   onCompositionChange,
+  onUse,
 }: PromptEditorSurfaceProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const measure = () => {
@@ -96,7 +97,9 @@ export function PromptTextarea({
         measure();
       }}
       onSelect={report}
+      onPointerDown={onUse}
       onKeyDown={(event) => {
+        onUse?.();
         if (onKey(event.nativeEvent, event.currentTarget.value === ""))
           event.preventDefault();
       }}

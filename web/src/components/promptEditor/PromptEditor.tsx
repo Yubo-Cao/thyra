@@ -10,7 +10,7 @@ import {
 } from "react";
 import type { AgentKind } from "../../agentKind";
 import { t } from "../../i18n";
-import { idlePrefetchAllowed } from "../../idlePrefetch";
+import { richEditorLoadPolicy } from "../../idlePrefetch";
 import { lazyPanel } from "../../lazyWithReload";
 import {
   type PromptEditorPlacement,
@@ -171,17 +171,28 @@ function sameMetrics(a: TerminalMetrics | null, b: TerminalMetrics | null) {
   );
 }
 
-/** Loads Monaco once startup has settled, unless the link is metered or 2G. */
-function useRichSurface() {
+/**
+ * Loads Monaco: at idle after startup on a fast 4G link, otherwise once the
+ * editor is first used (`used`), and never under Data Saver or on 2G.
+ */
+function useRichSurface(used: boolean) {
   const settled = useStartupSettled();
   const [ready, setReady] = useState(promptMonacoPanel.isLoaded);
   useEffect(() => {
-    if (!settled || ready || !idlePrefetchAllowed()) return;
+    if (!settled || ready) return;
+    const policy = richEditorLoadPolicy();
+    if (policy === "never" || (policy === "on-demand" && !used)) return;
     let cancelled = false;
     const load = () =>
       void promptMonacoPanel.preload().then(() => {
         if (!cancelled && promptMonacoPanel.isLoaded()) setReady(true);
       });
+    if (policy === "on-demand") {
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }
     const idle = window.requestIdleCallback
       ? window.requestIdleCallback(load, { timeout: 3000 })
       : window.setTimeout(load, 250);
@@ -190,7 +201,7 @@ function useRichSurface() {
       if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
       else window.clearTimeout(idle);
     };
-  }, [ready, settled]);
+  }, [ready, settled, used]);
   return ready;
 }
 
@@ -386,7 +397,8 @@ export function PromptEditor({
   }, [draftKey, text]);
 
   // Swap the textarea for Monaco when it arrives, never mid-composition.
-  const richReady = useRichSurface();
+  const [used, setUsed] = useState(false);
+  const richReady = useRichSurface(used);
   const [rich, setRich] = useState(richReady);
   const focusRich = useRef(false);
   useEffect(() => {
@@ -485,6 +497,7 @@ export function PromptEditor({
     onContentHeight: (height) => {
       if (!previewRef.current) setContentHeight(height);
     },
+    onUse: () => setUsed(true),
     onCompositionChange: (active) => {
       composingRef.current = active;
       setComposing(active);

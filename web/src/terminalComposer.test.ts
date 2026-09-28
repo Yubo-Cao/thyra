@@ -26,6 +26,8 @@ import {
   submitTerminalComposerDraft,
   terminalComposerImageFiles,
   uploadTerminalComposerImages,
+  terminalComposerSend,
+  terminalComposerTypedText,
 } from "./terminalComposer";
 
 describe("terminal composer drafts", () => {
@@ -425,5 +427,44 @@ describe("terminal composer core", () => {
     const png = new File(["a"], "a.png", { type: "image/png" });
     const text = new File(["b"], "b.txt", { type: "text/plain" });
     expect(terminalComposerImageFiles([png, null, text])).toEqual([png]);
+  });
+});
+
+describe("terminal composer send encoding", () => {
+  test("a single line is typed, then Enter", () => {
+    expect(terminalComposerSend("p1", "fix the bug", true)).toEqual({
+      kind: "type",
+      text: "fix the bug",
+      enter: true,
+    });
+    expect(terminalComposerSend("p1", "draft", false)).toEqual({
+      kind: "type",
+      text: "draft",
+      enter: false,
+    });
+  });
+
+  test("control characters in a typed line cannot act as keys", () => {
+    expect(terminalComposerTypedText("a\tb\x1b[A\x03c\x7fd\u0085e\u0000")).toBe(
+      "a b[Acde",
+    );
+    expect(terminalComposerSend("p1", "x\x1b\x04y", true)).toEqual({
+      kind: "type",
+      text: "xy",
+      enter: true,
+    });
+    // Printable text beyond ASCII stays as it is.
+    expect(terminalComposerTypedText("修复 ✓ émoji 🚀")).toBe(
+      "修复 ✓ émoji 🚀",
+    );
+  });
+
+  test("multiple lines keep the paste path", () => {
+    for (const text of ["one\ntwo", "one\r\ntwo", "one\u2028two"]) {
+      const send = terminalComposerSend("p1", text, true);
+      expect(send.kind).toBe("paste");
+      if (send.kind === "paste")
+        expect(send.request).toEqual(terminalComposerRequest("p1", text, true));
+    }
   });
 });

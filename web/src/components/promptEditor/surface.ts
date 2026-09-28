@@ -42,4 +42,6 @@ export type PromptEditorSurfaceProps = {
   onPasteFiles(data: DataTransfer | null): boolean;
   onContentHeight(pixels: number): void;
   onCompositionChange(composing: boolean): void;
+  /** The user clicked or typed into the surface (loads Monaco on demand). */
+  onUse?(): void;
 };

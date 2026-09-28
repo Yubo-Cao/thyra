@@ -1,5 +1,35 @@
 import { expect, test } from "bun:test";
-import { idlePrefetchAllowed, prefetchWhenIdle } from "./idlePrefetch";
+import {
+  idlePrefetchAllowed,
+  prefetchWhenIdle,
+  richEditorLoadPolicy,
+} from "./idlePrefetch";
+
+test("the rich editor prefetches only on fast 4G", () => {
+  expect(richEditorLoadPolicy({ effectiveType: "4g", downlink: 10 })).toBe(
+    "prefetch",
+  );
+  expect(richEditorLoadPolicy({ effectiveType: "4g", downlink: 5 })).toBe(
+    "prefetch",
+  );
+  // Slower or unmeasured links wait for the editor's first use.
+  expect(richEditorLoadPolicy({ effectiveType: "4g", downlink: 1.5 })).toBe(
+    "on-demand",
+  );
+  expect(richEditorLoadPolicy({ effectiveType: "4g" })).toBe("on-demand");
+  expect(richEditorLoadPolicy({ effectiveType: "3g", downlink: 10 })).toBe(
+    "on-demand",
+  );
+  expect(richEditorLoadPolicy(undefined)).toBe("on-demand");
+  // Data Saver and 2G keep the plain field.
+  expect(
+    richEditorLoadPolicy({ saveData: true, effectiveType: "4g", downlink: 50 }),
+  ).toBe("never");
+  expect(richEditorLoadPolicy({ effectiveType: "2g", downlink: 10 })).toBe(
+    "never",
+  );
+  expect(richEditorLoadPolicy({ effectiveType: "slow-2g" })).toBe("never");
+});
 
 function idleTarget() {
   const callbacks: (() => void)[] = [];

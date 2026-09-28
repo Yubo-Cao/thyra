@@ -415,6 +415,46 @@ export function terminalComposerRequest(
 }
 
 /**
+ * A single line as typed characters: control characters (Tab, Escape, and
+ * the like) would act as keys, so Tab becomes a space and the rest are
+ * dropped.
+ */
+export function terminalComposerTypedText(text: string): string {
+  return Array.from(text, (char) => {
+    if (char === "\t") return " ";
+    const code = char.charCodeAt(0);
+    return code < 0x20 || (code >= 0x7f && code <= 0x9f) ? "" : char;
+  }).join("");
+}
+
+export type TerminalComposerSend =
+  /** Multi-line: one paste, so the agent cannot submit at the first break. */
+  | {
+      kind: "paste";
+      request: ReturnType<typeof terminalComposerRequest>;
+    }
+  /** One line: typed like keystrokes, then Enter pressed on its own. */
+  | { kind: "type"; text: string; enter: boolean };
+
+/**
+ * How a draft reaches the pane. Agents treat a bracketed paste as pasted
+ * content (Claude Code quotes it back as "[Pasted text]"), so a single line
+ * is sent as ordinary typing and only multi-line drafts use the paste path.
+ */
+export function terminalComposerSend(
+  paneId: string,
+  text: string,
+  submit: boolean,
+): TerminalComposerSend {
+  if (/[\r\n\u2028\u2029]/.test(text))
+    return {
+      kind: "paste",
+      request: terminalComposerRequest(paneId, text, submit),
+    };
+  return { kind: "type", text: terminalComposerTypedText(text), enter: submit };
+}
+
+/**
  * Inserts an uploaded image path at the composer caret, replacing the current
  * selection. A single space is added before the path when it would otherwise
  * touch non-whitespace text, and always after it unless whitespace follows,

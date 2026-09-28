@@ -27,6 +27,29 @@ export function idlePrefetchAllowed(
 }
 
 /**
+ * How a large optional editor (Monaco, about 750 KiB gzip) may load:
+ * prefetched when idle only on a link the browser reports as fast 4G,
+ * never under Data Saver or on 2G, and otherwise on first use. Without the
+ * Network Information API the speed is unknown, so it waits for first use.
+ */
+export function richEditorLoadPolicy(
+  connection: (NetworkInformationLike & { downlink?: number }) | undefined = (
+    globalThis.navigator as
+      | { connection?: NetworkInformationLike & { downlink?: number } }
+      | undefined
+  )?.connection,
+): "prefetch" | "on-demand" | "never" {
+  if (!idlePrefetchAllowed(connection)) return "never";
+  if (
+    connection?.effectiveType === "4g" &&
+    (connection.downlink ?? 0) >= 5 &&
+    !connection.saveData
+  )
+    return "prefetch";
+  return "on-demand";
+}
+
+/**
  * Run loaders one at a time, each in its own idle period, so prefetching
  * never competes with terminal output for the main thread or the link.
  * Returns a cancel function.
