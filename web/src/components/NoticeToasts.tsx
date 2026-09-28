@@ -159,6 +159,40 @@ function useUpdateToast(info: UpdateInfo | null, installing: boolean) {
   }, [available, installing]);
 }
 
+/**
+ * A newer frontend build is deployed: offer a reload rather than reloading
+ * under the user. Dismissing it keeps the running build until the next load.
+ */
+function useWebUpdateToast(available: boolean) {
+  const shown = useRef<string | null>(null);
+  useEffect(() => {
+    if (!available) {
+      if (shown.current) toast.close(shown.current);
+      shown.current = null;
+      return;
+    }
+    if (shown.current) return;
+    const id = toast.show(
+      {
+        title: t("A new version of Thyra is available"),
+        tone: "info",
+        action: {
+          label: t("Reload page"),
+          onAction: () => window.location.reload(),
+        },
+      },
+      {
+        timeout: 0,
+        onClose: () => {
+          if (shown.current === id) shown.current = null;
+          if (store.get().webUpdateAvailable) store.dismissWebUpdate();
+        },
+      },
+    );
+    shown.current = id;
+  }, [available]);
+}
+
 /** Renders the toast region and keeps it in sync with the store. */
 export function NoticeToasts({
   onNoticeAction,
@@ -170,9 +204,11 @@ export function NoticeToasts({
       notice: state.notice,
       updateInfo: state.updateInfo,
       updateInstalling: state.updateInstalling,
+      webUpdateAvailable: state.webUpdateAvailable,
     })),
   );
   useNoticeToast(s.notice, onNoticeAction);
   useUpdateToast(s.updateInfo, s.updateInstalling);
+  useWebUpdateToast(s.webUpdateAvailable);
   return <ToastRegion />;
 }

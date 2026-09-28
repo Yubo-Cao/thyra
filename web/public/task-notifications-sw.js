@@ -1,6 +1,8 @@
 // Thyra's single service worker (scope "/"): offline-capable app shell and
-// asset caching for slow links, plus Web Push task notifications. Keep one
-// worker at this URL; push subscriptions belong to this registration.
+// versioned asset caching for slow links, plus Web Push task notifications.
+// Keep one worker at this URL; push subscriptions belong to this registration.
+// Nothing here is specific to one build, so a deploy does not replace the
+// worker; builds are tracked through /thyra-assets.json instead.
 
 // Bump a version when the stored format or strategy changes; activation
 // deletes every other "thyra-" cache.
@@ -12,6 +14,11 @@ const MANIFEST_URL = "/thyra-assets.json";
 const MANIFEST_KEY = "/__thyra/asset-manifest";
 // A cached shell is used when the network has not answered in this time.
 const SHELL_NETWORK_TIMEOUT_MS = 4000;
+// Cached assets of this many earlier builds survive a new one, so pages still
+// running them (open tabs, a stale shell) can lazy-load their chunks.
+const PREVIOUS_BUILDS = 2;
+// A manifest fetched this recently answers again without a request.
+const MANIFEST_REUSE_MS = 30_000;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -115,15 +122,47 @@ async function shellResponse(network) {
   });
 }
 
+/**
+ * Asset downloads in flight by URL (a promise that settles once the file is
+ * cached or refused), so a page request and precaching never fetch the same
+ * file twice.
+ */
+const downloads = new Map();
+
+function track(url, stored) {
+  const settled = stored
+    .catch(() => {})
+    .finally(() => {
+      if (downloads.get(url) === settled) downloads.delete(url);
+    });
+  downloads.set(url, settled);
+  return settled;
+}
+
+/** Cache first: a fingerprinted URL never changes content. */
 async function assetResponse(event, request) {
   const cache = await caches.open(ASSET_CACHE);
   const cached = await cache.match(request.url, { ignoreVary: true });
   if (cached) return cached;
-  const response = await fetch(request);
-  if (isCacheableAsset(response)) {
-    event.waitUntil(cache.put(request.url, response.clone()).catch(() => {}));
+  const pending = downloads.get(request.url);
+  if (pending) {
+    await pending;
+    const joined = await cache.match(request.url, { ignoreVary: true });
+    if (joined) return joined;
   }
-  return response;
+  const network = fetch(request);
+  // One copy streams to the page, the other into the cache.
+  event.waitUntil(
+    track(
+      request.url,
+      network.then((response) =>
+        isCacheableAsset(response)
+          ? cache.put(request.url, response.clone())
+          : undefined,
+      ),
+    ),
+  );
+  return network;
 }
 
 async function storeShell(response) {
@@ -135,11 +174,11 @@ async function storeShell(response) {
   ]);
   await cache.put(SHELL_KEY, response);
   if (text !== previousText || !(await cache.match(MANIFEST_KEY))) {
-    await refreshAssetManifest();
+    await syncBuild(true);
   }
 }
 
-function isAssetManifest(value) {
+function isBuild(value) {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -149,28 +188,59 @@ function isAssetManifest(value) {
   );
 }
 
+function isAssetManifest(value) {
+  return (
+    isBuild(value) &&
+    (value.precache === undefined ||
+      (Array.isArray(value.precache) &&
+        value.precache.every(
+          (path) => typeof path === "string" && isAssetPath(path),
+        )))
+  );
+}
+
+let recentManifest = null;
+
 /**
- * Drop cached assets that neither the current nor the previous build uses.
- * Keeping the previous build lets a page that started from a cached shell
- * finish loading while a newer shell is being stored.
+ * Fetch the server's build manifest and, when the build changed, drop cached
+ * assets that neither it nor the previous few builds use. Keeping earlier
+ * builds lets pages started from them (a stale shell, a tab left open across
+ * a deploy) finish loading; the server also keeps their files.
  */
-async function refreshAssetManifest() {
+async function syncBuild(fresh = false) {
+  if (
+    !fresh &&
+    recentManifest &&
+    Date.now() - recentManifest.at < MANIFEST_REUSE_MS
+  ) {
+    return recentManifest.manifest;
+  }
   const response = await fetch(MANIFEST_URL, {
     cache: "no-cache",
     credentials: "same-origin",
   });
-  if (!response.ok || response.redirected) return;
+  if (!response.ok || response.redirected) return null;
   const manifest = await response.json().catch(() => null);
-  if (!isAssetManifest(manifest)) return;
+  if (!isAssetManifest(manifest)) return null;
+  recentManifest = { at: Date.now(), manifest };
   const shell = await caches.open(SHELL_CACHE);
   const stored = await shell
     .match(MANIFEST_KEY)
     .then((entry) => entry?.json())
     .catch(() => null);
-  const current = isAssetManifest(stored?.current) ? stored.current : null;
-  if (current?.version === manifest.version) return;
+  const current = isBuild(stored?.current) ? stored.current : null;
+  if (current?.version === manifest.version) return manifest;
+  const previous = [
+    current,
+    ...(Array.isArray(stored?.previous) ? stored.previous : []),
+  ]
+    .filter((build) => isBuild(build) && build.version !== manifest.version)
+    .slice(0, PREVIOUS_BUILDS)
+    .map(({ version, assets }) => ({ version, assets }));
   const keep = new Set(manifest.assets);
-  for (const path of current?.assets ?? []) keep.add(path);
+  for (const build of previous) {
+    for (const path of build.assets) keep.add(path);
+  }
   const assets = await caches.open(ASSET_CACHE);
   for (const request of await assets.keys()) {
     if (!keep.has(new URL(request.url).pathname)) await assets.delete(request);
@@ -180,23 +250,84 @@ async function refreshAssetManifest() {
     new Response(
       JSON.stringify({
         current: { version: manifest.version, assets: manifest.assets },
+        previous,
       }),
       { headers: { "content-type": "application/json" } },
     ),
   );
+  return manifest;
 }
 
-// Copy from the HTTP cache only: priming must never download anything again.
+/**
+ * Download the build's app shell (entry and terminal chunks, core font
+ * slices) that is not cached yet, one file at a time. Anything the page
+ * already loaded comes from the HTTP cache, not the network.
+ */
+async function precacheBuild(manifest) {
+  const assets = await caches.open(ASSET_CACHE);
+  for (const path of manifest.precache ?? []) {
+    const url = new URL(path, self.location.origin).href;
+    if (await assets.match(url, { ignoreVary: true })) continue;
+    const pending = downloads.get(url);
+    if (pending) {
+      await pending;
+      continue;
+    }
+    let stored = false;
+    await track(
+      url,
+      fetch(url, { cache: "force-cache", credentials: "same-origin" }).then(
+        (response) => {
+          if (!isCacheableAsset(response)) return undefined;
+          stored = true;
+          return assets.put(url, response);
+        },
+      ),
+    );
+    // Offline or refused: stop; the next load caches what it uses.
+    if (!stored) return;
+  }
+}
+
+async function syncAndPrecache() {
+  const manifest = await syncBuild();
+  if (manifest) await precacheBuild(manifest);
+}
+
+/**
+ * A newer build is deployed while an older page runs: store its shell, so
+ * the reload the page offers starts it even when the network is slower than
+ * the shell timeout, then prepare its app shell in the background.
+ */
+async function prepareUpdate() {
+  try {
+    const response = await fetch(SHELL_KEY, {
+      cache: "no-cache",
+      credentials: "same-origin",
+      redirect: "manual",
+      headers: { accept: "text/html" },
+    });
+    if (isCacheableShell(response)) await storeShell(response);
+  } catch {
+    // The reload fetches the shell itself.
+  }
+  await syncAndPrecache();
+}
+
+// Copy from the HTTP cache without touching the network.
 const FROM_HTTP_CACHE = {
   cache: "only-if-cached",
   mode: "same-origin",
   credentials: "same-origin",
 };
+// The HTTP cache first, the network only when it has no copy.
+const PREFER_HTTP_CACHE = { cache: "force-cache", credentials: "same-origin" };
 
 /**
- * The page loaded its first assets before this worker controlled it; copy
- * those still in the HTTP cache so the next visit is served locally. Anything
- * missing is cached by the worker when the page next requests it.
+ * The page loaded these assets before this worker controlled it; copy them
+ * from the HTTP cache so the next visit is served locally. WebKit can miss a
+ * file it has just loaded (or refuse `only-if-cached`); since the page uses
+ * the file, it is then fetched through the HTTP cache instead.
  */
 async function primeCache(urls) {
   const assets = await caches.open(ASSET_CACHE);
@@ -215,12 +346,22 @@ async function primeCache(urls) {
     ) {
       continue;
     }
-    try {
-      const response = await fetch(url.href, FROM_HTTP_CACHE);
-      if (isCacheableAsset(response)) await assets.put(url.href, response);
-    } catch {
-      // Not in the HTTP cache: the next controlled load caches it instead.
-    }
+    if (downloads.has(url.href)) continue;
+    await track(
+      url.href,
+      fetch(url.href, FROM_HTTP_CACHE)
+        .catch(() => null)
+        .then((copy) =>
+          copy && isCacheableAsset(copy)
+            ? copy
+            : fetch(url.href, PREFER_HTTP_CACHE),
+        )
+        .then((response) =>
+          isCacheableAsset(response)
+            ? assets.put(url.href, response)
+            : undefined,
+        ),
+    );
   }
   const shell = await caches.open(SHELL_CACHE);
   if (!(await shell.match(SHELL_KEY))) {
@@ -238,13 +379,18 @@ async function primeCache(urls) {
 
 self.addEventListener("message", (event) => {
   const data = event.data;
-  if (data?.type !== "thyra:prime-cache" || !Array.isArray(data.urls)) return;
   if (event.origin && event.origin !== self.location.origin) return;
-  event.waitUntil(
-    primeCache(
-      data.urls.filter((url) => typeof url === "string").slice(0, 500),
-    ).catch(() => {}),
-  );
+  if (data?.type === "thyra:prime-cache" && Array.isArray(data.urls)) {
+    event.waitUntil(
+      primeCache(
+        data.urls.filter((url) => typeof url === "string").slice(0, 500),
+      )
+        .then(() => (data.precache === true ? syncAndPrecache() : null))
+        .catch(() => {}),
+    );
+  } else if (data?.type === "thyra:prepare-update") {
+    event.waitUntil(prepareUpdate().catch(() => {}));
+  }
 });
 
 self.addEventListener("push", (event) => {

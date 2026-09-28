@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { Plugin, Rollup } from "vite";
 
@@ -100,16 +100,48 @@ function listFiles(root: string, directory: string): string[] {
 }
 
 /**
- * Write `thyra-assets.json`: every fingerprinted file under /assets (the
- * service worker drops cached files that are not listed) and the boot list
- * the server compresses ahead of the first request (the terminal view's
- * static closure and the terminal font stylesheet).
+ * Upright regular and bold font files a core terminal font stylesheet
+ * declares: the ASCII, Latin-1 and Powerline glyphs of nearly every terminal
+ * screen (prompts and TUIs use bold). Italic slices are cached on first use.
+ */
+export function coreFontFiles(css: string): string[] {
+  const files: string[] = [];
+  for (const [block] of css.matchAll(/@font-face\s*\{[^}]*\}/g)) {
+    if (!/font-style:\s*normal/.test(block)) continue;
+    if (!/font-weight:\s*(?:400|700)\b/.test(block)) continue;
+    const url = block.match(/url\(\s*"?(\/assets\/[^")\s]+)"?\s*\)/)?.[1];
+    if (url) files.push(url);
+  }
+  return files;
+}
+
+function findChunk(
+  bundle: OutputBundle,
+  matches: (chunk: Rollup.OutputChunk) => boolean,
+): Rollup.OutputChunk | undefined {
+  for (const chunk of Object.values(bundle)) {
+    if (chunk.type === "chunk" && matches(chunk)) return chunk;
+  }
+  return undefined;
+}
+
+/**
+ * Write `thyra-assets.json`:
+ * - `assets`: every fingerprinted file under /assets (the service worker
+ *   drops cached files that no recent build lists);
+ * - `boot`: what the server compresses before the first request (the terminal
+ *   view's static closure and the terminal font stylesheets);
+ * - `precache`: the versioned app shell the service worker keeps ready (the
+ *   entry and terminal closures, the WebGL renderer, the core font stylesheet
+ *   and its regular and bold slices).
  */
 export function assetManifestPlugin(
   bootModule = "/src/components/TerminalView.tsx",
 ): Plugin {
   let outDir = "";
   let boot: string[] = [];
+  let shell: string[] = [];
+  const bootName = bootModule.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
   return {
     name: "thyra-asset-manifest",
     apply: "build",
@@ -117,25 +149,55 @@ export function assetManifestPlugin(
       outDir = resolve(config.root, config.build.outDir);
     },
     generateBundle(_options, bundle) {
-      const terminal = Object.values(bundle).find(
+      // The terminal view may share its chunk with other modules, so it is
+      // found by chunk name as well as by facade module.
+      const terminal = findChunk(
+        bundle,
         (chunk) =>
-          chunk.type === "chunk" &&
-          chunk.facadeModuleId?.replace(/\\/g, "/").endsWith(bootModule),
+          chunk.name === bootName ||
+          chunk.facadeModuleId?.replace(/\\/g, "/").endsWith(bootModule) ===
+            true,
       );
       boot = terminal ? chunkClosure(bundle, terminal.fileName) : [];
+      const webgl = findChunk(bundle, (chunk) =>
+        chunk.moduleIds.some((id) => /[/\\]addon-webgl[/\\]/.test(id)),
+      );
+      shell = [
+        ...Object.values(bundle).flatMap((chunk) =>
+          chunk.type === "chunk" && chunk.isEntry
+            ? chunkClosure(bundle, chunk.fileName)
+            : [],
+        ),
+        ...boot,
+        ...(webgl ? chunkClosure(bundle, webgl.fileName) : []),
+      ];
     },
     closeBundle() {
       const assets = listFiles(outDir, join(outDir, "assets")).sort();
+      const listed = new Set(assets);
       const fonts = assets.filter((path) =>
         /^\/assets\/fonts\/[^/]+\/fonts-[^/]+\.css$/.test(path),
       );
+      const coreFonts = fonts.filter((path) => path.includes("/fonts-core-"));
+      const precache = [
+        ...shell,
+        ...coreFonts,
+        ...coreFonts.flatMap((path) =>
+          coreFontFiles(readFileSync(join(outDir, path), "utf8")),
+        ),
+      ].filter((path) => listed.has(path));
       const version = createHash("sha256")
         .update(assets.join("\n"))
         .digest("hex")
         .slice(0, 16);
       writeFileSync(
         join(outDir, "thyra-assets.json"),
-        JSON.stringify({ version, boot: [...boot, ...fonts], assets }),
+        JSON.stringify({
+          version,
+          boot: [...new Set([...boot, ...fonts])],
+          precache: [...new Set(precache)],
+          assets,
+        }),
       );
     },
   };

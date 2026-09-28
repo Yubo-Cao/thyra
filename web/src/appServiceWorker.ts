@@ -2,6 +2,28 @@ import { afterStartup } from "./startupGate";
 import { NOTIFICATION_WORKER } from "./taskNotifications";
 
 export const PRIME_CACHE_MESSAGE = "thyra:prime-cache";
+export const PREPARE_UPDATE_MESSAGE = "thyra:prepare-update";
+
+/** Whether the bridge serves a different build than the page's entry script. */
+export function servesOtherBuild(
+  served: string | undefined,
+  doc: Pick<Document, "querySelector"> = document,
+): boolean {
+  const running = doc
+    .querySelector('script[type="module"][src^="/assets/"]')
+    ?.getAttribute("src");
+  return Boolean(running && served && running !== served);
+}
+
+/**
+ * Let the worker fetch the newer build's shell before the page offers a
+ * reload, so the reload starts it from the cache on a slow link.
+ */
+export function prepareAppUpdate(): void {
+  navigator.serviceWorker?.controller?.postMessage({
+    type: PREPARE_UPDATE_MESSAGE,
+  });
+}
 
 /** Same-origin fingerprinted assets this page has already loaded. */
 export function loadedAssetUrls(
@@ -54,12 +76,17 @@ export function registerAppServiceWorker(): void {
       .register(NOTIFICATION_WORKER, { updateViaCache: "none" })
       .then(() => serviceWorker.ready)
       .then((registration) => {
-        const prime = (entries: readonly { name: string }[]) =>
+        const prime = (
+          entries: readonly { name: string }[],
+          precache = false,
+        ) =>
           registration.active?.postMessage({
             type: PRIME_CACHE_MESSAGE,
             urls: loadedAssetUrls(entries, window.location.origin),
+            precache,
           });
-        prime(performance.getEntriesByType("resource"));
+        // The first message also has the worker precache the app shell.
+        prime(performance.getEntriesByType("resource"), true);
         // Downloads started before the worker took control (the terminal
         // font, the WebGL renderer) finish outside it; prime those too.
         new PerformanceObserver((list) => prime(list.getEntries())).observe({

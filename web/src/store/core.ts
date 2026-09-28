@@ -77,6 +77,8 @@ export interface State extends ServerSessionState {
   updateInstalling: boolean;
   pendingRestartVersion: string | null;
   dismissedUpdateVersion: string | null;
+  /** The bridge serves a newer frontend build than this page runs. */
+  webUpdateAvailable: boolean;
 }
 
 export interface Notice {
@@ -235,6 +237,7 @@ const initialState: State = {
   updateInstalling: false,
   pendingRestartVersion: storedPendingRestartVersion(),
   dismissedUpdateVersion: null,
+  webUpdateAvailable: false,
 };
 const initializer: StateCreator<State> = () => initialState;
 

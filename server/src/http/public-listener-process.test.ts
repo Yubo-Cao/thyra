@@ -242,7 +242,51 @@ esac
         .getSetCookie()
         .find((cookie) => cookie.startsWith("thyra_session="));
       expect(session).toContain("; Secure");
+      expect(tailnet.headers.get("cache-control")).toBe(
+        "private, no-cache, must-revalidate",
+      );
       const cookie = session?.split(";", 1)[0] ?? "";
+
+      // Fingerprinted assets are one public, cookie-free response on both
+      // listeners, so Cloudflare can cache them: tailnet login never runs
+      // for them and the public listener serves them before login.
+      const built: { assets: string[] } = await Bun.file(
+        join(import.meta.dir, "../../public/thyra-assets.json"),
+      ).json();
+      const entryChunk = built.assets.find((path) =>
+        /\/index-[^/]+\.js$/.test(path),
+      );
+      const font = built.assets.find((path) => path.endsWith(".woff2"));
+      const whoisBefore = await readFile(whoisLog, "utf8").catch(() => "");
+      for (const path of [entryChunk!, font!]) {
+        const viaTailnet = await request(bases.primary, path, {
+          headers: { ...caddy("100.64.7.7"), "accept-encoding": "br" },
+        });
+        const viaPublic = await pub(path, {
+          headers: { ...cloudflared(), "accept-encoding": "br" },
+        });
+        for (const response of [viaTailnet, viaPublic]) {
+          expect(response.status).toBe(200);
+          expect(response.headers.getSetCookie()).toEqual([]);
+          expect(response.headers.get("cache-control")).toBe(
+            "public, max-age=31536000, immutable",
+          );
+          expect(response.headers.get("content-security-policy")).toBeNull();
+        }
+        expect(viaPublic.headers.get("etag")).toBe(
+          viaTailnet.headers.get("etag"),
+        );
+        expect(viaPublic.headers.get("strict-transport-security")).toContain(
+          "max-age=",
+        );
+        if (path === entryChunk) {
+          expect(viaPublic.headers.get("content-encoding")).toBe("br");
+          expect(viaPublic.headers.get("vary")).toBe("Accept-Encoding");
+        }
+      }
+      expect(await readFile(whoisLog, "utf8").catch(() => "")).toBe(
+        whoisBefore,
+      );
       expect(
         (
           await request(bases.primary, "/api/health", {

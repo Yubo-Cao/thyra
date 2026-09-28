@@ -160,7 +160,11 @@ describe("public static assets", () => {
     ["/task-notifications-sw.js", false],
     ["/thyra-assets.json", false],
     ["/assets/../index.html", false],
-    ["/assets/sub/file.js", false],
+    ["/assets/./index.html", false],
+    ["/assets/fonts/maple/400/0a1b2c.woff2", true],
+    ["/assets/fonts/../../index.html", false],
+    ["/assets/", false],
+    ["/assets//a.js", false],
     ["/api/health", false],
   ])("%s -> %p", (path, allowed) => {
     expect(isPublicStaticAsset(path)).toBe(allowed);

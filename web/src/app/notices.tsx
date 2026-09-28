@@ -28,7 +28,8 @@ export function NoticeHost({
   const { notice, updateAvailable } = useStoreSelector(
     useShallow((state) => ({
       notice: state.notice,
-      updateAvailable: !!state.updateInfo?.update_available,
+      updateAvailable:
+        !!state.updateInfo?.update_available || state.webUpdateAvailable,
     })),
   );
   useEffect(() => {

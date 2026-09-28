@@ -52,6 +52,7 @@ export default {
   "Open terminal composer, unsent draft": "打开终端输入框，有未发送的草稿",
   Composer: "输入框",
   "Thyra {version} is available": "Thyra {version} 已可用",
+  "A new version of Thyra is available": "Thyra 有新版本",
   "Current {version}": "当前版本 {version}",
   "ready to update and restart": "可以更新并重启",
   "Updating...": "正在更新...",

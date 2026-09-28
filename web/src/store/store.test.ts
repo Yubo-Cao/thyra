@@ -237,6 +237,7 @@ function partitionState(): State {
     updateInstalling: false,
     pendingRestartVersion: null,
     dismissedUpdateVersion: null,
+    webUpdateAvailable: false,
   };
 }
 

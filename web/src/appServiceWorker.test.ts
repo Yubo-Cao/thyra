@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { loadedAssetUrls } from "./appServiceWorker";
+import { loadedAssetUrls, servesOtherBuild } from "./appServiceWorker";
 
 const origin = "https://thyra.example";
 const workerSource = readFileSync(
@@ -84,7 +84,7 @@ function serverResponse(
 
 const immutable = {
   "content-type": "text/javascript; charset=utf-8",
-  "cache-control": "private, max-age=31536000, immutable",
+  "cache-control": "public, max-age=31536000, immutable",
 };
 const html = { "content-type": "text/html; charset=utf-8" };
 
@@ -267,12 +267,13 @@ describe("app service worker caching", () => {
     expect(await (await shell.match("/"))?.text()).toBe("<p>new</p>");
   });
 
-  test("a new build prunes assets used by neither it nor the previous build", async () => {
+  test("a new build prunes assets used by neither it nor the two builds before it", async () => {
     let version = 1;
     const builds: Record<number, string[]> = {
       1: ["/assets/vendor.js", "/assets/app-1.js"],
       2: ["/assets/vendor.js", "/assets/app-2.js"],
       3: ["/assets/vendor.js", "/assets/app-3.js"],
+      4: ["/assets/vendor.js", "/assets/app-4.js"],
     };
     const { listeners, storage } = loadWorker((request) => {
       const url = typeof request === "string" ? request : request.url;
@@ -287,16 +288,18 @@ describe("app service worker caching", () => {
     const assets = await storage.open("thyra-assets-v1");
     const cached = async () =>
       (await assets.keys()).map((r) => new URL(r.url).pathname).sort();
-    for (version = 1; version <= 3; version++) {
+    for (version = 1; version <= 4; version++) {
       await dispatchFetch(listeners, "/", { mode: "navigate" });
       for (const path of builds[version]!) {
         await dispatchFetch(listeners, path);
       }
     }
-    // Build 3 keeps its own files and build 2's; build 1's app chunk is gone.
+    // Build 4 keeps its own files and those of builds 2 and 3, which pages
+    // opened earlier may still load; build 1's app chunk is gone.
     expect(await cached()).toEqual([
       "/assets/app-2.js",
       "/assets/app-3.js",
+      "/assets/app-4.js",
       "/assets/vendor.js",
     ]);
   });
@@ -342,7 +345,7 @@ describe("app service worker caching", () => {
       .map(([request]) => String(request))
       .filter((url) => url.includes("/assets/"));
     expect(assetUrls).toEqual([`${origin}/assets/a.js`]);
-    // Priming only copies from the HTTP cache; it never downloads again.
+    // Priming copies from the HTTP cache when it has the file.
     for (const [request, init] of fetch.mock.calls) {
       if (String(request).endsWith("/thyra-assets.json")) continue;
       expect(init).toMatchObject({ cache: "only-if-cached" });
@@ -351,6 +354,177 @@ describe("app service worker caching", () => {
     const shell = await storage.open("thyra-shell-v1");
     expect(await (await shell.match("/"))?.text()).toBe("<p>app</p>");
   });
+
+  test("priming falls back to the HTTP cache or network when WebKit has no copy", async () => {
+    const { listeners, storage, fetch } = loadWorker((request, init) => {
+      const url = typeof request === "string" ? request : request.url;
+      if (init?.cache === "only-if-cached")
+        throw new TypeError("not in the cache");
+      if (url.includes("/assets/"))
+        return serverResponse("a", { headers: immutable });
+      return serverResponse("<p>app</p>", { headers: html });
+    });
+    await dispatchLifetime(listeners.message!, {
+      origin,
+      data: { type: "thyra:prime-cache", urls: [`${origin}/assets/a.js`] },
+    });
+    const assetCalls = fetch.mock.calls.filter(([request]) =>
+      String(request).includes("/assets/"),
+    );
+    expect(assetCalls.map(([, init]) => init?.cache)).toEqual([
+      "only-if-cached",
+      "force-cache",
+    ]);
+    expect((await storage.open("thyra-assets-v1")).entries.size).toBe(1);
+  });
+
+  test("after priming, the build's app shell is precached through the HTTP cache", async () => {
+    const manifest = {
+      version: "v1",
+      assets: ["/assets/a.js", "/assets/b.js", "/assets/lazy.js"],
+      precache: ["/assets/a.js", "/assets/b.js"],
+    };
+    const { listeners, storage, fetch } = loadWorker((request) => {
+      const url = typeof request === "string" ? request : request.url;
+      if (url.endsWith("/thyra-assets.json"))
+        return serverResponse(JSON.stringify(manifest));
+      if (url.includes("/assets/"))
+        return serverResponse(url, { headers: immutable });
+      return serverResponse("<p>app</p>", { headers: html });
+    });
+    await dispatchLifetime(listeners.message!, {
+      origin,
+      data: {
+        type: "thyra:prime-cache",
+        urls: [`${origin}/assets/a.js`],
+        precache: true,
+      },
+    });
+    const assets = await storage.open("thyra-assets-v1");
+    expect([...assets.entries.keys()].sort()).toEqual([
+      `${origin}/assets/a.js`,
+      `${origin}/assets/b.js`,
+    ]);
+    // The unloaded shell file may come from the network, but through the
+    // HTTP cache; lazy chunks wait for their first use.
+    const precached = fetch.mock.calls.find(([request]) =>
+      String(request).endsWith("/assets/b.js"),
+    );
+    expect(precached?.[1]).toMatchObject({ cache: "force-cache" });
+  });
+
+  test("a page request joins a precache download of the same file", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { listeners, fetch } = loadWorker(async (request) => {
+      const url = typeof request === "string" ? request : request.url;
+      if (url.endsWith("/thyra-assets.json"))
+        return serverResponse(
+          JSON.stringify({
+            version: "v1",
+            assets: ["/assets/b.js"],
+            precache: ["/assets/b.js"],
+          }),
+        );
+      if (url.endsWith("/assets/b.js")) {
+        await gate;
+        return serverResponse("b", { headers: immutable });
+      }
+      return serverResponse("<p>app</p>", { headers: html });
+    });
+    const priming = dispatchLifetime(listeners.message!, {
+      origin,
+      data: { type: "thyra:prime-cache", urls: [], precache: true },
+    });
+    while (
+      !fetch.mock.calls.some(([request]) =>
+        String(request).endsWith("/assets/b.js"),
+      )
+    ) {
+      await Bun.sleep(0);
+    }
+    const page = dispatchFetch(listeners, "/assets/b.js");
+    // The page request is waiting on the precache download, not fetching.
+    for (let tick = 0; tick < 20; tick++) await Bun.sleep(0);
+    release?.();
+    expect(await (await page)?.text()).toBe("b");
+    await priming;
+    expect(
+      fetch.mock.calls.filter(([request]) =>
+        String(
+          typeof request === "string" ? request : (request as Request).url,
+        ).endsWith("/assets/b.js"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("preparing an update stores the new shell and precaches the new build", async () => {
+    let version = 1;
+    const builds: Record<number, string[]> = {
+      1: ["/assets/app-1.js"],
+      2: ["/assets/app-2.js"],
+    };
+    const { listeners, storage, fetch } = loadWorker((request) => {
+      const url = typeof request === "string" ? request : request.url;
+      if (url.endsWith("/thyra-assets.json"))
+        return serverResponse(
+          JSON.stringify({
+            version: `v${version}`,
+            assets: builds[version],
+            precache: builds[version],
+          }),
+        );
+      if (url.includes("/assets/"))
+        return serverResponse(url, { headers: immutable });
+      return serverResponse(`<p>${version}</p>`, { headers: html });
+    });
+    await dispatchFetch(listeners, "/", { mode: "navigate" });
+    await dispatchFetch(listeners, "/assets/app-1.js");
+    // Deployed while the page runs build 1.
+    version = 2;
+    await dispatchLifetime(listeners.message!, {
+      origin,
+      data: { type: "thyra:prepare-update" },
+    });
+    const shell = await storage.open("thyra-shell-v1");
+    expect(await (await shell.match("/"))?.text()).toBe("<p>2</p>");
+    const shellRequest = fetch.mock.calls.find(
+      ([request, init]) => String(request) === "/" && init,
+    );
+    expect(shellRequest?.[1]).toMatchObject({
+      cache: "no-cache",
+      redirect: "manual",
+    });
+    // The running page keeps its own chunks; the next load has the new ones.
+    const assets = await storage.open("thyra-assets-v1");
+    expect(
+      [...assets.entries.keys()].map((url) => new URL(url).pathname).sort(),
+    ).toEqual(["/assets/app-1.js", "/assets/app-2.js"]);
+    expect(
+      await (await shell.match("/__thyra/asset-manifest"))?.json(),
+    ).toEqual({
+      current: { version: "v2", assets: ["/assets/app-2.js"] },
+      previous: [{ version: "v1", assets: ["/assets/app-1.js"] }],
+    });
+  });
+});
+
+test("a page offers a reload only when the bridge serves another build", () => {
+  const page = (src: string | null) => ({
+    querySelector: (selector: string) =>
+      src && selector.includes("script")
+        ? ({ getAttribute: () => src } as unknown as Element)
+        : null,
+  });
+  expect(
+    servesOtherBuild("/assets/index-b.js", page("/assets/index-a.js")),
+  ).toBe(true);
+  expect(
+    servesOtherBuild("/assets/index-a.js", page("/assets/index-a.js")),
+  ).toBe(false);
+  // Development (no built entry) and bridges without a build never prompt.
+  expect(servesOtherBuild("/assets/index-b.js", page(null))).toBe(false);
+  expect(servesOtherBuild(undefined, page("/assets/index-a.js"))).toBe(false);
 });
 
 test("only same-origin fingerprinted assets are offered for priming", () => {
