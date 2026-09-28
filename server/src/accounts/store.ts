@@ -89,7 +89,12 @@ export function hashSecret(secret: string): string {
 }
 
 export function randomToken(bytes = 32): string {
-  return randomBytes(bytes).toString("base64url");
+  // Ids are passed to the CLI (`thyra session revoke <id>`), where a leading
+  // "-" would parse as an option; draw again in that 1-in-64 case.
+  for (;;) {
+    const token = randomBytes(bytes).toString("base64url");
+    if (!token.startsWith("-")) return token;
+  }
 }
 
 export function validUserName(name: string): boolean {
@@ -404,7 +409,7 @@ export function createAccountStore(
     const at = now();
     const row: SessionRow = {
       id_hash: hashSecret(token),
-      public_id: randomBytes(6).toString("base64url"),
+      public_id: randomToken(6),
       user_id: user.id,
       auth_method: args.authMethod,
       privilege_epoch: user.privilegeEpoch,

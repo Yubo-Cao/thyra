@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate, openAccountDatabase } from "./database";
-import { createAccountStore, hashSecret, suggestUserName } from "./store";
+import {
+  createAccountStore,
+  hashSecret,
+  randomToken,
+  suggestUserName,
+} from "./store";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -199,4 +204,8 @@ describe("account store", () => {
     now += 2000;
     expect(store.enrollmentUser(late.secret)).toBeNull();
   });
+});
+
+test("random tokens never start with a dash, so the CLI takes them as ids", () => {
+  for (let i = 0; i < 2000; i++) expect(randomToken(9)).not.toStartWith("-");
 });

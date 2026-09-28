@@ -2474,7 +2474,14 @@ async function publicRoute(
   }
   const peer = server.requestIP(req)?.address;
   const access = publicAccessPolicy.evaluate(req, peer);
-  const retryAfter = publicRequests.take(access.clientAddress ?? "unknown");
+  // Hashed build assets are static, immutable and edge-cached; one app load
+  // fetches dozens of them, so they must not spend the per-client budget.
+  const staticAsset =
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname.startsWith("/assets/");
+  const retryAfter = staticAsset
+    ? 0
+    : publicRequests.take(access.clientAddress ?? "unknown");
   if (retryAfter) return rateLimitedResponse(retryAfter);
   if (!access.hostAllowed) {
     logger.warn("public listener rejected an unknown host", {

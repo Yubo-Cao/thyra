@@ -243,7 +243,7 @@ export function createShareLinkStore(store: AccountStore) {
       const secret = randomToken(32);
       const at = now();
       const row: LinkRow = {
-        id: randomBytes(9).toString("base64url"),
+        id: randomToken(9),
         secret_hash: hashSecret(secret),
         connection_id: args.connectionId,
         workspace_id: args.workspaceId,
