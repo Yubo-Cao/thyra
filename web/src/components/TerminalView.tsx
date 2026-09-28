@@ -62,6 +62,7 @@ import type { TerminalFileLinkMenuState } from "./TerminalFileLinkMenu";
 import {
   createWorkspaceDialog,
   promptEditorPanel,
+  shellEditorPanel,
   terminalComposerPanel,
   terminalConfirmDialog,
   terminalFileLinkMenuPanel,
@@ -112,6 +113,7 @@ export type { TerminalWorkspaceFileRequest };
 // the terminal chunk down to what first output and input need.
 const TerminalComposer = terminalComposerPanel.Component;
 const PromptEditor = promptEditorPanel.Component;
+const ShellEditor = shellEditorPanel.Component;
 const TerminalFileLinkMenu = terminalFileLinkMenuPanel.Component;
 // Only read-only viewers open it, so the app shell never prefetches it.
 const TerminalHistory = lazyPanel("terminal-history", () =>
@@ -354,6 +356,10 @@ export function TerminalView({
           )
         : null;
       if (editorKey && refs.promptEditor.current?.visible()) {
+        if (refs.promptEditor.current.insertText) {
+          await refs.promptEditor.current.insertText(text, submit);
+          return;
+        }
         insertIntoTerminalComposerDraft(editorKey, text);
         if (submit)
           await submitTerminalComposerDraft(
@@ -874,6 +880,39 @@ export function TerminalView({
             className="terminal-view"
             data-preview={framesPaused ? "text" : undefined}
           />
+          {pane &&
+          promptAgent === "unknown" &&
+          !mobile &&
+          desktopPointer &&
+          !control.access.viewOnly &&
+          startupSettled &&
+          termInstance &&
+          !composerOpen &&
+          !framesPaused ? (
+            <LazyBoundary>
+              <ShellEditor
+                key={promptEditorKey}
+                client={connectionClient}
+                paneId={pane.pane_id}
+                draftKey={promptEditorKey}
+                term={termInstance}
+                terminalTheme={terminalTheme}
+                active={isActivePane}
+                controlRef={refs.promptEditor}
+                onFocusTerminal={focusTerminal}
+                onForward={(data) => {
+                  const terminalId =
+                    refs.desiredTerminal.current ?? pane.terminal_id;
+                  if (terminalId)
+                    sendTerminalBytes(
+                      connectionClient,
+                      new TextEncoder().encode(data),
+                      terminalId,
+                    );
+                }}
+              />
+            </LazyBoundary>
+          ) : null}
           {showPromptEditor && termInstance ? (
             <LazyBoundary>
               <PromptEditor

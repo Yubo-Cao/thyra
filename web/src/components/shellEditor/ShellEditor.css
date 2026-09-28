@@ -1,0 +1,59 @@
+.shell-editor {
+  position: absolute;
+  z-index: 3;
+  background: var(--prompt-editor-bg);
+  color: var(--prompt-editor-fg);
+  line-height: var(--prompt-editor-row);
+}
+.shell-editor[hidden] {
+  display: none;
+}
+.shell-editor textarea,
+.shell-editor textarea:focus {
+  box-shadow: none;
+  position: relative;
+}
+.shell-editor-ghost {
+  position: absolute;
+  inset: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  opacity: 0.45;
+  pointer-events: none;
+}
+.shell-editor-ghost span {
+  visibility: hidden;
+}
+.shell-editor-pending {
+  opacity: 0.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.shell-editor-hint {
+  font-size: 0.85em;
+  background: var(--prompt-editor-bg);
+  color: var(--muted);
+}
+.shell-editor-suggestions {
+  position: absolute;
+  top: calc(100% + var(--shell-editor-hint-height));
+  left: 0;
+  max-height: 180px;
+  max-width: 100%;
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+}
+.shell-editor-suggestions > button {
+  display: flex;
+  width: 100%;
+  justify-content: start;
+  gap: 8px;
+}
+.shell-editor-suggestions [aria-selected="true"] {
+  background: var(--accent-soft);
+}
+.shell-editor-suggestions small {
+  color: var(--muted);
+}

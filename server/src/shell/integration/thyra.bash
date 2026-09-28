@@ -4,6 +4,8 @@ __thyra_loaded=1
 __thyra_seq=0
 __thyra_armed=0
 __thyra_recorded=0
+__thyra_paste=false
+[[ $(bind -v 2>/dev/null) == *'enable-bracketed-paste on'* ]] && __thyra_paste=true
 __thyra_dir=${XDG_RUNTIME_DIR:-/tmp/thyra-$UID}/thyra/shell
 __thyra_spool=${XDG_STATE_HOME:-$HOME/.local/state}/thyra/shell-history.jsonl
 __thyra_file=$__thyra_dir/${HERDR_PANE_ID//[^a-zA-Z0-9_-]/_}.json
@@ -12,12 +14,14 @@ __thyra_file=$__thyra_dir/${HERDR_PANE_ID//[^a-zA-Z0-9_-]/_}.json
 __thyra_json() {
     local s=$1 i c
     s=${s//\\/\\\\}; s=${s//\"/\\\"}
-    for ((i=1; i<32; i++)); do
+    if [[ $s == *[$'\x01'-$'\x1f']* ]]; then
+      for ((i=1; i<32; i++)); do
         printf -v c '\\x%02x' "$i"
         printf -v c '%b' "$c"
         printf -v REPLY '\\u%04x' "$i"
         s=${s//"$c"/$REPLY}
-    done
+      done
+    fi
     REPLY=\"$s\"
 }
 __thyra_time() {
@@ -26,7 +30,7 @@ __thyra_time() {
     fi
 }
 __thyra_write() {
-    local state=$1 code=$2 cmd=${3-} pane cwd hist ver path now paste=false
+    local state=$1 code=$2 cmd=${3-} pane cwd hist ver path now paste=$__thyra_paste
     __thyra_json "$HERDR_PANE_ID"; pane=$REPLY
     __thyra_json "$PWD"; cwd=$REPLY
     __thyra_json "${HISTFILE-}"; hist=$REPLY
@@ -34,7 +38,6 @@ __thyra_write() {
     __thyra_json "$PATH"; path=$REPLY
     __thyra_json "$cmd"; cmd=$REPLY
     __thyra_time; now=$REPLY
-    [[ $(bind -v 2>/dev/null) == *'enable-bracketed-paste on'* ]] && paste=true
     (umask 077
       printf '{"v":1,"pane":%s,"pid":%s,"shell":"bash","shell_version":%s,"seq":%s,"state":"%s","cwd":%s,"exit":%s,"histfile":%s,"path":%s,"bracketed_paste":%s,"ts":%s,"command":%s}\n' "$pane" "$$" "$ver" "$__thyra_seq" "$state" "$cwd" "$code" "$hist" "$path" "$paste" "$now" "$cmd" > "$__thyra_file.tmp-$$" && command mv -f -- "$__thyra_file.tmp-$$" "$__thyra_file"
       if [[ $state == running && $__thyra_recorded == 1 ]]; then

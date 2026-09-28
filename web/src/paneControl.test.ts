@@ -113,6 +113,10 @@ test("one live gate blocks keys, IME, paste/composer and resizing while preservi
   const client = paneControlClient(base, () => access);
   for (const method of [
     "terminal.input",
+    "shell.submit",
+    "shell.complete",
+    "shell.history",
+    "shell.subscribe",
     "pane.send_input",
     "pane.send_key",
     "pane.paste",

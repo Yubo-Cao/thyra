@@ -11,12 +11,14 @@ __thyra_json() {
     local s=$1 c escaped
     integer i
     s=${s//\\/\\\\}; s=${s//\"/\\\"}
-    for ((i=1; i<32; i++)); do
+    if [[ $s == *[$'\x01'-$'\x1f']* ]]; then
+      for ((i=1; i<32; i++)); do
         printf -v c '\\x%02x' $i
         printf -v c '%b' "$c"
         printf -v escaped '\\u%04x' $i
         s=${s//"$c"/$escaped}
-    done
+      done
+    fi
     REPLY=\"$s\"
 }
 __thyra_write() {

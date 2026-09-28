@@ -12,6 +12,8 @@ export function PromptTextarea({
   focus,
   placeholder,
   label,
+  activeDescendant,
+  controls,
   font,
   onChange,
   onKey,
@@ -67,8 +69,11 @@ export function PromptTextarea({
     };
     surfaceRef.current = surface;
     measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(textarea);
     if (focus) surface.focus();
     return () => {
+      observer.disconnect();
       if (surfaceRef.current === surface) surfaceRef.current = null;
     };
     // Mounted once per editor; later text arrives through the surface.
@@ -92,6 +97,8 @@ export function PromptTextarea({
       autoCapitalize="off"
       placeholder={placeholder}
       aria-label={label}
+      aria-controls={controls}
+      aria-activedescendant={activeDescendant}
       onInput={() => {
         report();
         measure();

@@ -155,6 +155,13 @@ export default {
 
   // Prompt editor
   "Prompt editor": "提示词编辑器",
+  "Shell command line": "Shell 命令行",
+  On: "开启",
+  "Shell suggestions": "Shell 建议",
+  "Completion unavailable": "补全暂不可用",
+  "Shell input unavailable: {reason}": "Shell 输入不可用：{reason}",
+  "Could not confirm shell input": "无法确认 Shell 输入",
+  "Search history: {query}": "搜索历史：{query}",
   "Show prompt editor": "显示提示词编辑器",
   "Hide prompt editor": "隐藏提示词编辑器",
   "Write a prompt for the agent": "为 Agent 编写提示词",

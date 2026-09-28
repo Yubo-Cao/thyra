@@ -6,6 +6,54 @@ import { tmpdir } from "node:os";
 import type { ShellName } from "../../../shared/shell";
 import { readShellRecord, ShellStateTracker, type ShellRecord } from "./state";
 
+for (const shell of ["bash", "zsh"]) {
+  test.skipIf(!Bun.which(shell))(
+    `${shell} JSON fast path skips the control loop and still escapes controls`,
+    async () => {
+      const home = await mkdtemp(join(tmpdir(), "thyra-json-"));
+      try {
+        const script = join(import.meta.dir, `integration/thyra.${shell}`);
+        const proc = Bun.spawnSync(
+          [
+            shell,
+            ...(shell === "bash" ? ["--noprofile", "--norc"] : ["-d", "-f"]),
+            "-ic",
+            `
+        source '${script}'
+        trap - DEBUG
+        count=0
+        printf() { count=$((count+1)); builtin printf "$@"; }
+        __thyra_json 'plain "quoted" text'
+        builtin printf '%s\\n%s\\n' "$count" "$REPLY"
+        count=0
+        __thyra_json $'control\\001\\n\\037'
+        builtin printf '%s\\n%s\\n' "$count" "$REPLY"
+      `,
+          ],
+          {
+            env: {
+              ...process.env,
+              HOME: home,
+              ZDOTDIR: home,
+              HERDR_PANE_ID: "json",
+              XDG_RUNTIME_DIR: join(home, "run"),
+              XDG_STATE_HOME: join(home, "state"),
+            },
+          },
+        );
+        expect(proc.exitCode).toBe(0);
+        const lines = proc.stdout.toString().trim().split("\n");
+        expect(lines[0]).toBe("0");
+        expect(JSON.parse(lines[1])).toBe('plain "quoted" text');
+        expect(Number(lines[2])).toBeGreaterThan(0);
+        expect(JSON.parse(lines[3])).toBe("control\u0001\n\u001f");
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
+    },
+  );
+}
+
 for (const [shell, debug] of [
   ["bash", false],
   ["bash", true],

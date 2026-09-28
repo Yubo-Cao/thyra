@@ -34,6 +34,8 @@ export type PromptEditorSurfaceProps = {
   focus: boolean;
   placeholder: string;
   label: string;
+  activeDescendant?: string;
+  controls?: string;
   font: PromptEditorFont;
   onChange(text: string, selectionStart: number, selectionEnd: number): void;
   /** Handles a key for the editor; true when the surface must not. */

@@ -1,4 +1,9 @@
 import {
+  useShellEditorMode,
+  setShellEditorMode,
+  type ShellEditorMode,
+} from "../shellEditorPreferences";
+import {
   Suspense,
   useEffect,
   useRef,
@@ -193,6 +198,7 @@ export function ConfigurationDialog({
   );
   const voiceCleanup = useVoiceCleanupMode();
   const promptEditorByDefault = usePromptEditorOpensByDefault();
+  const shellMode = useShellEditorMode();
   const [swipeFingers, setSwipeFingers] = useState(() =>
     String(paneSwipeFingers()),
   );
@@ -425,6 +431,21 @@ export function ConfigurationDialog({
           aria-label={t("Open the prompt editor by default on agent panes")}
           checked={promptEditorByDefault}
           onChange={setPromptEditorOpensByDefault}
+        />
+      </PreferenceRow>
+      <PreferenceRow
+        icon={<TextCursorInput size={15} />}
+        title={t("Shell command line")}
+      >
+        <Select
+          aria-label={t("Shell command line")}
+          value={shellMode}
+          options={[
+            { value: "auto", label: t("Auto") },
+            { value: "on", label: t("On") },
+            { value: "off", label: t("Off") },
+          ]}
+          onChange={(value) => setShellEditorMode(value as ShellEditorMode)}
         />
       </PreferenceRow>
       <PreferenceRow

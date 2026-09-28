@@ -31,3 +31,6 @@ export const terminalConfirmDialog = lazyPanel("terminal-confirm-dialog", () =>
 export const terminalMessageDialog = lazyPanel("terminal-dialog", () =>
   import("./ui/Dialog").then((module) => module.Dialog),
 );
+export const shellEditorPanel = lazyPanel("shell-editor", () =>
+  import("./shellEditor/ShellEditor").then((module) => module.ShellEditor),
+);

@@ -151,6 +151,10 @@ export function paneControlClient(
       if (
         access.viewOnly &&
         (method === "terminal.input" ||
+          method === "shell.submit" ||
+          method === "shell.complete" ||
+          method === "shell.history" ||
+          (method === "shell.subscribe" && params?.enabled !== false) ||
           method === "pane.send_input" ||
           method === "pane.send_text" ||
           method === "pane.paste" ||

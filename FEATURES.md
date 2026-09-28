@@ -107,6 +107,19 @@ While the agent shows a menu or dialog (a permission prompt, a picker) or has te
   **Configuration > Behavior > Prompt editor** sets whether agent panes open it by default.
   Drafts stay in memory, shared with the mobile composer, and viewers without control see no editor.
 
+### Shell Command Line
+
+Desktop shell panes with [shell integration](docs/DEPLOYMENT.md#shell-integration) can edit commands locally over the real prompt.
+**Configuration > Behavior > Shell command line** offers Auto, On, and Off.
+Auto turns on above a median bridge round-trip time of 60 ms and turns off below 40 ms.
+The editor appears only at an available shell prompt while you hold input control; drafts and cached history stay in memory.
+
+- Enter executes; Shift+Enter or Alt+Enter inserts a newline. Unclosed quotes, substitutions, and trailing backslashes also make Enter insert a newline.
+- Tab completes commands and paths. Arrow keys select suggestions; Enter or Tab accepts.
+- Up/Down searches prefix-matched history at the first/last line; Ctrl+R searches history. Right/End accepts a history suggestion, and Alt+Right accepts one word.
+- Ctrl+C clears a draft, then forwards an interrupt when empty. Ctrl+] pastes the draft into the real shell without executing it.
+- Esc closes a popup first, then hides a nonempty draft until the next prompt. Empty-draft terminal controls pass through.
+
 ## Workspace Inspector
 
 Open **Files**, **Changes**, or **Agent History** from the Inspector button,

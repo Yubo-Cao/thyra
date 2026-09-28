@@ -714,6 +714,8 @@ export class Bridge {
     }, HEARTBEAT_INTERVAL_MS);
   }
 
+  readonly recentRoundTrips: number[] = [];
+
   private runHeartbeatProbe() {
     if (this.heartbeatInFlight) return;
     this.heartbeatInFlight = true;
@@ -721,6 +723,8 @@ export class Bridge {
     this.call("bridge.ping", {}, { timeoutMs: HEARTBEAT_TIMEOUT_MS }).then(
       () => {
         this.heartbeatInFlight = false;
+        this.recentRoundTrips.push(performance.now() - probeStartedAt);
+        if (this.recentRoundTrips.length > 9) this.recentRoundTrips.shift();
       },
       () => {
         this.heartbeatInFlight = false;
@@ -767,6 +771,7 @@ export class Bridge {
   }
 
   private stopHeartbeat() {
+    this.recentRoundTrips.length = 0;
     if (!this.heartbeatTimer) return;
     clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;

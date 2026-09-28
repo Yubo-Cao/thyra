@@ -1,3 +1,4 @@
+import { measureTerminal, type TerminalMetrics } from "./metrics";
 import type { ITheme, Terminal } from "@xterm/xterm";
 import { Eye, PenLine, X } from "lucide-react";
 import {
@@ -77,6 +78,7 @@ export type PromptEditorControl = {
   hasFocus(): boolean;
   /** Shown over the pane (not hidden for an agent menu). */
   visible(): boolean;
+  insertText?(text: string, submit: boolean): Promise<void>;
 };
 
 export type PromptEditorProps = {
@@ -96,16 +98,6 @@ export type PromptEditorProps = {
   onError: (message: string) => void;
   onClose: () => void;
   onFocusTerminal: () => void;
-};
-
-type TerminalMetrics = {
-  left: number;
-  top: number;
-  width: number;
-  rows: number;
-  rowHeight: number;
-  cellWidth: number;
-  fontSize: number;
 };
 
 function visibleRows(term: Terminal): string[] {
@@ -134,28 +126,6 @@ function undimmedRows(term: Terminal, from: number, to: number): string[] {
     rows[row] = text;
   }
   return rows;
-}
-
-/** The terminal grid in the editor's coordinates (CSS zoom and follow scale included). */
-function measureTerminal(
-  term: Terminal,
-  host: HTMLElement | null,
-): TerminalMetrics | null {
-  const screen = term.element?.querySelector<HTMLElement>(".xterm-screen");
-  if (!host || !screen || !screen.offsetHeight || !term.rows || !term.cols)
-    return null;
-  const bounds = screen.getBoundingClientRect();
-  const origin = host.getBoundingClientRect();
-  const scale = bounds.height / screen.offsetHeight;
-  return {
-    left: bounds.left - origin.left,
-    top: bounds.top - origin.top,
-    width: bounds.width,
-    rows: term.rows,
-    rowHeight: bounds.height / term.rows,
-    cellWidth: bounds.width / term.cols,
-    fontSize: (term.options.fontSize ?? 13) * scale,
-  };
 }
 
 function samePlacement(a: PromptEditorPlacement, b: PromptEditorPlacement) {
