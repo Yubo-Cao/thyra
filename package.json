@@ -1,7 +1,7 @@
 {
   "name": "thyra",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Thyra: an independent community Web and PWA client for Herdr.",
   "license": "MIT",
   "author": "Arthur",
