@@ -7,6 +7,7 @@ import { browserUrlFor } from "../config/server-config";
 import { parsePublicBaseUrls } from "../http/request-access";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
 import { workspaceOfScopedId } from "../authz/authorize";
+import { normalizeEmail } from "../auth/email";
 import { defaultDatabasePath, openAccountDatabase } from "./database";
 import {
   createShareLinkStore,
@@ -32,8 +33,9 @@ export function accountsHelp(): string {
   return `Accounts, login sessions and workspace sharing.
 
 Usage:
-  thyra user add <name> [--admin] [--display-name <text>] [--tailscale <login>] [--base-url <url>]
+  thyra user add <name> [--admin] [--display-name <text>] [--tailscale <login>] [--email <address>] [--base-url <url>]
   thyra user enroll <name> [--base-url <url>]
+  thyra user link <name> --email <address>
   thyra user list
   thyra user role <name> <admin|member>
   thyra user disable <name> | thyra user enable <name>
@@ -54,7 +56,9 @@ the link: pass --base-url (default: the first THYRA_PUBLIC_BASE_URL, else
 http://localhost:$PORT). Passkeys need HTTPS or localhost.
 
 \`--tailscale <login>\` links the account to a Tailscale login, so that user's
-tailnet devices log in to it through a trusted proxy.
+tailnet devices log in to it through a trusted proxy. \`--email\` (and
+\`user link <name> --email\`) adds a verified address, for email sign-in
+and for linking GitHub or Google by that address.
 
 \`share create\` prints an anonymous, read-only link (once: only a digest of its
 secret is stored). Anyone with it can watch the workspace, or only \`--pane\`,
@@ -165,6 +169,24 @@ export async function runAccountsCommand(
     if (!user) throw new Error(`no user named ${JSON.stringify(name ?? "")}`);
     return user;
   };
+  /** Link a verified email address (the admin vouches for it). */
+  const linkEmail = (user: User, value: string) => {
+    const email = normalizeEmail(value);
+    if (!email)
+      throw new Error(`invalid email address ${JSON.stringify(value)}`);
+    const owner = store.findIdentity("email", email);
+    if (owner && owner.id !== user.id)
+      throw new Error(`${email} is already linked to ${owner.name}`);
+    store.linkIdentity({
+      provider: "email",
+      subject: email,
+      userId: user.id,
+      email,
+      emailVerified: true,
+      displayName: email,
+      actor: "cli",
+    });
+  };
   const printEnrollment = (user: User, baseUrl: string | undefined) => {
     const base = enrollmentBaseUrl(baseUrl, env);
     const { secret } = store.createEnrollment(user.id, "cli");
@@ -187,6 +209,7 @@ export async function runAccountsCommand(
             owner: { type: "boolean" },
             "display-name": { type: "string" },
             tailscale: { type: "string" },
+            email: { type: "string" },
             "base-url": { type: "string" },
           },
           strict: true,
@@ -202,6 +225,7 @@ export async function runAccountsCommand(
             role,
             actor: "cli",
           });
+          if (values.email) linkEmail(created, values.email);
           if (values.tailscale) {
             if (store.findIdentity("tailscale", values.tailscale))
               throw new Error(
@@ -220,6 +244,22 @@ export async function runAccountsCommand(
           `Created ${role === "admin" ? "instance admin" : "member"} ${user.name}.`,
         );
         printEnrollment(user, values["base-url"]);
+        return 0;
+      }
+      if (action === "link") {
+        const { values, positionals } = parseArgs({
+          args: rest,
+          options: { email: { type: "string" } },
+          strict: true,
+          allowPositionals: true,
+        });
+        if (positionals.length !== 1 || !values.email)
+          throw new Error("usage: thyra user link <name> --email <address>");
+        const user = requireUser(positionals[0]);
+        linkEmail(user, values.email);
+        log(
+          `${user.name} can now sign in with ${values.email.trim().toLowerCase()}.`,
+        );
         return 0;
       }
       if (action === "enroll") {

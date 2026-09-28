@@ -53,6 +53,23 @@ test("user add creates an admin with a Tailscale link and prints a one-time link
   expect(out.at(-2)?.trim()).toMatch(/^http:\/\/localhost:8833\/enroll#/);
 });
 
+test("user add and user link attach a verified email address", async () => {
+  const { run, err, store } = harness();
+  expect(await run("user", "add", "pat", "--email", "Pat@Example.com")).toBe(0);
+  const pat = store.findUserByName("pat")!;
+  expect(store.findIdentity("email", "pat@example.com")?.id).toBe(pat.id);
+  expect(store.usersWithVerifiedEmail("pat@example.com")).toEqual([pat.id]);
+  expect(await run("user", "add", "sam")).toBe(0);
+  expect(await run("user", "link", "sam", "--email", "pat@example.com")).toBe(
+    1,
+  );
+  expect(err.at(-1)).toContain("already linked to pat");
+  expect(await run("user", "link", "sam", "--email", "sam@example.com")).toBe(
+    0,
+  );
+  expect(store.signInMethodCount(store.findUserByName("sam")!.id)).toBe(1);
+});
+
 test("share create prints the link once; list and revoke manage it", async () => {
   const { run, out, err, store } = harness();
   expect(

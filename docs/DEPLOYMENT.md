@@ -314,6 +314,7 @@ Instance admins manage the host; members see only the workspaces shared with the
 ```bash
 thyra user add yubo --admin --tailscale yubo@github   # instance admin; prints a passkey link
 thyra user add alice                                  # member; prints a passkey link
+thyra user link alice --email alice@example.com       # a verified address for email sign-in
 thyra user enroll alice --base-url https://thyra.example.com  # another link, for another host name
 thyra user list
 thyra user role alice admin|member
