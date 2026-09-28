@@ -23,6 +23,7 @@ import {
   runServiceCommand,
   SERVICE_COMMAND_CONTINUE,
 } from "./config/service-manager";
+import { EXIT_NEEDS_OPERATOR } from "./config/service-definitions";
 import { runHerdrCommand } from "./herdr/cli";
 import { enrichIntegrationVersions } from "./herdr/integration-versions";
 import {
@@ -370,10 +371,20 @@ try {
   shareLinks = createShareLinkStore(accountStore);
   shareLinks.pruneExpired();
 } catch (error) {
-  logger.error("cannot open the account database", {
+  // Restarting cannot fix this, so the service manager is told not to.
+  const path = (() => {
+    try {
+      return defaultDatabasePath();
+    } catch {
+      return "(invalid THYRA_DB_PATH)";
+    }
+  })();
+  logger.error("cannot open the account database; Thyra will not start", {
+    path,
     error: (error as Error).message,
+    fix: "back up the file, repair the reported schema problem or restore a backup, then start Thyra again",
   });
-  process.exit(1);
+  process.exit(EXIT_NEEDS_OPERATOR);
 }
 /** The primary listener: direct local use, session cookies, tailnet login. */
 const authenticator = createAuthenticator({

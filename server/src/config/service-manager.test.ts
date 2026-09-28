@@ -17,6 +17,7 @@ import {
   SERVICE_COMMAND_CONTINUE,
 } from "./service-manager";
 import {
+  EXIT_NEEDS_OPERATOR,
   renderLaunchdService,
   renderSystemdService,
   renderWindowsTaskDefinition,
@@ -107,6 +108,13 @@ describe("service definition rendering", () => {
     expect(definition).toContain("ExecStart=/opt/Herdr\\x20%%\\x20GUI/thyra");
     expect(definition).not.toContain('ExecStart="');
     expect(definition).toContain("Restart=always");
+    // An account database that does not migrate exits 78 and stays down,
+    // and any other crash loop stops after ten starts in five minutes.
+    expect(EXIT_NEEDS_OPERATOR).toBe(78);
+    expect(definition).toContain("RestartPreventExitStatus=78");
+    expect(definition).toMatch(
+      /\[Unit\][^[]*StartLimitIntervalSec=300\nStartLimitBurst=10\n/,
+    );
   });
 
   test("passes launchd paths as arguments without interpolating shell code", () => {

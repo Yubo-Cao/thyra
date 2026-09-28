@@ -801,9 +801,12 @@ Hooks default on; inspect/disable per repository under **Worktree hooks** or
 
 | Platform | Definition / behavior |
 | --- | --- |
-| Linux | `~/.config/systemd/user/thyra.service`, `Restart=always` |
-| macOS | `~/Library/LaunchAgents/dev.thyra.plist`, label `dev.thyra`, `KeepAlive`; logs `~/Library/Logs/thyra.stdout.log` / `thyra.stderr.log` |
+| Linux | `~/.config/systemd/user/thyra.service`, `Restart=always` after 2 seconds; at most 10 starts in 5 minutes, and never after exit status 78 |
+| macOS | `~/Library/LaunchAgents/dev.thyra.plist`, label `dev.thyra`, `KeepAlive`, relaunched at most every 30 seconds; logs `~/Library/Logs/thyra.stdout.log` / `thyra.stderr.log` |
 | Windows | Task `dev.thyra-<user-key>` (config-path hash), `%APPDATA%\thyra\thyra-task.ps1`; login start, normal privileges, restart on failure |
+
+Thyra exits with status 78 when the account database does not open or migrate, logging its path and the failing migration; restarting cannot fix that, so back up the file, repair it or restore a backup, and start the service again.
+Migrations reuse tables, indexes and columns that already exist, so an object left by an aborted or unreleased migration does not stop startup.
 
 **`thyra service install` alone creates a config that binds `0.0.0.0:8787`**, where every browser logs in
 with a [passkey](#accounts-and-login), and prints localhost/LAN URLs. The [one-line installer](#install-with-the-one-line-installer) instead creates a loopback-only config first. Config lives in `~/.config/thyra/thyra.env` or

@@ -35,6 +35,55 @@ describe("account database", () => {
     db.close();
   });
 
+  test("migrates over objects an aborted migration left behind", () => {
+    const db = openAccountDatabase(":memory:");
+    const version = () =>
+      (db.query("PRAGMA user_version").get() as { user_version: number })
+        .user_version;
+    const names = (type: string) =>
+      db
+        .query<{ name: string }, [string]>(
+          "SELECT name FROM sqlite_master WHERE type = ?",
+        )
+        .all(type)
+        .map((row) => row.name);
+    const columns = (table: string) =>
+      db
+        .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+        .all()
+        .map((row) => row.name);
+    const latest = version();
+    // Undo the last migration except for the index and a column it added,
+    // as an unreleased build left them in a live database.
+    for (const table of ["email_codes", "oauth_flows", "invites"])
+      db.run(`DROP TABLE ${table}`);
+    db.run("ALTER TABLE identities DROP COLUMN avatar_url");
+    db.run("ALTER TABLE users DROP COLUMN avatar");
+    db.run(`PRAGMA user_version = ${latest - 1}`);
+    expect(names("index")).toContain("identities_email");
+    expect(columns("identities")).toContain("email_verified");
+
+    migrate(db);
+    expect(version()).toBe(latest);
+    expect(names("table")).toEqual(
+      expect.arrayContaining(["email_codes", "oauth_flows", "invites"]),
+    );
+    expect(columns("identities")).toEqual(
+      expect.arrayContaining(["email_verified", "avatar_url"]),
+    );
+    expect(columns("users")).toContain("avatar");
+
+    // An object that cannot be reused still fails, naming the migration.
+    db.run("DROP INDEX identities_email");
+    db.run("CREATE TABLE identities_email (x)");
+    db.run(`PRAGMA user_version = ${latest - 1}`);
+    expect(() => migrate(db)).toThrow(
+      `account database migration ${latest} of ${latest} failed`,
+    );
+    expect(version()).toBe(latest - 1);
+    db.close();
+  });
+
   test("stores session and enrollment secrets only as digests", () => {
     const dir = mkdtempSync(join(tmpdir(), "thyra-db-"));
     dirs.push(dir);

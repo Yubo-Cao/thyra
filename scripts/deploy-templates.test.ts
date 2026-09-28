@@ -7,6 +7,9 @@ test("systemd template runs Thyra and uses the Thyra environment file", async ()
   expect(unit).toContain("Description=Thyra");
   expect(unit).toContain("ExecStart=%h/.local/bin/thyra");
   expect(unit).toContain("EnvironmentFile=-%h/.config/thyra/thyra.env");
+  // A failing start never turns into a tight restart loop.
+  expect(unit).toContain("RestartPreventExitStatus=78");
+  expect(unit).toContain("StartLimitBurst=10");
 });
 
 test("launchd template executes the installed Thyra binary with Thyra identities and state paths", async () => {
@@ -22,6 +25,9 @@ test("launchd template executes the installed Thyra binary with Thyra identities
   expect(plist).toContain("<string>dev.thyra</string>");
   expect(plist).toContain("$HOME/.config/thyra/thyra.env");
   expect(plist).not.toContain("RESTART_SUPERVISOR");
+  expect(plist).toMatch(
+    /<key>ThrottleInterval<\/key>\s*<integer>30<\/integer>/,
+  );
   expect(plist).toContain("__HOME__/Library/Logs/thyra.stdout.log");
   expect(plist).toContain("__HOME__/Library/Logs/thyra.stderr.log");
 });
