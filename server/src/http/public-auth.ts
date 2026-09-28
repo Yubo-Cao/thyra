@@ -69,13 +69,13 @@ export function readPublicCookie(req: Request, name: string): string | null {
 }
 
 /**
- * Files served before login on the public listener: fingerprinted bundles,
- * icons and the manifest. The SPA entry, service worker and asset list are
- * served only after login.
+ * Files served without login on every listener, identically to everyone and
+ * without cookies: fingerprinted bundles and font slices, icons and the web
+ * manifest. The SPA entry, service worker and asset list need a login.
  */
 export function isPublicStaticAsset(pathname: string): boolean {
   return (
-    /^\/assets\/[A-Za-z0-9._-]+$/.test(pathname) ||
+    /^\/assets(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$/.test(pathname) ||
     /^\/thyra-(?:icon|mark)(?:-\d+)?\.(?:png|svg)$/.test(pathname) ||
     pathname === "/favicon.ico" ||
     pathname === "/manifest.json"

@@ -185,6 +185,8 @@ export interface BridgeHello {
   hello: true;
   socket?: string;
   bridge_protocol_version: number;
+  /** Entry script of the frontend build the bridge serves now. */
+  web_entry?: string;
   default_connection_id: string;
   /** Presence participant id the bridge assigned to this page. */
   participant_id?: string;
@@ -322,6 +324,9 @@ export interface ConnectionClient {
 const LEGACY_DEFAULT_CONNECTION_ID = "legacy-default";
 const RPC_TIMEOUT_MS = 30000;
 const CONNECT_TIMEOUT_MS = 8000;
+// Keep well under proxy idle timeouts (Cloudflare closes a WebSocket after
+// 100 seconds without traffic); any close, including an edge restart,
+// reconnects after reconnectDelayMs.
 const HEARTBEAT_INTERVAL_MS = 10000;
 const HEARTBEAT_TIMEOUT_MS = 6000;
 const MAX_WS_BUFFERED_BYTES = 4 * 1024 * 1024;

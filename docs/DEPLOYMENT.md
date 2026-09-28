@@ -280,6 +280,7 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded headers are believed; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TAILNET_AUTH=admin\|member\|off` | Log in proxied tailnet users by Tailscale `whois`, creating accounts with that role (default `admin` when `whois` is available); see [accounts and login](#accounts-and-login) |
 | `THYRA_DB_PATH` | Account database (default `~/.config/thyra/thyra.db`) |
+| `THYRA_ASSET_ARCHIVE_DIR` | Fingerprinted files of the last five builds, so tabs opened before an update can still load their chunks (default `~/.config/thyra/asset-archive` for the standalone binary, off for source runs; empty disables) |
 | `THYRA_PUBLIC_LISTEN` | Second, internet-facing listener (`127.0.0.1:8788`) for Cloudflare Tunnel; see [public access](#public-access-through-cloudflare-tunnel) |
 | `THYRA_PUBLIC_ORIGIN` | The one HTTPS origin served by the public listener, such as `https://thyra.example.com` |
 | `THYRA_PUBLIC_TRUSTED_PROXIES` | Peers whose `CF-Connecting-IP` the public listener believes (default `loopback`) |
@@ -497,6 +498,34 @@ Safari's tracking prevention does not affect it: nothing depends on cookies at t
 **Home Screen app (iOS and iPadOS).** Both ways work in standalone mode.
 The silent sign-in is a background request, so the app never leaves its window.
 **Sign in with tailnet** is an ordinary link in the same window (never a new tab, which would open Safari and its separate cookie store): iOS keeps the navigation inside the app, showing the tailnet host in a bar while the page is outside the app's scope, and the callback lands back on the public origin, where the session cookie goes into the app's own store.
+
+#### Cloudflare edge caching
+
+Everything under `/assets/` (scripts, styles, terminal font slices, the voice WebAssembly) is served `public, max-age=31536000, immutable`, without cookies and without login, on both listeners (see [web delivery and caching](./ARCHITECTURE.md#web-delivery-and-caching)).
+With the default zone settings Cloudflare caches the `.js`, `.css`, `.woff2` and `.ttf` files by extension; the `.wasm` file (voice input only) is not a default cacheable extension.
+To cache all of `/assets/` explicitly, add one Cache Rule under **Caching > Cache Rules**:
+
+- **When:** custom filter expression `(http.host eq "thyra.example.com" and starts_with(http.request.uri.path, "/assets/"))`.
+- **Then:** *Eligible for cache*; **Edge TTL** *Use cache-control header if present, use default Cloudflare caching behavior if not*; **Browser TTL** *Respect origin*.
+
+Leave everything else to the origin headers: HTML and JSON are not cached by default, the entry document, service worker and asset list are `private`, and icons and the web manifest revalidate (`no-cache`).
+Keep the zone's **Browser Cache TTL** at *Respect Existing Headers*, and do not enable Rocket Loader or other HTML rewriting (the strict CSP blocks injected scripts, and HTML responses carry `no-transform`).
+WebSockets need no rule: the page pings every 10 seconds, well under Cloudflare's 100-second idle timeout, and reconnects after any close, including edge restarts.
+
+To verify, request one fingerprinted file twice; the second answer should be a `HIT` with an `Age`:
+
+```bash
+# On the Thyra host: the primary listener serves the asset list to local use.
+asset=$(curl -s http://127.0.0.1:8787/thyra-assets.json | grep -o '/assets/index-[^"]*\.js' | head -1)
+for i in 1 2; do
+  curl -s -o /dev/null -D - -H 'accept-encoding: br' "https://thyra.example.com$asset" |
+    grep -iE '^(cf-cache-status|age|cache-control|set-cookie|content-encoding)'
+done
+```
+
+Any `/assets/...` URL from the browser's network panel works as well.
+Expect `cache-control: public, max-age=31536000, immutable`, no `set-cookie`, `cf-cache-status: MISS` then `HIT`; `BYPASS` means the response was marked private or set a cookie (an older Thyra), and `DYNAMIC` means the extension is not cached (add the rule above).
+Purging is never needed: every build uses new file names.
 
 ## Collaborator identity
 

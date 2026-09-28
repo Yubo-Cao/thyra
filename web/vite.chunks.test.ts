@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { packageName, vendorChunk } from "./vite.chunks";
+import { coreFontFiles, packageName, vendorChunk } from "./vite.chunks";
 
 const store = "/repo/node_modules/.bun";
 
@@ -53,4 +53,17 @@ test("vendor groups keep lazy-only UI code out of the initial chunk", () => {
   expect(vendorChunk(xterm, meta)).toBe("vendor-xterm");
   expect(vendorChunk(webgl, meta)).toBeUndefined();
   expect(vendorChunk("/repo/web/src/App.tsx", meta)).toBeUndefined();
+});
+
+test("precaching takes the upright regular and bold core font slices", () => {
+  const face = (file: string, style: string, weight: number) =>
+    `@font-face{font-family:"Thyra Mono";src:url("/assets/fonts/m/${file}.woff2")format("woff2");font-style:${style};font-display:swap;font-weight:${weight};unicode-range:U+20-7E;}`;
+  expect(
+    coreFontFiles(
+      face("a", "normal", 400) +
+        face("b", "normal", 700) +
+        face("c", "italic", 400) +
+        face("d", "normal", 300),
+    ),
+  ).toEqual(["/assets/fonts/m/a.woff2", "/assets/fonts/m/b.woff2"]);
 });

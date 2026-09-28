@@ -1,5 +1,6 @@
 import type { WorkspaceRole } from "../accounts/store";
 import { isInstanceAdmin, type Principal } from "../auth/principal";
+import { isPublicStaticAsset } from "../http/public-auth";
 import { type AuthzDeps, authorizeTarget } from "./authorize";
 import type { RpcClass, RpcTarget } from "./policy";
 import { targetResolvers } from "./policy";
@@ -10,9 +11,9 @@ import { targetResolvers } from "./policy";
  * that matches nothing is refused. Scopes:
  *
  * - `public`: no login (health, login and enrollment, logout, the login
- *   page's icons, share-link pages and redemption, tailnet sign-in, and
- *   `/mcp`, which
- *   authenticates with its own bearer tokens).
+ *   page's icons, fingerprinted assets, share-link pages and redemption,
+ *   tailnet sign-in, and `/mcp`, which authenticates with its own bearer
+ *   tokens).
  * - `session`: any logged-in principal; the handler acts on its own data.
  *   Share-link guests reach only the routes marked `guest`.
  * - `workspace`: `resolve` names the target from the query string; the caller
@@ -151,7 +152,10 @@ export const HTTP_POLICY = {
     scope: "workspace",
     resolve: fromQuery(targetResolvers.files),
   },
-  // The application shell and its assets.
+  // Fingerprinted bundles, font slices, icons and the web manifest: public
+  // open-source files, the same for everyone, never starting a session.
+  "static.asset": { class: "read", scope: "public" },
+  // The application shell (entry document, service worker, asset list).
   static: { class: "read", scope: "session", guest: true },
 } as const satisfies Record<string, HttpPolicyEntry>;
 
@@ -208,7 +212,7 @@ export function connectionRouteId(endpoint: string): HttpRouteId | null {
 /**
  * The route id for a method and path outside the connection-scoped API.
  * Unknown `/api/` paths and `/mcp` subpaths match nothing; other GET/HEAD
- * paths are the application shell and its static assets.
+ * paths are public static assets or the application shell.
  */
 export function matchHttpRoute(
   method: string,
@@ -224,7 +228,8 @@ export function matchHttpRoute(
       : null;
   if (pathname === "/api" || pathname.startsWith("/api/")) return null;
   if (pathname.startsWith("/mcp/")) return null;
-  return method === "GET" || method === "HEAD" ? "static" : null;
+  if (method !== "GET" && method !== "HEAD") return null;
+  return isPublicStaticAsset(pathname) ? "static.asset" : "static";
 }
 
 export type HttpAuthorization =

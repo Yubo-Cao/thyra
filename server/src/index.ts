@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
@@ -154,11 +155,15 @@ import {
 } from "./http/request-rate-limit";
 import { collaborationParams } from "./authz/collaboration-params";
 import { parseTrustedProxies } from "./identity/client-address";
+import { dataRoot } from "./config/data-paths";
 import { thyraEnv } from "./config/environment";
 import {
+  archiveRunningBuild,
+  entryScriptPath,
   prewarmStaticCompression,
   readStaticText,
   serveStatic,
+  setAssetArchiveDir,
 } from "./http/static-files";
 import {
   createUpdateHandlers,
@@ -308,6 +313,16 @@ function publicPagePolicy(): Promise<string> {
     );
   return publicHtmlPolicy;
 }
+/**
+ * The entry script of the frontend this process serves, sent in the hello:
+ * a page running another build (an open tab after an update) offers a reload.
+ */
+let webEntry: string | null = null;
+void readStaticText(config.publicDir, "/index.html")
+  .then((html) => {
+    webEntry = html ? entryScriptPath(html) : null;
+  })
+  .catch(() => {});
 const CLIENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
 function withSetCookie(response: Response, setCookie: string): Response {
@@ -2319,6 +2334,20 @@ function withSessionCookie(
     : withSetCookie(response, setCookie);
 }
 
+/**
+ * A public static asset (`isPublicStaticAsset`), served the same on every
+ * listener to everyone: no principal, no cookie, so Cloudflare may cache it.
+ * Without Accept, a missing asset is a 404 rather than the SPA entry.
+ */
+function servePublicAsset(req: Request): Promise<Response> {
+  const headers = new Headers(req.headers);
+  headers.delete("accept");
+  return serveStatic(
+    new Request(req.url, { method: req.method, headers }),
+    config.publicDir,
+  );
+}
+
 /** The primary listener (`HOST`/`PORT`): `tailnet` or `local`. */
 async function primaryFetch(
   req: Request,
@@ -2371,6 +2400,8 @@ async function primaryFetch(
   }
   if (!route.routeId) return unmatchedRoute(url);
   const routeId = route.routeId;
+  // Before any session work, so tailnet login never adds a cookie to them.
+  if (routeId === "static.asset") return servePublicAsset(req);
 
   // Direct local use, the session cookie, or tailnet login. Bearer MCP,
   // icons, the login script, logout, share links and tailnet sign-in (which
@@ -2512,13 +2543,7 @@ async function publicRoute(
     (req.method === "GET" || req.method === "HEAD") &&
     isPublicStaticAsset(url.pathname)
   ) {
-    // Without Accept, a missing asset is a 404 rather than the SPA entry.
-    const headers = new Headers(req.headers);
-    headers.delete("accept");
-    return serveStatic(
-      new Request(req.url, { method: req.method, headers }),
-      config.publicDir,
-    );
+    return servePublicAsset(req);
   }
   const auth = await publicAuth.authenticate(req, context);
   const principal = auth.principal;
@@ -2601,6 +2626,7 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
           : {}),
         principal: principalView(ws.data.principal),
         bridge_protocol_version: 2,
+        ...(webEntry ? { web_entry: webEntry } : {}),
         default_connection_id: connectionManager.defaultId(),
         participant_id: participantId,
         capabilities: {
@@ -2771,12 +2797,35 @@ function main() {
       ),
     });
   }
-  // Maximum-quality Brotli for the first-visit files, off the request path.
-  void prewarmStaticCompression(config.publicDir).catch((error) =>
-    logger.debug("static compression prewarm failed", {
-      error: (error as Error).message,
-    }),
-  );
+  // Maximum-quality Brotli for the first-visit files, off the request path,
+  // then keep this build's assets for pages that outlive the next update.
+  // Source runs (development, tests) archive only when asked to.
+  const archiveSetting = thyraEnv("ASSET_ARCHIVE_DIR");
+  const assetArchive =
+    archiveSetting === undefined
+      ? Bun.isStandaloneExecutable
+        ? join(dataRoot(), "asset-archive")
+        : null
+      : archiveSetting.trim() || null;
+  setAssetArchiveDir(assetArchive);
+  void prewarmStaticCompression(config.publicDir)
+    .catch((error) =>
+      logger.debug("static compression prewarm failed", {
+        error: (error as Error).message,
+      }),
+    )
+    .then(() =>
+      assetArchive ? archiveRunningBuild(config.publicDir, assetArchive) : null,
+    )
+    .then((result) => {
+      if (result?.copied || result?.removed)
+        logger.debug("asset archive updated", result);
+    })
+    .catch((error) =>
+      logger.warn("cannot archive frontend assets", {
+        error: (error as Error).message,
+      }),
+    );
   logger.info("authentication", {
     scope: config.authRequired
       ? "all requests"

@@ -13,10 +13,11 @@
  *   bun run build:web
  *   bun scripts/measure-first-load.ts [--browser chromium,webkit]
  *     [--profile 10k,3g] [--runs 1] [--server-root <checkout>] [--json out.json]
- *     [--waterfall] [--debug]
+ *     [--public-dir <build>] [--next-public-dir <build>] [--waterfall] [--debug]
  *
- * Each browser loads the app cold (fresh profile), warm (same profile) and,
- * in Chromium, "evicted" (HTTP cache cleared, service-worker storage kept).
+ * Each browser loads the app cold (fresh profile), warm (same profile), after
+ * a deploy of `--next-public-dir` (same profile, restarted bridge) and, in
+ * Chromium, "evicted" (HTTP cache cleared, service-worker storage kept).
  * `--server-root` runs the bridge from another checkout (with its own built
  * `server/public`) for before/after comparisons. Page timings are sensitive
  * to host CPU load; compare runs taken back to back and read the wire bytes.
@@ -73,6 +74,7 @@ const { values: options } = parseArgs({
     "proxy-port": { type: "string", default: "8798" },
     "server-root": { type: "string" },
     "public-dir": { type: "string" },
+    "next-public-dir": { type: "string" },
     "timeout-seconds": { type: "string", default: "240" },
     json: { type: "string" },
     label: { type: "string", default: "" },
@@ -128,6 +130,16 @@ interface Environment {
   herdr: Subprocess;
   bridge: Subprocess;
   herdrCli(...args: string[]): Promise<string>;
+  /** Start the bridge serving `publicDir` (default: the built frontend). */
+  startBridge(publicDir?: string): Promise<void>;
+}
+
+/** Replace the running bridge, as a deploy does. */
+async function restartBridge(environment: Environment, publicDir?: string) {
+  environment.bridge.kill("SIGTERM");
+  await Promise.race([environment.bridge.exited, Bun.sleep(5000)]);
+  environment.bridge.kill("SIGKILL");
+  await environment.startBridge(publicDir);
 }
 
 export async function startEnvironment(
@@ -165,6 +177,7 @@ export async function startEnvironment(
     herdr,
     bridge: null as unknown as Subprocess,
     herdrCli,
+    startBridge: async () => {},
   };
   try {
     await waitFor("isolated herdr sockets", () =>
@@ -229,22 +242,24 @@ export async function startEnvironment(
       THYRA_DISABLE_UPDATE_CHECK: "1",
       THYRA_LOG_LEVEL: "warn",
     };
-    if (publicDir) {
-      bridgeEnv.PUBLIC_DIR = resolve(publicDir);
-    }
-    environment.bridge = spawn(["bun", "server/src/index.ts"], {
-      cwd: root_,
-      env: isolatedEnv(root, bridgeEnv),
-      stdout: "ignore",
-      stderr: "inherit",
-    });
-    await waitFor("Thyra health", async () => {
-      try {
-        return (await fetch(`http://127.0.0.1:${bridgePort}/health`)).ok;
-      } catch {
-        return null;
-      }
-    });
+    environment.startBridge = async (directory?: string) => {
+      const env = { ...bridgeEnv };
+      if (directory) env.PUBLIC_DIR = resolve(directory);
+      environment.bridge = spawn(["bun", "server/src/index.ts"], {
+        cwd: root_,
+        env: isolatedEnv(root, env),
+        stdout: "ignore",
+        stderr: "inherit",
+      });
+      await waitFor("Thyra health", async () => {
+        try {
+          return (await fetch(`http://127.0.0.1:${bridgePort}/health`)).ok;
+        } catch {
+          return null;
+        }
+      });
+    };
+    await environment.startBridge(publicDir);
     return environment;
   } catch (error) {
     await stopEnvironment(environment);
@@ -346,6 +361,27 @@ class ShapedDirection {
   }
 }
 
+/**
+ * Point a request head's Host, Origin and Referer at the bridge's own port,
+ * so the bridge sees direct loopback use (no login) as when the browser runs
+ * on the same machine. The ports have the same length, so no byte moves.
+ */
+function loopbackHeaders(data: Buffer, from: number, to: number): Buffer {
+  const text = data.toString("latin1");
+  const end = text.indexOf("\r\n\r\n");
+  const head = end < 0 ? text : text.slice(0, end);
+  const rewritten = head.replace(
+    new RegExp(
+      `^((?:host|origin|referer):[^\\r\\n]*?127\\.0\\.0\\.1):${from}\\b`,
+      "gim",
+    ),
+    `$1:${to}`,
+  );
+  if (rewritten === head || String(from).length !== String(to).length)
+    return data;
+  return Buffer.from(rewritten + text.slice(head.length), "latin1");
+}
+
 export class ShapingProxy {
   readonly down: ShapedDirection;
   readonly up: ShapedDirection;
@@ -372,8 +408,12 @@ export class ShapingProxy {
         const line = data
           .toString("latin1", 0, 300)
           .match(/^[A-Z]+ (\S+) HTTP\//);
-        if (line) path = line[1]!;
-        this.up.send(upstream, Buffer.from(data), handshake);
+        let forwarded: Buffer = Buffer.from(data);
+        if (line) {
+          path = line[1]!;
+          forwarded = loopbackHeaders(forwarded, listenPort, upstreamPort);
+        }
+        this.up.send(upstream, forwarded, handshake);
         handshake = 0;
       });
       let firstResponse = true;
@@ -440,7 +480,7 @@ export class ShapingProxy {
 // Browser runs
 
 /** Installed before any page script: records milestones on `window.__perf`. */
-const INSTRUMENTATION = `(() => {
+export const INSTRUMENTATION = `(() => {
   // Playwright's Linux WebKit has no push service: getSubscription() never
   // settles and wedges the page. Report "not subscribed" as a browser would.
   if (window.PushManager) PushManager.prototype.getSubscription = async () => null;
@@ -487,11 +527,13 @@ const INSTRUMENTATION = `(() => {
 })();`;
 
 /**
- * cold: empty profile. warm: same profile again. evicted (Chromium only): the
- * HTTP cache is cleared first but service-worker storage survives, as when
- * iOS evicts Safari's cache between visits.
+ * cold: empty profile. warm: same profile again. deploy (with
+ * `--next-public-dir`): the bridge restarts serving another build and the same
+ * profile loads again. evicted (Chromium only): the HTTP cache is cleared first
+ * but service-worker storage survives, as when iOS evicts Safari's cache
+ * between visits.
  */
-type Phase = "cold" | "warm" | "evicted";
+type Phase = "cold" | "warm" | "deploy" | "evicted";
 
 interface ResourceStat {
   count: number;
@@ -679,6 +721,7 @@ async function measureBrowser(
   browserName: string,
   profile: NetworkProfile,
   proxy: ShapingProxy,
+  environment: Environment,
 ): Promise<RunResult[]> {
   const userDataDir = mkdtempSync(
     join(tmpdir(), `thyra-measure-${browserName}-`),
@@ -715,17 +758,27 @@ async function measureBrowser(
         profile,
         "warm",
       );
-      if (browserName !== "chromium") return [cold, warm];
+      const results = [cold, warm];
+      const nextPublicDir = options["next-public-dir"];
+      if (nextPublicDir) {
+        // A deploy: the bridge restarts serving another build, and the same
+        // profile loads the app again.
+        await restartBridge(environment, nextPublicDir);
+        try {
+          results.push(
+            await measureRun(context, proxy, browserName, profile, "deploy"),
+          );
+        } finally {
+          await restartBridge(environment, options["public-dir"]);
+        }
+      }
+      if (browserName !== "chromium") return results;
       const cdp = await context.newCDPSession(context.pages()[0]);
       await cdp.send("Network.clearBrowserCache");
-      const evicted = await measureRun(
-        context,
-        proxy,
-        browserName,
-        profile,
-        "evicted",
+      results.push(
+        await measureRun(context, proxy, browserName, profile, "evicted"),
       );
-      return [cold, warm, evicted];
+      return results;
     } finally {
       await Promise.race([context.close().catch(() => {}), Bun.sleep(15_000)]);
     }
@@ -823,6 +876,7 @@ async function main() {
               browserName,
               profile,
               proxy,
+              environment,
             );
             results.push(...measured);
             if (options.json) {

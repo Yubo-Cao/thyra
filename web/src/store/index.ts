@@ -5,6 +5,7 @@
 //   preferences -> core -> notifications -> refresh -> actions -> updates
 //   -> popup -> connection -> navigation -> workspaces, worktrees, git
 import { bridge, type ConnectionSummary } from "../api";
+import { prepareAppUpdate, servesOtherBuild } from "../appServiceWorker";
 import { hostCapable } from "../capabilities";
 import { t } from "../i18n";
 import { afterStartup } from "../startupGate";
@@ -71,6 +72,9 @@ export {
   type WorktreeRemovedTarget,
 } from "./worktrees";
 
+/** The newer frontend build the page last offered a reload for. */
+let offeredWebEntry: string | undefined;
+
 function init() {
   if (!markInitialized()) return;
   // Background-notification sync (service worker, push subscription) is
@@ -83,6 +87,19 @@ function init() {
   bridge.onHello((hello) => {
     handleHello(hello.default_connection_id);
     set({ host: hostCapable(hello.principal) });
+    // A deploy restarted the bridge under this open page: offer a reload
+    // (an in-app update reloads by itself).
+    if (
+      import.meta.env.PROD &&
+      hello.web_entry !== offeredWebEntry &&
+      !state.webUpdateAvailable &&
+      !state.pendingRestartVersion &&
+      servesOtherBuild(hello.web_entry)
+    ) {
+      offeredWebEntry = hello.web_entry;
+      set({ webUpdateAvailable: true });
+      prepareAppUpdate();
+    }
   });
   bridge.onStatus(handleStatus);
   bridge.onEvent(handleHerdrEvent);
@@ -114,17 +131,22 @@ function init() {
   fetch("/api/health", {
     credentials: "same-origin",
     cache: "no-store",
-  }).then((r) => {
-    if (r.status === 401) {
-      bridge.disconnect();
-      redirectToLogin();
-      return;
-    }
-    if (state.pendingRestartVersion) {
-      void reloadWhenUpdatedServerIsReady(state.pendingRestartVersion);
-    }
-    startPollingUnlessPaused();
-  });
+  }).then(
+    (r) => {
+      if (r.status === 401) {
+        bridge.disconnect();
+        redirectToLogin();
+        return;
+      }
+      if (state.pendingRestartVersion) {
+        void reloadWhenUpdatedServerIsReady(state.pendingRestartVersion);
+      }
+      startPollingUnlessPaused();
+    },
+    () => {
+      // Offline (the worker's cached shell): the socket keeps reconnecting.
+    },
+  );
 }
 
 export const store = {
@@ -147,6 +169,10 @@ export const store = {
 
   notify(notice: Notice) {
     set({ notice });
+  },
+
+  dismissWebUpdate() {
+    set({ webUpdateAvailable: false });
   },
 };
 

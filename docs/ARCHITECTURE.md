@@ -532,9 +532,20 @@ discovery. Publication requires exactly the six platform asset sets.
 
 ## Web delivery and caching
 
-Everything under `/assets/` is content-addressed (Vite output and the sliced terminal font) and is served `private, max-age=31536000, immutable`; never write an unfingerprinted file there.
-`index.html`, `/manifest.json`, the service worker and `/thyra-assets.json` are served `no-cache, must-revalidate` with a strong per-encoding `ETag`, so revalidation costs a `304`.
-Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip, compressed once per file version off the event loop.
+Caching contract (`server/src/http/static-files.ts`):
+
+| Response | `Cache-Control` | Login and cookies |
+| --- | --- | --- |
+| `/assets/**` (Vite output, terminal font slices, WebAssembly) | `public, max-age=31536000, immutable` | Served to everyone on every listener before any session work; never `Set-Cookie` |
+| Missing `/assets/**` | `no-store` (a `404`, never the SPA entry) | Same |
+| Icons, `/favicon.ico`, `/manifest.json` | `no-cache, must-revalidate` | Same |
+| `index.html`, the service worker, `/thyra-assets.json` | `private, no-cache, must-revalidate` | Need a login; tailnet login may set the session cookie here |
+| Login, enrollment and share pages, API responses | `no-store` | |
+
+Everything under `/assets/` is content-addressed; never write an unfingerprinted file there.
+Because those files are public open-source bundles with identical bytes and `ETag` on both listeners, Cloudflare caches them for the public listener (see [Cloudflare edge caching](./DEPLOYMENT.md#cloudflare-edge-caching)); the primary listener routes them (`static.asset` in `http-policy.ts`) before authentication, so tailnet login sets its cookie on navigations, API calls and the WebSocket upgrade only.
+Revalidated files carry a strong per-encoding `ETag`, so revalidation costs a `304`.
+Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip with `Vary: Accept-Encoding`, compressed once per file version off the event loop.
 At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure and font stylesheets) before the first request.
 
 The first screen downloads only the entry and the terminal view's closure; the page opens its WebSocket before rendering, so the socket does not queue behind those chunks for a browser's six HTTP/1.1 connections.
@@ -544,18 +555,34 @@ Zstandard and compression dictionaries are not offered: WebKit supports neither,
 
 The build splits long-lived vendor code into `vendor-react`, `vendor-xterm`, `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
 Chunks that import from the entry still change with it.
-It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, and the `boot` list.
+It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the WebGL renderer, and the core font stylesheet with its regular and bold slices.
+
+### Service worker
 
 Production pages that are not yet controlled register one service worker, `/task-notifications-sw.js` at scope `/`, after the `load` event and the first terminal output (`startupGate.ts`); it also handles Web Push, so there is never a second worker.
-Once active it claims open pages, and the page asks it to copy the assets it loaded before control (normally from the HTTP cache).
-- `/assets/*` GETs without a query or `Range` are cache-first in `thyra-assets-v1`; only `200` same-origin, non-redirected, non-HTML responses marked `immutable` are stored.
+The worker holds no build-specific code, so a deploy does not replace it; it follows builds through `/thyra-assets.json`.
+Once active it claims open pages; the page then asks it to copy the assets it loaded before control from the HTTP cache (`only-if-cached`, falling back to `force-cache` because WebKit can miss a file it has just loaded), after which the worker downloads the rest of the build's `precache` list one file at a time (through the HTTP cache).
+- `/assets/*` GETs without a query or `Range` are cache-first in `thyra-assets-v1`; misses are cached on first use, and a page request joins a precache download of the same file.
+  Only `200` same-origin, non-redirected, non-HTML responses marked `immutable` are stored.
 - Navigations to `/` or `/index.html` without a query are network-first: the network response (including login redirects and errors) is returned unchanged, and the cached shell in `thyra-shell-v1` answers only when the network fails or has not answered within 4 seconds.
   Only `200` same-origin, non-redirected HTML is stored as the shell.
-- Every other request (API routes, `/ws`, `/login`, navigations with a query, file previews, non-GET methods) bypasses the worker.
-- When a stored shell changes, the worker fetches `/thyra-assets.json` and deletes cached assets used by neither the new nor the previous build, so a page started from a stale shell can finish loading.
+- Every other request (API routes, `/ws`, `/login`, `/enroll`, `/s/` share pages, navigations with a query, file previews, non-GET methods) bypasses the worker.
+- When the stored shell changes, the worker fetches `/thyra-assets.json` and deletes cached assets used by neither the new build nor the two builds before it.
   Activation deletes every other `thyra-*` cache; bump the cache names when the stored format or strategy changes.
 
-A stale shell can therefore run one load after a deploy when the network is slower than the fallback timeout; the refreshed shell is used on the next load.
+A warm load therefore transfers only the entry document (or its `304`), revalidations of the icons and web manifest, and API and WebSocket data.
+
+### Deploys and open pages
+
+The hello carries `web_entry`, the entry script of the build the bridge serves.
+A deploy restarts the bridge, so every open page reconnects; one whose own entry script differs shows a "new version" toast with **Reload page** instead of reloading by itself (an in-app update, which restarts and reloads on its own, is excluded).
+It also asks the worker to prepare the update: the worker stores the new shell, so the reload starts the new build even when the network is slower than the shell timeout, and precaches the new build's `precache` list in the background.
+
+A page left running on an older build must still be able to lazy-load its chunks.
+The worker keeps the cached assets of the two builds before the current one, and the bridge answers `/assets/` misses from an on-disk archive (`server/src/http/asset-archive.ts`): after each start it copies the running build's files there (existing names are skipped) and keeps the newest five builds.
+The standalone binary archives under `~/.config/thyra/asset-archive` by default; `THYRA_ASSET_ARCHIVE_DIR` moves or disables it.
+A chunk that is in neither place still fails, and the lazy loader then reloads the page once (`lazyWithReload.ts`).
+A stale shell can also run one load after a deploy when the network is slower than the fallback timeout; that page offers the reload as above.
 
 ## Trust boundary
 

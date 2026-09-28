@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  entryScriptPath,
   etagMatches,
   negotiateEncoding,
   prewarmStaticCompression,
   serveStatic,
+  setAssetArchiveDir,
 } from "./static-files";
 
 const web = resolve(import.meta.dir, "../../../web");
@@ -74,7 +77,11 @@ test("text assets are compressed and fingerprinted assets are immutable", async 
   );
   expect(response.headers.get("content-encoding")).toBe("br");
   expect(response.headers.get("vary")).toBe("Accept-Encoding");
-  expect(response.headers.get("cache-control")).toContain("immutable");
+  // Shared caches (Cloudflare) may keep fingerprinted files for a year.
+  expect(response.headers.get("cache-control")).toBe(
+    "public, max-age=31536000, immutable",
+  );
+  expect(response.headers.get("set-cookie")).toBeNull();
   const body = new Uint8Array(await response.arrayBuffer());
   expect(body.length).toBeLessThan(script.length / 4);
   const { brotliDecompressSync } = await import("node:zlib");
@@ -119,7 +126,9 @@ test("the entry document revalidates with a per-coding ETag and a 304", async ()
   const br = await get("/", { "accept-encoding": "br" });
   const gz = await get("/", { "accept-encoding": "gzip" });
   const plain = await get("/");
-  expect(br.headers.get("cache-control")).toBe("no-cache, must-revalidate");
+  expect(br.headers.get("cache-control")).toBe(
+    "private, no-cache, must-revalidate",
+  );
   expect(br.headers.get("vary")).toBe("Accept-Encoding");
   expect(plain.headers.get("vary")).toBe("Accept-Encoding");
   const tags = [br, gz, plain].map((response) => response.headers.get("etag"));
@@ -149,7 +158,90 @@ test("the entry document revalidates with a per-coding ETag and a 304", async ()
   expect(updated.headers.get("etag")).not.toBe(tags[0]);
 
   const worker = await get("/task-notifications-sw.js");
-  expect(worker.headers.get("cache-control")).toBe("no-cache, must-revalidate");
+  expect(worker.headers.get("cache-control")).toBe(
+    "private, no-cache, must-revalidate",
+  );
+});
+
+test("unfingerprinted files revalidate and missing assets are never cached", async () => {
+  const dir = `${process.env.TMPDIR ?? "/tmp"}/thyra-static-icons-${process.pid}`;
+  await Bun.write(`${dir}/index.html`, "<!doctype html>");
+  await Bun.write(`${dir}/thyra-icon-192.png`, new Uint8Array([137, 80]));
+  await Bun.write(`${dir}/manifest.json`, "{}");
+  for (const path of ["/thyra-icon-192.png", "/manifest.json"]) {
+    const response = await serveStatic(
+      new Request(`https://thyra.example${path}`),
+      dir,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "no-cache, must-revalidate",
+    );
+    expect(response.headers.get("etag")).toBeTruthy();
+  }
+  // Even a navigation-like Accept gets a 404 for a missing asset, not the
+  // SPA entry, and the miss is not stored.
+  const missing = await serveStatic(
+    new Request("https://thyra.example/assets/gone-abc.js", {
+      headers: { accept: "text/html" },
+    }),
+    dir,
+  );
+  expect(missing.status).toBe(404);
+  expect(missing.headers.get("cache-control")).toBe("no-store");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("assets of earlier builds are served from the archive", async () => {
+  const root = `${process.env.TMPDIR ?? "/tmp"}/thyra-static-archive-${process.pid}`;
+  const current = `${root}/current`;
+  const archive = `${root}/archive`;
+  await Bun.write(`${archive}/files/assets/old-abc.js`, "export const old=1;");
+  await Bun.write(`${current}/assets/new-def.js`, "export const now=1;");
+  try {
+    setAssetArchiveDir(archive);
+    const old = await serveStatic(
+      new Request("https://thyra.example/assets/old-abc.js"),
+      current,
+    );
+    expect(old.status).toBe(200);
+    expect(await old.text()).toBe("export const old=1;");
+    expect(old.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    // Only /assets/ paths reach the archive.
+    await Bun.write(`${archive}/files/secret.txt`, "no");
+    expect(
+      (
+        await serveStatic(
+          new Request("https://thyra.example/secret.txt"),
+          current,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await serveStatic(
+          new Request("https://thyra.example/assets/../secret.txt"),
+          current,
+        )
+      ).status,
+    ).toBe(404);
+  } finally {
+    setAssetArchiveDir(null);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the entry script of a built document is found", () => {
+  expect(
+    entryScriptPath(
+      '<script>inline()</script><script type="module" crossorigin src="/assets/index-DLSb.js"></script><link rel="modulepreload" href="/assets/vendor.js">',
+    ),
+  ).toBe("/assets/index-DLSb.js");
+  expect(
+    entryScriptPath('<script type="module" src="/src/main.tsx"></script>'),
+  ).toBeNull();
 });
 
 test("prewarming compresses the entry document's assets and the boot list", async () => {

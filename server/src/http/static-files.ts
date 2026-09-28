@@ -1,6 +1,11 @@
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
+import {
+  archiveBuild,
+  archivedAssetPath,
+  parseBuildManifest,
+} from "./asset-archive";
 import { HTML_SECURITY_HEADERS } from "./security-headers";
 import {
   decodeStaticPathname,
@@ -17,6 +22,33 @@ const builtPublicDir = Bun.isStandaloneExecutable
 /** Build-time list of fingerprinted assets; the service worker prunes by it. */
 export const ASSET_MANIFEST_PATH = "/thyra-assets.json";
 export const SERVICE_WORKER_PATH = "/task-notifications-sw.js";
+
+/** Fingerprinted files: cacheable by browsers and CDNs for a year. */
+export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+/** Everything else revalidates; a matching ETag costs one small 304. */
+export const REVALIDATE_CACHE_CONTROL = "no-cache, must-revalidate";
+/** The application shell, served only after login. */
+const SHELL_PATHS = new Set([
+  "/index.html",
+  SERVICE_WORKER_PATH,
+  ASSET_MANIFEST_PATH,
+]);
+
+let assetArchiveDir: string | null = null;
+
+/** Answer `/assets/` misses from this archive of recent builds (null: off). */
+export function setAssetArchiveDir(directory: string | null): void {
+  assetArchiveDir = directory;
+}
+
+function notFound(): Response {
+  // A CDN or browser must not remember a miss: the file may be a chunk of a
+  // build that has not been archived yet.
+  return new Response("not found", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+}
 
 export async function serveStatic(
   req: Request,
@@ -36,13 +68,15 @@ export async function serveStatic(
   }
   if (!pathname) return new Response("bad request", { status: 400 });
 
+  // A missing fingerprinted file is a 404, never the SPA entry.
   const serveEntry =
     pathname === "/index.html" ||
-    shouldServeSpaEntry(req.method, req.headers.get("accept"));
+    (!pathname.startsWith("/assets/") &&
+      shouldServeSpaEntry(req.method, req.headers.get("accept")));
 
   for (const directory of [publicDir, builtPublicDir]) {
     const filePath = resolvePublicFilePath(directory, pathname);
-    if (!filePath) return new Response("not found", { status: 404 });
+    if (!filePath) return notFound();
     const file = Bun.file(filePath);
     if (await file.exists()) {
       return fileResponse(req, file, filePath, pathname);
@@ -55,8 +89,53 @@ export async function serveStatic(
       }
     }
   }
+  // A page started from an earlier build can still lazy-load its chunks.
+  const archived = assetArchiveDir
+    ? archivedAssetPath(assetArchiveDir, pathname)
+    : null;
+  if (archived) {
+    const file = Bun.file(archived);
+    if (await file.exists()) return fileResponse(req, file, archived, pathname);
+  }
 
-  return new Response("not found", { status: 404 });
+  return notFound();
+}
+
+/**
+ * Copy the running build's fingerprinted files into the asset archive and
+ * drop builds beyond the newest few (see `asset-archive.ts`).
+ */
+export async function archiveRunningBuild(
+  publicDir: string,
+  archiveDir: string,
+): Promise<{ copied: number; removed: number } | null> {
+  for (const directory of [publicDir, builtPublicDir]) {
+    const manifestFile = Bun.file(join(directory, ASSET_MANIFEST_PATH));
+    if (!(await manifestFile.exists())) continue;
+    const manifest = parseBuildManifest(
+      await manifestFile.json().catch(() => null),
+    );
+    if (!manifest) return null;
+    return archiveBuild({
+      archiveDir,
+      manifest,
+      source: (pathname) => {
+        const filePath = resolvePublicFilePath(directory, pathname);
+        return filePath ? Bun.file(filePath) : null;
+      },
+    });
+  }
+  return null;
+}
+
+/** The module script an entry document starts, e.g. `/assets/index-abc.js`. */
+export function entryScriptPath(html: string): string | null {
+  for (const [tag] of html.matchAll(/<script\b[^>]*>/gi)) {
+    if (!/\btype="module"/i.test(tag)) continue;
+    const src = tag.match(/\bsrc="(\/assets\/[^"?#]+)"/i)?.[1];
+    if (src) return src;
+  }
+  return null;
 }
 
 /** Text of a built frontend file (on-disk directory first), or null. */
@@ -268,21 +347,18 @@ function responseHeaders(pathname: string): Record<string, string> {
     "content-type": contentType(pathname),
   };
   if (pathname.endsWith(".html")) Object.assign(headers, HTML_SECURITY_HEADERS);
-  if (pathname.startsWith("/assets/")) {
-    // Vite fingerprints everything under /assets, so a URL never changes
-    // content; repeat visits then load the app without touching the network.
-    headers["cache-control"] = "private, max-age=31536000, immutable";
-  } else if (
-    pathname === "/index.html" ||
-    pathname === SERVICE_WORKER_PATH ||
-    pathname === ASSET_MANIFEST_PATH ||
-    pathname === "/manifest.json"
-  ) {
-    // The updater replaces hashed assets and these files together. Always
-    // revalidate (a matching ETag costs one small 304) so a reload cannot
-    // retain old asset URLs or an old worker.
-    headers["cache-control"] = "no-cache, must-revalidate";
-  }
+  // Vite and the font slicer fingerprint everything under /assets, so a URL
+  // never changes content: browsers and Cloudflare keep it for a year, and it
+  // is the same for everyone (served without login or cookies). An update
+  // replaces everything else in place (the entry document, the service
+  // worker, the manifests and icons), so those always revalidate and a reload
+  // cannot keep old asset URLs or an old worker. The shell files need a login,
+  // so a CDN must not store them at all.
+  headers["cache-control"] = pathname.startsWith("/assets/")
+    ? IMMUTABLE_CACHE_CONTROL
+    : SHELL_PATHS.has(pathname)
+      ? `private, ${REVALIDATE_CACHE_CONTROL}`
+      : REVALIDATE_CACHE_CONTROL;
   return headers;
 }
 
