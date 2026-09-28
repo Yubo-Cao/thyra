@@ -71,12 +71,21 @@ export function useTerminalBindings(
         const term = refs.term.current;
         const active = document.activeElement;
         const activeElement = active instanceof HTMLElement ? active : null;
-        const activeIsTerminalInput = !!activeElement?.closest(".xterm");
+        // A terminal or a prompt editor (of any pane) is input this pane may
+        // take over; other editable fields keep their focus.
+        const activeIsTerminalInput = !!activeElement?.closest(
+          ".xterm, .prompt-editor",
+        );
         if (!term || (isEditableElement(active) && !activeIsTerminalInput))
           return;
         // Streaming frames must not steal focus from an open popover, dialog,
         // or menu: moving focus out of an overlay dismisses it.
         if (terminalFocusBlockedByOverlay(activeElement, document)) return;
+        // Keep whichever of this pane's inputs has focus; otherwise its
+        // prompt editor, when shown, is where typing goes.
+        const editor = refs.promptEditor.current;
+        if (editor?.hasFocus() || term.element?.contains(activeElement)) return;
+        if (editor?.focus()) return;
         term.focus();
       }, 0);
     });

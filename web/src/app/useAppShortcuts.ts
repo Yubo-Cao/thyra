@@ -28,9 +28,11 @@ const BLOCKING_OVERLAY_SELECTOR = [
   ".context-menu",
 ].join(", ");
 
+// The prompt editor stands in for the terminal's input, so workspace, tab
+// and pane shortcuts work from it as they do from the terminal.
 function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
-  if (target.closest(".xterm")) return false;
+  if (target.closest(".xterm, .prompt-editor")) return false;
   if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return true;
   return target.isContentEditable;
 }

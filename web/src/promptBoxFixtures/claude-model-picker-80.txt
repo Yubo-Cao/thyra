@@ -1,0 +1,30 @@
+  风扇低声作响，像远处的潮水。
+  ssh 越过千山万水，
+  另一台机器在另一片夜色里回应。
+  历史记录存着我所有的犹豫，
+  按一下上箭头，旧日又回来了。
+  当我终于输入 exit，
+  那扇黑色的窗仍然开着，等下一次敲击。
+
+  ---
+
+  另外，你拒绝了之前的 touch /tmp/thyra-pe-play/hello.txt，所以 hello.txt
+  还没有创建。
+
+✻ Crunched for 10s · done 9:08
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Select model
+   Switch between Claude models. Your pick becomes the default for new
+   sessions. For other/previous model names, specify with --model.
+
+     1.  Default (recommended)  Opus 5.5 · Best for everyday, complex tasks
+   ❯ 2.  Opus 5.5 ✔             Most capable for ambitious work
+     3.  Fable 5.1              For your toughest challenges
+     4.  Sonnet 5               Most efficient for everyday tasks
+     5.  Haiku 4.5              Fastest for quick answers
+   ↓ 6.  Opus 5                 Best for everyday, complex tasks
+      … +5 models
+
+   ● High effort ←/→ to adjust
+
+   Enter to set as default · s to use this session only · Esc to cancel

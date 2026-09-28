@@ -273,6 +273,16 @@ export default {
   "Paste text or images": "粘贴文本或图片",
   "Open links or preview workspace paths": "打开链接或预览工作区路径",
   "Send the terminal composer draft": "发送终端输入框草稿",
+  "Preview the prompt editor draft as Markdown":
+    "以 Markdown 预览提示词编辑器草稿",
+  "Show or hide the prompt editor of an agent pane":
+    "显示或隐藏 Agent 窗格的提示词编辑器",
+  "Move focus between the terminal and its prompt editor":
+    "在终端与其提示词编辑器之间切换焦点",
+  "Open a local editor over the input box of agent panes, so typing never waits for the connection":
+    "在 Agent 窗格的输入框上打开本地编辑器，输入不必等待网络连接",
+  "Open the prompt editor by default on agent panes":
+    "在 Agent 窗格默认打开提示词编辑器",
   "Voice typing: hold to talk, tap to start or insert":
     "语音输入：按住说话，轻按开始或插入",
   "Search the raw file preview or diff": "在原始文件预览或差异中搜索",

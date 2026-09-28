@@ -5,6 +5,7 @@ import { configMenuPanel } from "../components/ConfigMenu";
 import { connectionSwitcherPanel } from "../components/ConnectionSwitcherTrigger";
 import {
   createWorkspaceDialog,
+  promptEditorPanel,
   terminalComposerPanel,
   terminalFileLinkMenuPanel,
 } from "../components/lazyPanels";
@@ -69,7 +70,7 @@ function idlePrefetchLoaders(mobile: boolean) {
     terminalFileLinkMenuPanel.preload,
     createWorkspaceDialog.preload,
     projectLauncherPanel.preload,
-    ...(mobile ? [mobileTabSheet.preload] : [terminalComposerPanel.preload]),
+    ...(mobile ? [mobileTabSheet.preload] : [promptEditorPanel.preload]),
     workspaceInspectorPanel.preload,
   ];
 }

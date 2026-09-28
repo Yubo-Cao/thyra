@@ -124,6 +124,21 @@ const descriptions: Description[] = [
     msg("Terminal composer"),
   ],
   [
+    "composer.preview",
+    msg("Preview the prompt editor draft as Markdown"),
+    msg("Terminal composer"),
+  ],
+  [
+    "promptEditor.toggle",
+    msg("Show or hide the prompt editor of an agent pane"),
+    msg("Terminal composer"),
+  ],
+  [
+    "promptEditor.focus",
+    msg("Move focus between the terminal and its prompt editor"),
+    msg("Terminal composer"),
+  ],
+  [
     "voice.pushToTalk",
     msg("Voice typing: hold to talk, tap to start or insert"),
     msg("Terminal"),

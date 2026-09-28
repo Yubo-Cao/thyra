@@ -1,0 +1,144 @@
+/* The prompt editor sits on the terminal grid in the terminal's own font and
+   colours: its box is whole rows, its text starts two cells in like the
+   agent's, and a lighter tone of the terminal background sets it apart. */
+.prompt-editor {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: color-mix(
+    in srgb,
+    var(--prompt-editor-fg) 7%,
+    var(--prompt-editor-bg)
+  );
+  color: var(--prompt-editor-fg);
+  font-size: var(--prompt-editor-font-size);
+  line-height: var(--prompt-editor-row);
+  outline: none;
+}
+
+.prompt-editor[hidden] {
+  display: none;
+}
+
+.prompt-editor-marker {
+  position: absolute;
+  top: var(--prompt-editor-pad-top);
+  left: 0;
+  width: calc(2 * var(--prompt-editor-cell));
+  height: var(--prompt-editor-row);
+  text-align: center;
+  color: color-mix(in srgb, var(--prompt-editor-fg) 55%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
+.prompt-editor-body,
+.prompt-editor-preview {
+  position: absolute;
+  top: var(--prompt-editor-pad-top);
+  right: var(--prompt-editor-cell);
+  bottom: var(--prompt-editor-pad-bottom);
+  left: calc(2 * var(--prompt-editor-cell));
+}
+
+.prompt-editor-body[hidden] {
+  display: none;
+}
+
+.prompt-editor-textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  color: inherit;
+  caret-color: var(--prompt-editor-caret);
+  font: inherit;
+  line-height: var(--prompt-editor-row);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+
+/* The caret marks focus; the field underline would cut through the rows. */
+.prompt-editor textarea,
+.prompt-editor textarea:focus {
+  box-shadow: none;
+}
+
+.prompt-editor-textarea::placeholder,
+.prompt-editor-hint {
+  color: color-mix(in srgb, var(--prompt-editor-fg) 45%, transparent);
+}
+
+.prompt-editor-textarea::selection {
+  background: var(--prompt-editor-selection);
+}
+
+.prompt-editor-monaco {
+  width: 100%;
+  height: 100%;
+}
+
+/* Monaco draws on the editor's tone in the terminal's caret colour. */
+.prompt-editor .monaco-editor {
+  --vscode-editor-background: transparent;
+  --vscode-editorGutter-background: transparent;
+  --vscode-focusBorder: transparent;
+  --vscode-editorCursor-foreground: var(--prompt-editor-caret);
+  --vscode-editor-selectionBackground: var(--prompt-editor-selection);
+  --vscode-editor-placeholder-foreground: color-mix(
+    in srgb,
+    var(--prompt-editor-fg) 45%,
+    transparent
+  );
+}
+
+.prompt-editor-preview {
+  overflow-y: auto;
+  font-family: var(--font-sans, inherit);
+  line-height: 1.45;
+}
+
+.prompt-editor-actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--prompt-editor-pad-bottom);
+  padding-right: var(--prompt-editor-cell);
+  pointer-events: none;
+}
+
+.prompt-editor-actions > * {
+  pointer-events: auto;
+}
+
+.prompt-editor-hint {
+  padding-right: var(--prompt-editor-cell);
+  font-size: 0.85em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.prompt-editor-hint[data-busy] {
+  color: var(--prompt-editor-fg);
+}
+
+.prompt-editor .prompt-editor-action {
+  --button-fg: color-mix(in srgb, var(--prompt-editor-fg) 60%, transparent);
+  width: var(--prompt-editor-row);
+  min-width: var(--prompt-editor-row);
+  height: var(--prompt-editor-row);
+  min-height: var(--prompt-editor-row);
+  padding: 0;
+}

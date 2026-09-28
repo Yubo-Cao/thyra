@@ -24,8 +24,13 @@ import {
   SquareTerminal,
   Sun,
   SunMoon,
+  TextCursorInput,
   Type as TypeIcon,
 } from "lucide-react";
+import {
+  setPromptEditorOpensByDefault,
+  usePromptEditorOpensByDefault,
+} from "../promptEditorPreferences";
 import {
   ACCENT_OPTIONS,
   type AccentColor,
@@ -187,6 +192,7 @@ export function ConfigurationDialog({
     visibleTabs.includes(initialTab) ? initialTab : "Appearance",
   );
   const voiceCleanup = useVoiceCleanupMode();
+  const promptEditorByDefault = usePromptEditorOpensByDefault();
   const [swipeFingers, setSwipeFingers] = useState(() =>
     String(paneSwipeFingers()),
   );
@@ -406,6 +412,19 @@ export function ConfigurationDialog({
           aria-label={t("Automatic update checks")}
           checked={s.automaticUpdateChecksEnabled}
           onChange={(checked) => store.setAutomaticUpdateChecksEnabled(checked)}
+        />
+      </PreferenceRow>
+      <PreferenceRow
+        icon={<TextCursorInput size={15} />}
+        title={t("Prompt editor")}
+        description={t(
+          "Open a local editor over the input box of agent panes, so typing never waits for the connection",
+        )}
+      >
+        <Switch
+          aria-label={t("Open the prompt editor by default on agent panes")}
+          checked={promptEditorByDefault}
+          onChange={setPromptEditorOpensByDefault}
         />
       </PreferenceRow>
       <PreferenceRow

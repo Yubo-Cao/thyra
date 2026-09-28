@@ -93,6 +93,20 @@ full destinations. Viewport-clipped plain URLs cannot be recovered safely.
 Older servers retain local URL/path detection; legacy touch lacks explicit OSC 8
 metadata. See [link contracts](docs/ARCHITECTURE.md#links).
 
+### Prompt Editor
+
+On desktop, agent panes (Claude Code, Codex, and other detected agents; never plain shells) get a local prompt editor laid over the agent's own input box, so typing never waits for the connection: nothing reaches the pane until the draft is sent.
+It finds Claude Code's and Codex's input box on screen and takes its place in the terminal's font and colors, growing upward with the draft to 40% of the pane; for other agents it docks at the pane bottom.
+While the agent shows a menu or dialog (a permission prompt, a picker) or has text in its own box (recalled history, an interrupted prompt), the editor steps aside and keys go to the terminal; it returns, with its draft, when the box is empty again.
+
+- `Cmd+Enter` / `Ctrl+Enter` sends the draft (as one paste, then Enter); Enter, Shift+Enter, and Alt+Enter break the line.
+- With an empty draft, Enter, Esc, `Ctrl+C`, Up/Down, Tab/Shift+Tab, `Ctrl+R`, `Ctrl+L`, and Page Up/Down go to the agent (interrupt, history, mode switching, menus).
+- The editor starts as a plain text field and becomes a Monaco editor after the first output (multiple cursors with `Cmd/Ctrl+D`, Alt+click, and `Ctrl+Shift+L`, find, Markdown highlighting); Data Saver and 2G links keep the plain field.
+  `Cmd/Ctrl+Shift+V` previews the draft as Markdown, and pasted images upload and insert their paths.
+- `Ctrl+Alt+P` or the pane header button shows or hides it for the pane, and `Ctrl+Alt+I` moves focus between the terminal and the editor; clicking the terminal types into the terminal.
+  **Configuration > Behavior > Prompt editor** sets whether agent panes open it by default.
+  Drafts stay in memory, shared with the mobile composer, and viewers without control see no editor.
+
 ## Workspace Inspector
 
 Open **Files**, **Changes**, or **Agent History** from the Inspector button,
@@ -385,7 +399,9 @@ Common defaults (Linux/Android exceptions follow):
 | Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
 | Agent history | `Cmd+Shift+H` | `Ctrl+Alt+H` |
 | Search raw preview / diff | `Cmd+F` | `Ctrl+F` |
-| Send composer | `Cmd+Enter` | `Ctrl+Enter` |
+| Send composer or prompt editor | `Cmd+Enter` | `Ctrl+Enter` |
+| Show / hide the prompt editor; focus terminal or editor | `Ctrl+Option+P` / `Ctrl+Option+I` | `Ctrl+Alt+P` / `Ctrl+Alt+I` |
+| Preview the prompt as Markdown | `Cmd+Shift+V` | `Ctrl+Shift+V` |
 | Copy terminal selection | `Cmd+C` | `Ctrl+Shift+C` / `Ctrl+Insert` |
 | Terminal paste | `Cmd+V` | `Ctrl+V` (also `Ctrl+Shift+V` on Linux) |
 | Open terminal links / file paths | `Cmd+Click` | `Ctrl+Click` |

@@ -11,12 +11,14 @@ import {
   Rows2,
   Scaling,
   SquareTerminal,
+  TextCursorInput,
   X,
 } from "lucide-react";
 import type { TerminalPreviewMode } from "./TerminalPreview";
 import type { PointerEvent } from "react";
 import { agentStatusText } from "../../agentOrder";
 import { t } from "../../i18n";
+import { shortcutTitle } from "../../shortcutPreferences";
 import { store } from "../../store";
 import { copyTextFromUserGesture } from "../../terminalClipboard";
 import type { Pane } from "../../types";
@@ -70,6 +72,7 @@ export function TerminalPaneHeader({
   onClosePane,
   previewMode,
   onPreviewModeChange,
+  promptEditor,
 }: {
   pane: Pane;
   paneName: string;
@@ -84,6 +87,8 @@ export function TerminalPaneHeader({
   /** How an input-only device previews the pane. */
   previewMode?: TerminalPreviewMode;
   onPreviewModeChange?: (mode: TerminalPreviewMode) => void;
+  /** The desktop prompt editor toggle, on agent panes this viewer may type in. */
+  promptEditor?: { open: boolean; toggle: () => void };
 }) {
   const { access } = control;
   // Another device sizes this pane: offer typing here without resizing it.
@@ -280,6 +285,21 @@ export function TerminalPaneHeader({
           aria-label={t("Pane actions")}
           style={access.readOnly ? { display: "none" } : undefined}
         >
+          {promptEditor ? (
+            <IconButton
+              className="terminal-pane-action"
+              aria-pressed={promptEditor.open}
+              label={shortcutTitle(
+                promptEditor.open
+                  ? t("Hide prompt editor")
+                  : t("Show prompt editor"),
+                "promptEditor.toggle",
+              )}
+              onPointerDown={preventPaneActionFocus}
+              onClick={promptEditor.toggle}
+              icon={<TextCursorInput size={14} />}
+            />
+          ) : null}
           <TerminalVoiceButton
             voice={voiceTyping}
             className="terminal-pane-action"

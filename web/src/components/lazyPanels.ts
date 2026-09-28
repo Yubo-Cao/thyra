@@ -11,6 +11,11 @@ export const createWorkspaceDialog = lazyPanel("create-workspace", () =>
 export const terminalComposerPanel = lazyPanel("terminal-composer", () =>
   import("./TerminalComposer").then((module) => module.TerminalComposer),
 );
+// The desktop prompt editor's shell (textarea, detectors); Monaco and the
+// Markdown preview load separately from inside it.
+export const promptEditorPanel = lazyPanel("prompt-editor", () =>
+  import("./promptEditor/PromptEditor").then((module) => module.PromptEditor),
+);
 export const terminalFileLinkMenuPanel = lazyPanel(
   "terminal-file-link-menu",
   () =>

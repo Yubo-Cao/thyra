@@ -153,6 +153,15 @@ export default {
   "{count} unsent composer drafts will be discarded.":
     "{count} 份未发送的输入框草稿将被丢弃。",
 
+  // Prompt editor
+  "Prompt editor": "提示词编辑器",
+  "Show prompt editor": "显示提示词编辑器",
+  "Hide prompt editor": "隐藏提示词编辑器",
+  "Write a prompt for the agent": "为 Agent 编写提示词",
+  "Preview Markdown": "预览 Markdown",
+  "Edit the prompt": "编辑提示词",
+  "Nothing to preview": "没有可预览的内容",
+
   // Voice typing
   "Cleanup failed; typing the raw dictation. {error}":
     "整理失败，将输入原始听写内容。{error}",

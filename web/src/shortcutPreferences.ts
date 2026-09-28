@@ -43,6 +43,9 @@ const LATE_SHORTCUT_IDS: ShortcutId[] = [
   "plugin.herdrFloat.toggle",
   "terminal.ctrlEnter",
   "voice.pushToTalk",
+  "composer.preview",
+  "promptEditor.toggle",
+  "promptEditor.focus",
 ];
 /** Removed actions that saved presets may still name; loading drops them. */
 const RETIRED_SHORTCUT_IDS = new Set([

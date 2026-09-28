@@ -1,0 +1,30 @@
+
+
+• The terminal wakes in a coat of black,
+  A small white moon at the end of a track.
+  I type my name, and the silence replies
+  With paths to the rooms where yesterday lies.
+  The cursor keeps time with a patient blink,
+  Allowing the space that I need to think.
+  A command slips out like a key in a door;
+  The screen fills with things I was looking for.
+  Some lines turn red, and I sit up straight,
+  Then find one small letter and alter its fate.
+  Outside, the buses go hissing through rain;
+  Inside, I call an old process again.
+  The files have names I no longer recall,
+  But their dates mark a summer, a move, and a fall.
+› /model         choose what model and reasoning effort to use
+  /fast          2x speed, increased usage
+  /ide           include current selection, open files, and other context from
+                 your IDE
+  /permissions   choose what Codex is allowed to do
+  /keymap        remap TUI shortcuts
+  /vim           toggle Vim mode for the composer
+  /experimental  toggle experimental features
+  /approve       approve one retry of a recent auto-review denial
+
+› /
+
+  GPT-6-Astra medium · /tmp/thyra-pe-play · Write terminal poem
+

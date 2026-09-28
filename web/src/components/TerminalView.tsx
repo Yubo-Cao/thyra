@@ -39,11 +39,20 @@ import { store, terminalNavigationLoading, useStoreSelector } from "../store";
 import {
   clearTerminalComposerDrafts,
   insertIntoTerminalComposerDraft,
+  readTerminalComposerDraft,
+  submitTerminalComposerDraft,
   terminalComposerCloseWarning,
   terminalComposerDraftKey,
   terminalComposerDraftPaneIds,
   terminalComposerRequest,
 } from "../terminalComposer";
+import { agentKind } from "../agentKind";
+import { useLayoutPreferences } from "../layoutPreferences";
+import {
+  setPromptEditorPaneOpen,
+  usePromptEditorOpen,
+} from "../promptEditorPreferences";
+import { useStartupSettled } from "../startupGate";
 import {
   type TerminalConnectionIdentity,
   terminalConnectionKey,
@@ -52,6 +61,7 @@ import { uploadTerminalImage } from "../terminalImageUpload";
 import type { TerminalFileLinkMenuState } from "./TerminalFileLinkMenu";
 import {
   createWorkspaceDialog,
+  promptEditorPanel,
   terminalComposerPanel,
   terminalConfirmDialog,
   terminalFileLinkMenuPanel,
@@ -77,6 +87,7 @@ import { usePaneSwipe } from "./terminal/paneSwipe";
 import { setTerminalZoom } from "../touchGestures";
 import {
   focusTerminalEndpoint,
+  sendTerminalBytes,
   setTerminalStdinDisabled,
   type TerminalTouchLinkState,
   type TerminalViewSetters,
@@ -100,6 +111,7 @@ export type { TerminalWorkspaceFileRequest };
 // Surfaces a terminal opens on demand load with their first use, keeping
 // the terminal chunk down to what first output and input need.
 const TerminalComposer = terminalComposerPanel.Component;
+const PromptEditor = promptEditorPanel.Component;
 const TerminalFileLinkMenu = terminalFileLinkMenuPanel.Component;
 // Only read-only viewers open it, so the app shell never prefetches it.
 const TerminalHistory = lazyPanel("terminal-history", () =>
@@ -108,6 +120,15 @@ const TerminalHistory = lazyPanel("terminal-history", () =>
 const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 const ConfirmDialog = terminalConfirmDialog.Component;
 const Dialog = terminalMessageDialog.Component;
+
+// Dialogs and menus own the keyboard while open.
+const BLOCKING_OVERLAYS =
+  ".modal-backdrop, .ui-dialog-backdrop, .command-popover, .ui-menu-popover";
+// A mouse or trackpad (even on a touch laptop) gets the prompt editor; a
+// touch-first device keeps the mobile composer.
+const finePointer = () =>
+  typeof window !== "undefined" &&
+  !window.matchMedia("(pointer: coarse)").matches;
 
 // A switch that resolves within this window shows no spinner at all, which
 // reads as an instant switch instead of a flash of loading chrome. Set well
@@ -321,6 +342,25 @@ export function TerminalView({
   // Voice typing goes straight into the pane; the composer keeps its own mic.
   const voiceTyping = useTerminalVoiceTyping({
     onInsert: async (text, submit) => {
+      // Dictation lands in the prompt editor's draft while it covers the
+      // agent's box, so it is seen (and edited) before it is sent.
+      const editorKey = refs.paneId.current
+        ? terminalComposerDraftKey(
+            s.activeConnectionId,
+            s.connectionGeneration,
+            refs.paneId.current,
+          )
+        : null;
+      if (editorKey && refs.promptEditor.current?.visible()) {
+        insertIntoTerminalComposerDraft(editorKey, text);
+        if (submit)
+          await submitTerminalComposerDraft(
+            editorKey,
+            readTerminalComposerDraft(editorKey),
+            (draft) => submitTerminalComposer(draft, true),
+          );
+        return;
+      }
       try {
         assertInputAllowed();
         await submitTerminalComposer(text, submit);
@@ -474,6 +514,65 @@ export function TerminalView({
     saveTerminalPreviewMode(mode);
     setPreviewMode(mode);
   }, []);
+  // The desktop prompt editor: agent panes only, for writers, on fine pointers.
+  const { mobile } = useLayoutPreferences();
+  const [desktopPointer] = useState(finePointer);
+  const promptAgent = agentKind(pane?.agent);
+  const promptEditorKey = pane
+    ? terminalComposerDraftKey(
+        s.activeConnectionId,
+        s.connectionGeneration,
+        pane.pane_id,
+      )
+    : "";
+  const promptEditorAvailable =
+    !!pane &&
+    promptAgent !== "unknown" &&
+    !mobile &&
+    desktopPointer &&
+    !control.access.viewOnly;
+  const promptEditorOpen = usePromptEditorOpen(
+    promptEditorKey,
+    promptEditorAvailable,
+  );
+  const startupSettled = useStartupSettled();
+  const showPromptEditor =
+    promptEditorOpen && startupSettled && !!termInstance && !composerOpen;
+  const focusTerminal = useCallback(() => refs.term.current?.focus(), [refs]);
+  const setPromptEditorOpen = useCallback(
+    (open: boolean) => {
+      if (!open && refs.promptEditor.current?.hasFocus()) focusTerminal();
+      setPromptEditorPaneOpen(promptEditorKey, open);
+    },
+    [focusTerminal, promptEditorKey, refs],
+  );
+  useEffect(() => {
+    if (!isActivePane || !promptEditorAvailable) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const toggle = shortcutMatches(e, "promptEditor.toggle");
+      if (!toggle && !shortcutMatches(e, "promptEditor.focus")) return;
+      if (document.querySelector(BLOCKING_OVERLAYS)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.repeat) return;
+      const editor = refs.promptEditor.current;
+      if (toggle) setPromptEditorOpen(!promptEditorOpen);
+      else if (editor?.hasFocus()) focusTerminal();
+      else if (!promptEditorOpen) setPromptEditorOpen(true);
+      else editor?.focus();
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
+  }, [
+    focusTerminal,
+    isActivePane,
+    promptEditorAvailable,
+    promptEditorOpen,
+    refs,
+    setPromptEditorOpen,
+  ]);
   const [agentHistoryOpen, setAgentHistoryOpen] = useOpenState(
     controlledAgentHistoryOpen,
     onAgentHistoryOpenChange,
@@ -529,7 +628,7 @@ export function TerminalView({
       if (!isHistoryShortcut) return;
       if (
         isEditableElement(e.target) &&
-        !(e.target as HTMLElement).closest(".xterm")
+        !(e.target as HTMLElement).closest(".xterm, .prompt-editor")
       ) {
         return;
       }
@@ -736,6 +835,14 @@ export function TerminalView({
           onClosePane={() => setClosePaneRequested(true)}
           previewMode={previewMode}
           onPreviewModeChange={changePreviewMode}
+          promptEditor={
+            promptEditorAvailable
+              ? {
+                  open: promptEditorOpen,
+                  toggle: () => setPromptEditorOpen(!promptEditorOpen),
+                }
+              : undefined
+          }
         />
         <div className="terminal-main">
           {/* The follow scale edits classList, so React owns only this attribute. */}
@@ -744,6 +851,46 @@ export function TerminalView({
             className="terminal-view"
             data-preview={framesPaused ? "text" : undefined}
           />
+          {showPromptEditor && termInstance ? (
+            <LazyBoundary>
+              <PromptEditor
+                key={promptEditorKey}
+                draftKey={promptEditorKey}
+                agent={promptAgent}
+                term={termInstance}
+                terminalTheme={terminalTheme}
+                active={isActivePane}
+                dockOnly={framesPaused}
+                controlRef={refs.promptEditor}
+                onSubmit={(text) => submitTerminalComposer(text, true)}
+                onForward={(data) => {
+                  const terminalId =
+                    refs.desiredTerminal.current ?? pane.terminal_id;
+                  if (control.access.viewOnly || !terminalId) return;
+                  sendTerminalBytes(
+                    connectionClient,
+                    new TextEncoder().encode(data),
+                    terminalId,
+                  );
+                  if (framesPaused) setInputEpoch((value) => value + 1);
+                }}
+                onPage={(direction) => sessionBindings.scrollPage(direction)}
+                onUploadImage={async (file) => {
+                  assertInputAllowed();
+                  return uploadTerminalImage(connectionClient, file);
+                }}
+                onError={(message) =>
+                  store.notify({
+                    kind: "error",
+                    message: t("Prompt editor"),
+                    detail: message,
+                  })
+                }
+                onClose={() => setPromptEditorOpen(false)}
+                onFocusTerminal={focusTerminal}
+              />
+            </LazyBoundary>
+          ) : null}
           {zoomBadge !== null ? (
             <Button
               className="terminal-zoom-badge"

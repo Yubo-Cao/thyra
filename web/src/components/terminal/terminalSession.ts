@@ -65,6 +65,7 @@ import {
   type TerminalFrameParts,
   terminalFrameText,
 } from "../../../../shared/terminalFrame";
+import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import type { TerminalFileLinkMenuState } from "../TerminalFileLinkMenu";
 import { b64toText, bytesToB64 } from "../../utils";
 
@@ -236,6 +237,8 @@ function createTerminalRefs(initial: {
     inputActive: box(false),
     inputSession: box(0),
     composerOpen: box(initial.composerOpen),
+    // The desktop prompt editor over this pane, while it is mounted.
+    promptEditor: box<PromptEditorControl | null>(null),
     viewOnly: box(initial.viewOnly),
     // The view syncs the pane refs in a layout effect before any reader runs.
     isActivePane: box(false),

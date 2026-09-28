@@ -1,0 +1,24 @@
+
+           Claude Code v2.1.283
+ ▐▛███▛█   Opus 5.5 (1M context) with high ef…
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   /tmp/thyra-pe-play
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    Ctrl+Y to paste deleted text
+──────────────────────────────────────────────────
+❯ This is a long line of text that should wrap
+  around the prompt box because
+──────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

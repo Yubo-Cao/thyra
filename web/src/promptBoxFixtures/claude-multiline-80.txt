@@ -1,0 +1,30 @@
+
+ ▐▛███▛█   Claude Code v2.1.283
+▝▜██████▀  Opus 5.5 (1M context) with high effort · Claude Max
+ ▝▝   ▝▝   /tmp/thyra-pe-play · /rc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                     ctrl+g to edit in VS Code
+────────────────────────────────────────────────────────────────────────────────
+❯ This is a long line of text that should wrap around the prompt box because
+  it is longer than eighty columns wide, ok
+  second line
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

@@ -60,6 +60,9 @@ const base = {
   "preview.search": ["Ctrl+F"],
   "preview.selectAll": ["Ctrl+A"],
   "composer.send": ["Ctrl+Enter"],
+  "composer.preview": ["Ctrl+Shift+V"],
+  "promptEditor.toggle": ["Ctrl+Alt+P"],
+  "promptEditor.focus": ["Ctrl+Alt+I"],
   // Held for push-to-talk; free on macOS, Windows, and KDE/GNOME defaults.
   "voice.pushToTalk": ["Ctrl+Alt+M"],
 };
@@ -131,6 +134,7 @@ export function defaultShortcutBindings(
       "preview.search": ["Meta+F"],
       "preview.selectAll": ["Meta+A"],
       "composer.send": ["Meta+Enter"],
+      "composer.preview": ["Meta+Shift+V"],
     });
   return bindings;
 }
