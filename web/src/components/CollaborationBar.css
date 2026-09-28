@@ -23,6 +23,13 @@
   margin-inline: 4px;
 }
 
+/* The sharer's picture, in line with the text. */
+.guest-badge-avatar.ui-avatar {
+  --avatar-size: 14px;
+  margin-inline-end: 4px;
+  vertical-align: -2px;
+}
+
 @media (max-width: 720px) {
   .guest-badge-by {
     display: none;

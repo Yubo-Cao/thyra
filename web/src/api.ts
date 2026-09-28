@@ -168,6 +168,8 @@ export interface BridgePrincipal {
     name: string;
     display_name: string;
     role: "admin" | "member";
+    /** Uploaded profile picture (`/avatars/<hash>.webp`). */
+    avatar_url?: string | null;
   } | null;
   session_id?: string;
   /** What a guest's share link shows, and until when. */
@@ -177,6 +179,7 @@ export interface BridgePrincipal {
     pane_id: string | null;
     label: string | null;
     shared_by: string | null;
+    shared_by_avatar?: string | null;
     expires_at: number;
   };
 }

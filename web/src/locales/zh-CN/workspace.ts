@@ -374,8 +374,13 @@ export default {
   "alice or alice@example.com": "alice 或 alice@example.com",
   Role: "角色",
   Invite: "邀请",
-  "People need an account first: tailnet users get one on their first visit; others need `thyra user add` on the host.":
-    "对方需要先有账户：tailnet 用户首次访问时自动获得；其他人需要在主机上运行 `thyra user add`。",
+  "People need an account first; the host owner creates accounts with `thyra user add`.":
+    "对方需要先有账户；主机所有者可用 `thyra user add` 创建账户。",
+  "Enter a user name, or an email address to send an invitation.":
+    "输入用户名，或输入邮箱地址以发送邀请。",
+  "Invitation sent to {email}": "已向 {email} 发送邀请",
+  "{email} already has an account and now has access":
+    "{email} 已有账户，现已获得访问权限",
   "People with access": "有权访问的人",
   "Only instance admins can open this workspace.":
     "只有实例管理员可以打开此工作区。",

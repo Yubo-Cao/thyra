@@ -4,6 +4,7 @@ import { type BridgePrincipal, logoutBrowserSession } from "../api";
 import { t } from "../i18n";
 import { relativeExpiry } from "../shareLinks";
 import { store } from "../store";
+import { Avatar } from "./ui/Avatar";
 import { IconButton } from "./ui/IconButton";
 import { Token } from "./ui/Token";
 
@@ -50,7 +51,16 @@ export function GuestBadge({ share }: { share: Share }) {
       >
         <span>{t("Read-only")}</span>
         {sharedBy ? (
-          <span className="guest-badge-detail guest-badge-by">{sharedBy}</span>
+          <span className="guest-badge-detail guest-badge-by">
+            {share.shared_by_avatar ? (
+              <Avatar
+                className="guest-badge-avatar"
+                name={share.shared_by ?? ""}
+                src={share.shared_by_avatar}
+              />
+            ) : null}
+            {sharedBy}
+          </span>
         ) : null}
         <span className="guest-badge-detail">{expires}</span>
       </Token>

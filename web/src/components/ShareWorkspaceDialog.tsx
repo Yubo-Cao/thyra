@@ -63,6 +63,53 @@ async function grantsRequest(
   return data.grants ?? [];
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Invite someone by email: an existing account gets the grant; anyone else
+ * gets a pending account with the grant and a mailed invitation link.
+ */
+async function inviteRequest(
+  email: string,
+  role: WorkspaceAccess,
+  connectionId: string,
+  workspaceId: string,
+): Promise<{ invited: boolean }> {
+  const response = await fetch(
+    `/api/invites?${new URLSearchParams({
+      connection_id: connectionId,
+      workspace_id: workspaceId,
+    })}`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, role }),
+    },
+  );
+  const data = (await response.json().catch(() => ({}))) as {
+    invited?: boolean;
+    error?: string;
+  };
+  if (!response.ok)
+    throw new Error(
+      data.error || t("Request failed ({status})", { status: response.status }),
+    );
+  return { invited: Boolean(data.invited) };
+}
+
+/** Whether invitations by email are available (email sign-in is on). */
+async function emailInvitesAvailable(): Promise<boolean> {
+  const response = await fetch("/api/auth/me", {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    providers?: { email?: boolean };
+  };
+  return Boolean(data.providers?.email);
+}
+
 /**
  * Invite existing users to one workspace and change or remove their roles,
  * and manage its anonymous read-only links. Only workspace owners and
@@ -86,12 +133,21 @@ export function ShareWorkspaceDialog({
   const [role, setRole] = useState<WorkspaceAccess>("editor");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [emailInvites, setEmailInvites] = useState(false);
 
   useEffect(() => {
     if (!open || !workspaceId) return;
     let cancelled = false;
     setGrants(null);
     setError("");
+    setNotice("");
+    emailInvitesAvailable().then(
+      (available) => {
+        if (!cancelled) setEmailInvites(available);
+      },
+      () => {},
+    );
     grantsRequest(null, connectionId, workspaceId).then(
       (next) => {
         if (!cancelled) setGrants(next);
@@ -126,6 +182,33 @@ export function ShareWorkspaceDialog({
     }
   };
 
+  const invite = async (email: string) => {
+    if (!workspaceId || busy) return false;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await inviteRequest(
+        email,
+        role,
+        connectionId,
+        workspaceId,
+      );
+      setGrants(await grantsRequest(null, connectionId, workspaceId));
+      setNotice(
+        result.invited
+          ? t("Invitation sent to {email}", { email })
+          : t("{email} already has an account and now has access", { email }),
+      );
+      return true;
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const roleOptions = ROLE_OPTIONS.map((option) => ({
     value: option.value,
     label: t(option.label),
@@ -146,7 +229,11 @@ export function ShareWorkspaceDialog({
         event.preventDefault();
         const name = user.trim();
         if (!name) return;
-        void change(name, role).then((ok) => {
+        const request =
+          emailInvites && EMAIL_PATTERN.test(name)
+            ? invite(name)
+            : change(name, role);
+        void request.then((ok) => {
           if (ok) setUser("");
         });
       }}
@@ -177,10 +264,17 @@ export function ShareWorkspaceDialog({
         </Button>
       </div>
       <p className="share-workspace-note">
-        {t(
-          "People need an account first: tailnet users get one on their first visit; others need `thyra user add` on the host.",
-        )}
+        {emailInvites
+          ? t("Enter a user name, or an email address to send an invitation.")
+          : t(
+              "People need an account first; the host owner creates accounts with `thyra user add`.",
+            )}
       </p>
+      {notice ? (
+        <p className="share-workspace-note" role="status">
+          {notice}
+        </p>
+      ) : null}
       {error ? (
         <p className="share-workspace-error" role="alert">
           {error}

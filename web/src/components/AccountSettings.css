@@ -10,7 +10,7 @@
   line-height: 1.5;
 }
 
-.account-add-passkey.button {
+.account-add-method.button {
   justify-self: start;
   gap: 6px;
 }
@@ -19,4 +19,42 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--danger-text);
+}
+
+/* Picture and its actions, side by side. */
+.account-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-avatar.ui-avatar {
+  --avatar-size: 64px;
+}
+
+.account-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A field with its button on one line. */
+.account-inline-form {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.account-provider {
+  display: grid;
+  gap: 6px;
+}
+
+.account-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
