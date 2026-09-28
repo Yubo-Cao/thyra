@@ -1,13 +1,13 @@
 {
   "repository": "Yubo-Cao/herdr",
-  "tag": "v0.9.1-thyra.3",
+  "tag": "v0.9.1-thyra.4",
   "version": "0.9.1",
   "protocol": 22,
   "sha256": {
-    "linux-x86_64": "f6d4e0a4961107779ed73d30f3ebaf586d63efee88130f37c9bf006522c501d7",
-    "linux-aarch64": "32c87b6e43d9dfcaabdfe210858c7ea792cffbe70cb2068851d797fd1250f9a2",
-    "macos-x86_64": "c26d8f085c4f5e797da282af8534e2e5a9da75edf85b3e80130e73c94dd1733a",
-    "macos-aarch64": "9808a001dbc657123f99eac814dbf13e11203ee38271a5d6770f288ffa83f392",
-    "windows-x86_64": "a0ab33142d4df71489f81d95a56e9bc849ceaeb28298af6e75b63c1d2288a402"
+    "linux-x86_64": "b2434835310e6ec3c6b4be31dbf75b2ea5aa3cc220a905f6295d9d4df35ed83c",
+    "linux-aarch64": "e469dc7c6988bdbb47c93d1193ff8a514c07ff7dc1fca48a127cbdd882ac010e",
+    "macos-x86_64": "38f1427a52f2fe571c71917ed678145475cf6d4674baacba29caed76fd8ea81c",
+    "macos-aarch64": "19c8531817b57d65bddccc54d52a1c2afc44f4a80fd150a00f7ab88c4376a2db",
+    "windows-x86_64": "4d530417e7e2954d16c5ebf6b41cbed9053f2ad6cad639ac6ce041400f140d32"
   }
 }
