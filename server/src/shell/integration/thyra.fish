@@ -4,7 +4,8 @@ set -q HERDR_PANE_ID; or return
 test -n "$HERDR_PANE_ID"; or return
 set -q __thyra_loaded; and return
 set -g __thyra_loaded 1
-set -g __thyra_seq 0
+# Seed from the clock so seq keeps rising across `exec fish` (same pid).
+set -g __thyra_seq (math (date +%s) \* 1000)
 set -g __thyra_recorded 0
 set -l runtime /tmp/thyra-(id -u)
 set -q XDG_RUNTIME_DIR; and set runtime $XDG_RUNTIME_DIR

@@ -1,6 +1,8 @@
 # Thyra shell integration. Original implementation, MIT license.
 [[ -o interactive && -n ${HERDR_PANE_ID-} && -z ${__thyra_loaded-} ]] || return 0
-typeset -g __thyra_loaded=1 __thyra_seq=0 __thyra_recorded=0
+zmodload zsh/datetime 2>/dev/null
+# Seed from the clock so seq keeps rising across `exec $SHELL` (same pid).
+typeset -g __thyra_loaded=1 __thyra_seq=$(( ${EPOCHSECONDS:-0} * 1000 )) __thyra_recorded=0
 typeset -g __thyra_dir=${XDG_RUNTIME_DIR:-/tmp/thyra-$UID}/thyra/shell
 typeset -g __thyra_spool=${XDG_STATE_HOME:-$HOME/.local/state}/thyra/shell-history.jsonl
 typeset -g __thyra_file=$__thyra_dir/${HERDR_PANE_ID//[^a-zA-Z0-9_-]/_}.json

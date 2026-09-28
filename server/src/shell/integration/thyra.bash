@@ -1,7 +1,9 @@
 # Thyra shell integration. Original implementation, MIT license.
 [[ $- == *i* && -n ${HERDR_PANE_ID-} && -z ${__thyra_loaded-} ]] || return 0
 __thyra_loaded=1
-__thyra_seq=0
+# Seed from the clock so seq keeps rising across `exec $SHELL` (same pid).
+printf -v __thyra_seq '%(%s)T' -1 2>/dev/null || __thyra_seq=${EPOCHSECONDS:-0}
+__thyra_seq=$((__thyra_seq * 1000))
 __thyra_armed=0
 __thyra_recorded=0
 __thyra_paste=false
@@ -39,7 +41,7 @@ __thyra_write() {
     __thyra_json "$cmd"; cmd=$REPLY
     __thyra_time; now=$REPLY
     (umask 077
-      printf '{"v":1,"pane":%s,"pid":%s,"shell":"bash","shell_version":%s,"seq":%s,"state":"%s","cwd":%s,"exit":%s,"histfile":%s,"path":%s,"bracketed_paste":%s,"ts":%s,"command":%s}\n' "$pane" "$$" "$ver" "$__thyra_seq" "$state" "$cwd" "$code" "$hist" "$path" "$paste" "$now" "$cmd" > "$__thyra_file.tmp-$$" && command mv -f -- "$__thyra_file.tmp-$$" "$__thyra_file"
+      printf '{"v":1,"pane":%s,"pid":%s,"shell":"bash","shell_version":%s,"seq":%s,"state":"%s","cwd":%s,"exit":%s,"histfile":%s,"path":%s,"bracketed_paste":%s,"ts":%s,"command":%s%s}\n' "$pane" "$$" "$ver" "$__thyra_seq" "$state" "$cwd" "$code" "$hist" "$path" "$paste" "$now" "$cmd" "${BLE_VERSION:+,\"line_editor\":\"ble\"}" > "$__thyra_file.tmp-$$" && command mv -f -- "$__thyra_file.tmp-$$" "$__thyra_file"
       if [[ $state == running && $__thyra_recorded == 1 ]]; then
         printf '{"pane":%s,"pid":%s,"seq":%s,"shell":"bash","cwd":%s,"command":%s,"start_ts":%s}\n' "$pane" "$$" "$__thyra_seq" "$cwd" "$cmd" "$now" >> "$__thyra_spool"
       elif [[ $state == prompt && $__thyra_recorded == 1 ]]; then
@@ -86,7 +88,15 @@ __thyra_debug() {
     # user's command when extdebug is enabled.
     return 0
 }
-if declare -p preexec_functions precmd_functions >/dev/null 2>&1; then
+if [[ ${BLE_VERSION-} ]]; then
+    # ble.sh owns PROMPT_COMMAND and the DEBUG trap; it restores $? for
+    # PRECMD hooks and passes the command line to PREEXEC hooks.
+    blehook PRECMD!=__thyra_prompt
+    blehook PREEXEC!=__thyra_preexec
+    # ble.sh skips PRECMD for the first prompt after attaching; this file is
+    # sourced last in the rc, so the shell is about to show that prompt.
+    __thyra_prompt
+elif declare -p preexec_functions precmd_functions >/dev/null 2>&1; then
     preexec_functions+=(__thyra_preexec)
     precmd_functions+=(__thyra_prompt)
 else

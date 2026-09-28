@@ -48,6 +48,7 @@ export async function runShellIntegrationCommand(
         if (!record || !isProcessAlive(record.pid)) continue;
         const info = await herdr
           .call("pane.process_info", { pane_id: record.pane }, 1000)
+          .then((result) => result?.process_info)
           .catch(() => null);
         if (info?.shell_pid === record.pid) {
           live = true;

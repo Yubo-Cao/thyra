@@ -201,12 +201,15 @@ for (const [shell, debug] of [
             dir,
             call: async (method, params) => {
               if (method === "pane.process_info")
-                return {
-                  shell_pid: proc.pid,
-                  foreground_process_group_id: proc.pid,
-                };
+                return { process_info: { shell_pid: proc.pid, foreground_process_group_id: proc.pid } };
               if (method === "pane.send_input") {
-                proc.terminal!.write(String(params.text));
+                // Mirror Herdr: wrap text for a bracketed-paste PTY, then keys.
+                const text = String(params.text ?? "");
+                const keys = (params.keys ?? []) as string[];
+                proc.terminal!.write(
+                  (text ? `\x1b[200~${text}\x1b[201~` : "") +
+                    keys.map((key) => (key === "Enter" ? "\r" : "")).join(""),
+                );
                 return {};
               }
               throw new Error("unexpected method");

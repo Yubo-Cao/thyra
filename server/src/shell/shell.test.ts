@@ -81,10 +81,7 @@ describe("shell state", () => {
       const tracker = new ShellStateTracker({
         dir,
         alive: () => alive,
-        call: async () => ({
-          shell_pid: pid,
-          foreground_process_group_id: pid,
-        }),
+        call: async () => ({ process_info: { shell_pid: pid, foreground_process_group_id: pid } }),
       });
       expect((await tracker.refresh("pane:1")).reason).toBe("no_integration");
     }
@@ -97,10 +94,7 @@ describe("shell state", () => {
       dir,
       call: async (method) => {
         calls.push(method);
-        return {
-          shell_pid: process.pid,
-          foreground_process_group_id: foreground,
-        };
+        return { process_info: { shell_pid: process.pid, foreground_process_group_id: foreground } };
       },
     });
     expect((await tracker.refresh("pane:1")).available).toBe(true);
@@ -150,10 +144,7 @@ describe("shell state", () => {
       call: async () => {
         checking();
         await gate;
-        return {
-          shell_pid: process.pid,
-          foreground_process_group_id: process.pid,
-        };
+        return { process_info: { shell_pid: process.pid, foreground_process_group_id: process.pid } };
       },
     });
     const request = { pane_id: "pane:1", seq: 1, text: "ls", execute: true };
@@ -168,14 +159,27 @@ describe("shell state", () => {
     expect(await first).toEqual({ ok: false, reason: "dirty" });
   });
   test("submit encoding", () => {
-    expect(encodeSubmit("a\nb\x1b[201~c", true, true)).toBe(
-      "\x1b[200~a\nbc\x1b[201~\r",
-    );
-    expect(encodeSubmit("ls", false, true)).toBe("\x1b[200~ls\x1b[201~");
-    expect(encodeSubmit("ls", true, false)).toBe("ls\r");
-    expect(encodeSubmit("\x1b[201\x1b[201~~", false, true)).toBe(
-      "\x1b[200~\x1b[201~",
-    );
+    expect(encodeSubmit("a\nb\x1b[201~c", true, true)).toEqual({
+      text: "a\nbc",
+      keys: ["Enter"],
+    });
+    expect(encodeSubmit("ls", false, true)).toEqual({ text: "ls", keys: [] });
+    expect(encodeSubmit("a\nb", true, true, "ble")).toEqual({
+      text: "a\nb",
+      keys: ["ctrl+j"],
+    });
+    expect(encodeSubmit("ls", true, true, "ble")).toEqual({
+      text: "ls",
+      keys: ["Enter"],
+    });
+    expect(encodeSubmit("ls", true, false)).toEqual({
+      text: "ls",
+      keys: ["Enter"],
+    });
+    expect(encodeSubmit("\x1b[201\x1b[201~~", false, true)).toEqual({
+      text: "",
+      keys: [],
+    });
     expect(encodeSubmit("a\nb", true, false)).toEqual({
       ok: false,
       reason: "multiline",
@@ -189,10 +193,7 @@ describe("shell state", () => {
     const { dir, file } = await fixture();
     const tracker = new ShellStateTracker({
       dir,
-      call: async () => ({
-        shell_pid: process.pid,
-        foreground_process_group_id: process.pid,
-      }),
+      call: async () => ({ process_info: { shell_pid: process.pid, foreground_process_group_id: process.pid } }),
     });
     await tracker.refresh("pane:1");
     await writeFile(file, JSON.stringify(record({ seq: 2 })));
@@ -409,10 +410,7 @@ describe("installer and protocol", () => {
     const service = createShellService({
       dir,
       stateDir: dir,
-      call: async () => ({
-        shell_pid: process.pid,
-        foreground_process_group_id: process.pid,
-      }),
+      call: async () => ({ process_info: { shell_pid: process.pid, foreground_process_group_id: process.pid } }),
     });
     const client = {};
     const events: unknown[] = [];

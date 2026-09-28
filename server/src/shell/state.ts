@@ -31,6 +31,8 @@ export interface ShellRecord {
   bracketed_paste: boolean;
   ts: number;
   path?: string;
+  /** Set when a line editor replaces readline (ble.sh runs multi-line buffers on C-j). */
+  line_editor?: "ble";
 }
 export interface ProcessInfo {
   shell_pid: number;
@@ -62,7 +64,8 @@ export function parseShellRecord(value: unknown): ShellRecord | null {
     !Number.isInteger(v.exit) ||
     !Number.isFinite(v.ts) ||
     v.ts <= 0 ||
-    (v.path !== undefined && typeof v.path !== "string")
+    (v.path !== undefined && typeof v.path !== "string") ||
+    (v.line_editor !== undefined && v.line_editor !== "ble")
   )
     return null;
   return v;
@@ -123,7 +126,8 @@ export function encodeSubmit(
   text: string,
   execute: boolean,
   bracketed: boolean,
-): string | ShellSubmitResult {
+  lineEditor?: ShellRecord["line_editor"],
+): { text: string; keys: string[] } | ShellSubmitResult {
   if (text.length > 256 * 1024 || text.includes("\0"))
     return { ok: false, reason: "invalid_text" };
   if (!bracketed && /[\r\n]/.test(text))
@@ -148,9 +152,12 @@ export function encodeSubmit(
     }
     text = output.join("");
   }
-  return (
-    (bracketed ? `\x1b[200~${text}\x1b[201~` : text) + (execute ? "\r" : "")
-  );
+  // Herdr's pane.send_input wraps text in a bracketed paste itself whenever
+  // the PTY has mode 2004 on, and encodes Enter for the live key mode.
+  // ble.sh leaves a multi-line buffer in MULTILINE mode, where Enter inserts
+  // a newline and C-j runs it.
+  const run = lineEditor === "ble" && text.includes("\n") ? "ctrl+j" : "Enter";
+  return { text, keys: execute ? [run] : [] };
 }
 
 export class ShellStateTracker {
@@ -240,9 +247,11 @@ export class ShellStateTracker {
       (this.args.alive ?? isProcessAlive)(record.pid)
     ) {
       try {
-        info = (await this.args.call("pane.process_info", {
-          pane_id: pane,
-        })) as ProcessInfo;
+        info = (
+          (await this.args.call("pane.process_info", {
+            pane_id: pane,
+          })) as { process_info?: ProcessInfo }
+        ).process_info ?? null;
       } catch {
         /* Unavailable fails closed. */
       }
@@ -320,19 +329,20 @@ export class ShellStateTracker {
       if (!state.available)
         return { ok: false, reason: state.reason ?? "busy" };
       if (state.seq !== params.seq) return { ok: false, reason: "stale_seq" };
-      const text = encodeSubmit(
+      const input = encodeSubmit(
         params.text,
         params.execute,
         state.bracketed_paste,
+        this.records.get(params.pane_id)?.line_editor,
       );
-      if (typeof text !== "string") return text;
+      if ("ok" in input) return input;
       if (!current()) return { ok: false, reason: "connection_changed" };
       // No await between availability/reservation and dispatch. A failed write
       // stays blocked: its dispatch state may be unknown, so never retry it.
       this.dirty(params.pane_id, "submitted");
       await this.args.call("pane.send_input", {
         pane_id: params.pane_id,
-        text,
+        ...input,
       });
       return { ok: true };
     } finally {
