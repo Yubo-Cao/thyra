@@ -81,7 +81,9 @@ describe("shell state", () => {
       const tracker = new ShellStateTracker({
         dir,
         alive: () => alive,
-        call: async () => ({ process_info: { shell_pid: pid, foreground_process_group_id: pid } }),
+        call: async () => ({
+          process_info: { shell_pid: pid, foreground_process_group_id: pid },
+        }),
       });
       expect((await tracker.refresh("pane:1")).reason).toBe("no_integration");
     }
@@ -94,7 +96,12 @@ describe("shell state", () => {
       dir,
       call: async (method) => {
         calls.push(method);
-        return { process_info: { shell_pid: process.pid, foreground_process_group_id: foreground } };
+        return {
+          process_info: {
+            shell_pid: process.pid,
+            foreground_process_group_id: foreground,
+          },
+        };
       },
     });
     expect((await tracker.refresh("pane:1")).available).toBe(true);
@@ -144,7 +151,12 @@ describe("shell state", () => {
       call: async () => {
         checking();
         await gate;
-        return { process_info: { shell_pid: process.pid, foreground_process_group_id: process.pid } };
+        return {
+          process_info: {
+            shell_pid: process.pid,
+            foreground_process_group_id: process.pid,
+          },
+        };
       },
     });
     const request = { pane_id: "pane:1", seq: 1, text: "ls", execute: true };
@@ -193,7 +205,12 @@ describe("shell state", () => {
     const { dir, file } = await fixture();
     const tracker = new ShellStateTracker({
       dir,
-      call: async () => ({ process_info: { shell_pid: process.pid, foreground_process_group_id: process.pid } }),
+      call: async () => ({
+        process_info: {
+          shell_pid: process.pid,
+          foreground_process_group_id: process.pid,
+        },
+      }),
     });
     await tracker.refresh("pane:1");
     await writeFile(file, JSON.stringify(record({ seq: 2 })));
@@ -410,7 +427,12 @@ describe("installer and protocol", () => {
     const service = createShellService({
       dir,
       stateDir: dir,
-      call: async () => ({ process_info: { shell_pid: process.pid, foreground_process_group_id: process.pid } }),
+      call: async () => ({
+        process_info: {
+          shell_pid: process.pid,
+          foreground_process_group_id: process.pid,
+        },
+      }),
     });
     const client = {};
     const events: unknown[] = [];

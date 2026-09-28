@@ -247,11 +247,12 @@ export class ShellStateTracker {
       (this.args.alive ?? isProcessAlive)(record.pid)
     ) {
       try {
-        info = (
-          (await this.args.call("pane.process_info", {
-            pane_id: pane,
-          })) as { process_info?: ProcessInfo }
-        ).process_info ?? null;
+        info =
+          (
+            (await this.args.call("pane.process_info", {
+              pane_id: pane,
+            })) as { process_info?: ProcessInfo }
+          ).process_info ?? null;
       } catch {
         /* Unavailable fails closed. */
       }

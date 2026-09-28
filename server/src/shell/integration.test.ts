@@ -201,7 +201,12 @@ for (const [shell, debug] of [
             dir,
             call: async (method, params) => {
               if (method === "pane.process_info")
-                return { process_info: { shell_pid: proc.pid, foreground_process_group_id: proc.pid } };
+                return {
+                  process_info: {
+                    shell_pid: proc.pid,
+                    foreground_process_group_id: proc.pid,
+                  },
+                };
               if (method === "pane.send_input") {
                 // Mirror Herdr: wrap text for a bracketed-paste PTY, then keys.
                 const text = String(params.text ?? "");
