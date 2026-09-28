@@ -2,7 +2,8 @@ import { t } from "./i18n";
 import { prepareTerminalPasteText } from "./terminalPaste";
 
 /**
- * Draft storage for the mobile terminal composer.
+ * Draft storage shared by the terminal composers: the mobile bottom composer
+ * and the desktop prompt editor edit the same per-pane draft.
  *
  * Drafts live only in memory: terminal input can contain secrets, so they
  * must never reach localStorage. Keys are scoped by connection identity
@@ -262,6 +263,82 @@ export function replaceTerminalComposerDraftRange(
   selections.set(key, { start: caret, end: caret });
   writeTerminalComposerDraft(key, text);
   return { text, caret };
+}
+
+/**
+ * Sends a pane draft at most once. The submitted text leaves the draft before
+ * the request, so a remount cannot show it for a second send, and it returns
+ * ahead of anything typed meanwhile if the request fails. Resolves to false
+ * when nothing was sent (empty, a send or upload in flight, a retired pane)
+ * and rethrows the send error after restoring the draft.
+ */
+export async function submitTerminalComposerDraft(
+  key: string,
+  draft: string,
+  send: (text: string) => Promise<void>,
+): Promise<boolean> {
+  if (
+    !draft ||
+    terminalComposerUploadCount(key) > 0 ||
+    !beginTerminalComposerSubmission(key)
+  )
+    return false;
+  const current = readTerminalComposerDraft(key);
+  const rest = current.startsWith(draft)
+    ? current.slice(draft.length)
+    : current;
+  writeTerminalComposerDraft(key, rest);
+  try {
+    await send(draft);
+    return true;
+  } catch (error) {
+    writeTerminalComposerDraft(
+      key,
+      `${draft}${readTerminalComposerDraft(key)}`,
+    );
+    throw error;
+  } finally {
+    finishTerminalComposerSubmission(key);
+  }
+}
+
+/** Image files among clipboard or drop items (unnamed types count). */
+export function terminalComposerImageFiles(
+  files: readonly (File | null)[],
+): File[] {
+  return files.filter(
+    (file): file is File =>
+      file !== null && (file.type === "" || file.type.startsWith("image/")),
+  );
+}
+
+/** Image files on a paste event's clipboard; empty for text pastes. */
+export function clipboardImageFiles(data: DataTransfer | null): File[] {
+  return terminalComposerImageFiles(
+    Array.from(data?.items ?? [])
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile()),
+  );
+}
+
+/**
+ * Uploads images one by one and inserts each path into the draft as it
+ * lands. The count is tracked on the draft key, so a remounted editor still
+ * shows the upload and send waits for it.
+ */
+export async function uploadTerminalComposerImages(
+  key: string,
+  files: readonly File[],
+  upload: (file: File) => Promise<string>,
+  insertPath: (key: string, path: string) => void,
+): Promise<void> {
+  const images = terminalComposerImageFiles(files);
+  if (images.length === 0 || !beginTerminalComposerUpload(key)) return;
+  try {
+    for (const file of images) insertPath(key, await upload(file));
+  } finally {
+    finishTerminalComposerUpload(key);
+  }
 }
 
 /** Test hook: number of retained drafts. */

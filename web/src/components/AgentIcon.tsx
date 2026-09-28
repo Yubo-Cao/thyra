@@ -15,30 +15,9 @@ import kiroIcon from "@lobehub/icons-static-svg/icons/kiro-color.svg?raw";
 import opencodeIcon from "@lobehub/icons-static-svg/icons/opencode.svg?raw";
 import qoderIcon from "@lobehub/icons-static-svg/icons/qoder-color.svg?raw";
 import piIcon from "../assets/pi-logo.svg?raw";
+import { type AgentKind, agentKind } from "../agentKind";
 import { cn } from "../utils";
 import "./AgentIcon.css";
-
-type AgentKind =
-  | "pi"
-  | "claude"
-  | "codex"
-  | "gemini"
-  | "cursor"
-  | "devin"
-  | "agy"
-  | "cline"
-  | "omp"
-  | "opencode"
-  | "copilot"
-  | "kimi"
-  | "kiro"
-  | "droid"
-  | "amp"
-  | "grok"
-  | "hermes"
-  | "kilo"
-  | "qodercli"
-  | "unknown";
 
 const AGENT_ICON_SVGS: Partial<Record<AgentKind, string>> = {
   pi: piIcon,
@@ -58,49 +37,6 @@ const AGENT_ICON_SVGS: Partial<Record<AgentKind, string>> = {
   kilo: kiloCodeIcon,
   qodercli: qoderIcon,
 };
-
-function agentKind(agent?: string): AgentKind {
-  const name = (agent ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\.exe$/, "")
-    .replace(/[_\s]+/g, "-");
-
-  if (!name) return "unknown";
-  if (name === "pi" || name === "pi-agent" || name === "pi-coding-agent") {
-    return "pi";
-  }
-  if (name === "claude" || name === "claude-code") return "claude";
-  if (name === "codex") return "codex";
-  if (name === "gemini") return "gemini";
-  if (name === "cursor" || name === "cursor-agent") return "cursor";
-  if (name === "devin" || name === "devin-cli") return "devin";
-  if (name === "agy" || name === "antigravity" || name === "antigravity-cli") {
-    return "agy";
-  }
-  if (name === "cline") return "cline";
-  if (name === "omp") return "omp";
-  if (name === "opencode" || name === "open-code") return "opencode";
-  if (name === "copilot" || name === "github-copilot" || name === "ghcs") {
-    return "copilot";
-  }
-  if (name === "kimi" || name === "kimi-code") return "kimi";
-  if (name === "kiro" || name === "kiro-cli") return "kiro";
-  if (name === "droid") return "droid";
-  if (name === "amp" || name === "amp-local") return "amp";
-  if (name === "grok" || name === "grok-build") return "grok";
-  if (name === "hermes" || name === "hermes-agent") return "hermes";
-  if (name === "kilo" || name === "kilo-code") return "kilo";
-  if (
-    name === "qodercli" ||
-    name === "qoderclicn" ||
-    name === "qoder" ||
-    name === "qodercn"
-  ) {
-    return "qodercli";
-  }
-  return "unknown";
-}
 
 export function AgentIcon({
   agent,

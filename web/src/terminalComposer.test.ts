@@ -23,6 +23,9 @@ import {
   terminalComposerUploadCount,
   writeTerminalComposerDraft,
   writeTerminalComposerSelection,
+  submitTerminalComposerDraft,
+  terminalComposerImageFiles,
+  uploadTerminalComposerImages,
 } from "./terminalComposer";
 
 describe("terminal composer drafts", () => {
@@ -310,5 +313,117 @@ describe("terminal composer caret insertion", () => {
       text: "cat /tmp/new.png now",
       caret: 16,
     });
+  });
+});
+
+describe("terminal composer core", () => {
+  test("a send clears the submitted text and keeps later typing", async () => {
+    activateTerminalComposerDraftScope("core", 1);
+    const key = terminalComposerDraftKey("core", 1, "send");
+    writeTerminalComposerDraft(key, "fix the bug");
+    const sent: string[] = [];
+    const sending = submitTerminalComposerDraft(
+      key,
+      "fix the bug",
+      async (text) => {
+        sent.push(text);
+        // Typing while the request is in flight stays in the draft.
+        expect(readTerminalComposerDraft(key)).toBe("");
+        writeTerminalComposerDraft(key, "next");
+      },
+    );
+    // A second send of the same draft is refused while the first runs.
+    expect(
+      await submitTerminalComposerDraft(key, "fix the bug", async () => {}),
+    ).toBe(false);
+    expect(await sending).toBe(true);
+    expect(sent).toEqual(["fix the bug"]);
+    expect(readTerminalComposerDraft(key)).toBe("next");
+    expect(terminalComposerSubmissionPending(key)).toBe(false);
+    clearTerminalComposerDraft(key);
+  });
+
+  test("a failed send restores the draft ahead of later typing", async () => {
+    activateTerminalComposerDraftScope("core", 1);
+    const key = terminalComposerDraftKey("core", 1, "fail");
+    writeTerminalComposerDraft(key, "line one\nline two");
+    const failure = submitTerminalComposerDraft(
+      key,
+      "line one\nline two",
+      async () => {
+        writeTerminalComposerDraft(key, " and more");
+        throw new Error("offline");
+      },
+    );
+    await expect(failure).rejects.toThrow("offline");
+    expect(readTerminalComposerDraft(key)).toBe("line one\nline two and more");
+    expect(terminalComposerSubmissionPending(key)).toBe(false);
+    clearTerminalComposerDraft(key);
+  });
+
+  test("empty drafts and drafts with uploads in flight are not sent", async () => {
+    activateTerminalComposerDraftScope("core", 1);
+    const key = terminalComposerDraftKey("core", 1, "busy");
+    const send = async () => {
+      throw new Error("must not send");
+    };
+    expect(await submitTerminalComposerDraft(key, "", send)).toBe(false);
+    writeTerminalComposerDraft(key, "see image");
+    beginTerminalComposerUpload(key);
+    expect(await submitTerminalComposerDraft(key, "see image", send)).toBe(
+      false,
+    );
+    expect(readTerminalComposerDraft(key)).toBe("see image");
+    finishTerminalComposerUpload(key);
+    clearTerminalComposerDraft(key);
+  });
+
+  test("uploads insert each image path and skip other files", async () => {
+    activateTerminalComposerDraftScope("core", 1);
+    const key = terminalComposerDraftKey("core", 1, "upload");
+    writeTerminalComposerDraft(key, "look at");
+    const counts: number[] = [];
+    const unsubscribe = subscribeTerminalComposerUpload(key, (count) =>
+      counts.push(count),
+    );
+    const files = [
+      new File(["a"], "a.png", { type: "image/png" }),
+      new File(["b"], "notes.txt", { type: "text/plain" }),
+      new File(["c"], "clipboard", { type: "" }),
+    ];
+    await uploadTerminalComposerImages(
+      key,
+      files,
+      async (file) => `/tmp/${file.name}`,
+      (target, path) => insertIntoTerminalComposerDraft(target, path),
+    );
+    expect(readTerminalComposerDraft(key)).toBe(
+      "look at /tmp/a.png /tmp/clipboard ",
+    );
+    expect(counts).toEqual([1, 0]);
+    unsubscribe();
+    clearTerminalComposerDraft(key);
+  });
+
+  test("a failed upload ends the upload and rethrows", async () => {
+    activateTerminalComposerDraftScope("core", 1);
+    const key = terminalComposerDraftKey("core", 1, "upload-fail");
+    await expect(
+      uploadTerminalComposerImages(
+        key,
+        [new File(["a"], "a.png", { type: "image/png" })],
+        async () => {
+          throw new Error("too large");
+        },
+        () => {},
+      ),
+    ).rejects.toThrow("too large");
+    expect(terminalComposerUploadCount(key)).toBe(0);
+  });
+
+  test("image files are picked from mixed clipboard files", () => {
+    const png = new File(["a"], "a.png", { type: "image/png" });
+    const text = new File(["b"], "b.txt", { type: "text/plain" });
+    expect(terminalComposerImageFiles([png, null, text])).toEqual([png]);
   });
 });

@@ -20,23 +20,17 @@ import {
   mobileTerminalShortcutOption,
 } from "../mobileTerminalShortcuts";
 import {
-  beginTerminalComposerSubmission,
-  beginTerminalComposerUpload,
-  clearTerminalComposerDraft,
-  finishTerminalComposerSubmission,
-  finishTerminalComposerUpload,
+  clipboardImageFiles,
   insertIntoTerminalComposerDraft,
   readTerminalComposerDraft,
   readTerminalComposerSelection,
   replaceTerminalComposerDraftRange,
-  subscribeTerminalComposerDraft,
-  subscribeTerminalComposerSubmission,
-  subscribeTerminalComposerUpload,
-  terminalComposerSubmissionPending,
-  terminalComposerUploadCount,
+  submitTerminalComposerDraft,
+  uploadTerminalComposerImages,
   writeTerminalComposerDraft,
   writeTerminalComposerSelection,
 } from "../terminalComposer";
+import { useTerminalComposerDraft } from "../useTerminalComposerDraft";
 import { msg, t } from "../i18n";
 import { useVoiceDictation } from "../voice/useVoiceDictation";
 import { Button } from "./ui/Button";
@@ -94,13 +88,8 @@ export function TerminalComposer({
   onError: (message: string) => void;
 }) {
   useShortcutPreferences();
-  const [text, setText] = useState(() => readTerminalComposerDraft(draftKey));
-  const [submissionPending, setSubmissionPending] = useState(() =>
-    terminalComposerSubmissionPending(draftKey),
-  );
-  const [uploadCount, setUploadCount] = useState(() =>
-    terminalComposerUploadCount(draftKey),
-  );
+  const { text, setText, submissionPending, uploadCount } =
+    useTerminalComposerDraft(draftKey);
   const [composing, setComposing] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(
@@ -115,24 +104,6 @@ export function TerminalComposer({
   const focusSelectionAfterInsertRef = useRef(false);
   const activeDraftKeyRef = useRef(draftKey);
   activeDraftKeyRef.current = draftKey;
-
-  // Load the incoming pane's draft and subscribe to updates from async work
-  // that may outlive an earlier composer mount for this pane.
-  useEffect(() => {
-    const applyDraft = (draft: string) => setText(draft);
-    applyDraft(readTerminalComposerDraft(draftKey));
-    return subscribeTerminalComposerDraft(draftKey, applyDraft);
-  }, [draftKey]);
-
-  useEffect(() => {
-    setSubmissionPending(terminalComposerSubmissionPending(draftKey));
-    return subscribeTerminalComposerSubmission(draftKey, setSubmissionPending);
-  }, [draftKey]);
-
-  useEffect(() => {
-    setUploadCount(terminalComposerUploadCount(draftKey));
-    return subscribeTerminalComposerUpload(draftKey, setUploadCount);
-  }, [draftKey]);
 
   // Autosize within the CSS max-height. Growing needs only one measurement;
   // collapsing to measure forces an extra layout per keystroke, so do that
@@ -264,62 +235,31 @@ export function TerminalComposer({
   });
 
   const uploadAndInsert = async (files: File[]) => {
-    const images = files.filter(
-      (file) => file.type === "" || file.type.startsWith("image/"),
-    );
-    if (images.length === 0) return;
-    const uploadDraftKey = draftKey;
-    if (!beginTerminalComposerUpload(uploadDraftKey)) return;
     try {
-      for (const file of images) {
-        const path = await onUploadImage(file);
-        insertAtCaret(uploadDraftKey, path);
-      }
+      await uploadTerminalComposerImages(
+        draftKey,
+        files,
+        onUploadImage,
+        insertAtCaret,
+      );
     } catch (error) {
       onError(
         error instanceof Error ? error.message : t("Image upload failed"),
       );
-    } finally {
-      finishTerminalComposerUpload(uploadDraftKey);
     }
   };
 
   const submit = async (sendEnter: boolean) => {
-    const draft = text;
-    const submittedDraftKey = draftKey;
-    if (
-      !draft ||
-      uploadCount > 0 ||
-      composingRef.current ||
-      !beginTerminalComposerSubmission(submittedDraftKey)
-    ) {
-      return;
-    }
-
-    // Remove the submitted prefix before the request so an unmount/remount
-    // cannot expose it as a second send while the first request is pending.
-    // New text remains in the shared draft and is restored with the submitted
-    // text if the request fails.
-    const current = readTerminalComposerDraft(submittedDraftKey);
-    const next = current.startsWith(draft)
-      ? current.slice(draft.length)
-      : current;
-    if (next) {
-      writeTerminalComposerDraft(submittedDraftKey, next);
-    } else {
-      clearTerminalComposerDraft(submittedDraftKey);
-    }
-
+    if (composingRef.current) return;
     try {
-      await onSubmit(draft, sendEnter);
+      await submitTerminalComposerDraft(draftKey, text, (draft) =>
+        onSubmit(draft, sendEnter),
+      );
     } catch (error) {
-      const pendingText = readTerminalComposerDraft(submittedDraftKey);
-      writeTerminalComposerDraft(submittedDraftKey, `${draft}${pendingText}`);
       onError(
         error instanceof Error ? error.message : t("Failed to send input"),
       );
     } finally {
-      finishTerminalComposerSubmission(submittedDraftKey);
       textareaRef.current?.focus({ preventScroll: true });
     }
   };
@@ -419,13 +359,7 @@ export function TerminalComposer({
             setComposing(false);
           }}
           onPaste={(e) => {
-            const images = Array.from(e.clipboardData?.items ?? [])
-              .filter(
-                (item) =>
-                  item.kind === "file" && item.type.startsWith("image/"),
-              )
-              .map((item) => item.getAsFile())
-              .filter((file): file is File => file !== null);
+            const images = clipboardImageFiles(e.clipboardData);
             // No image on the clipboard: let the native text paste proceed.
             if (images.length === 0) return;
             e.preventDefault();
