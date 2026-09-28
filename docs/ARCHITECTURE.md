@@ -157,6 +157,10 @@ requests and invalidates clipboard ownership.
 - Full PageUp/PageDown sends semantic input for Herdr to route by PTY mode;
   explicit half-page history uses `pane.scroll`, even in mouse-aware apps.
   Legacy attachments retain PageKey/Wheel routing.
+- Wheel and touch scrolls (`source: "wheel"`) reach a mouse-reporting app as wheel input.
+  Over a full-screen app without mouse reporting (the surface's `alternate_screen_active`, e.g. `less`, `man`), Herdr builds advertising the `alternate_scroll` endpoint capability get the wheel too, at most 8 lines per request, and turn it into that many Up/Down cursor keys in the app's cursor key mode, as terminals do in alternate scroll mode.
+  Herdr alone decides keys versus scrollback from the app's DECSET 1007 and its `[terminal] alternate_scroll` setting (default on); without the capability, or on the normal screen, the wheel scrolls Herdr's history with `pane.scroll`.
+  Only the pane's writer sends wheel input: the bridge turns anyone else's scroll into history.
 - Herdr keeps one history position per pane, shared by every viewer, so a read-only viewer (workspace viewer or share-link guest) never sends `terminal.scroll` (the bridge refuses it).
   Its first scroll up reads the last 1000 lines with `terminal.history` (`pane.read`, `recent`, ANSI: Herdr's passive snapshot, never input) into a second, input-less xterm over the live one, at the live terminal's size, font and colors.
   Scrolling back to the bottom, Escape, End, or **Back to live** closes it; the live stream never stops.

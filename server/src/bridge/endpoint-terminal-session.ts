@@ -13,6 +13,12 @@ import { silentLogger } from "../utils/logger";
 import { MOUSE_KIND, VtInputClassifier } from "./vt-input-classifier";
 
 const ESC_FLUSH_MS = 25;
+/**
+ * Most cursor keys one wheel or touch step sends to a full-screen app in
+ * alternate scroll mode, so a page-sized wheel delta or a fling's burst stays
+ * a few arrows rather than a screenful.
+ */
+export const ALTERNATE_SCROLL_MAX_LINES = 8;
 const FIRST_SURFACE_WAIT_MS = 10_000;
 // Boot correction plus rounding follow-ups; nested splits can need three.
 const SURFACE_FIT_MAX_ATTEMPTS = 3;
@@ -615,17 +621,36 @@ export class EndpointTerminalSession extends EventEmitter {
     );
     // Touch scrolling uses the same bridge RPC as wheels. A page key remains
     // an explicit history action, as it was before endpoint mouse support.
-    if (source === "wheel" && pane?.mouseReporting) {
-      if (
-        !Number.isInteger(column) ||
-        !Number.isInteger(row) ||
-        column! < 0 ||
-        row! < 0 ||
-        column! >= pane.innerRect.width ||
-        row! >= pane.innerRect.height
-      )
-        return;
+    // A full-screen app without mouse reporting (less, man) gets the wheel
+    // too where Herdr turns it into cursor keys, as terminals do in alternate
+    // scroll mode; Herdr picks keys or scrollback from the app's own modes
+    // (DECSET 1007, DECCKM) and its [terminal] alternate_scroll setting.
+    const alternateScroll =
+      source === "wheel" &&
+      !!pane &&
+      !pane.mouseReporting &&
+      pane.alternateScreen &&
+      this.client.supportsAlternateScroll;
+    if (
+      source === "wheel" &&
+      pane &&
+      (pane.mouseReporting || alternateScroll)
+    ) {
+      const inside =
+        Number.isInteger(column) &&
+        Number.isInteger(row) &&
+        column! >= 0 &&
+        row! >= 0 &&
+        column! < pane.innerRect.width &&
+        row! < pane.innerRect.height;
+      if (!inside && !alternateScroll) return;
       this.linkFrame = null;
+      if (alternateScroll) {
+        // Keys to the app supersede a queued history gesture, as typing does.
+        this.scrollTarget = null;
+        this.scrollDispatched = null;
+        lines = Math.min(ALTERNATE_SCROLL_MAX_LINES, lines);
+      }
       this.client.sendPaneInput(
         this.paneId,
         [
@@ -633,8 +658,8 @@ export class EndpointTerminalSession extends EventEmitter {
             type: "mouse",
             kind:
               direction === "up" ? MOUSE_KIND.ScrollUp : MOUSE_KIND.ScrollDown,
-            column: column!,
-            row: row!,
+            column: inside ? column! : 0,
+            row: inside ? row! : 0,
             modifiers: 0,
             lines,
           },

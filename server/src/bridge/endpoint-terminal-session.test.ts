@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
 import {
+  ALTERNATE_SCROLL_MAX_LINES,
   EndpointTerminalSession,
   cropFrame,
   frameHyperlinkAt,
@@ -85,6 +86,7 @@ type TestPane = {
   hasScroll?: boolean;
   contentRevision?: number;
   focused?: boolean;
+  alternateScreen?: boolean;
 };
 const DEFAULT_PANES: TestPane[] = [
   { paneId: "w1:p1", x: 0, mouseReporting: false },
@@ -103,6 +105,7 @@ function writePane(
   hasScroll = true,
   contentRevision = 1,
   focused = true,
+  alternateScreen = false,
 ) {
   w.string(paneId);
   w.varint(contentRevision);
@@ -122,7 +125,7 @@ function writePane(
   w.bool(focused); // focused
   w.bool(mouseReporting);
   w.bool(false);
-  w.bool(false);
+  w.bool(alternateScreen);
   w.varint(0);
   w.varint(0);
 }
@@ -156,6 +159,7 @@ function surfaceFrame(
       pane.hasScroll,
       pane.contentRevision,
       pane.focused,
+      pane.alternateScreen,
     );
   w.varint(0); // splits
   w.option(popup, (value) => {
@@ -1147,6 +1151,77 @@ test("endpoint mouse stays pane-local and mode changes route application input v
   } finally {
     left.close();
     right.close();
+  }
+});
+
+test("a wheel over a full-screen app without mouse reporting reaches Herdr as alternate scroll", async () => {
+  const run = async (capabilities: string[], alternateScreen: boolean) => {
+    const inputs: Array<{ kind: number; column: number; lines: number }> = [];
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const socketPath = await startSessionServer({
+      panes: [
+        { paneId: "w1:p1", x: 0, mouseReporting: false, alternateScreen },
+      ],
+      capabilities: () => capabilities,
+      onRequest: (method, params) => requests.push({ method, params }),
+      onPaneInput: (_paneId, reader) => {
+        const count = reader.varint();
+        for (let i = 0; i < count; i++) {
+          expect(reader.variant()).toBe(2);
+          const kind = reader.variant();
+          if (kind <= 2) reader.variant();
+          expect(reader.variant()).toBe(0);
+          const column = reader.varint();
+          reader.varint(); // row
+          expect(reader.bool()).toBe(false);
+          reader.u8();
+          inputs.push({ kind, column, lines: reader.varint() });
+        }
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term-1",
+      async () => "w1:p1",
+    );
+    try {
+      await session.connect(8, 3);
+      session.scroll("down", 3, 1, 2);
+      // A page-sized step is capped; a missing cell still scrolls.
+      session.scroll("up", 40);
+      // An explicit history action never becomes keys.
+      session.scroll("up", 2, 1, 2, "page-key");
+      await Bun.sleep(40);
+      return { inputs, requests };
+    } finally {
+      session.close();
+    }
+  };
+
+  const translated = await run(["health_check", "alternate_scroll"], true);
+  expect(translated.inputs).toEqual([
+    { kind: 5, column: 1, lines: 3 },
+    { kind: 4, column: 0, lines: ALTERNATE_SCROLL_MAX_LINES },
+  ]);
+  expect(
+    translated.requests.filter((request) => request.method === "pane.scroll"),
+  ).toEqual([
+    {
+      method: "pane.scroll",
+      params: { pane_id: "w1:p1", offset_from_bottom: 2 },
+    },
+  ]);
+
+  // Older Herdr, or the normal screen: the wheel scrolls Herdr's history.
+  for (const [capabilities, alternateScreen] of [
+    [["health_check"], true],
+    [["health_check", "alternate_scroll"], false],
+  ] as const) {
+    const history = await run([...capabilities], alternateScreen);
+    expect(history.inputs).toEqual([]);
+    expect(history.requests.map((request) => request.method)).toContain(
+      "pane.scroll",
+    );
   }
 });
 

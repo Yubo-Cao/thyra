@@ -82,6 +82,13 @@ const HEALTH_PONG_KIND = "endpoint.health.pong.v1";
  */
 export const INPUT_GEOMETRY_CAPABILITY = "input_geometry";
 const INPUT_GEOMETRY_KIND = "endpoint.input-geometry.v1";
+/**
+ * Herdr fork capability: a wheel in pane input over an alternate-screen app
+ * without mouse reporting becomes its `lines` of Up/Down cursor keys (DECSET
+ * 1007 alternate scroll, Herdr's `[terminal] alternate_scroll`). Older Herdr
+ * sends at most one key per wheel, so the bridge scrolls history there.
+ */
+export const ALTERNATE_SCROLL_CAPABILITY = "alternate_scroll";
 
 export interface EndpointWelcome {
   generation: number;
@@ -110,6 +117,8 @@ export interface PaneSurfacePaneMeta {
   } | null;
   focused: boolean;
   mouseReporting: boolean;
+  /** The pane's app is on the alternate screen (a full-screen app). */
+  alternateScreen: boolean;
 }
 
 export interface EndpointSurface {
@@ -356,6 +365,14 @@ export class EndpointClient extends EventEmitter {
     return (
       !this.closed &&
       this.welcome?.capabilities.includes(INPUT_GEOMETRY_CAPABILITY) === true
+    );
+  }
+
+  /** Whether Herdr turns a wheel over a full-screen app into cursor keys. */
+  get supportsAlternateScroll(): boolean {
+    return (
+      !this.closed &&
+      this.welcome?.capabilities.includes(ALTERNATE_SCROLL_CAPABILITY) === true
     );
   }
 

@@ -63,6 +63,7 @@ The browser only chooses an agent, never the command text.
   keys, multiline paste, IME, and CJK punctuation.
 - Scroll by wheel, trackpad, touch (one finger or two, with momentum after a quick release), or explicit half-page history shortcuts.
   Full page keys route to terminal apps or Herdr history; unavailable endpoint history controls explain missing support.
+  Full-screen apps without mouse support, such as `less` and `man`, scroll too: with a Herdr that supports alternate scroll, each step becomes Up/Down arrow keys, as in a desktop terminal (Herdr's `[terminal] alternate_scroll = false` turns this off).
 - Viewers and share-link guests browse a read-only copy of the last 1000 lines instead, so their scrolling never moves anyone else's view; scrolling back to the bottom, Escape, or **Back to live** returns to live output.
 - Pane apps see the browser's terminal colors: OSC 10/11/4 queries and
   color-scheme reports (`?996n`, mode 2031) follow the page's terminal theme,

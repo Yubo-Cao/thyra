@@ -368,6 +368,14 @@ describe("authorize", () => {
     expect(
       await request("editor", "terminal.scroll", scroll, claimed),
     ).toMatchObject({ allowed: true, params: { source: "history" } });
+    // A wheel, which may reach a full-screen app as cursor keys, too.
+    const wheel = { ...scroll, source: "wheel" };
+    expect((await request("viewer", "terminal.scroll", wheel)).allowed).toBe(
+      false,
+    );
+    expect(
+      await request("editor", "terminal.scroll", wheel, claimed),
+    ).toMatchObject({ allowed: true, params: { source: "history" } });
     expect(await request("editor", "terminal.scroll", scroll)).toMatchObject({
       allowed: true,
       params: { source: "page-key" },

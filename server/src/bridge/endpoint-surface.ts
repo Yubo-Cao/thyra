@@ -120,7 +120,7 @@ function readPanes(r: SurfaceReader, metadata = false): PaneSurfacePaneMeta[] {
       const focused = r.bool();
       const mouseReporting = r.bool();
       r.bool(); // sgr_pixel_mouse
-      r.bool(); // alternate_screen_active
+      const alternateScreen = r.bool();
       r.number(0xffffffff); // pixel_width
       r.number(0xffffffff); // pixel_height
       return {
@@ -131,6 +131,7 @@ function readPanes(r: SurfaceReader, metadata = false): PaneSurfacePaneMeta[] {
         scroll,
         focused,
         mouseReporting,
+        alternateScreen,
       };
     },
   );
@@ -486,6 +487,7 @@ export function readSurfaceReuse(
       },
       focused: bool(p.focused),
       mouseReporting: bool(p.mouse_reporting),
+      alternateScreen: p.alternate_screen_active === true,
     };
   });
   requireSurface(

@@ -516,6 +516,7 @@ describe("EndpointClient (endpoint generation 1)", () => {
         scroll: null,
         focused: true,
         mouseReporting: false,
+        alternateScreen: false,
       },
     ]);
     const patched = surfaces[1];
