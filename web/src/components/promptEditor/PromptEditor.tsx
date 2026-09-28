@@ -1,6 +1,11 @@
-import { measureTerminal, type TerminalMetrics } from "./metrics";
+import {
+  type EditorSpan,
+  measureTerminal,
+  type TerminalMetrics,
+  useEditorSpan,
+} from "./metrics";
 import type { ITheme, Terminal } from "@xterm/xterm";
-import { Eye, PenLine, X } from "lucide-react";
+import { CornerDownLeft, Eye, PenLine, X } from "lucide-react";
 import {
   type CSSProperties,
   type RefObject,
@@ -27,6 +32,7 @@ import {
   shortcutMatches,
   shortcutTitle,
 } from "../../shortcutPreferences";
+import { editorMayTakeFocus } from "../../localEditorPolicy";
 import { useStartupSettled } from "../../startupGate";
 import {
   clipboardImageFiles,
@@ -88,6 +94,10 @@ export type PromptEditorProps = {
   terminalTheme: ITheme;
   /** The pane is the selected one; only it takes focus. */
   active: boolean;
+  /** Touch first: a plain textarea and a send button. */
+  coarsePointer: boolean;
+  /** Focus may move on the user's behalf (see programmaticFocusAllowed). */
+  focusAllowed: boolean;
   /** The pane shows a text preview instead of the screen: dock at the bottom. */
   dockOnly: boolean;
   controlRef: RefObject<PromptEditorControl | null>;
@@ -98,6 +108,8 @@ export type PromptEditorProps = {
   onError: (message: string) => void;
   onClose: () => void;
   onFocusTerminal: () => void;
+  /** What the editor covers in the pane, or null while hidden. */
+  onSpanChange: (span: EditorSpan | null) => void;
 };
 
 function visibleRows(term: Terminal): string[] {
@@ -145,12 +157,14 @@ function sameMetrics(a: TerminalMetrics | null, b: TerminalMetrics | null) {
  * Loads Monaco: at idle after startup on a fast 4G link, otherwise once the
  * editor is first used (`used`), and never under Data Saver or on 2G.
  */
-function useRichSurface(used: boolean) {
+function useRichSurface(used: boolean, coarsePointer: boolean) {
   const settled = useStartupSettled();
-  const [ready, setReady] = useState(promptMonacoPanel.isLoaded);
+  const [ready, setReady] = useState(
+    () => !coarsePointer && promptMonacoPanel.isLoaded(),
+  );
   useEffect(() => {
     if (!settled || ready) return;
-    const policy = richEditorLoadPolicy();
+    const policy = richEditorLoadPolicy(undefined, coarsePointer);
     if (policy === "never" || (policy === "on-demand" && !used)) return;
     let cancelled = false;
     const load = () =>
@@ -171,7 +185,7 @@ function useRichSurface(used: boolean) {
       if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
       else window.clearTimeout(idle);
     };
-  }, [ready, settled, used]);
+  }, [coarsePointer, ready, settled, used]);
   return ready;
 }
 
@@ -196,6 +210,8 @@ export function PromptEditor({
   term,
   terminalTheme,
   active,
+  coarsePointer,
+  focusAllowed,
   dockOnly,
   controlRef,
   onSubmit,
@@ -205,6 +221,7 @@ export function PromptEditor({
   onError,
   onClose,
   onFocusTerminal,
+  onSpanChange,
 }: PromptEditorProps) {
   const { text, submissionPending, uploadCount } =
     useTerminalComposerDraft(draftKey);
@@ -314,29 +331,34 @@ export function PromptEditor({
     }
     if (!handedToTerminal.current) return;
     handedToTerminal.current = false;
-    const focused = document.activeElement;
     if (
-      !focused ||
-      focused === document.body ||
-      term.element?.contains(focused)
+      editorMayTakeFocus(
+        document.activeElement,
+        document.body,
+        term.element,
+        focusAllowed,
+      )
     )
       surfaceRef.current?.focus();
-  }, [hidden, onFocusTerminal, term]);
+  }, [focusAllowed, hidden, onFocusTerminal, term]);
 
-  // The active pane's editor takes over from the terminal once it first shows.
+  // The active pane's editor takes over from the terminal once it first
+  // shows; a touch device without a hardware keyboard waits for a tap.
   const visible = !hidden && !!metrics;
   const shown = useRef(false);
   useLayoutEffect(() => {
     if (!visible || !active || shown.current) return;
     shown.current = true;
-    const focused = document.activeElement;
     if (
-      !focused ||
-      focused === document.body ||
-      term.element?.contains(focused)
+      editorMayTakeFocus(
+        document.activeElement,
+        document.body,
+        term.element,
+        focusAllowed,
+      )
     )
       surfaceRef.current?.focus();
-  }, [active, term, visible]);
+  }, [active, focusAllowed, term, visible]);
 
   useLayoutEffect(() => {
     controlRef.current = {
@@ -368,7 +390,7 @@ export function PromptEditor({
 
   // Swap the textarea for Monaco when it arrives, never mid-composition.
   const [used, setUsed] = useState(false);
-  const richReady = useRichSurface(used);
+  const richReady = useRichSurface(used, coarsePointer);
   const [rich, setRich] = useState(richReady);
   const focusRich = useRef(false);
   useEffect(() => {
@@ -493,6 +515,11 @@ export function PromptEditor({
           fontFamily: font.family,
         } as CSSProperties)
       : undefined;
+  useEditorSpan(
+    visible && metrics && frame ? (style?.top as number) : null,
+    frame && metrics ? frame.rows * metrics.rowHeight : 0,
+    onSpanChange,
+  );
   const busy = uploadCount > 0 || submissionPending;
   const status =
     uploadCount > 0
@@ -552,6 +579,22 @@ export function PromptEditor({
         >
           {status}
         </span>
+        {coarsePointer ? (
+          // The on-screen keyboard has no send shortcut: its Return breaks
+          // the line, so touch gets a button.
+          <IconButton
+            className="prompt-editor-action"
+            label={shortcutTitle(
+              t("Send draft to the terminal"),
+              "composer.send",
+            )}
+            tooltip={false}
+            icon={<CornerDownLeft size={12} />}
+            disabled={busy || !text.trim()}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => void send()}
+          />
+        ) : null}
         <IconButton
           className="prompt-editor-action"
           label={shortcutTitle(

@@ -95,21 +95,22 @@ metadata. See [link contracts](docs/ARCHITECTURE.md#links).
 
 ### Prompt Editor
 
-On desktop, agent panes (Claude Code, Codex, and other detected agents; never plain shells) get a local prompt editor laid over the agent's own input box, so typing never waits for the connection: nothing reaches the pane until the draft is sent.
+In the desktop layout, including tablets such as the iPad, agent panes (Claude Code, Codex, and other detected agents; never plain shells) get a local prompt editor laid over the agent's own input box, so typing never waits for the connection: nothing reaches the pane until the draft is sent.
 It finds Claude Code's and Codex's input box on screen and takes its place in the terminal's font and colors, growing upward with the draft to 40% of the pane; for other agents it docks at the pane bottom.
 While the agent shows a menu or dialog (a permission prompt, a picker) or has text in its own box (recalled history, an interrupted prompt), the editor steps aside and keys go to the terminal; it returns, with its draft, when the box is empty again.
 
 - `Cmd+Enter` / `Ctrl+Enter` sends the draft: one line is typed and then Enter pressed, several lines go as one paste and then Enter; Enter, Shift+Enter, and Alt+Enter break the line.
 - With an empty draft, Enter, Esc, `Ctrl+C`, Up/Down, Tab/Shift+Tab, `Ctrl+R`, `Ctrl+L`, and Page Up/Down go to the agent (interrupt, history, mode switching, menus).
-- The editor starts as a plain text field and becomes a Monaco editor (multiple cursors with `Cmd/Ctrl+D`, Alt+click, and `Ctrl+Shift+L`, find, Markdown highlighting): prefetched after the first output on a link the browser reports as fast 4G, otherwise downloaded on the first click or keystroke in the editor, then cached; Data Saver and 2G links keep the plain field.
+- The editor starts as a plain text field and becomes a Monaco editor (multiple cursors with `Cmd/Ctrl+D`, Alt+click, and `Ctrl+Shift+L`, find, Markdown highlighting): prefetched after the first output on a link the browser reports as fast 4G, otherwise downloaded on the first click or keystroke in the editor, then cached; Data Saver, 2G links, and touch-first devices keep the plain field.
   `Cmd/Ctrl+Shift+V` previews the draft as Markdown, and pasted images upload and insert their paths.
 - `Ctrl+Alt+P` or the pane header button shows or hides it for the pane, and `Ctrl+Alt+I` moves focus between the terminal and the editor; clicking the terminal types into the terminal.
   **Configuration > Behavior > Prompt editor** sets whether agent panes open it by default.
   Drafts stay in memory, shared with the mobile composer, and viewers without control see no editor.
+- On a touch-first device the editor takes focus only when tapped, and a send button stands in for the shortcut; once a hardware keyboard is detected (a shortcut, a navigation key, or a key press outside a text field), it focuses itself as on a desktop.
 
 ### Shell Command Line
 
-Desktop shell panes with [shell integration](docs/DEPLOYMENT.md#shell-integration) can edit commands locally over the real prompt.
+Shell panes in the desktop layout with [shell integration](docs/DEPLOYMENT.md#shell-integration) can edit commands locally over the real prompt.
 **Configuration > Behavior > Shell command line** offers Auto, On, and Off.
 Auto turns on above a median bridge round-trip time of 60 ms and turns off below 40 ms.
 The editor appears only at an available shell prompt while you hold input control; drafts and cached history stay in memory.

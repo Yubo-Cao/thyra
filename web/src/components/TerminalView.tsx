@@ -8,6 +8,7 @@ import { usePaneControl } from "../usePaneControl";
 import { paneDisplayName } from "../paneIdentity";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { keyboardOverlayOpen } from "./ui/overlayState";
 import {
   type ReactNode,
   useCallback,
@@ -48,6 +49,13 @@ import {
 } from "../terminalComposer";
 import { agentKind } from "../agentKind";
 import { useLayoutPreferences } from "../layoutPreferences";
+import { useKeyboardKind } from "../hardwareKeyboard";
+import type { EditorSpan } from "./promptEditor/metrics";
+import {
+  coarsePrimaryPointer,
+  localEditorsAvailable,
+  programmaticFocusAllowed,
+} from "../localEditorPolicy";
 import {
   setPromptEditorPaneOpen,
   usePromptEditorOpen,
@@ -125,14 +133,8 @@ const Dialog = terminalMessageDialog.Component;
 
 // Between a typed single-line draft and its Enter; see submitTerminalComposer.
 const TYPED_ENTER_DELAY_MS = 200;
-// Dialogs and menus own the keyboard while open.
-const BLOCKING_OVERLAYS =
-  ".modal-backdrop, .ui-dialog-backdrop, .command-popover, .ui-menu-popover";
-// A mouse or trackpad (even on a touch laptop) gets the prompt editor; a
-// touch-first device keeps the mobile composer.
-const finePointer = () =>
-  typeof window !== "undefined" &&
-  !window.matchMedia("(pointer: coarse)").matches;
+// Height of the floating touch controls at the pane's bottom, with margins.
+const FLOATING_ACTIONS_CLEARANCE = 60;
 
 // A switch that resolves within this window shows no spinner at all, which
 // reads as an instant switch instead of a flash of loading chrome. Set well
@@ -522,9 +524,11 @@ export function TerminalView({
     saveTerminalPreviewMode(mode);
     setPreviewMode(mode);
   }, []);
-  // The desktop prompt editor: agent panes only, for writers, on fine pointers.
+  // The local editors: the desktop layout on any pointer, for writers. The
+  // prompt editor covers agent panes, the shell command line the others.
   const { mobile } = useLayoutPreferences();
-  const [desktopPointer] = useState(finePointer);
+  const [coarsePointer] = useState(coarsePrimaryPointer);
+  const localEditors = localEditorsAvailable(mobile);
   const promptAgent = agentKind(pane?.agent);
   const promptEditorKey = pane
     ? terminalComposerDraftKey(
@@ -536,8 +540,7 @@ export function TerminalView({
   const promptEditorAvailable =
     !!pane &&
     promptAgent !== "unknown" &&
-    !mobile &&
-    desktopPointer &&
+    localEditors &&
     !control.access.viewOnly;
   const promptEditorOpen = usePromptEditorOpen(
     promptEditorKey,
@@ -546,7 +549,42 @@ export function TerminalView({
   const startupSettled = useStartupSettled();
   const showPromptEditor =
     promptEditorOpen && startupSettled && !!termInstance && !composerOpen;
-  const focusTerminal = useCallback(() => refs.term.current?.focus(), [refs]);
+  // Touch devices move focus for the user only with a hardware keyboard.
+  const keyboardKind = useKeyboardKind();
+  const focusAllowed = programmaticFocusAllowed(coarsePointer, keyboardKind);
+  // The floating touch controls stand above a local editor that reaches the
+  // bottom of the pane, where they would cover its text and buttons.
+  const [editorSpan, setEditorSpan] = useState<EditorSpan | null>(null);
+  const mainHeight =
+    editorSpan && container?.parentElement
+      ? container.parentElement.getBoundingClientRect().height
+      : 0;
+  const floatingActionsBottom =
+    editorSpan && editorSpan.bottom > mainHeight - FLOATING_ACTIONS_CLEARANCE
+      ? mainHeight - editorSpan.top + 8
+      : null;
+  // An editor hands its keys back to the terminal. On a touch device only
+  // from a focused editor, and a hardware keyboard's keys also open the
+  // terminal's input; with the on-screen keyboard the editor just lets go,
+  // and the next tap decides where typing goes.
+  const focusTerminal = useCallback(() => {
+    const term = refs.term.current;
+    if (!term) return;
+    if (coarsePointer) {
+      if (!refs.promptEditor.current?.hasFocus()) return;
+      if (!focusAllowed) {
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement) focused.blur();
+        return;
+      }
+      openTerminalInput(
+        term,
+        refs.composerOpen.current ||
+          refs.touchSelection.current?.active === true,
+      );
+    }
+    term.focus();
+  }, [coarsePointer, focusAllowed, openTerminalInput, refs]);
   const setPromptEditorOpen = useCallback(
     (open: boolean) => {
       if (!open && refs.promptEditor.current?.hasFocus()) focusTerminal();
@@ -560,7 +598,8 @@ export function TerminalView({
       if (e.defaultPrevented) return;
       const toggle = shortcutMatches(e, "promptEditor.toggle");
       if (!toggle && !shortcutMatches(e, "promptEditor.focus")) return;
-      if (document.querySelector(BLOCKING_OVERLAYS)) return;
+      // Dialogs and menus own the keyboard while open.
+      if (keyboardOverlayOpen()) return;
       e.preventDefault();
       e.stopPropagation();
       if (e.repeat) return;
@@ -625,13 +664,7 @@ export function TerminalView({
   useEffect(() => {
     if (!isActivePane || !canShowAgentHistory) return;
     const onKey = (e: KeyboardEvent) => {
-      if (
-        e.defaultPrevented ||
-        document.querySelector(
-          ".modal-backdrop, .ui-dialog-backdrop, .command-popover",
-        )
-      )
-        return;
+      if (e.defaultPrevented || keyboardOverlayOpen()) return;
       const isHistoryShortcut = shortcutMatches(e, "terminal.history");
       if (!isHistoryShortcut) return;
       if (
@@ -882,8 +915,7 @@ export function TerminalView({
           />
           {pane &&
           promptAgent === "unknown" &&
-          !mobile &&
-          desktopPointer &&
+          localEditors &&
           !control.access.viewOnly &&
           startupSettled &&
           termInstance &&
@@ -898,8 +930,10 @@ export function TerminalView({
                 term={termInstance}
                 terminalTheme={terminalTheme}
                 active={isActivePane}
+                focusAllowed={focusAllowed}
                 controlRef={refs.promptEditor}
                 onFocusTerminal={focusTerminal}
+                onSpanChange={setEditorSpan}
                 onForward={(data) => {
                   const terminalId =
                     refs.desiredTerminal.current ?? pane.terminal_id;
@@ -922,6 +956,8 @@ export function TerminalView({
                 term={termInstance}
                 terminalTheme={terminalTheme}
                 active={isActivePane}
+                coarsePointer={coarsePointer}
+                focusAllowed={focusAllowed}
                 dockOnly={framesPaused}
                 controlRef={refs.promptEditor}
                 onSubmit={(text) => submitTerminalComposer(text, true)}
@@ -950,6 +986,7 @@ export function TerminalView({
                 }
                 onClose={() => setPromptEditorOpen(false)}
                 onFocusTerminal={focusTerminal}
+                onSpanChange={setEditorSpan}
               />
             </LazyBoundary>
           ) : null}
@@ -996,6 +1033,11 @@ export function TerminalView({
             <div
               className="terminal-mobile-input-actions"
               aria-label={t("Terminal input")}
+              style={
+                floatingActionsBottom === null
+                  ? undefined
+                  : { bottom: floatingActionsBottom }
+              }
             >
               <TerminalVoiceButton
                 voice={voiceTyping}

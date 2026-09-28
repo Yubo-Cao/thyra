@@ -15,9 +15,15 @@ import type {
 } from "../../../../shared/shell";
 import { bridge, type ConnectionClient } from "../../api";
 import { t } from "../../i18n";
+import { editorMayTakeFocus } from "../../localEditorPolicy";
 import { useShellEditorMode } from "../../shellEditorPreferences";
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
-import { measureTerminal, type TerminalMetrics } from "../promptEditor/metrics";
+import {
+  measureTerminal,
+  type TerminalMetrics,
+  useEditorSpan,
+  type EditorSpan,
+} from "../promptEditor/metrics";
 import { PromptTextarea } from "../promptEditor/PromptTextarea";
 import type { PromptEditorSurface } from "../promptEditor/surface";
 import { ShellSuggestions } from "../ui/ShellSuggestions";
@@ -43,9 +49,11 @@ export function ShellEditor({
   term,
   terminalTheme,
   active,
+  focusAllowed,
   controlRef,
   onForward,
   onFocusTerminal,
+  onSpanChange,
 }: {
   client: ConnectionClient;
   paneId: string;
@@ -53,9 +61,12 @@ export function ShellEditor({
   term: Terminal;
   terminalTheme: ITheme;
   active: boolean;
+  /** Focus may move on the user's behalf (see programmaticFocusAllowed). */
+  focusAllowed: boolean;
   controlRef: RefObject<PromptEditorControl | null>;
   onForward(data: string): void;
   onFocusTerminal(): void;
+  onSpanChange(span: EditorSpan | null): void;
 }) {
   const mode = useShellEditorMode();
   const [auto, setAuto] = useState(false);
@@ -231,9 +242,12 @@ export function ShellEditor({
       setSearch(null);
     } else if (
       active &&
-      (!document.activeElement ||
-        document.activeElement === document.body ||
-        term.element?.contains(document.activeElement))
+      editorMayTakeFocus(
+        document.activeElement,
+        document.body,
+        term.element,
+        focusAllowed,
+      )
     ) {
       surface.current?.focus();
     }
@@ -246,7 +260,15 @@ export function ShellEditor({
       hasFocus: () => !!root.current?.contains(document.activeElement),
       visible: () => visible,
     };
-  }, [active, controlRef, onFocusTerminal, pending, term, visible]);
+  }, [
+    active,
+    focusAllowed,
+    controlRef,
+    onFocusTerminal,
+    pending,
+    term,
+    visible,
+  ]);
   useLayoutEffect(() => {
     const element = root.current;
     return () => {
@@ -569,6 +591,11 @@ export function ShellEditor({
         "--prompt-editor-selection": terminalTheme.selectionBackground,
       } as CSSProperties)
     : undefined;
+  useEditorSpan(
+    (visible || pending) && style ? (style.top as number) : null,
+    editorHeight,
+    onSpanChange,
+  );
   return (
     <div
       ref={root}

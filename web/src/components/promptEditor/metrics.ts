@@ -1,4 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
+import { useLayoutEffect } from "react";
 export type TerminalMetrics = {
   left: number;
   top: number;
@@ -29,4 +30,24 @@ export function measureTerminal(
     cellWidth: bounds.width / term.cols,
     fontSize: (term.options.fontSize ?? 13) * scale,
   };
+}
+
+/** Rows a local editor covers, in the pane's coordinates. */
+export type EditorSpan = { top: number; bottom: number };
+
+/**
+ * Reports what a local editor covers (null while hidden), so the pane's
+ * floating touch controls can stand clear of it.
+ */
+export function useEditorSpan(
+  top: number | null,
+  height: number,
+  onChange: (span: EditorSpan | null) => void,
+) {
+  const bottom = top === null ? null : top + height;
+  useLayoutEffect(
+    () => onChange(top === null || bottom === null ? null : { top, bottom }),
+    [bottom, onChange, top],
+  );
+  useLayoutEffect(() => () => onChange(null), [onChange]);
 }

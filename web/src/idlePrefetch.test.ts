@@ -31,6 +31,16 @@ test("the rich editor prefetches only on fast 4G", () => {
   expect(richEditorLoadPolicy({ effectiveType: "slow-2g" })).toBe("never");
 });
 
+test("touch-first devices never load the rich editor", () => {
+  expect(
+    richEditorLoadPolicy({ effectiveType: "4g", downlink: 50 }, true),
+  ).toBe("never");
+  expect(richEditorLoadPolicy(undefined, true)).toBe("never");
+  expect(
+    richEditorLoadPolicy({ effectiveType: "4g", downlink: 50 }, false),
+  ).toBe("prefetch");
+});
+
 function idleTarget() {
   const callbacks: (() => void)[] = [];
   return {

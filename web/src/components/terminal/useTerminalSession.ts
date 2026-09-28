@@ -2,6 +2,7 @@ import type { ITheme, Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { resolveTerminalFontFamily } from "../../appearance";
 import { t } from "../../i18n";
+import { keyboardKindNow } from "../../hardwareKeyboard";
 import { activePaneIdForSnapshot } from "../../paneJump";
 import { noteTerminalAttached } from "../../startupGate";
 import { store } from "../../store";
@@ -51,13 +52,17 @@ export function useTerminalBindings(
   const { container, client, identity, refs, ui, applyModifiers } = view;
   const { assertInputAllowed, closeTerminalInput, openTerminalInput } = view;
   const focusTerminalSoon = useCallback(() => {
+    // Touch devices keep the terminal's input shut until a tap there; with a
+    // hardware keyboard only a local editor may take focus for the user.
+    const blocked = () =>
+      shouldAvoidVirtualKeyboard() && keyboardKindNow() !== "hardware";
     if (
       !refs.isActivePane.current ||
       refs.composerOpen.current ||
-      refs.touchSelection.current?.active === true
+      refs.touchSelection.current?.active === true ||
+      blocked()
     )
       return;
-    if (shouldAvoidVirtualKeyboard()) return;
     requestAnimationFrame(() => {
       window.setTimeout(() => {
         if (
@@ -65,7 +70,7 @@ export function useTerminalBindings(
           !refs.isActivePane.current ||
           refs.composerOpen.current ||
           refs.touchSelection.current?.active === true ||
-          shouldAvoidVirtualKeyboard()
+          blocked()
         )
           return;
         const term = refs.term.current;
@@ -74,7 +79,7 @@ export function useTerminalBindings(
         // A terminal or a prompt editor (of any pane) is input this pane may
         // take over; other editable fields keep their focus.
         const activeIsTerminalInput = !!activeElement?.closest(
-          ".xterm, .prompt-editor",
+          ".xterm, .prompt-editor, .shell-editor",
         );
         if (!term || (isEditableElement(active) && !activeIsTerminalInput))
           return;
@@ -85,7 +90,7 @@ export function useTerminalBindings(
         // prompt editor, when shown, is where typing goes.
         const editor = refs.promptEditor.current;
         if (editor?.hasFocus() || term.element?.contains(activeElement)) return;
-        if (editor?.focus()) return;
+        if (editor?.focus() || shouldAvoidVirtualKeyboard()) return;
         term.focus();
       }, 0);
     });

@@ -1,3 +1,5 @@
+import { coarsePrimaryPointer } from "./localEditorPolicy";
+
 type NetworkInformationLike = {
   saveData?: boolean;
   effectiveType?: string;
@@ -31,6 +33,9 @@ export function idlePrefetchAllowed(
  * prefetched when idle only on a link the browser reports as fast 4G,
  * never under Data Saver or on 2G, and otherwise on first use. Without the
  * Network Information API the speed is unknown, so it waits for first use.
+ * Touch-first devices never load it: Monaco edits through a hidden input
+ * that fights the on-screen keyboard, dictation, and touch selection, all of
+ * which a native textarea gets right.
  */
 export function richEditorLoadPolicy(
   connection: (NetworkInformationLike & { downlink?: number }) | undefined = (
@@ -38,8 +43,9 @@ export function richEditorLoadPolicy(
       | { connection?: NetworkInformationLike & { downlink?: number } }
       | undefined
   )?.connection,
+  coarsePointer = coarsePrimaryPointer(),
 ): "prefetch" | "on-demand" | "never" {
-  if (!idlePrefetchAllowed(connection)) return "never";
+  if (coarsePointer || !idlePrefetchAllowed(connection)) return "never";
   if (
     connection?.effectiveType === "4g" &&
     (connection.downlink ?? 0) >= 5 &&
