@@ -43,6 +43,12 @@ export function syncTaskPush(
         !("PushManager" in window)
       )
         return "local" as const;
+      // A push subscription needs notification permission, so without it
+      // there is nothing to revoke. Every page load passes here, and desktop
+      // WebKit without a push service never settles getSubscription() and
+      // stops running the page's scripts, so leave the Push API alone.
+      if (!enabled && globalThis.Notification?.permission !== "granted")
+        return "local" as const;
       const registration = enabled
         ? await prepareTaskNotifications()
         : await navigator.serviceWorker.getRegistration("/");

@@ -9,8 +9,9 @@ const publicKey = btoa(String.fromCharCode(4, ...Array(64).fill(1)))
 const preferences = { completed: true, blocked: true };
 async function browser(
   run: (value: ReturnType<typeof fixture>) => Promise<void>,
+  permission: NotificationPermission = "granted",
 ) {
-  const f = fixture();
+  const f = fixture(permission);
   const previous = new Map<string, PropertyDescriptor | undefined>();
   for (const [key, value] of Object.entries({
     window: { location: new URL(origin), PushManager: {} },
@@ -18,6 +19,7 @@ async function browser(
       serviceWorker: { getRegistration: async () => f.registration },
     },
     fetch: f.fetch,
+    Notification: { permission: f.permission },
   })) {
     previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { configurable: true, value });
@@ -31,9 +33,10 @@ async function browser(
     }
   }
 }
-function fixture() {
+function fixture(permission: NotificationPermission = "granted") {
   const f = {
     existing: null as PushSubscription | null,
+    permission,
     available: true,
     fail: "",
     calls: [] as Array<{ method: string; body: any }>,
@@ -159,4 +162,18 @@ test("late enrollment finishes before a queued revocation, never re-enabling the
     ]);
     expect(f.existing).toBeNull();
   });
+});
+
+test("a device without notification permission never touches the Push API when disabled", async () => {
+  for (const permission of ["default", "denied"] as const) {
+    await browser(async (f) => {
+      const getRegistration = mock(async () => f.registration);
+      Object.assign(navigator.serviceWorker, { getRegistration });
+      // Desktop WebKit without a push service never settles this call.
+      f.registration.pushManager.getSubscription = () => new Promise(() => {});
+      expect(await syncTaskPush(false, preferences)).toBe("local");
+      expect(getRegistration).not.toHaveBeenCalled();
+      expect(f.calls).toEqual([]);
+    }, permission);
+  }
 });
