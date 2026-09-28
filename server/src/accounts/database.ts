@@ -141,6 +141,62 @@ const MIGRATIONS: readonly string[] = [
     expires_at INTEGER NOT NULL
   );
   `,
+  `
+  -- Profile pictures: the file name of an uploaded avatar (content hash).
+  ALTER TABLE users ADD COLUMN avatar TEXT;
+  -- Sign-in providers: identities 'email' (subject: the address), 'github'
+  -- and 'google' (subject: the provider's user id). email_verified is 1 when
+  -- the provider (or a mailed code) confirmed the address.
+  ALTER TABLE identities ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE identities ADD COLUMN avatar_url TEXT;
+  CREATE INDEX identities_email ON identities(email COLLATE NOCASE);
+  -- Mailed sign-in and verification codes: a 6-digit code and a link
+  -- secret, both stored only as SHA-256 digests, single use.
+  CREATE TABLE email_codes (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL COLLATE NOCASE,
+    purpose TEXT NOT NULL CHECK (purpose IN ('login', 'verify')),
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    link_hash TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER
+  );
+  CREATE INDEX email_codes_email ON email_codes(email, created_at);
+  -- OAuth sign-ins in progress. The page that started one holds the poll
+  -- secret and picks up the session, even when the provider returned to
+  -- another browser (an iOS Home Screen app opens it in Safari).
+  CREATE TABLE oauth_flows (
+    id TEXT PRIMARY KEY,
+    state_hash TEXT NOT NULL UNIQUE,
+    poll_hash TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    intent TEXT NOT NULL CHECK (intent IN ('login', 'link')),
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    invite_hash TEXT,
+    verifier TEXT NOT NULL,
+    pairing TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    user_agent TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    confirm_hash TEXT,
+    result TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  -- Invitations by email: a pending account with a grant; the mailed link's
+  -- secret (SHA-256 only) signs its holder in to that account once.
+  CREATE TABLE invites (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL COLLATE NOCASE,
+    created_by TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export function defaultDatabasePath(

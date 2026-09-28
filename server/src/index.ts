@@ -1,9 +1,9 @@
-import { join } from "node:path";
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
 import { createWebPushService } from "./notifications/web-push";
 import { rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import packageJson from "../../package.json";
 import type { SshTunnelConfig } from "./bridge/ssh-tunnel";
 import {
@@ -119,6 +119,13 @@ import {
   type ShareLinkStore,
 } from "./accounts/share-links";
 import { createAccessControl } from "./auth/access";
+import { avatarUrl, createAvatarFiles } from "./accounts/avatars";
+import { createAccountRoutes } from "./auth/account-routes";
+import { createEmailCodeStore, createResendMailer } from "./auth/email";
+import { createOAuthFlowStore } from "./auth/oauth";
+import { loadAuthProviders } from "./auth/providers";
+import { createInviteStore } from "./auth/sign-in";
+import { createSignInRoutes } from "./auth/sign-in-routes";
 import { createPasskeyService } from "./auth/passkeys";
 import {
   type AuthResult,
@@ -405,6 +412,18 @@ const authzDeps: AuthzDeps = {
     participantPrincipals.get(participantId) ?? null,
 };
 const passkeys = createPasskeyService({ store: accountStore });
+// Optional sign-in providers, each on only when its variables are set.
+const authProviders = loadAuthProviders(process.env);
+for (const warning of authProviders.warnings) logger.warn(warning);
+const mailer = authProviders.email
+  ? createResendMailer(authProviders.email)
+  : null;
+const emailCodes = createEmailCodeStore(accountStore);
+const oauthFlows = createOAuthFlowStore(accountStore);
+const invites = createInviteStore(accountStore);
+const avatarFiles = createAvatarFiles(
+  join(dirname(defaultDatabasePath()), "avatars"),
+);
 const tailnetSsoCodes = createSsoCodeStore(accountStore);
 /** Tailnet sign-in, when the public listener has a tailnet listener to ask. */
 const tailnetSso =
@@ -452,6 +471,51 @@ function accountRoutes(
     shares: shareLinks,
     onGuestsEnded: closeGuestSockets,
     tailnetSso,
+    signIn: createSignInRoutes({
+      store: accountStore,
+      authenticator: listenerAuthenticator,
+      providers: authProviders,
+      mailer,
+      codes: emailCodes,
+      flows: oauthFlows,
+      invites,
+      signedInCookies: (access) =>
+        access.listener === "public" && tailnetSso
+          ? [tailnetSso.signedOutCookie(false)]
+          : [],
+      onChange,
+      logger: logger.child("auth"),
+    }),
+    account: createAccountRoutes({
+      store: accountStore,
+      providers: authProviders,
+      mailer,
+      codes: emailCodes,
+      invites,
+      avatars: avatarFiles,
+      // Invitations point at the public address when there is one.
+      inviteOrigin: (access) => publicListener?.origin ?? access.ownOrigin,
+      connectionExists,
+      onChange,
+      onSessionEnded: (idHash) =>
+        closeSockets(
+          (principal) =>
+            principal.kind === "user" && principal.session.idHash === idHash,
+          4001,
+          "Logged out",
+        ),
+      // Pages reconnect and announce the new name and picture.
+      onProfileChanged: (userId, change) => {
+        if (change.name) clientIdentity.clearCustomName(`user:${userId}`);
+        closeSockets(
+          (principal) =>
+            principal.kind === "user" && principal.user.id === userId,
+          4003,
+          "Profile changed",
+        );
+      },
+      logger: logger.child("auth"),
+    }),
     shareRoutes: createShareRoutes({
       store: accountStore,
       shares: shareLinks,
@@ -550,6 +614,9 @@ setInterval(() => {
   accountStore.pruneExpired();
   shareLinks.pruneExpired();
   tailnetSsoCodes.pruneExpired();
+  emailCodes.pruneExpired();
+  oauthFlows.pruneExpired();
+  invites.pruneExpired();
   checkLiveSessions(true);
 }, 60_000).unref();
 
@@ -2160,6 +2227,7 @@ async function routeAuthenticated(
       upgrade.context.account = {
         key: principal.key,
         displayName: principal.user.displayName,
+        avatarUrl: avatarUrl(principal.user.avatar),
       };
     } else if (principal.kind === "guest") {
       // Guests are "Guest" (plus the link's label) to everyone, whatever
@@ -2834,6 +2902,15 @@ function main() {
     accounts: accountStore.userCount(),
     public_base_url: publicBaseUrls.origins.join(",") || undefined,
     tailnet_auth: tailnetAuth.mode,
+    providers:
+      [
+        authProviders.email ? "email" : "",
+        authProviders.github ? "github" : "",
+        authProviders.google ? "google" : "",
+      ]
+        .filter(Boolean)
+        .join(",") || "none",
+    signup: authProviders.signup,
   });
   if (accountStore.userCount() === 0 && tailnetAuth.mode === "off") {
     logger.warn(

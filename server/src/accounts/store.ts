@@ -36,8 +36,22 @@ export type User = {
   role: InstanceRole;
   disabled: boolean;
   privilegeEpoch: number;
+  /** Uploaded profile picture file (`<sha256>.webp`), or null. */
+  avatar: string | null;
   createdAt: number;
   updatedAt: number;
+};
+
+/** A linked sign-in identity (Tailscale, email, GitHub, Google). */
+export type IdentityRecord = {
+  provider: string;
+  subject: string;
+  displayName: string | null;
+  email: string | null;
+  emailVerified: boolean;
+  avatarUrl: string | null;
+  createdAt: number;
+  lastUsedAt: number | null;
 };
 
 export type SessionRecord = {
@@ -130,6 +144,7 @@ type UserRow = {
   role: InstanceRole;
   disabled: number;
   privilege_epoch: number;
+  avatar: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -143,6 +158,7 @@ function toUser(row: UserRow | null | undefined): User | null {
     role: row.role,
     disabled: row.disabled !== 0,
     privilegeEpoch: row.privilege_epoch,
+    avatar: row.avatar ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -237,10 +253,19 @@ export function createAccountStore(
       "SELECT user_id FROM identities WHERE provider = $provider AND subject = $subject",
     ),
     identitiesForUser: db.query<
-      { provider: string; subject: string; display_name: string | null },
+      {
+        provider: string;
+        subject: string;
+        display_name: string | null;
+        email: string | null;
+        email_verified: number;
+        avatar_url: string | null;
+        created_at: number;
+        last_used_at: number | null;
+      },
       { user: string }
     >(
-      "SELECT provider, subject, display_name FROM identities WHERE user_id = $user ORDER BY provider, subject",
+      "SELECT provider, subject, display_name, email, email_verified, avatar_url, created_at, last_used_at FROM identities WHERE user_id = $user ORDER BY provider, subject",
     ),
     sessionByHash: db.query<SessionRow, { hash: string }>(
       "SELECT * FROM sessions WHERE id_hash = $hash",
@@ -373,21 +398,28 @@ export function createAccountStore(
     userId: string;
     displayName?: string | null;
     email?: string | null;
+    /** The provider (or a mailed code) confirmed `email`. */
+    emailVerified?: boolean;
+    avatarUrl?: string | null;
     actor?: string | null;
   }) {
     const at = now();
     db.query(
-      `INSERT INTO identities (provider, subject, user_id, email, display_name, created_at, last_used_at)
-       VALUES ($provider, $subject, $user, $email, $display, $at, NULL)
+      `INSERT INTO identities (provider, subject, user_id, email, display_name, email_verified, avatar_url, created_at, last_used_at)
+       VALUES ($provider, $subject, $user, $email, $display, $verified, $avatar, $at, NULL)
        ON CONFLICT (provider, subject) DO UPDATE SET user_id = excluded.user_id,
          email = COALESCE(excluded.email, identities.email),
-         display_name = COALESCE(excluded.display_name, identities.display_name)`,
+         display_name = COALESCE(excluded.display_name, identities.display_name),
+         email_verified = MAX(excluded.email_verified, identities.email_verified),
+         avatar_url = COALESCE(excluded.avatar_url, identities.avatar_url)`,
     ).run({
       provider: args.provider,
       subject: args.subject,
       user: args.userId,
       email: args.email ?? null,
       display: args.displayName ?? null,
+      verified: args.emailVerified ? 1 : 0,
+      avatar: args.avatarUrl ?? null,
       at,
     });
     audit(args.actor ?? null, "identity.link", args.userId, {
@@ -529,12 +561,58 @@ export function createAccountStore(
     userCount(): number {
       return q.userCount.get()?.count ?? 0;
     },
-    identitiesOf(userId: string) {
+    identitiesOf(userId: string): IdentityRecord[] {
       return q.identitiesForUser.all({ user: userId }).map((row) => ({
         provider: row.provider,
         subject: row.subject,
         displayName: row.display_name,
+        email: row.email,
+        emailVerified: row.email_verified !== 0,
+        avatarUrl: row.avatar_url,
+        createdAt: row.created_at,
+        lastUsedAt: row.last_used_at,
       }));
+    },
+    /**
+     * Ways the user can sign in: passkeys and linked identities, counting an
+     * email address only once it is verified.
+     */
+    signInMethodCount(userId: string): number {
+      const identities = db
+        .query<{ count: number }, { user: string }>(
+          "SELECT COUNT(*) AS count FROM identities WHERE user_id = $user AND (provider <> 'email' OR email_verified = 1)",
+        )
+        .get({ user: userId });
+      return (
+        (identities?.count ?? 0) +
+        q.passkeysForUser.all({ user: userId }).length
+      );
+    },
+    /** Users with a verified identity carrying this email address. */
+    usersWithVerifiedEmail(email: string): string[] {
+      return db
+        .query<{ user_id: string }, { email: string }>(
+          "SELECT DISTINCT user_id FROM identities WHERE email = $email COLLATE NOCASE AND email_verified = 1",
+        )
+        .all({ email })
+        .map((row) => row.user_id);
+    },
+    setAvatar(userId: string, avatar: string | null, actor: string | null) {
+      db.query(
+        "UPDATE users SET avatar = $avatar, updated_at = $at WHERE id = $id",
+      ).run({ id: userId, avatar, at: now() });
+      audit(actor, avatar ? "user.avatar" : "user.avatar_remove", userId);
+      changed();
+    },
+    /** Whether any account still uses an avatar file. */
+    avatarInUse(avatar: string): boolean {
+      return Boolean(
+        db
+          .query<{ id: string }, { avatar: string }>(
+            "SELECT id FROM users WHERE avatar = $avatar LIMIT 1",
+          )
+          .get({ avatar }),
+      );
     },
     createUser,
     uniqueName,
@@ -584,6 +662,22 @@ export function createAccountStore(
     // Identities.
     findIdentity,
     linkIdentity,
+    unlinkIdentity(
+      provider: string,
+      subject: string,
+      userId: string,
+      actor: string | null,
+    ): boolean {
+      const result = db
+        .query(
+          "DELETE FROM identities WHERE provider = $provider AND subject = $subject AND user_id = $user",
+        )
+        .run({ provider, subject, user: userId });
+      if (result.changes === 0) return false;
+      audit(actor, "identity.unlink", userId, { provider, subject });
+      changed();
+      return true;
+    },
     touchIdentity(provider: string, subject: string) {
       db.query(
         "UPDATE identities SET last_used_at = $at WHERE provider = $provider AND subject = $subject",
@@ -616,6 +710,22 @@ export function createAccountStore(
         return null;
       deleteSessionByHash(row.id_hash, options.actor);
       return toSession(row);
+    },
+    /** End every session of a user but one; returns the ended digests. */
+    revokeOtherSessions(
+      userId: string,
+      keepHash: string,
+      actor: string | null,
+    ): string[] {
+      const ended = db
+        .query<{ id_hash: string }, { user: string; keep: string }>(
+          "DELETE FROM sessions WHERE user_id = $user AND id_hash <> $keep RETURNING id_hash",
+        )
+        .all({ user: userId, keep: keepHash })
+        .map((row) => row.id_hash);
+      audit(actor, "session.revoke_others", userId, { count: ended.length });
+      changed();
+      return ended;
     },
     revokeUserSessions(userId: string, actor: string | null): number {
       const result = db
@@ -659,6 +769,27 @@ export function createAccountStore(
         rp_id: record.rpId,
       });
       changed();
+    },
+    renamePasskey(
+      credentialId: string,
+      userId: string,
+      name: string,
+      actor: string | null,
+    ): boolean {
+      const result = db
+        .query(
+          "UPDATE passkeys SET name = $name WHERE credential_id = $id AND user_id = $user",
+        )
+        .run({
+          id: credentialId,
+          user: userId,
+          name: cleanText(name, 80) || null,
+        });
+      if (result.changes > 0) {
+        audit(actor, "passkey.rename", userId);
+        changed();
+      }
+      return result.changes > 0;
     },
     getPasskey(credentialId: string): PasskeyRecord | null {
       const row = q.passkey.get({ id: credentialId });

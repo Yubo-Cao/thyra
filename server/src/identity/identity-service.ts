@@ -43,7 +43,13 @@ export type ClientContext = {
    * The logged-in account: it is the person, whatever the device.
    * `fixedName` (share-link guests) ignores names saved for the device.
    */
-  account?: { key: string; displayName: string; fixedName?: boolean };
+  account?: {
+    key: string;
+    displayName: string;
+    fixedName?: boolean;
+    /** The account's uploaded picture, over the Tailscale one. */
+    avatarUrl?: string;
+  };
 };
 
 export type IdentityMatch =
@@ -267,8 +273,10 @@ export function createIdentityService<Socket extends object>(args: {
             ? "device-hints"
             : "cookie",
       ...(os ? { os } : {}),
-      ...(tailscale?.user?.avatarUrl
-        ? { avatarUrl: tailscale.user.avatarUrl }
+      ...((context.account?.avatarUrl ?? tailscale?.user?.avatarUrl)
+        ? {
+            avatarUrl: context.account?.avatarUrl ?? tailscale?.user?.avatarUrl,
+          }
         : {}),
       ...(tailscale?.user ? { login: tailscale.user.login } : {}),
     };
@@ -455,6 +463,19 @@ export function createIdentityService<Socket extends object>(args: {
         refreshParticipants(identity);
       }
       return { identity: selfIdentityView(identity), migrated };
+    },
+
+    /**
+     * Forget a person's custom presence name (the account page renamed the
+     * account, which then shows everywhere).
+     */
+    clearCustomName(personKey: string) {
+      const existing = args.store.profile(personKey);
+      if (!existing?.displayName) return;
+      args.store.setProfile(personKey, {
+        ...(existing.color ? { color: existing.color } : {}),
+      });
+      invalidatePerson(personKey);
     },
 
     /** `bridge.identity_profile`: set or clear the custom display name. */

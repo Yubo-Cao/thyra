@@ -1,3 +1,4 @@
+import { avatarUrl } from "../accounts/avatars";
 import { principalCapabilities } from "../authz/capabilities";
 import type { RequestAccess } from "../http/request-access";
 import {
@@ -47,12 +48,15 @@ export type GuestPrincipal = {
   link: ShareLink;
   /** Display name of the account that created the link, if any. */
   sharedBy: string | null;
+  /** That account's profile picture URL, if any. */
+  sharedByAvatar?: string | null;
 };
 
 export function guestPrincipal(
   guest: GuestSession,
   link: ShareLink,
   sharedBy: string | null,
+  sharedByAvatar: string | null = null,
 ): GuestPrincipal {
   return {
     kind: "guest",
@@ -60,6 +64,7 @@ export function guestPrincipal(
     guest,
     link,
     sharedBy,
+    sharedByAvatar,
   };
 }
 
@@ -107,6 +112,7 @@ export function principalView(principal: Principal) {
         pane_id: principal.link.paneId,
         label: principal.link.label,
         shared_by: principal.sharedBy,
+        shared_by_avatar: principal.sharedByAvatar ?? null,
         expires_at: principal.guest.expiresAt,
       },
     };
@@ -118,6 +124,7 @@ export function principalView(principal: Principal) {
       name: principal.user.name,
       display_name: principal.user.displayName,
       role: principal.user.role,
+      avatar_url: avatarUrl(principal.user.avatar) ?? null,
     },
     session_id: principal.session.publicId,
     capabilities,
@@ -250,6 +257,7 @@ export function createAuthenticator(args: {
         resolved.session,
         resolved.link,
         creator?.displayName ?? null,
+        avatarUrl(creator?.avatar) ?? null,
       ),
     };
   }

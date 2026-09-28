@@ -19,8 +19,63 @@ const STRINGS = {
     loginIntro: "Use a passkey saved on this device or your phone.",
     loginButton: "Log in with a passkey",
     loggingIn: "Waiting for your passkey...",
-    loginNote:
-      "Devices on the owner's tailnet log in automatically. Everyone else needs an enrollment link from the owner.",
+    loginNote: "New here? Ask the owner for an invitation.",
+    orDivider: "or",
+    loginIntroMethods: "Choose how to sign in.",
+    continueGoogle: "Continue with Google",
+    continueGithub: "Continue with GitHub",
+    emailLabel: "Email",
+    emailSend: "Email me a code",
+    emailSending: "Sending...",
+    emailSent:
+      "If {email} can receive email, a 6-digit code is on its way. Enter it here, or open the link in the email.",
+    codeLabel: "6-digit code",
+    codeButton: "Sign in",
+    codeChecking: "Checking...",
+    codeWrong: "That code is wrong or expired.",
+    emailAgain: "Use another address",
+    emailInvalid: "Enter a valid email address.",
+    emailUnavailable: "The email could not be sent. Try again later.",
+    emailLinkChecking: "Signing you in...",
+    emailLinkMissing:
+      "This link is incomplete, expired or already used. Request a new code.",
+    unknownIdentity:
+      "Signed in as {label} via {provider}. Ask the owner for access.",
+    oauthRedirecting: "Opening {provider}...",
+    oauthWaiting:
+      "Finish signing in in the window that opened. If it asks, check that it shows {pairing}.",
+    oauthFailed: "Sign-in did not complete. Try again.",
+    resultTitle: "Thyra sign-in",
+    doneHeading: "Signed in",
+    doneClose: "You can close this window and return to Thyra.",
+    linkedHeading: "Sign-in method added",
+    errorHeading: "Sign-in did not complete",
+    unknownHeading: "No access yet",
+    err_expired: "This sign-in expired or was already used. Start again.",
+    err_cancelled: "Sign-in was cancelled.",
+    err_provider: "The provider did not complete the sign-in. Try again.",
+    err_linked_elsewhere:
+      "This account is already linked to another Thyra account.",
+    err_disabled: "This account is disabled.",
+    confirmTitle: "Finish signing in?",
+    confirmIntro:
+      "{provider} confirmed you as {label}. Thyra will sign in the app or window where you started, which shows this number:",
+    confirmLinkIntro:
+      "{provider} confirmed you as {label}. Thyra will add it to the account that started this, whose window shows this number:",
+    confirmWarning:
+      "Continue only if you started this yourself and the numbers match.",
+    confirmButton: "Yes, finish",
+    cancelButton: "Cancel",
+    confirmDone:
+      "Done. Return to Thyra where you started; it continues on its own.",
+    confirmCancelled: "Cancelled. Nothing was signed in.",
+    inviteTitle: "Join Thyra",
+    inviteHeading: "You're invited",
+    inviteIntro: "You're invited as {name} ({email}). Choose how to sign in.",
+    inviteAccept: "Continue as {email}",
+    inviteMissing:
+      "This invitation is incomplete, expired or already used. Ask for a new one.",
+    backToLogin: "Back to log in",
     tailnetChecking: "Checking for the owner's tailnet...",
     tailnetButton: "Sign in with tailnet",
     tailnetHint:
@@ -86,8 +141,58 @@ const STRINGS = {
     loginIntro: "使用保存在本设备或手机上的通行密钥。",
     loginButton: "使用通行密钥登录",
     loggingIn: "正在等待通行密钥…",
-    loginNote:
-      "所有者 tailnet 中的设备会自动登录。其他用户需要所有者提供的注册链接。",
+    loginNote: "还没有账户？请向所有者索取邀请。",
+    orDivider: "或",
+    loginIntroMethods: "选择登录方式。",
+    continueGoogle: "使用 Google 继续",
+    continueGithub: "使用 GitHub 继续",
+    emailLabel: "邮箱",
+    emailSend: "发送验证码",
+    emailSending: "正在发送…",
+    emailSent:
+      "如果 {email} 能收到邮件，6 位验证码已发出。请在此输入，或打开邮件中的链接。",
+    codeLabel: "6 位验证码",
+    codeButton: "登录",
+    codeChecking: "正在验证…",
+    codeWrong: "验证码错误或已过期。",
+    emailAgain: "换一个邮箱",
+    emailInvalid: "请输入有效的邮箱地址。",
+    emailUnavailable: "邮件发送失败，请稍后再试。",
+    emailLinkChecking: "正在登录…",
+    emailLinkMissing: "此链接不完整、已过期或已使用。请重新获取验证码。",
+    unknownIdentity:
+      "已通过 {provider} 以 {label} 的身份登录。请向所有者申请访问权限。",
+    oauthRedirecting: "正在打开 {provider}…",
+    oauthWaiting:
+      "请在打开的窗口中完成登录。如被询问，请确认显示的数字为 {pairing}。",
+    oauthFailed: "登录未完成，请重试。",
+    resultTitle: "Thyra 登录",
+    doneHeading: "已登录",
+    doneClose: "可以关闭此窗口并返回 Thyra。",
+    linkedHeading: "已添加登录方式",
+    errorHeading: "登录未完成",
+    unknownHeading: "尚无访问权限",
+    err_expired: "此登录已过期或已使用。请重新开始。",
+    err_cancelled: "登录已取消。",
+    err_provider: "提供方未完成登录，请重试。",
+    err_linked_elsewhere: "此账户已关联到另一个 Thyra 账户。",
+    err_disabled: "此账户已停用。",
+    confirmTitle: "完成登录？",
+    confirmIntro:
+      "{provider} 已确认你是 {label}。Thyra 将登录你开始操作的应用或窗口，那里显示的数字是：",
+    confirmLinkIntro:
+      "{provider} 已确认你是 {label}。Thyra 会把它添加到发起此操作的账户，其窗口显示的数字是：",
+    confirmWarning: "仅当这是你本人发起且数字一致时才继续。",
+    confirmButton: "是，继续",
+    cancelButton: "取消",
+    confirmDone: "完成。返回你开始操作的 Thyra，它会自动继续。",
+    confirmCancelled: "已取消，未登录任何账户。",
+    inviteTitle: "加入 Thyra",
+    inviteHeading: "你收到了邀请",
+    inviteIntro: "你以 {name}（{email}）的身份受邀。请选择登录方式。",
+    inviteAccept: "以 {email} 继续",
+    inviteMissing: "此邀请不完整、已过期或已使用。请索取新的邀请。",
+    backToLogin: "返回登录",
     tailnetChecking: "正在检查所有者的 tailnet…",
     tailnetButton: "通过 tailnet 登录",
     tailnetHint:
@@ -175,7 +280,7 @@ const STYLE = `
   *{box-sizing:border-box}
   :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#eeeef0;
     background:#141516;color-scheme:dark;--panel:#1c1d1f;--muted:#a9abb0;--accent:#a8c5ff;
-    --error:#ffaaaa;--button:#ececee;--button-text:#202124;--button-hover:#fff}
+    --error:#ffaaaa;--button:#ececee;--button-text:#202124;--button-hover:#fff;--line:#34363a}
   body{margin:0;min-height:100vh;min-height:100svh;display:grid;place-items:center;padding:32px 20px}
   main{width:100%;max-width:400px}
   .brand{display:flex;align-items:center;gap:12px;margin-bottom:24px;font-size:20px;font-weight:650;letter-spacing:-.5px}
@@ -195,6 +300,14 @@ const STYLE = `
   a.secondary{display:flex;align-items:center;justify-content:center;text-decoration:none}
   [hidden]{display:none!important}
   .tailnet-hint{margin-top:8px}
+  .divider{display:flex;align-items:center;gap:12px;margin:20px 0 4px;color:var(--muted);font-size:12px}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+  .field{display:block;margin-top:12px;font-size:12px;color:var(--muted)}
+  .input{width:100%;min-height:44px;margin-top:6px;padding:10px 12px;border:1px solid var(--muted);border-radius:0;
+    background:transparent;color:inherit;font:inherit;font-size:15px}
+  .input.code{font-family:ui-monospace,Menlo,monospace;font-size:22px;letter-spacing:6px}
+  .linkish{margin-top:10px;padding:0;border:0;background:none;color:var(--accent);font-size:13px}
+  .pairing{margin:16px 0;font-family:ui-monospace,Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:inherit}
   .account{margin-top:16px;color:inherit}
   .status{font-size:13px;line-height:1.5;min-height:24px;margin-top:12px}
   .status.error{color:var(--error)}
@@ -202,7 +315,7 @@ const STYLE = `
   a{color:var(--accent)}
   @media(prefers-color-scheme:light){
     :root{background:#f5f5f3;color:#252629;color-scheme:light;--panel:#fff;--muted:#64666d;
-      --accent:#315fb4;--error:#b42332;--button:#292a2c;--button-text:#fff;--button-hover:#414245}
+      --accent:#315fb4;--error:#b42332;--button:#292a2c;--button-text:#fff;--button-hover:#414245;--line:#dcdcd8}
   }
   @media(max-width:380px){.card{padding:24px}body{padding:24px 16px}}
 `;
@@ -260,11 +373,91 @@ if(data.page==='share'){
   btn.onclick=redeem(btn,S.shareButton,false);
   return;
 }
+const fill=(text,values)=>text.replace(/\\{(\\w+)\\}/g,(m,k)=>values[k]!==undefined?values[k]:m);
+const NAMES={google:'Google',github:'GitHub',email:S.emailLabel};
+const $=(id)=>document.getElementById(id);
+const home=()=>location.replace('/');
+if(data.page==='result'){if(data.close)setTimeout(()=>{try{window.close();}catch{}},400);return;}
+if(data.page==='email-link'){
+  // The link's secret is in the fragment, never sent to servers or logs.
+  const [flow,link]=(location.hash.slice(1)||'').split('.');
+  history.replaceState(null,'',location.pathname);
+  if(!flow||!link){show(S.emailLinkMissing,true);return;}
+  show(S.emailLinkChecking,false);
+  post('/auth/email/verify',{flow,link}).then((r)=>{
+    if(r.ok&&r.data.status==='signed_in'){home();return;}
+    if(r.ok&&r.data.status==='unknown'){show(fill(S.unknownIdentity,{label:r.data.label,provider:NAMES.email}),true);return;}
+    show(r.status===429?S.tooManyAttempts:S.emailLinkMissing,true);
+  }).catch(()=>show(S.unreachable,true));
+  return;
+}
+if(data.page==='confirm'){
+  const cancel=$('cancel');
+  const answer=(accept)=>async()=>{
+    btn.disabled=true;cancel.disabled=true;
+    try{
+      const r=await post('/auth/oauth/confirm',{flow:data.flow,confirm:data.confirm,accept});
+      $('confirm-body').hidden=true;
+      const st=r.data&&r.data.status;
+      show(st==='done'?S.confirmDone:st==='cancelled'?S.confirmCancelled:st==='unknown'?fill(S.unknownIdentity,{label:r.data.label,provider:NAMES[data.provider]||data.provider}):S.oauthFailed,st!=='done'&&st!=='cancelled');
+    }catch{show(S.unreachable,true);btn.disabled=false;cancel.disabled=false;}
+  };
+  btn.onclick=answer(true);cancel.onclick=answer(false);
+  return;
+}
+// GitHub and Google. A Home Screen app keeps this page open and polls,
+// since the provider may return in Safari; elsewhere it navigates.
+const pollFlow=(flow,secret,done)=>{
+  const started=Date.now();
+  const tick=async()=>{
+    let r=null;try{r=await post('/auth/oauth/poll',{flow,poll:secret});}catch{}
+    const st=r&&r.data&&r.data.status;
+    if(st==='done'){home();return;}
+    if(st==='unknown'){done(fill(S.unknownIdentity,{label:r.data.label,provider:NAMES[r.data.provider]||''}));return;}
+    if(st==='failed'||st==='expired'||Date.now()-started>600000){done(S.oauthFailed);return;}
+    setTimeout(tick,1500);
+  };
+  setTimeout(tick,1500);
+};
+const startOAuth=(provider,button,extra)=>async()=>{
+  if(button.disabled)return;
+  button.disabled=true;show(fill(S.oauthRedirecting,{provider:NAMES[provider]}),false);
+  const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  // Opened now, while the click still counts as a user gesture.
+  const popup=standalone?window.open('about:blank','thyra-oauth'):null;
+  try{
+    const r=await post('/auth/oauth/'+provider+'/start',{intent:'login',popup:!!popup,...extra});
+    if(!r.ok){if(popup)popup.close();show((r.data&&r.data.error)||S.oauthFailed,true);button.disabled=false;return;}
+    if(!popup){location.assign(r.data.url);return;}
+    popup.location.href=r.data.url;
+    show(fill(S.oauthWaiting,{pairing:r.data.pairing}),false);
+    pollFlow(r.data.flow,r.data.poll,(text)=>{show(text,true);button.disabled=false;});
+  }catch{if(popup)popup.close();show(S.unreachable,true);button.disabled=false;}
+};
+const wireOAuth=(extra)=>{for(const button of document.querySelectorAll('[data-provider]'))button.onclick=startOAuth(button.dataset.provider,button,extra);};
+if(data.page==='invite'){
+  const token=location.hash.length>1?decodeURIComponent(location.hash.slice(1)):'';
+  history.replaceState(null,'',location.pathname);
+  const body=$('invite-body');
+  if(!token){show(S.inviteMissing,true);return;}
+  post('/auth/invite/check',{token}).then((r)=>{
+    if(!r.ok){show(r.status===429?S.tooManyAttempts:S.inviteMissing,true);return;}
+    $('intro').textContent=fill(S.inviteIntro,{name:r.data.name,email:r.data.email});
+    btn.textContent=fill(S.inviteAccept,{email:r.data.email});
+    body.hidden=false;
+    wireOAuth({invite:token});
+    btn.onclick=async()=>{
+      if(btn.disabled)return;btn.disabled=true;
+      try{const a=await post('/auth/invite/accept',{token});if(a.ok){home();return;}show(S.inviteMissing,true);}
+      catch{show(S.unreachable,true);btn.disabled=false;}
+    };
+  }).catch(()=>show(S.unreachable,true));
+  return;
+}
 const errorFor=(r)=>r.status===429?S.tooManyAttempts:r.status===403?S.disabled:r.status===401?S.unknownPasskey:(r.data&&r.data.error)||S.failed;
 const secure=window.isSecureContext&&!!PKC&&!!navigator.credentials;
-if(!window.isSecureContext){show(S.insecure,true);btn.disabled=true;}
-else if(!PKC){show(S.unsupported,true);btn.disabled=true;}
 if(data.page==='login'){
+  if(!window.isSecureContext){btn.disabled=true;}else if(!PKC){btn.disabled=true;}
   btn.onclick=async()=>{
     if(btn.disabled||!secure)return;
     btn.disabled=true;btn.textContent=S.loggingIn;show('',false);
@@ -280,31 +473,82 @@ if(data.page==='login'){
     }catch{show(S.unreachable,true);}
     finally{btn.disabled=!secure;btn.textContent=S.loginButton;}
   };
-  const choices=document.getElementById('choices');
+  wireOAuth({});
+  const emailForm=$('email-form'),codeForm=$('code-form');
+  if(emailForm){
+    let flow=null,address='';
+    const send=$('email-send'),input=$('email'),code=$('code');
+    emailForm.onsubmit=async(event)=>{
+      event.preventDefault();
+      address=input.value.trim();
+      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(address)){show(S.emailInvalid,true);input.focus();return;}
+      send.disabled=true;send.textContent=S.emailSending;show('',false);
+      try{
+        const r=await post('/auth/email/start',{email:address});
+        if(!r.ok){show(r.status===429?S.tooManyAttempts:r.status===400?S.emailInvalid:S.emailUnavailable,true);return;}
+        flow=r.data.flow;
+        emailForm.hidden=true;codeForm.hidden=false;
+        $('code-intro').textContent=fill(S.emailSent,{email:address});
+        code.value='';code.focus();
+      }catch{show(S.unreachable,true);}
+      finally{send.disabled=false;send.textContent=S.emailSend;}
+    };
+    codeForm.onsubmit=async(event)=>{
+      event.preventDefault();
+      const submit=$('code-submit');
+      const value=code.value.replace(/\\D/g,'');
+      if(value.length!==6){show(S.codeWrong,true);code.focus();return;}
+      submit.disabled=true;submit.textContent=S.codeChecking;show('',false);
+      try{
+        const r=await post('/auth/email/verify',{flow,code:value});
+        if(r.ok&&r.data.status==='signed_in'){location.replace('/'+location.hash);return;}
+        if(r.ok&&r.data.status==='unknown'){show(fill(S.unknownIdentity,{label:r.data.label,provider:NAMES.email}),true);return;}
+        show(r.status===429?S.tooManyAttempts:r.status===403?S.disabled:S.codeWrong,true);
+      }catch{show(S.unreachable,true);}
+      finally{submit.disabled=false;submit.textContent=S.codeButton;}
+    };
+    $('email-back').onclick=()=>{codeForm.hidden=true;emailForm.hidden=false;show('',false);input.focus();};
+  }
+  const choices=$('choices');
   const tailnet=data.tailnet;
+  const reveal=()=>{if(!choices.hidden)return;show('',false);choices.hidden=false;};
   if(!tailnet||!tailnet.silent||!window.isSecureContext||!crypto.subtle){choices.hidden=false;if(tailnet&&tailnet.silent&&window.isSecureContext)show('',false);return;}
   // Silent tailnet sign-in: ask the tailnet listener, which knows this
   // device by its Tailscale identity, for a single-use code bound to a PKCE
   // challenge, then redeem it here with the verifier. A device off the
   // tailnet cannot reach it; after a short wait the buttons appear.
+  // Chrome's Local Network Access may refuse the request or ask first: a
+  // refusal shows the buttons at once, and while it asks the buttons appear
+  // anyway and an answer of "allow" still signs in.
+  const permission=async()=>{
+    if(!navigator.permissions)return null;
+    for(const name of ['local-network-access','local-network']){try{return (await navigator.permissions.query({name})).state;}catch{}}
+    return null;
+  };
   (async()=>{
     try{
+      const state=await permission();
+      if(state==='denied'){reveal();return;}
       const verifier=b64(crypto.getRandomValues(new Uint8Array(32)));
       const challenge=b64(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
-      const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),1800);
+      const abort=new AbortController();
+      const shown=setTimeout(reveal,1800);
+      const timer=setTimeout(()=>abort.abort(),state==='prompt'?60000:1800);
       let r;
       try{r=await fetch(tailnet.url+'/auth/tailnet-sso/code',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',headers:{'content-type':'application/json'},body:JSON.stringify({code_challenge:challenge}),signal:abort.signal});}
-      finally{clearTimeout(timer);}
+      finally{clearTimeout(timer);clearTimeout(shown);}
       if(r.ok){
         const issued=await r.json();
         const done=await post('/auth/tailnet-sso/redeem',{code:issued.code,code_verifier:verifier});
         if(done.ok){location.replace('/'+location.hash);return;}
       }
     }catch{}
-    show('',false);choices.hidden=false;
+    reveal();
   })();
   return;
 }
+if(!window.isSecureContext){show(S.insecure,true);btn.disabled=true;}
+else if(!PKC){show(S.unsupported,true);btn.disabled=true;}
 // The secret is in the fragment, which browsers never send to servers;
 // drop it from the address bar and history at once.
 const secret=location.hash.length>1?decodeURIComponent(location.hash.slice(1)):'';
@@ -343,10 +587,21 @@ function page(
   title: string,
   body: string,
   data: {
-    page: "login" | "enroll" | "share";
+    page:
+      | "login"
+      | "enroll"
+      | "share"
+      | "email-link"
+      | "invite"
+      | "confirm"
+      | "result";
     s: Strings;
     account?: { name: string | null };
     tailnet?: { url: string; silent: boolean };
+    flow?: string;
+    confirm?: string;
+    provider?: string;
+    close?: boolean;
   } | null,
 ) {
   return `<!doctype html>
@@ -423,15 +678,41 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+export type LoginProviders = {
+  email: boolean;
+  github: boolean;
+  google: boolean;
+};
+
+const PROVIDER_NAMES: Record<string, string> = {
+  google: "Google",
+  github: "GitHub",
+};
+
+/** "Continue with Google/GitHub" buttons for the configured providers. */
+function oauthButtons(s: Strings, providers: LoginProviders): string {
+  return [
+    providers.google
+      ? `    <button class="secondary" type="button" data-provider="google">${s.continueGoogle}</button>\n`
+      : "",
+    providers.github
+      ? `    <button class="secondary" type="button" data-provider="github">${s.continueGithub}</button>\n`
+      : "",
+  ].join("");
+}
+
 /**
- * The login page. On the public listener with tailnet sign-in
- * (`tailnet`), the page first asks the tailnet listener for a code without
- * showing any button (`silent`), and reveals the passkey button and a
- * "Sign in with tailnet" redirect button when that fails.
+ * The login page: a passkey, then GitHub and Google (when configured), then
+ * an emailed code (address, then the code; the mailed link works too). On
+ * the public listener with tailnet sign-in (`tailnet`), the page first asks
+ * the tailnet listener for a code without showing any button (`silent`),
+ * and reveals the choices and a "Sign in with tailnet" redirect button when
+ * that fails.
  */
 export function renderLoginPage(
   locale: PageLocale,
   tailnet: TailnetSsoLogin | null = null,
+  providers: LoginProviders = { email: false, github: false, google: false },
 ): string {
   const s = STRINGS[locale];
   const hint = tailnet
@@ -441,15 +722,33 @@ export function renderLoginPage(
     ? s[`tailnet_${tailnet.message}` as const]
     : "";
   const silent = Boolean(tailnet?.silent);
+  const others = providers.email || providers.github || providers.google;
   return page(
     locale,
     s.loginTitle,
     `  <section class="card" aria-labelledby="heading">
     <h1 id="heading">${s.loginHeading}</h1>
-    <p>${s.loginIntro}</p>
+    <p>${others ? s.loginIntroMethods : s.loginIntro}</p>
     <div id="choices"${silent ? " hidden" : ""}>
     <button class="submit" id="btn" type="button">${s.loginButton}</button>
-${
+${oauthButtons(s, providers)}${
+  providers.email
+    ? `    <div class="divider">${s.orDivider}</div>
+    <form id="email-form" novalidate>
+      <label class="field" for="email">${s.emailLabel}</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" required>
+      <button class="secondary" id="email-send" type="submit">${s.emailSend}</button>
+    </form>
+    <form id="code-form" hidden novalidate>
+      <p id="code-intro"></p>
+      <label class="field" for="code">${s.codeLabel}</label>
+      <input class="input code" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+      <button class="submit" id="code-submit" type="submit">${s.codeButton}</button>
+      <button class="linkish" id="email-back" type="button">${s.emailAgain}</button>
+    </form>
+`
+    : ""
+}${
   tailnet
     ? `    <a class="secondary" id="tailnet" href="/auth/tailnet-sso/start" title="${hint}">${s.tailnetButton}</a>
     <p class="note tailnet-hint">${hint}</p>
@@ -464,6 +763,135 @@ ${
       page: "login",
       s,
       ...(tailnet ? { tailnet: { url: tailnet.url, silent } } : {}),
+    },
+  );
+}
+
+/** A mailed sign-in link's landing page, `/auth/email#<flow>.<secret>`. */
+export function renderEmailLinkPage(locale: PageLocale): string {
+  const s = STRINGS[locale];
+  return page(
+    locale,
+    s.loginTitle,
+    `  <section class="card" aria-labelledby="heading">
+    <h1 id="heading">${s.loginHeading}</h1>
+    <div class="status" id="status" role="alert" aria-live="polite">${s.emailLinkChecking}</div>
+    <noscript><p class="status error">${s.noscript}</p></noscript>
+    <p class="note"><a href="/login">${s.backToLogin}</a></p>
+  </section>`,
+    { page: "email-link", s },
+  );
+}
+
+/** An invitation's landing page, `/invite#<token>`. */
+export function renderInvitePage(
+  locale: PageLocale,
+  providers: LoginProviders,
+): string {
+  const s = STRINGS[locale];
+  return page(
+    locale,
+    s.inviteTitle,
+    `  <section class="card" aria-labelledby="heading">
+    <h1 id="heading">${s.inviteHeading}</h1>
+    <div id="invite-body" hidden>
+    <p id="intro"></p>
+    <button class="submit" id="btn" type="button">${s.inviteAccept}</button>
+${oauthButtons(s, providers)}    </div>
+    <div class="status" id="status" role="alert" aria-live="polite"></div>
+    <noscript><p class="status error">${s.noscript}</p></noscript>
+  </section>`,
+    { page: "invite", s },
+  );
+}
+
+/**
+ * The provider returned to a browser that did not start the sign-in: show
+ * who signed in and the pairing number, and ask before finishing.
+ */
+export function renderOAuthConfirmPage(
+  locale: PageLocale,
+  args: {
+    flow: string;
+    confirm: string;
+    pairing: string;
+    provider: string;
+    label: string;
+    intent: "login" | "link";
+  },
+): string {
+  const s = STRINGS[locale];
+  const provider = PROVIDER_NAMES[args.provider] ?? args.provider;
+  const intro = (args.intent === "link" ? s.confirmLinkIntro : s.confirmIntro)
+    .replace("{provider}", escapeHtml(provider))
+    .replace("{label}", escapeHtml(args.label));
+  return page(
+    locale,
+    s.confirmTitle,
+    `  <section class="card" aria-labelledby="heading">
+    <h1 id="heading">${s.confirmTitle}</h1>
+    <div id="confirm-body">
+    <p>${intro}</p>
+    <p class="pairing">${escapeHtml(args.pairing)}</p>
+    <p>${s.confirmWarning}</p>
+    <button class="submit" id="btn" type="button">${s.confirmButton}</button>
+    <button class="secondary" id="cancel" type="button">${s.cancelButton}</button>
+    </div>
+    <div class="status" id="status" role="alert" aria-live="polite"></div>
+    <noscript><p class="status error">${s.noscript}</p></noscript>
+  </section>`,
+    {
+      page: "confirm",
+      s,
+      flow: args.flow,
+      confirm: args.confirm,
+      provider: args.provider,
+    },
+  );
+}
+
+/** The end of an OAuth sign-in in a popup, an unknown identity, or an error. */
+export function renderSignInResultPage(
+  locale: PageLocale,
+  args: { provider: string | null } & (
+    | { kind: "unknown"; label: string }
+    | { kind: "error"; code: string }
+    | { kind: "done"; close: boolean; linked: boolean }
+  ),
+): string {
+  const s = STRINGS[locale];
+  const provider = args.provider
+    ? (PROVIDER_NAMES[args.provider] ?? args.provider)
+    : "";
+  const heading =
+    args.kind === "done"
+      ? args.linked
+        ? s.linkedHeading
+        : s.doneHeading
+      : args.kind === "unknown"
+        ? s.unknownHeading
+        : s.errorHeading;
+  const text =
+    args.kind === "done"
+      ? s.doneClose
+      : args.kind === "unknown"
+        ? s.unknownIdentity
+            .replace("{label}", escapeHtml(args.label))
+            .replace("{provider}", escapeHtml(provider))
+        : ((s as Record<string, string>)[`err_${args.code}`] ?? s.oauthFailed);
+  return page(
+    locale,
+    s.resultTitle,
+    `  <section class="card" aria-labelledby="heading">
+    <h1 id="heading">${heading}</h1>
+    <p>${text}</p>
+    <div class="status" id="status" role="alert" aria-live="polite"></div>
+    ${args.kind === "done" ? "" : `<p class="note"><a href="/login">${s.backToLogin}</a></p>`}
+  </section>`,
+    {
+      page: "result",
+      s,
+      ...(args.kind === "done" && args.close ? { close: true } : {}),
     },
   );
 }

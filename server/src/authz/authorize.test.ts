@@ -120,6 +120,36 @@ const RPC_MATRIX: Record<string, string> = {
 
 const HTTP_MATRIX: Record<string, string> = {
   "api.health": "admin owner editor viewer outsider guest guest-pane",
+  "auth.avatar": "admin owner editor viewer outsider",
+  "auth.avatar.remove": "admin owner editor viewer outsider",
+  "auth.avatar.source": "admin owner editor viewer outsider",
+  "auth.email.add": "admin owner editor viewer outsider",
+  "auth.email.confirm": "admin owner editor viewer outsider",
+  "auth.identities.remove": "admin owner editor viewer outsider",
+  "auth.methods": "admin owner editor viewer outsider",
+  "auth.passkeys.rename": "admin owner editor viewer outsider",
+  "auth.profile": "admin owner editor viewer outsider",
+  "auth.sessions.revoke_others": "admin owner editor viewer outsider",
+  "avatar.file": "admin owner editor viewer outsider guest guest-pane",
+  "email.page": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "email.start":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "email.verify":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "invite.accept":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "invite.check":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "invite.page":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "invites.create": "admin owner",
+  "oauth.callback":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "oauth.confirm":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
+  "oauth.poll": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "oauth.start":
+    "admin owner editor viewer outsider guest guest-pane anonymous",
   "auth.me": "admin owner editor viewer outsider guest guest-pane",
   "auth.passkeys": "admin owner editor viewer outsider",
   "auth.passkeys.remove": "admin owner editor viewer outsider",

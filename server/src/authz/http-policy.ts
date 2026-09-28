@@ -71,12 +71,46 @@ export const HTTP_POLICY = {
   "sso.start": { class: "read", scope: "public" },
   "sso.callback": { class: "write", scope: "public" },
   "sso.redeem": { class: "write", scope: "public" },
+  // Optional sign-in providers (auth/sign-in-routes.ts): email codes and
+  // links, GitHub and Google, and invitation links. Rate-limited per client;
+  // POSTs need this origin's Origin header.
+  "email.start": { class: "write", scope: "public" },
+  "email.verify": { class: "write", scope: "public" },
+  "email.page": { class: "read", scope: "public" },
+  "oauth.start": { class: "write", scope: "public" },
+  "oauth.callback": { class: "write", scope: "public" },
+  "oauth.poll": { class: "write", scope: "public" },
+  "oauth.confirm": { class: "write", scope: "public" },
+  "invite.page": { class: "read", scope: "public" },
+  "invite.check": { class: "read", scope: "public" },
+  "invite.accept": { class: "write", scope: "public" },
 
   "auth.me": { class: "read", scope: "session", guest: true },
   "auth.sessions": { class: "read", scope: "session" },
   "auth.sessions.revoke": { class: "write", scope: "session" },
   "auth.passkeys": { class: "read", scope: "session" },
   "auth.passkeys.remove": { class: "write", scope: "session" },
+  // The account page (auth/account-routes.ts): profile, avatar, sign-in
+  // methods and other sessions of the caller's own account.
+  "auth.passkeys.rename": { class: "write", scope: "session" },
+  "auth.methods": { class: "read", scope: "session" },
+  "auth.profile": { class: "write", scope: "session" },
+  "auth.avatar": { class: "write", scope: "session" },
+  "auth.avatar.remove": { class: "write", scope: "session" },
+  "auth.avatar.source": { class: "read", scope: "session" },
+  "auth.identities.remove": { class: "write", scope: "session" },
+  "auth.email.add": { class: "write", scope: "session" },
+  "auth.email.confirm": { class: "write", scope: "session" },
+  "auth.sessions.revoke_others": { class: "write", scope: "session" },
+  // Profile pictures shown in presence, including to share-link guests.
+  "avatar.file": { class: "read", scope: "session", guest: true },
+  // Workspace owners (and admins) invite people by email.
+  "invites.create": {
+    class: "write",
+    scope: "workspace",
+    minimum: "owner",
+    resolve: fromQuery(targetResolvers.workspace),
+  },
   // Workspace owners (and admins) read and change a workspace's grants.
   "grants.list": {
     class: "read",
@@ -174,6 +208,25 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/auth/tailnet-sso/start": { GET: "sso.start" },
   "/auth/tailnet-sso/callback": { GET: "sso.callback" },
   "/auth/tailnet-sso/redeem": { POST: "sso.redeem" },
+  "/auth/email/start": { POST: "email.start" },
+  "/auth/email/verify": { POST: "email.verify" },
+  "/auth/email": { GET: "email.page", HEAD: "email.page" },
+  "/auth/oauth/poll": { POST: "oauth.poll" },
+  "/auth/oauth/confirm": { POST: "oauth.confirm" },
+  "/invite": { GET: "invite.page", HEAD: "invite.page" },
+  "/auth/invite/check": { POST: "invite.check" },
+  "/auth/invite/accept": { POST: "invite.accept" },
+  "/api/auth/methods": { GET: "auth.methods" },
+  "/api/auth/profile": { POST: "auth.profile" },
+  "/api/auth/avatar": { POST: "auth.avatar" },
+  "/api/auth/avatar/remove": { POST: "auth.avatar.remove" },
+  "/api/auth/avatar/source": { GET: "auth.avatar.source" },
+  "/api/auth/identities/remove": { POST: "auth.identities.remove" },
+  "/api/auth/email/add": { POST: "auth.email.add" },
+  "/api/auth/email/confirm": { POST: "auth.email.confirm" },
+  "/api/auth/passkeys/rename": { POST: "auth.passkeys.rename" },
+  "/api/auth/sessions/revoke-others": { POST: "auth.sessions.revoke_others" },
+  "/api/invites": { POST: "invites.create" },
   "/api/auth/passkey/login/options": { POST: "passkey.login" },
   "/api/auth/passkey/login/verify": { POST: "passkey.login" },
   "/api/auth/passkey/register/options": { POST: "passkey.register" },
@@ -200,6 +253,11 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/herdr/setup": { POST: "herdr.setup" },
 };
 
+/** GitHub and Google sign-in: start (POST) and the provider's return (GET). */
+const OAUTH_PATH = /^\/auth\/oauth\/(?:github|google)\/(start|callback)$/;
+/** An uploaded profile picture, named by its content hash. */
+const AVATAR_PATH = /^\/avatars\/[0-9a-f]{64}\.(?:webp|jpg)$/;
+
 /** A share link's landing page, `/s/<id>` (the secret is in the fragment). */
 const SHARE_PAGE_PATH = /^\/s\/[A-Za-z0-9_-]{8,32}$/;
 
@@ -221,6 +279,19 @@ export function matchHttpRoute(
   const exact = Object.hasOwn(EXACT, pathname) ? EXACT[pathname] : undefined;
   if (exact) return exact[method] ?? null;
   if (pathname === "/mcp") return "mcp";
+  const oauth = OAUTH_PATH.exec(pathname);
+  if (oauth)
+    return oauth[1] === "start"
+      ? method === "POST"
+        ? "oauth.start"
+        : null
+      : method === "GET"
+        ? "oauth.callback"
+        : null;
+  if (pathname.startsWith("/avatars/"))
+    return AVATAR_PATH.test(pathname) && (method === "GET" || method === "HEAD")
+      ? "avatar.file"
+      : null;
   if (pathname === "/s" || pathname.startsWith("/s/"))
     return SHARE_PAGE_PATH.test(pathname) &&
       (method === "GET" || method === "HEAD")

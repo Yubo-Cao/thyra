@@ -36,6 +36,7 @@ function member(name: string, role: "admin" | "member"): Principal {
       role,
       disabled: false,
       privilegeEpoch: 0,
+      avatar: null,
       createdAt: now,
       updatedAt: now,
     },

@@ -24,6 +24,8 @@ import {
 } from "./pages";
 import type { ShareRoutes } from "./share-routes";
 import type { TailnetSso } from "./tailnet-sso";
+import type { AccountRoutes } from "./account-routes";
+import type { SignInRoutes } from "./sign-in-routes";
 import { PasskeyError, type PasskeyService, passkeyOrigin } from "./passkeys";
 import {
   type Authenticator,
@@ -107,6 +109,10 @@ export function createAuthRoutes(args: {
   onGuestsEnded?: (idHashes: string[]) => void;
   /** Tailnet sign-in: its routes, and the public login page's silent attempt. */
   tailnetSso?: TailnetSso | null;
+  /** Email, GitHub, Google and invitation sign-in (optional providers). */
+  signIn?: SignInRoutes | null;
+  /** The account page: profile, avatar, sign-in methods, invitations. */
+  account?: AccountRoutes | null;
   logger?: Logger;
 }) {
   const logger = args.logger ?? silentLogger;
@@ -258,6 +264,14 @@ export function createAuthRoutes(args: {
       return args.shareRoutes
         ? args.shareRoutes.handle(route, req, url, access, principal)
         : null;
+    if (
+      route.startsWith("email.") ||
+      route.startsWith("oauth.") ||
+      route.startsWith("invite.")
+    )
+      return args.signIn
+        ? args.signIn.handle(route, req, url, access, principal)
+        : new Response("not found", { status: 404, headers: NO_STORE });
     if (route.startsWith("sso."))
       return args.tailnetSso
         ? args.tailnetSso.handle(route, req, url, access)
@@ -280,7 +294,10 @@ export function createAuthRoutes(args: {
             access.listener === "public" && args.tailnetSso
               ? args.tailnetSso.loginState(req, url)
               : null;
-          return htmlPage(req, (locale) => renderLoginPage(locale, tailnet));
+          const providers = args.signIn?.flags();
+          return htmlPage(req, (locale) =>
+            renderLoginPage(locale, tailnet, providers),
+          );
         }
         case "enroll.page":
           return htmlPage(req, renderEnrollPage);
@@ -414,10 +431,26 @@ export function createAuthRoutes(args: {
           break;
       }
       if (!principal) return null;
+      if (args.account) {
+        const response = await args.account.handle(
+          route,
+          req,
+          url,
+          access,
+          principal,
+        );
+        if (response) return response;
+      }
       switch (route) {
         case "auth.me":
           return json({
             ...principalView(principal),
+            // Which sign-in providers are on (invitations need email).
+            providers: args.signIn?.flags() ?? {
+              email: false,
+              github: false,
+              google: false,
+            },
             passkeys:
               principal.kind === "user"
                 ? args.store.passkeysOf(principal.user.id).length
@@ -426,6 +459,13 @@ export function createAuthRoutes(args: {
               principal.kind === "user"
                 ? args.store
                     .identitiesOf(principal.user.id)
+                    // Tailscale is internal: admins and the tailnet only.
+                    .filter(
+                      (identity) =>
+                        identity.provider !== "tailscale" ||
+                        isInstanceAdmin(principal) ||
+                        access.listener === "tailnet",
+                    )
                     .map((identity) => ({
                       provider: identity.provider,
                       subject: identity.subject,
@@ -488,6 +528,16 @@ export function createAuthRoutes(args: {
           const body = await readJson(req);
           if (principal.kind !== "user" || typeof body.id !== "string")
             return error("id required", 400);
+          if (
+            args.store
+              .passkeysOf(principal.user.id)
+              .some((passkey) => passkey.credentialId === body.id) &&
+            args.store.signInMethodCount(principal.user.id) <= 1
+          )
+            return error(
+              "this is your last way to sign in; add another first",
+              409,
+            );
           if (
             !args.store.removePasskey(
               body.id,

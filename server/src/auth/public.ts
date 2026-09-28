@@ -16,6 +16,16 @@ const PUBLIC_AUTH_ROUTES: ReadonlySet<HttpRouteId> = new Set([
   "sso.start",
   "sso.callback",
   "sso.redeem",
+  "email.start",
+  "email.verify",
+  "email.page",
+  "oauth.start",
+  "oauth.callback",
+  "oauth.poll",
+  "oauth.confirm",
+  "invite.page",
+  "invite.check",
+  "invite.accept",
 ]);
 
 /** Routes that never read or start a session before their handler runs. */
@@ -27,6 +37,15 @@ const SESSIONLESS_ROUTES: ReadonlySet<HttpRouteId> = new Set([
   "sso.start",
   "sso.callback",
   "sso.redeem",
+  "email.start",
+  "email.verify",
+  "email.page",
+  "oauth.callback",
+  "oauth.poll",
+  "oauth.confirm",
+  "invite.page",
+  "invite.check",
+  "invite.accept",
 ]);
 
 /**
