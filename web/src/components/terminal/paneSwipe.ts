@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { paneSwipeFingers, SwipeTracker } from "../../touchGestures";
+import { paneSwipeFingers } from "../../touchGestures";
 
 type Motion = typeof import("./PaneSwipeOverlay");
 let motion: Motion | undefined;
@@ -13,10 +13,10 @@ const loadMotion = () =>
 const installed = new WeakMap<HTMLElement, { users: number; stop(): void }>();
 
 /**
- * A three- or four-finger horizontal swipe on the pane area (see
- * `paneSwipeFingers`) drags it aside for the next pane, left to right, or the
- * previous one, wrapping at either end. Split views share one recognizer; the
- * drag and its animation load with the first multi-finger touch.
+ * A horizontal swipe with two, three or four fingers on the pane area (see
+ * `paneSwipeFingers`) drags it aside to reveal the neighbouring pane. Split
+ * views share one recognizer; it and the drag load with the first touch, and
+ * a gesture that starts before they arrive is left to the terminal.
  */
 export function usePaneSwipe(container: HTMLElement | null) {
   useEffect(() => {
@@ -42,37 +42,29 @@ export function usePaneSwipe(container: HTMLElement | null) {
 function installPaneSwipe(surface: HTMLElement): () => void {
   const abort = new AbortController();
   const options = { capture: true, passive: false, signal: abort.signal };
-  const swipe = new SwipeTracker();
   let multiTouch = false;
-  // iOS maps three fingers to undo, redo and the edit menu while a text field
-  // (xterm's or the composer's) is focused; the page claims them instead.
-  const claim = (e: TouchEvent) => {
-    // The lifts after a switch may target an unmounted pane and never arrive
-    // here, so a gesture whose touches are all new starts over.
-    if (e.type === "touchstart" && e.touches.length === e.changedTouches.length)
-      swipe.cancel();
+  // A touch that starts before the drag has loaded: it joins once it has.
+  let early: TouchEvent | null = null;
+  const onTouch = (e: TouchEvent) => {
     const fingers = paneSwipeFingers();
-    multiTouch = fingers > 0 && e.touches.length >= 3;
-    if (multiTouch) {
-      e.preventDefault();
-      void loadMotion();
-    }
-    swipe.touch(e.touches, fingers);
-    motion?.paneSwipeTouch(surface, e.touches.length, swipe.delta(), e);
+    if (!fingers) return;
+    if (!motion && e.type === "touchstart") {
+      early = e;
+      void loadMotion().then((module) => {
+        if (early) module.paneSwipeTouch(surface, early, fingers);
+        early = null;
+      });
+    } else if (!e.touches.length) early = null;
+    // iOS maps three fingers to undo, redo and the edit menu while a text
+    // field (xterm's or the composer's) is focused; the page claims them.
+    const ending = e.type === "touchend" || e.type === "touchcancel";
+    if (e.touches.length > 2) multiTouch = fingers > 2;
+    else if (!e.touches.length || e.type === "touchcancel") multiTouch = false;
+    if (multiTouch && !ending) e.preventDefault();
+    motion?.paneSwipeTouch(surface, e, fingers);
   };
-  const onEnd = (e: TouchEvent) => {
-    const cancel = e.type === "touchcancel";
-    const delta = cancel ? null : swipe.delta();
-    const step = cancel ? 0 : swipe.lift(e.touches.length);
-    if (cancel) swipe.cancel();
-    if (cancel || e.touches.length === 0) multiTouch = false;
-    if (motion) motion.paneSwipeTouch(surface, e.touches.length, delta, e);
-    else if (step) void loadMotion().then((module) => module.switchPane(step));
-  };
-  surface.addEventListener("touchstart", claim, options);
-  surface.addEventListener("touchmove", claim, options);
-  surface.addEventListener("touchend", onEnd, options);
-  surface.addEventListener("touchcancel", onEnd, options);
+  for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"])
+    surface.addEventListener(type, onTouch as EventListener, options);
   document.addEventListener(
     "beforeinput",
     (e) => {

@@ -38,25 +38,132 @@
   overflow: hidden;
   pointer-events: none;
 }
-/* The neighbouring pane's name runs along the top, where its header sits. */
+/* The neighbouring pane, clipping its sheet: its preview, or its name
+   along the top while the preview loads. */
 .pane-swipe-card {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 8px 24px;
-  background: var(--panel);
+  overflow: hidden;
   visibility: hidden;
   will-change: transform;
 }
-.pane-swipe-card > .pane-swipe-label {
+.pane-swipe-sheet {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  padding: 8px 24px;
+  background: var(--panel);
+}
+.pane-swipe-sheet > .pane-swipe-label {
   min-width: 0;
+  max-width: 100%;
   height: var(--ui-control-height);
 }
-.pane-swipe-card[data-edge="left"] {
+.pane-swipe-screen {
+  display: none;
+  margin: 0;
+  color: var(--terminal-fg);
+  white-space: pre;
+  font-variant-ligatures: none;
+}
+/* Exact screen rows sit where the terminal draws them; the last lines of
+   output wrap as the terminal would and, once they fill it, keep the newest
+   at the bottom. */
+.pane-swipe-card[data-ready] > .pane-swipe-sheet {
+  align-items: stretch;
+  padding: 4px 0 4px 4px;
+  background: var(--terminal-bg);
+}
+.pane-swipe-card[data-full] > .pane-swipe-sheet {
   justify-content: flex-end;
 }
-.pane-swipe-card[data-edge="right"] {
-  justify-content: flex-start;
+.pane-swipe-card[data-ready="lines"] .pane-swipe-screen {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pane-swipe-card[data-ready] .pane-swipe-screen {
+  display: block;
+  flex: none;
+}
+.pane-swipe-card[data-ready] .pane-swipe-label {
+  display: none;
+}
+
+/* The destination's icon, name and ID in the revealed top corner; it fills
+   with the accent once a release would switch to it. */
+.pane-swipe-corner {
+  position: absolute;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(50% - 16px);
+  padding: 4px 8px 4px 4px;
+  background: var(--panel);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+.pane-swipe-corner[data-edge="left"] {
+  left: 8px;
+}
+.pane-swipe-corner[data-edge="right"] {
+  right: 8px;
+  flex-direction: row-reverse;
+  padding: 4px 4px 4px 8px;
+  text-align: end;
+}
+.pane-swipe-corner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 23px;
+  flex: none;
+  color: var(--muted);
+  transition: transform 120ms ease-out;
+}
+.pane-swipe-corner-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--ui-font-size-sm);
+  line-height: 1.2;
+}
+.pane-swipe-corner-name,
+.pane-swipe-corner-name > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-swipe-corner-name > small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.pane-swipe-corner[data-armed] {
+  background: var(--accent);
+  color: var(--bg);
+}
+.pane-swipe-corner[data-armed] .pane-swipe-corner-name > small {
+  color: inherit;
+}
+.pane-swipe-corner[data-armed] .pane-swipe-corner-icon {
+  transform: scale(1.2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane-swipe-corner,
+  .pane-swipe-corner-icon {
+    transition: none;
+  }
+  .pane-swipe-corner[data-armed] .pane-swipe-corner-icon {
+    transform: none;
+  }
 }

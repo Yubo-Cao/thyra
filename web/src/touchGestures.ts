@@ -1,11 +1,10 @@
 import { thyraLocalStorage } from "./browserStorage";
-import { msg } from "./i18n";
-import { groupPanesByTab } from "./paneIdentity";
-import type { Pane, Tab, Workspace } from "./types";
+import type { Terminal } from "@xterm/xterm";
 
 // Multi-touch gestures on the terminal: two-finger pinch zooms its font, and a
-// three- or four-finger horizontal swipe moves between panes. Recognition is
-// pure here; the DOM wiring lives beside the terminal.
+// two-, three- or four-finger horizontal swipe moves between panes (see
+// components/terminal/paneSwipeMotion.ts). Recognition is pure here; the DOM
+// wiring lives beside the terminal.
 
 type Point = { identifier: number; clientX: number; clientY: number };
 type Points = ArrayLike<Point>;
@@ -120,124 +119,22 @@ export function setTerminalZoom(zoom: number) {
 }
 
 /** Fingers a pane swipe takes; 0 turns it off. */
-export type PaneSwipeFingers = 0 | 3 | 4;
-const SWIPE_KEY = "paneSwipeFingers";
-export const PANE_SWIPE_OPTIONS = [
-  { value: "3", label: msg("Three fingers") },
-  { value: "4", label: msg("Four fingers") },
-  { value: "0", label: msg("Off") },
-];
+export type PaneSwipeFingers = 0 | 2 | 3 | 4;
+export const PANE_SWIPE_KEY = "paneSwipeFingers";
 
 export function paneSwipeFingers(): PaneSwipeFingers {
-  const stored = thyraLocalStorage.getItem(SWIPE_KEY);
-  return stored === "0" ? 0 : stored === "4" ? 4 : 3;
-}
-
-export function setPaneSwipeFingers(fingers: PaneSwipeFingers) {
-  thyraLocalStorage.setItem(SWIPE_KEY, String(fingers));
-}
-
-/** Horizontal travel a pane swipe needs, and how far it must outrun vertical. */
-export const SWIPE_MIN_PX = 60;
-export const SWIPE_DOMINANCE = 1.5;
-
-/**
- * A swipe starts once exactly `fingers` touches are down and resolves when
- * the first of them lifts: +1 for left-to-right, -1 for right-to-left, or 0
- * when it was too short, too vertical, cancelled, or gained another finger.
- */
-export class SwipeTracker {
-  private start = new Map<number, { x: number; y: number }>();
-  private last = new Map<number, { x: number; y: number }>();
-  private state: "idle" | "tracking" | "done" = "idle";
-
-  get tracking() {
-    return this.state === "tracking";
-  }
-
-  touch(points: Points, fingers: number) {
-    if (this.state === "done" || !fingers) return;
-    if (points.length > fingers) {
-      this.state = "done";
-      return;
-    }
-    if (this.state === "idle" && points.length === fingers) {
-      this.state = "tracking";
-      for (const point of Array.from(points))
-        this.start.set(point.identifier, {
-          x: point.clientX,
-          y: point.clientY,
-        });
-    }
-    for (const point of Array.from(points))
-      if (this.start.has(point.identifier))
-        this.last.set(point.identifier, { x: point.clientX, y: point.clientY });
-  }
-
-  /** The swiping fingers' mean travel, while the swipe is live. */
-  delta(): { dx: number; dy: number } | null {
-    if (this.state !== "tracking") return null;
-    let dx = 0;
-    let dy = 0;
-    for (const [id, from] of this.start) {
-      const to = this.last.get(id) ?? from;
-      dx += (to.x - from.x) / this.start.size;
-      dy += (to.y - from.y) / this.start.size;
-    }
-    return { dx, dy };
-  }
-
-  /** A finger lifted; `remaining` touches are still down. */
-  lift(remaining: number): -1 | 0 | 1 {
-    let step: -1 | 0 | 1 = 0;
-    const delta = this.delta();
-    if (delta) {
-      const { dx, dy } = delta;
-      if (
-        Math.abs(dx) >= SWIPE_MIN_PX &&
-        Math.abs(dx) >= SWIPE_DOMINANCE * Math.abs(dy)
-      )
-        step = dx > 0 ? 1 : -1;
-      this.state = "done";
-    }
-    if (remaining === 0) this.cancel();
-    return step;
-  }
-
-  cancel() {
-    this.start.clear();
-    this.last.clear();
-    this.state = "idle";
-  }
+  const stored = thyraLocalStorage.getItem(PANE_SWIPE_KEY);
+  return stored === "0" || stored === "3" || stored === "4"
+    ? (Number(stored) as PaneSwipeFingers)
+    : 2;
 }
 
 /**
- * Every pane in navigation order: workspaces by number, then tabs by number,
- * then panes in their tab's order.
+ * Every open terminal with the terminal ID it shows, and, once the pane swipe
+ * has loaded, the hook that keeps a terminal's screen as it leaves the view:
+ * the swipe previews a neighbouring pane from these.
  */
-export function paneNavigationOrder(
-  workspaces: readonly Pick<Workspace, "workspace_id" | "number">[],
-  tabs: readonly Pick<Tab, "tab_id" | "label" | "number" | "pane_count">[],
-  panes: readonly Pane[],
-): Pane[] {
-  return [...workspaces]
-    .sort((a, b) => a.number - b.number)
-    .flatMap((workspace) =>
-      groupPanesByTab(
-        panes.filter((pane) => pane.workspace_id === workspace.workspace_id),
-        tabs,
-      ).flatMap((group) => group.panes),
-    );
-}
-
-/** The pane `step` away from the current one, wrapping at either end. */
-export function adjacentPane<T extends { pane_id: string }>(
-  order: readonly T[],
-  currentId: string | null | undefined,
-  step: -1 | 1,
-): T | null {
-  const index = order.findIndex((pane) => pane.pane_id === currentId);
-  if (order.length === 0 || (index >= 0 && order.length === 1)) return null;
-  if (index < 0) return step > 0 ? order[0] : order[order.length - 1];
-  return order[(index + step + order.length) % order.length];
-}
+export const terminalScreens: {
+  open: Map<Terminal, { current: string | null }>;
+  keep?(terminalId: string, term: Terminal): void;
+} = { open: new Map() };

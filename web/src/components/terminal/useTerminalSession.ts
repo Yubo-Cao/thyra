@@ -25,6 +25,7 @@ import {
 } from "../../terminalResize";
 import { terminalPageScroll } from "../../terminalScroll";
 import { applyTerminalTheme } from "../../terminalThemes";
+import { terminalScreens } from "../../touchGestures";
 import { installTerminalKeyboard } from "./terminalKeyboard";
 import { installTerminalGestures } from "./terminalGestures";
 import { installTerminalPinch } from "./terminalPinch";
@@ -337,6 +338,8 @@ export function useTerminalAttach(
     // retry, reconnect): the server repaints a full frame anyway, and keeping
     // the buffer avoids a blank flash plus losing local scrollback.
     if (renderedTerminal.current !== terminalId) {
+      if (renderedTerminal.current)
+        terminalScreens.keep?.(renderedTerminal.current, term);
       term.reset();
       refs.presentation.current?.screenChanged();
       renderedTerminal.current = terminalId;

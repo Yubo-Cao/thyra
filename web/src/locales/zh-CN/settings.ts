@@ -51,10 +51,15 @@ export default {
   "Rewrites a finished dictation with the server model":
     "使用服务器模型改写已完成的听写内容",
   "Pane swipe": "滑动切换窗格",
-  "Swipe sideways with several fingers to change panes":
-    "多指左右滑动以切换窗格",
+  "Swipe sideways with two or more fingers to change panes":
+    "用两指或多指左右滑动以切换窗格",
+  "Two fingers": "两指",
   "Three fingers": "三指",
   "Four fingers": "四指",
+  "Reverse swipe direction": "反转滑动方向",
+  "Swiping right moves to the next pane": "向右滑动切换到下一个窗格",
+  "Swiping right reveals the previous pane on the left":
+    "向右滑动显示左侧的上一个窗格",
   "Task notifications": "任务通知",
   "Agent needs input": "Agent 需要输入",
   "Task completed": "任务已完成",

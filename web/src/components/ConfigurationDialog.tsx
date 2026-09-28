@@ -65,10 +65,11 @@ import {
 } from "../useConnectionClient";
 import {
   PANE_SWIPE_OPTIONS,
-  type PaneSwipeFingers,
-  paneSwipeFingers,
+  paneSwipeReversed,
   setPaneSwipeFingers,
-} from "../touchGestures";
+  setPaneSwipeReversed,
+} from "../paneSwipeSettings";
+import { type PaneSwipeFingers, paneSwipeFingers } from "../touchGestures";
 import { cn } from "../utils";
 import { AccountSettings } from "./AccountSettings";
 import { AgentIntegrationsSettings } from "./AgentIntegrationsSettings";
@@ -189,6 +190,7 @@ export function ConfigurationDialog({
   const [swipeFingers, setSwipeFingers] = useState(() =>
     String(paneSwipeFingers()),
   );
+  const [swipeReversed, setSwipeReversed] = useState(paneSwipeReversed);
   // A detail dialog opens on top of this one, which hides until it closes;
   // focus then returns to the row that opened it (WebKit does not focus a
   // clicked button, so the row is remembered explicitly).
@@ -425,7 +427,9 @@ export function ConfigurationDialog({
       <PreferenceRow
         icon={<Hand size={15} />}
         title={t("Pane swipe")}
-        description={t("Swipe sideways with several fingers to change panes")}
+        description={t(
+          "Swipe sideways with two or more fingers to change panes",
+        )}
       >
         <Select
           aria-label={t("Pane swipe")}
@@ -441,6 +445,25 @@ export function ConfigurationDialog({
           }}
         />
       </PreferenceRow>
+      {swipeFingers === "0" ? null : (
+        <PreferenceRow
+          title={t("Reverse swipe direction")}
+          description={
+            swipeReversed
+              ? t("Swiping right moves to the next pane")
+              : t("Swiping right reveals the previous pane on the left")
+          }
+        >
+          <Switch
+            aria-label={t("Reverse swipe direction")}
+            checked={swipeReversed}
+            onChange={(checked) => {
+              setPaneSwipeReversed(checked);
+              setSwipeReversed(checked);
+            }}
+          />
+        </PreferenceRow>
+      )}
       <PreferenceRow
         icon={<Bell size={15} />}
         title={t("Task notifications")}

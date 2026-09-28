@@ -55,7 +55,11 @@ import {
   type TerminalSize,
 } from "../../terminalResize";
 import { TerminalTouchSelection } from "../../terminalTouchSelection";
-import { terminalZoom, zoomedTerminalFontSize } from "../../touchGestures";
+import {
+  terminalScreens,
+  terminalZoom,
+  zoomedTerminalFontSize,
+} from "../../touchGestures";
 import type { PaneLayout } from "../../types";
 import {
   type TerminalFrameParts,
@@ -688,6 +692,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   });
   refs.touchSelection.current = touch;
 
+  terminalScreens.open.set(term, refs.renderedTerminal);
   const session = {
     ...bindings,
     term,
@@ -736,6 +741,9 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       if (terminalId && !leaseDisposed && client.isCurrent())
         detachTerminal(client, terminalId);
       session.reservedClipboard?.cancel();
+      const rendered = refs.renderedTerminal.current;
+      if (rendered) terminalScreens.keep?.(rendered, term);
+      terminalScreens.open.delete(term);
       detachRenderer();
       term.dispose();
       refs.term.current = null;

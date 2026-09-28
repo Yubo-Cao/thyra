@@ -267,21 +267,17 @@ separate for desktop/mobile. Jump from a diff to its file preview.
   displays, pinching only magnifies the scaled view, two fingers pan it, and
   the pane is never resized. The percentage appears while pinching and for a
   moment after; tap it to restore the default size.
-- Swipe sideways with three fingers across the terminal or pane area to move
-  to the next pane (left to right) or the previous one (right to left). Panes
-  follow workspace order, then tab order, then pane order within the tab, and
-  wrap from the last to the first. The pane follows the fingers while a card
-  naming the destination slides in; releasing past about a third of the
-  width, or with a flick, completes the switch, and anything shorter springs
-  back. A quick second swipe while the first settles moves on again, and only
-  the final pane is opened. With reduced motion the card fades in instead and
-  a brief banner names the destination.
-  **Configuration > Behavior > Pane swipe** switches to four fingers or turns
-  it off. Three fingers work unchanged on iPhone and iPad; the swipe takes
-  them over from iOS's three-finger undo/redo while a text field is focused,
-  though iOS may still show its own edit banner. Four-finger mode on an iPad
-  requires turning off **Settings > Multitasking & Gestures > Gestures**
-  (four- and five-finger app switching), which otherwise receives the swipe.
+- Swipe sideways with two fingers across the terminal or pane area to move between panes, which sit side by side in workspace order, then tab order, then pane order within the tab, wrapping from the last to the first.
+  Dragging the content right reveals the previous pane on the left; dragging it left reveals the next one on the right.
+  The revealed area shows that pane's screen as this browser last drew it, or else its last lines, fetched once and never attaching, resizing, or focusing anything until the switch; its name card stands in while they load.
+  The destination's agent icon, name, and ID wait in the revealed top corner and fill with the accent once releasing would switch: past half the width, or past a quarter with a fast flick.
+  Anything shorter springs back, and a quick second swipe while the first settles moves on again, opening only the final pane.
+  With reduced motion the content stays put, the destination fades in, and a brief banner names it.
+  Two fingers still pinch to zoom and scroll vertically: a changing finger distance is a pinch, mostly vertical travel scrolls, and only a mostly horizontal drag at a steady distance swipes.
+  On a magnified view that follows another device's size, a horizontal drag pans first; a swipe starts once the view is already at that edge.
+  **Configuration > Behavior > Pane swipe** switches to three or four fingers or turns it off, and **Reverse swipe direction** makes dragging right move to the next pane.
+  Three fingers take the gesture over from iOS's three-finger undo/redo while a text field is focused, though iOS may still show its own edit banner.
+  Four-finger mode on an iPad requires turning off **Settings > Multitasking & Gestures > Gestures** (four- and five-finger app switching), which otherwise receives the swipe.
 - The default grid holds latching **Ctrl**/**Alt**/**Shift**, Ctrl+C/D/R, Esc,
   Tab, Enter, arrows, and PgUp/PgDn.
 - **Ctrl**, **Alt**, and **Shift** in the shortcut grid apply to the next key
