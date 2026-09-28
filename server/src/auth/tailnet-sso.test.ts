@@ -15,6 +15,7 @@ import {
   parseTailnetSsoUrl,
   pkceChallenge,
   SSO_CODE_TTL_MS,
+  tailnetConnectSource,
 } from "./tailnet-sso";
 
 const PUBLIC = "https://thyra.example";
@@ -318,11 +319,19 @@ describe("silent tailnet sign-in", () => {
       user!.id,
     );
     expect(ctx.store.listSessions(user!.id)[0]?.authMethod).toBe("tailnet-sso");
-    // Signing in clears a previous logout's opt-out.
+    // Signing in clears a previous logout's opt-out and marks the browser
+    // as a tailnet device, so its login page offers the tailnet button.
     expect(
       done.headers
         .getSetCookie()
         .some((cookie) => cookie.startsWith("__Host-thyra_signed_out=;")),
+    ).toBe(true);
+    expect(
+      done.headers
+        .getSetCookie()
+        .some((cookie) =>
+          cookie.startsWith("__Host-thyra_tailnet_device=1; Path=/; Secure"),
+        ),
     ).toBe(true);
     const actions = ctx.store.listAudit().map((row) => row.action);
     expect(actions).toContain("tailnet_sso.issue");
@@ -568,11 +577,11 @@ describe("the public login page", () => {
     const ctx = setup();
     const html = await (await loginPage(ctx, "/login")).text();
     expect(html).toContain('<div id="choices" hidden>');
-    expect(html).toContain(
-      '"tailnet":{"url":"https://dev.example","silent":true}',
-    );
-    expect(html).toContain('href="/auth/tailnet-sso/start"');
-    expect(html).toContain("dev.example");
+    expect(html).toContain('"tailnet":{"silent":true,"known":false}');
+    // Nothing names the tailnet listener or shows its button to strangers.
+    expect(html).not.toContain("dev.example");
+    expect(html).not.toContain('id="tailnet"');
+    expect(html).toContain("Checking this device...");
 
     const logout = (await ctx.routes.handle(
       "logout",
@@ -601,15 +610,66 @@ describe("the public login page", () => {
     expect(failed).toContain("not on the owner's tailnet");
   });
 
+  test("marks a browser that signed in through the tailnet before", async () => {
+    const ctx = setup();
+    const html = await (
+      await loginPage(ctx, "/login", "__Host-thyra_tailnet_device=1")
+    ).text();
+    expect(html).toContain('"tailnet":{"silent":true,"known":true}');
+    expect(html).not.toContain("dev.example");
+  });
+
+  test("tells only the login page's tailnet code path where the listener is", async () => {
+    const ctx = setup();
+    const config = await ctx.call(
+      "GET",
+      `${PUBLIC}/auth/tailnet-sso/config`,
+      publicAccess(),
+    );
+    expect(config.status).toBe(200);
+    expect(config.headers.get("cache-control")).toBe("no-store");
+    expect(await config.json()).toEqual({ url: TAILNET });
+    expect(
+      (
+        await ctx.call(
+          "GET",
+          `${TAILNET}/auth/tailnet-sso/config`,
+          tailnetAccess(),
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  test("allows the tailnet listener in the CSP without naming a sibling host", () => {
+    expect(
+      tailnetConnectSource("https://dev.yubo.fun", "https://thyra.yubo.fun"),
+    ).toBe("https://*.yubo.fun");
+    expect(
+      tailnetConnectSource(
+        "https://dev.yubo.fun:8443",
+        "https://thyra.yubo.fun",
+      ),
+    ).toBe("https://*.yubo.fun:8443");
+    // No shared parent, or a parent that is only a TLD: the exact origin.
+    expect(tailnetConnectSource(TAILNET, PUBLIC)).toBe(TAILNET);
+    expect(
+      tailnetConnectSource("https://dev.other.example", "https://thyra.x.io"),
+    ).toBe("https://dev.other.example");
+    expect(
+      tailnetConnectSource("http://127.0.0.1:9", "https://thyra.yubo.fun"),
+    ).toBe("http://127.0.0.1:9");
+  });
+
   test("renders without tailnet sign-in elsewhere", () => {
     const html = renderLoginPage("en");
     expect(html).not.toContain("tailnet-sso");
     expect(html).not.toContain(" hidden");
     const zh = renderLoginPage("zh-CN", {
-      url: TAILNET,
       silent: false,
+      known: true,
       message: null,
     });
-    expect(zh).toContain("通过 tailnet 登录");
+    expect(zh).not.toContain('id="tailnet"');
+    expect(zh).toContain('"tailnet":{"silent":false,"known":true}');
   });
 });

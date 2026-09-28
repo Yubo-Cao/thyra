@@ -143,6 +143,7 @@ import {
   createSsoCodeStore,
   createTailnetSso,
   parseTailnetSsoUrl,
+  tailnetConnectSource,
 } from "./auth/tailnet-sso";
 import {
   type ListenerKind,
@@ -315,7 +316,9 @@ function publicPagePolicy(): Promise<string> {
       publicContentSecurityPolicy(
         inlineScriptHashes(html ?? ""),
         // The login page's silent tailnet sign-in fetches a code there.
-        tailnetSsoOrigin ? [tailnetSsoOrigin] : [],
+        tailnetSsoOrigin && publicListener
+          ? [tailnetConnectSource(tailnetSsoOrigin, publicListener.origin)]
+          : [],
       ),
     );
   return publicHtmlPolicy;

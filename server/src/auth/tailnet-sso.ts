@@ -54,6 +54,12 @@ const FLOW_TTL_SECONDS = 300;
 /** Set by logout on the public listener: no silent tailnet sign-in. */
 const SIGNED_OUT_COOKIE = "thyra_signed_out";
 const SIGNED_OUT_TTL_SECONDS = 30 * 24 * 60 * 60;
+/**
+ * Set by a successful tailnet sign-in: this browser runs on a tailnet
+ * device, so its login page offers the tailnet button. Not a secret.
+ */
+const DEVICE_COOKIE = "thyra_tailnet_device";
+const DEVICE_TTL_SECONDS = 400 * 24 * 60 * 60;
 /** 32 random bytes or a SHA-256 digest, base64url without padding. */
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const MAX_BODY_BYTES = 4 * 1024;
@@ -124,6 +130,28 @@ export function parseTailnetSsoUrl(
     );
   }
   return url.origin;
+}
+
+/**
+ * The CSP `connect-src` source that lets the public login page reach the
+ * tailnet listener without naming its host in every public response: a
+ * wildcard over the parent domain the two hosts share (`https://*.example.com`
+ * for `dev.example.com` beside `thyra.example.com`), else the exact origin.
+ */
+export function tailnetConnectSource(
+  tailnetOrigin: string,
+  publicOrigin: string,
+): string {
+  const tailnet = new URL(tailnetOrigin);
+  const parent = (host: string) => host.split(".").slice(1).join(".");
+  const shared = parent(tailnet.hostname);
+  if (
+    tailnet.protocol !== "https:" ||
+    shared.split(".").length < 2 ||
+    shared !== parent(new URL(publicOrigin).hostname)
+  )
+    return tailnet.origin;
+  return `https://*.${shared}${tailnet.port ? `:${tailnet.port}` : ""}`;
 }
 
 type CodeRow = {
@@ -243,12 +271,16 @@ async function readJson(req: Request): Promise<Record<string, unknown> | null> {
 
 export type TailnetSso = ReturnType<typeof createTailnetSso>;
 
-/** Login-page state for the public listener. */
+/**
+ * Login-page state for the public listener. The tailnet listener's origin is
+ * deliberately absent: the page fetches it from `sso.config` only to probe,
+ * so the internal host name is not in any visitor's page source.
+ */
 export type TailnetSsoLogin = {
-  /** The tailnet listener's origin. */
-  url: string;
   /** Try the silent sign-in before showing the buttons. */
   silent: boolean;
+  /** This browser signed in through the tailnet before. */
+  known: boolean;
   /** A failed redirect sign-in to explain. */
   message: "unavailable" | "failed" | "expired" | null;
 };
@@ -413,7 +445,11 @@ export function createTailnetSso(args: {
     });
     redeemLimiter.success(access.clientAddress ?? "unknown");
     logger.info("tailnet sign-in", { user: user.name });
-    return [args.sessionCookie(token, access), signedOutCookie(false)];
+    return [
+      args.sessionCookie(token, access),
+      signedOutCookie(false),
+      publicCookie(DEVICE_COOKIE, "1", DEVICE_TTL_SECONDS),
+    ];
   }
 
   function redeemFailed(access: RequestAccess, reason: SsoRejection) {
@@ -498,8 +534,8 @@ export function createTailnetSso(args: {
           ? raw
           : null;
       return {
-        url: args.tailnetOrigin,
         silent: !message && readPublicCookie(req, SIGNED_OUT_COOKIE) !== "1",
+        known: readPublicCookie(req, DEVICE_COOKIE) === "1",
         message,
       };
     },
@@ -516,6 +552,7 @@ export function createTailnetSso(args: {
     ): Promise<Response | null> {
       const tailnetRoute = route === "sso.code" || route === "sso.authorize";
       const publicRoute =
+        route === "sso.config" ||
         route === "sso.start" ||
         route === "sso.callback" ||
         route === "sso.redeem";
@@ -530,6 +567,10 @@ export function createTailnetSso(args: {
           return code(req, access);
         case "sso.authorize":
           return authorize(req, url, access);
+        case "sso.config":
+          // Only the login page's tailnet code path asks, to probe or to
+          // offer the redirect button on a device known to be on the tailnet.
+          return json({ url: args.tailnetOrigin });
         case "sso.start":
           return start();
         case "sso.callback":

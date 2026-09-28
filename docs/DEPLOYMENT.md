@@ -511,22 +511,24 @@ THYRA_PUBLIC_ORIGIN=https://thyra.example.com
 THYRA_TAILNET_SSO_URL=https://dev.example.com
 ```
 
-- **Silent sign-in.** Before showing any button, the public login page creates a PKCE verifier and challenge and sends `POST https://dev.example.com/auth/tailnet-sso/code` with the challenge and no cookies, waiting at most 1.8 seconds.
+- **Silent sign-in.** Before showing any button, the public login page asks the public listener where the tailnet listener is (`GET /auth/tailnet-sso/config`; the page itself never names it), creates a PKCE verifier and challenge, and sends `POST https://dev.example.com/auth/tailnet-sso/code` with the challenge and no cookies, waiting at most 1.8 seconds.
   The tailnet listener identifies the device only by Tailscale `whois` of the proxied connection, under [tailnet login](#accounts-and-login)'s rules (trusted proxy, tailnet address, no Cloudflare headers), creating the account on first sight like tailnet login does.
   It answers with a single-use code: 256 random bits, stored only as a SHA-256 digest, valid for 60 seconds, and bound to that account, the challenge and `THYRA_PUBLIC_ORIGIN`.
   CORS allows exactly `THYRA_PUBLIC_ORIGIN`, without credentials; other origins get neither a code nor CORS headers, and the preflight grants Private Network Access (`Access-Control-Allow-Private-Network: true`) when asked.
   The page posts the code and its verifier to `/auth/tailnet-sso/redeem` on the public listener, which checks them against the database and starts a normal `__Host-thyra_session`.
-- **Fallback.** A device off the tailnet cannot reach the tailnet address, so the request fails or times out and the page shows the passkey button and **Sign in with tailnet**, whose note says it works only on the tailnet.
+- **Fallback.** A device off the tailnet cannot reach the tailnet address, so the request fails or times out and the page shows the other sign-in choices, with nothing about the tailnet.
+  **Sign in with tailnet**, with a note naming the tailnet host, is added only on evidence that the browser runs on a tailnet device: an earlier tailnet sign-in in it (the non-secret `__Host-thyra_tailnet_device` cookie, kept 400 days), or a Chrome Local Network Access refusal for the public site, which Chrome can only have asked after connecting to the tailnet host.
 - **Sign in with tailnet** does the same exchange with same-window redirects: `/auth/tailnet-sso/start` keeps a random state and the verifier in a five-minute `__Host-thyra_tailnet_sso` cookie and opens `/auth/tailnet-sso/authorize` on the tailnet listener, which redirects only to `THYRA_PUBLIC_ORIGIN` (`/auth/tailnet-sso/callback?code=…&state=…`); the callback checks the state against the cookie before redeeming.
   A device that reaches the tailnet listener without a Tailscale identity returns to the login page with an explanation.
 - **Logging out** on the public address turns the silent attempt off in that browser (`__Host-thyra_signed_out`) until its next sign-in, so a revoked or ended session never signs itself back in.
 - Code requests are limited to 20 a minute per tailnet address, and failed redemptions count toward the same kind of per-address block as failed passkey attempts; issued codes, refusals and sign-ins are audited.
 
 Tailnet login must be on (`THYRA_TAILNET_AUTH` is not `off`), the same Thyra process must serve both listeners (codes are redeemed in its database), and tailnet devices must reach `THYRA_TAILNET_SSO_URL` over HTTPS; Caddy passes the CORS preflight (`OPTIONS`) through unchanged.
-The public Content Security Policy's `connect-src` names that origin.
+The public Content Security Policy's `connect-src` allows that origin, as `https://*.<parent>` when it shares a parent domain (at least two labels) with `THYRA_PUBLIC_ORIGIN` so response headers do not name it either.
+The host is not secret from someone who looks: every visitor's page fetches it for the silent attempt.
 Startup fails if `THYRA_TAILNET_SSO_URL` is not an HTTPS origin without a path, equals `THYRA_PUBLIC_ORIGIN`, or is set without the public listener.
 Desktop Chrome's Local Network Access asks once, per browser profile, whether the public site may reach devices on the local network, because the tailnet name resolves to a Tailscale address.
-While it asks, the login buttons appear after 1.8 seconds and allowing still signs in; after a refusal the page skips the attempt and shows the buttons at once.
+While it asks, the login buttons appear after 1.8 seconds and allowing still signs in; after a refusal the page skips the attempt and shows the buttons at once, including **Sign in with tailnet**, whose top-level navigation Local Network Access does not block.
 Safari's tracking prevention does not affect it: nothing depends on cookies at the tailnet address.
 
 **Home Screen app (iOS and iPadOS).** Both ways work in standalone mode.

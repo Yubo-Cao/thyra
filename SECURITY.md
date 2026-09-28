@@ -33,6 +33,7 @@ Grant **editor** only to people you would give a shell account on the host.
   The public listener redeems it in the shared database for its own `__Host-thyra_session`; a redirect-flow callback must also match the state in the browser's short-lived `__Host-` cookie, so a code sent to someone else's browser is useless.
   Code requests are rate-limited per tailnet address, failed redemptions per client address, and both are audited.
   Logging out on the public address stops the silent attempt in that browser until the next sign-in.
+  The login page's HTML does not name the tailnet listener, and its **Sign in with tailnet** button appears only in a browser that signed in through the tailnet before or refused Chrome's local network prompt; the host is hidden from casual visitors, not secret, since every visitor's page fetches it for the silent attempt.
 - **Email, GitHub and Google** (optional; see [sign-in providers](docs/DEPLOYMENT.md#sign-in-providers)).
   A mailed 6-digit code and one-time link (10 minutes, single use, SHA-256 at rest, five wrong codes per message) prove an address; requests answer alike for every address, one message per address per minute and a per-client limit stop mail floods.
   GitHub and Google use the authorization code flow with PKCE and a single-use state; identities are keyed by the provider's user id, and an address links a new identity to an existing account only when both are verified (GitHub's primary verified address, Google's `email_verified`).
@@ -68,7 +69,7 @@ The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) 
 Thyra is the only authentication layer: tailnet devices authenticate by their Tailscale identity, other devices with a passkey, and share-link visitors are read-only guests; it does not rely on an edge login such as Cloudflare Access.
 On the public listener `X-Forwarded-*` and Tailscale headers are ignored, `CF-Connecting-IP` sets only the rate-limit address (and only from `THYRA_PUBLIC_TRUSTED_PROXIES`, loopback by default), and `Host` and `Origin` must be `THYRA_PUBLIC_ORIGIN`.
 It sends HSTS and a strict Content Security Policy (the login page's script is the same-origin `/auth/passkey.js`), and sets only `__Host-` cookies.
-Before login it serves the login and enrollment pages, the passkey ceremonies, tailnet sign-in's start, callback and redemption, share-link landing and redemption, and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
+Before login it serves the login and enrollment pages, the passkey ceremonies, tailnet sign-in's configuration, start, callback and redemption, share-link landing and redemption, and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
 On the primary listener, the public host gets `421` and a request carrying Cloudflare headers never gets tailnet login, so a misrouted tunnel fails closed.
 See [public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
 

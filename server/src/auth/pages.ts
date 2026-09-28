@@ -76,7 +76,7 @@ const STRINGS = {
     inviteMissing:
       "This invitation is incomplete, expired or already used. Ask for a new one.",
     backToLogin: "Back to log in",
-    tailnetChecking: "Checking for the owner's tailnet...",
+    deviceChecking: "Checking this device...",
     tailnetButton: "Sign in with tailnet",
     tailnetHint:
       "Only for devices on the owner's tailnet: it opens {host}, which does not load anywhere else.",
@@ -193,7 +193,7 @@ const STRINGS = {
     inviteAccept: "以 {email} 继续",
     inviteMissing: "此邀请不完整、已过期或已使用。请索取新的邀请。",
     backToLogin: "返回登录",
-    tailnetChecking: "正在检查所有者的 tailnet…",
+    deviceChecking: "正在检查此设备…",
     tailnetButton: "通过 tailnet 登录",
     tailnetHint:
       "仅适用于所有者 tailnet 中的设备：它会打开 {host}，该地址在其他网络中无法加载。",
@@ -512,30 +512,54 @@ if(data.page==='login'){
   const choices=$('choices');
   const tailnet=data.tailnet;
   const reveal=()=>{if(!choices.hidden)return;show('',false);choices.hidden=false;};
-  if(!tailnet||!tailnet.silent||!window.isSecureContext||!crypto.subtle){choices.hidden=false;if(tailnet&&tailnet.silent&&window.isSecureContext)show('',false);return;}
+  if(!tailnet){choices.hidden=false;return;}
+  // The tailnet listener's address is not in this page; only the tailnet
+  // code path asks for it.
+  let where=null;
+  const origin=()=>where??=fetch('/auth/tailnet-sso/config',{credentials:'same-origin',cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>d&&typeof d.url==='string'?d.url:null).catch(()=>null);
+  // The "Sign in with tailnet" button appears only on evidence that this is
+  // a tailnet device: an earlier tailnet sign-in in this browser, or Chrome's
+  // Local Network Access question, which Chrome asks only after connecting
+  // to the tailnet host (so blocking it proves the device reached it).
+  const offer=async()=>{
+    const url=await origin();
+    if(!url||$('tailnet'))return;
+    const hint=fill(S.tailnetHint,{host:new URL(url).host});
+    const link=document.createElement('a');
+    link.className='secondary';link.id='tailnet';link.href='/auth/tailnet-sso/start';link.title=hint;link.textContent=S.tailnetButton;
+    const note=document.createElement('p');
+    note.className='note tailnet-hint';note.textContent=hint;
+    choices.append(link,note);
+  };
+  if(tailnet.known)void offer();
+  const permission=async()=>{
+    if(!navigator.permissions)return null;
+    for(const name of ['local-network-access','local-network']){try{return await navigator.permissions.query({name});}catch{}}
+    return null;
+  };
   // Silent tailnet sign-in: ask the tailnet listener, which knows this
   // device by its Tailscale identity, for a single-use code bound to a PKCE
   // challenge, then redeem it here with the verifier. A device off the
   // tailnet cannot reach it; after a short wait the buttons appear.
-  // Chrome's Local Network Access may refuse the request or ask first: a
-  // refusal shows the buttons at once, and while it asks the buttons appear
-  // anyway and an answer of "allow" still signs in.
-  const permission=async()=>{
-    if(!navigator.permissions)return null;
-    for(const name of ['local-network-access','local-network']){try{return (await navigator.permissions.query({name})).state;}catch{}}
-    return null;
-  };
+  // Chrome's Local Network Access may ask first: the buttons appear anyway,
+  // "allow" still signs in, and "block" offers the tailnet button.
   (async()=>{
+    const access=await permission();
+    const state=access?access.state:null;
+    if(state==='denied')void offer();
+    else if(state==='prompt')access.addEventListener('change',()=>{if(access.state==='denied')void offer();});
+    if(!tailnet.silent){choices.hidden=false;return;}
+    if(state==='denied'||!window.isSecureContext||!crypto.subtle){reveal();return;}
     try{
-      const state=await permission();
-      if(state==='denied'){reveal();return;}
+      const url=await origin();
+      if(!url){reveal();return;}
       const verifier=b64(crypto.getRandomValues(new Uint8Array(32)));
       const challenge=b64(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
       const abort=new AbortController();
       const shown=setTimeout(reveal,1800);
       const timer=setTimeout(()=>abort.abort(),state==='prompt'?60000:1800);
       let r;
-      try{r=await fetch(tailnet.url+'/auth/tailnet-sso/code',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',headers:{'content-type':'application/json'},body:JSON.stringify({code_challenge:challenge}),signal:abort.signal});}
+      try{r=await fetch(url+'/auth/tailnet-sso/code',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',headers:{'content-type':'application/json'},body:JSON.stringify({code_challenge:challenge}),signal:abort.signal});}
       finally{clearTimeout(timer);clearTimeout(shown);}
       if(r.ok){
         const issued=await r.json();
@@ -597,7 +621,7 @@ function page(
       | "result";
     s: Strings;
     account?: { name: string | null };
-    tailnet?: { url: string; silent: boolean };
+    tailnet?: { silent: boolean; known: boolean };
     flow?: string;
     confirm?: string;
     provider?: string;
@@ -706,8 +730,11 @@ function oauthButtons(s: Strings, providers: LoginProviders): string {
  * an emailed code (address, then the code; the mailed link works too). On
  * the public listener with tailnet sign-in (`tailnet`), the page first asks
  * the tailnet listener for a code without showing any button (`silent`),
- * and reveals the choices and a "Sign in with tailnet" redirect button when
- * that fails.
+ * and reveals the choices when that fails. The page names neither tailnet
+ * nor its host: the script fetches the host for the silent attempt, and
+ * adds a "Sign in with tailnet" redirect button only on a device that
+ * signed in through the tailnet before (`known`) or that Chrome asked for
+ * local network access.
  */
 export function renderLoginPage(
   locale: PageLocale,
@@ -715,9 +742,6 @@ export function renderLoginPage(
   providers: LoginProviders = { email: false, github: false, google: false },
 ): string {
   const s = STRINGS[locale];
-  const hint = tailnet
-    ? escapeHtml(s.tailnetHint.replace("{host}", new URL(tailnet.url).host))
-    : "";
   const message = tailnet?.message
     ? s[`tailnet_${tailnet.message}` as const]
     : "";
@@ -748,21 +772,15 @@ ${oauthButtons(s, providers)}${
     </form>
 `
     : ""
-}${
-  tailnet
-    ? `    <a class="secondary" id="tailnet" href="/auth/tailnet-sso/start" title="${hint}">${s.tailnetButton}</a>
-    <p class="note tailnet-hint">${hint}</p>
-`
-    : ""
 }    </div>
-    <div class="status${message ? " error" : ""}" id="status" role="alert" aria-live="polite">${silent ? s.tailnetChecking : message}</div>
+    <div class="status${message ? " error" : ""}" id="status" role="alert" aria-live="polite">${silent ? s.deviceChecking : message}</div>
     <noscript><p class="status error">${s.noscript}</p></noscript>
     <p class="note">${s.loginNote}</p>
   </section>`,
     {
       page: "login",
       s,
-      ...(tailnet ? { tailnet: { url: tailnet.url, silent } } : {}),
+      ...(tailnet ? { tailnet: { silent, known: tailnet.known } } : {}),
     },
   );
 }

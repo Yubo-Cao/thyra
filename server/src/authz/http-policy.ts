@@ -65,9 +65,11 @@ export const HTTP_POLICY = {
   // Tailnet sign-in (auth/tailnet-sso.ts). The tailnet listener issues a
   // single-use code to a Tailscale-identified caller (`code`: CORS for the
   // public origin only; `authorize`: the redirect flow); the public listener
-  // starts the redirect flow and redeems codes for sessions.
+  // starts the redirect flow, redeems codes for sessions, and tells the login
+  // page where the tailnet listener is (`config`) so its HTML never names it.
   "sso.code": { class: "write", scope: "public" },
   "sso.authorize": { class: "write", scope: "public" },
+  "sso.config": { class: "read", scope: "public" },
   "sso.start": { class: "read", scope: "public" },
   "sso.callback": { class: "write", scope: "public" },
   "sso.redeem": { class: "write", scope: "public" },
@@ -205,6 +207,7 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/thyra-icon.svg": { GET: "login.icon", HEAD: "login.icon" },
   "/auth/tailnet-sso/code": { POST: "sso.code", OPTIONS: "sso.code" },
   "/auth/tailnet-sso/authorize": { GET: "sso.authorize" },
+  "/auth/tailnet-sso/config": { GET: "sso.config" },
   "/auth/tailnet-sso/start": { GET: "sso.start" },
   "/auth/tailnet-sso/callback": { GET: "sso.callback" },
   "/auth/tailnet-sso/redeem": { POST: "sso.redeem" },
