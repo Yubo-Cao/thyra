@@ -87,6 +87,12 @@
   height: 100%;
 }
 
+/* Monaco draws its own caret. iOS Safari still paints the native caret of
+   Monaco's hidden input textarea, a second caret off Monaco's position. */
+.prompt-editor .monaco-editor textarea {
+  caret-color: transparent;
+}
+
 /* Monaco draws on the editor's tone in the terminal's caret colour. */
 .prompt-editor .monaco-editor {
   --vscode-editor-background: transparent;

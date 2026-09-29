@@ -192,8 +192,21 @@ export function PromptMonaco({
     surfaceRef.current = surface;
     const findSubscription = findState?.onFindReplaceStateChange(reportHeight);
     reportHeight();
+    // Monaco measures glyph widths once. If the terminal's web font arrives
+    // after that, the drawn caret drifts off the text (seen on iPad Safari).
+    const remeasure = () => monaco.editor.remeasureFonts();
+    const fonts = document.fonts;
+    try {
+      void fonts
+        ?.load(`${font.size}px ${font.family}`)
+        .then(remeasure, () => {});
+    } catch {
+      // Some engines throw on a family list they cannot parse.
+    }
+    fonts?.addEventListener("loadingdone", remeasure);
     if (focus) editor.focus();
     return () => {
+      fonts?.removeEventListener("loadingdone", remeasure);
       if (surfaceRef.current === surface) surfaceRef.current = null;
       container.removeEventListener("paste", onPaste, true);
       textarea?.removeEventListener("compositionstart", onCompositionStart);
