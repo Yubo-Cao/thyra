@@ -184,6 +184,10 @@ requests and invalidates clipboard ownership.
   touchend, handle pointerup) because WebKit rejects clipboard writes outside
   user activation. A drag handed to a mouse-aware app reserves a
   `ClipboardItem` write at mouseup that its later OSC 52 copy fulfills.
+  Clipboard writes carry both plain text and HTML. Native visible selections
+  use xterm's serialize addon; agent-owned drag copies render sanitized Markdown.
+  History outside the active buffer retains text and detected links. Ordinary
+  OSC 52 writes keep their original plain payload, including source code.
 
 ### Links
 
@@ -191,6 +195,9 @@ Local detection scans soft-wrapped text with cell coordinates. File detection
 also considers bounded, indented continuations because endpoint cell repaints
 lack soft-wrap metadata; inferred paths must resolve within the pane's workspace.
 Blank lines separate contexts. Local URL detection never guesses missing tails.
+Unicode prose punctuation can delimit paths. Resolved local files are validated
+against connection/pane scope and the displayed text, so unrelated repaints do
+not retire their actions. Remote link metadata still requires the exact frame.
 
 Endpoint repaints carry an opaque `link_frame` identity, stable across identical,
 cursor-only, and focus-only surfaces. Content, hyperlink, viewport/scroll, input,

@@ -1,9 +1,6 @@
 import { terminalLinkModifierMatches } from "../../shortcutPreferences";
 import { store } from "../../store";
-import {
-  normalizeTerminalSelection,
-  reserveClipboardWrite,
-} from "../../terminalClipboard";
+import { reserveClipboardWrite } from "../../terminalClipboard";
 import { terminalMouseUsesSelection } from "../../terminalEndpointPresentation";
 import {
   terminalPointerShouldBlurInput,
@@ -20,6 +17,7 @@ import { terminalSelectedText } from "../../terminalTouchSelection";
 import {
   cancelEvent,
   copyFinishedSelection,
+  terminalClipboardRoot,
   dispatchMouseRelease,
   isSafariBrowser,
   shouldAvoidVirtualKeyboard,
@@ -28,6 +26,10 @@ import {
 } from "./terminalSession";
 import { TouchScroll } from "./terminalTouchScroll";
 import { isEditableElement } from "../../utils";
+import {
+  terminalSelectionContent,
+  terminalMarkdownContent,
+} from "../../terminalRichCopy";
 
 const TERMINAL_TOUCH_TAP_SLOP_PX = 8;
 
@@ -118,10 +120,13 @@ export function installTerminalGestures(
       (touch.active ? terminalSelectedText(term) : term.getSelection());
     if (!selectedText) return;
     cancelEvent(e);
-    e.clipboardData.setData(
-      "text/plain",
-      normalizeTerminalSelection(selectedText),
+    const content = terminalSelectionContent(
+      selectedText,
+      term,
+      terminalClipboardRoot(refs),
     );
+    e.clipboardData.setData("text/plain", content.text);
+    if (content.html) e.clipboardData.setData("text/html", content.html);
   };
   container.addEventListener("copy", onCopy, capture);
   // WebKit enables Copy only for a DOM range selection unless beforecopy is
@@ -201,7 +206,7 @@ export function installTerminalGestures(
     ) {
       // Shift-click after scrolling extends a selection across history.
       swallowEvent(e);
-      if (history.text) copyFinishedSelection(history.text);
+      if (history.text) copyFinishedSelection(history.text, refs);
       return;
     }
     if (
@@ -288,7 +293,10 @@ export function installTerminalGestures(
       Math.hypot(e.clientX - appDragStart.x, e.clientY - appDragStart.y) > 4
     ) {
       session.reservedClipboard?.cancel();
-      session.reservedClipboard = reserveClipboardWrite();
+      const root = terminalClipboardRoot(refs);
+      session.reservedClipboard = reserveClipboardWrite(4000, (text) =>
+        terminalMarkdownContent(text, root),
+      );
     }
     appDragStart = null;
     if (
@@ -299,7 +307,7 @@ export function installTerminalGestures(
       // Copy inside the release itself: Safari only allows clipboard
       // writes during the gesture.
       const selected = history.text ?? term.getSelection();
-      if (selected) copyFinishedSelection(selected);
+      if (selected) copyFinishedSelection(selected, refs);
     }
     selectionDragActive = false;
     selectionDragGuard.mouseUp();
@@ -496,7 +504,7 @@ export function installTerminalGestures(
     touch.cancelPending();
     // A long-press that just selected a word copies it on release.
     if (touch.active && !touchSelectionBeforeTouch)
-      copyFinishedSelection(terminalSelectedText(term));
+      copyFinishedSelection(terminalSelectedText(term), refs);
     touchSelectionBeforeTouch = touch.active;
     if (!touch.active) presentation.cancelSelection();
     const tapped = touchStartX !== null && touchStartY !== null && !touchMoved;

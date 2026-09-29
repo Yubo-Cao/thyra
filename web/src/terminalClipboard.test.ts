@@ -21,6 +21,57 @@ function flushClipboardWrite() {
 }
 
 describe("terminal OSC 52 clipboard access", () => {
+  test("writes HTML and plain text together, falling back when rich copy is rejected", async () => {
+    const previous = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "ClipboardItem",
+    );
+    class Item {
+      constructor(readonly data: Record<string, Blob>) {}
+    }
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: Item,
+    });
+    try {
+      let items: Item[] = [];
+      const plain: string[] = [];
+      await copyTextFromUserGesture("手册 /tmp/report.pdf", {
+        html: '<strong>手册</strong> <a href="file:///tmp/report.pdf">report.pdf</a>',
+        clipboard: {
+          write: async (value) => {
+            items = value as unknown as Item[];
+          },
+          writeText: async (value) => {
+            plain.push(value);
+          },
+        },
+      });
+      expect(await items[0]!.data["text/plain"]!.text()).toBe(
+        "手册 /tmp/report.pdf",
+      );
+      expect(await items[0]!.data["text/html"]!.text()).toContain(
+        "<strong>手册</strong>",
+      );
+      expect(plain).toEqual([]);
+      await copyTextFromUserGesture("/tmp/report.pdf", {
+        html: "<b>report.pdf</b>",
+        clipboard: {
+          write: async () => {
+            throw new Error("unsupported format");
+          },
+          writeText: async (value) => {
+            plain.push(value);
+          },
+        },
+      });
+      expect(plain).toEqual(["/tmp/report.pdf"]);
+    } finally {
+      if (previous)
+        Object.defineProperty(globalThis, "ClipboardItem", previous);
+      else Reflect.deleteProperty(globalThis, "ClipboardItem");
+    }
+  });
   test("copies only selected text without terminal cell padding", () => {
     expect(normalizeTerminalSelection("first   \nsecond\t\r\nthird  ")).toBe(
       "first\nsecond\r\nthird",

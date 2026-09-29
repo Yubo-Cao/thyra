@@ -2,6 +2,8 @@ import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../../i18n";
 import { copyTextFromUserGesture } from "../../terminalClipboard";
+import { terminalSelectionContent } from "../../terminalRichCopy";
+import { terminalClipboardRoot } from "./terminalSession";
 import {
   type TerminalTouchSelection,
   terminalSelectedText,
@@ -54,8 +56,15 @@ export function TerminalTouchSelectionBar({
             const text = refs.term.current
               ? terminalSelectedText(refs.term.current)
               : "";
-            if (text)
-              void copyTextFromUserGesture(text).catch((error) =>
+            const copied = terminalSelectionContent(
+              text,
+              refs.term.current,
+              terminalClipboardRoot(refs),
+            );
+            if (copied.text)
+              void copyTextFromUserGesture(copied.text, {
+                html: copied.html,
+              }).catch((error) =>
                 onCopyError(
                   t("Copy failed: {error}", {
                     error: (error as Error).message,
@@ -133,7 +142,10 @@ export function TerminalTouchSelectionBar({
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId);
               if (refs.term.current)
-                copyFinishedSelection(terminalSelectedText(refs.term.current));
+                copyFinishedSelection(
+                  terminalSelectedText(refs.term.current),
+                  refs,
+                );
             }
           }}
           onKeyDown={(event) => {

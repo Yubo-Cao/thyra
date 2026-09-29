@@ -77,15 +77,18 @@ The browser only chooses an agent, never the command text.
   in a fallback font; the GPU renderer and the font follow without resizing it.
 - Mouse-aware apps receive pane-local clicks/drags/wheels. Select browser text
   with Option-drag (macOS) or Shift-drag (elsewhere); ordinary output needs no
-  modifier. Releasing a selection copies it, as in Herdr. Selection freezes
+  modifier. Releasing a selection copies it, as in Herdr, with HTML styles and
+  links for rich-text destinations and plain text for editors. A path-only
+  selection copies an absolute host path when the pane's directory is known. Selection freezes
   presentation until cleared. To select more than a screen, drag to the edge or
   scroll the wheel while holding the button; after release, scroll and
   Shift-click to extend. Streaming output below does not interrupt it.
 - Paste images to upload them to the connected host and insert their paths.
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
-- `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; file/directory paths open
-  preview/workspace actions. Touch uses long-press, then **Open link** or
+- `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; click file/directory paths
+  to preview them directly in the Inspector. Dragging selects without opening.
+  Touch uses long-press, then **Open link** or
   **File actions**. Nothing opens on hover or ordinary touch.
 
 Herdr 0.9.1 supports read-only wrapped-link resolution; OSC 8 keeps explicit

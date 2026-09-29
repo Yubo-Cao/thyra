@@ -62,6 +62,67 @@ function fixture(rows: string[], cols: number, wrapped: number[] = []) {
 // These exercise the actual provider registered with xterm, including async
 // resolution and the one-based, inclusive ranges used for mouse activation.
 describe("terminal link provider", () => {
+  test("keeps a resolved file usable when an unrelated frame repaints during lookup", async () => {
+    const f = fixture(["Open docs/guide.md"], 40);
+    let frame = 1;
+    let scope = "pane-a";
+    let remoteCalls = 0;
+    registerTerminalLinkProvider(
+      f.term,
+      (path) => f.previewed.push(path),
+      async () => {
+        frame++;
+        return new Map([["docs/guide.md", "/workspace/docs/guide.md"]]);
+      },
+      () => false,
+      {
+        state: () => frame,
+        scope: () => scope,
+        resolve: async () => {
+          remoteCalls++;
+          return null;
+        },
+      },
+    );
+    const [link] = await f.links(1);
+    expect(link?.text).toBe("docs/guide.md");
+    expect(remoteCalls).toBe(0);
+    frame++;
+    link!.activate({ preventDefault() {} } as MouseEvent, link!.text);
+    expect(f.previewed).toEqual(["/workspace/docs/guide.md"]);
+    scope = "pane-b";
+    link!.activate({ preventDefault() {} } as MouseEvent, link!.text);
+    expect(f.previewed).toHaveLength(1);
+  });
+  test("opens a file next to Chinese punctuation with a plain click, preserving selection modifiers", async () => {
+    const f = fixture(["手册。share/paper/handbook.pdf"], 60);
+    f.existing.add("share/paper/handbook.pdf");
+    registerTerminalLinkProvider(
+      f.term,
+      (path) => f.previewed.push(path),
+      f.resolve,
+    );
+    const [link] = await f.links(1);
+    expect(link?.text).toBe("share/paper/handbook.pdf");
+    for (const modifier of [
+      {},
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+    ]) {
+      link!.activate(
+        { preventDefault() {}, ...modifier } as unknown as MouseEvent,
+        link!.text,
+      );
+    }
+    expect(f.previewed).toEqual([
+      "share/paper/handbook.pdf",
+      "share/paper/handbook.pdf",
+    ]);
+    Object.assign(f.term, { hasSelection: () => true });
+    link!.activate({ preventDefault() {} } as MouseEvent, link!.text);
+    expect(f.previewed).toHaveLength(2);
+  });
   test("suppresses a late filesystem reply after a newer row lookup", async () => {
     const f = fixture(["docs/a.md", "docs/b.md"], 30);
     const completions: ((value: Map<string, string>) => void)[] = [];

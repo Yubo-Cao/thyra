@@ -5,6 +5,20 @@ import {
 } from "./terminalFileLinks";
 
 describe("terminal file links", () => {
+  test("finds files after Unicode prose punctuation and directory paths", () => {
+    expect(
+      findTerminalFileLinkCandidates(
+        "手册。share/paper/handbook.pdf；目录：share/dataset/，评分表（docs/ratings.pdf）",
+      ).map(({ path }) => path),
+    ).toEqual([
+      "share/paper/handbook.pdf",
+      "share/dataset/",
+      "docs/ratings.pdf",
+    ]);
+    expect(
+      findTerminalFileLinkCandidates("prefix:src/app.tsx https://host/a/b"),
+    ).toEqual([]);
+  });
   test("finds absolute and workspace-relative file paths", () => {
     expect(
       findTerminalFileLinkCandidates(

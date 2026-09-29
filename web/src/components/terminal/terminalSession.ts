@@ -32,7 +32,6 @@ import {
   copyTextFromUserGesture,
   createTerminalClipboardProvider,
   decodeTerminalClipboard,
-  normalizeTerminalSelection,
   type PendingClipboardWrite,
 } from "../../terminalClipboard";
 import { TerminalEndpointPresentation } from "../../terminalEndpointPresentation";
@@ -67,6 +66,11 @@ import {
 } from "../../../../shared/terminalFrame";
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import type { TerminalFileLinkMenuState } from "../TerminalFileLinkMenu";
+import {
+  installTerminalSerializer,
+  terminalSelectionContent,
+  terminalMarkdownContent,
+} from "../../terminalRichCopy";
 import { b64toText, bytesToB64 } from "../../utils";
 
 export function focusTerminalEndpoint(
@@ -187,17 +191,31 @@ export function dispatchMouseRelease(doc: Document, at?: MouseEvent) {
   );
 }
 
-// Copy a finished selection, as Herdr's own client does, from the gesture that
-// ended it: Safari only allows clipboard writes there.
-export function copyFinishedSelection(text: string) {
-  const copied = normalizeTerminalSelection(text);
-  if (!copied) return;
-  void copyTextFromUserGesture(copied).then(
+export function terminalClipboardRoot(refs?: TerminalRefs) {
+  const state = store.get();
+  const pane = state.panes.find(
+    (item) => item.pane_id === refs?.paneId.current,
+  );
+  const workspace = state.workspaces.find(
+    (item) => item.workspace_id === refs?.workspaceId.current,
+  );
+  return pane?.cwd ?? workspace?.worktree?.checkout_path ?? workspace?.cwd;
+}
+
+// Start clipboard writes in the release gesture, including on Safari.
+export function copyFinishedSelection(text: string, refs?: TerminalRefs) {
+  const copied = terminalSelectionContent(
+    text,
+    refs?.term.current,
+    terminalClipboardRoot(refs),
+  );
+  if (!copied.text) return;
+  void copyTextFromUserGesture(copied.text, { html: copied.html }).then(
     () =>
       store.notify({
         kind: "info",
         message: t("Copied {count} characters", {
-          count: copied.length.toLocaleString(),
+          count: copied.text.length.toLocaleString(),
         }),
         autoDismissMs: 1500,
       }),
@@ -457,7 +475,9 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       activate(event, text) {
         event.preventDefault();
         if (
-          !terminalLinkModifierMatches(event) ||
+          (!terminalFileUriPath(text) && !terminalLinkModifierMatches(event)) ||
+          event.shiftKey ||
+          event.altKey ||
           !oscHover?.ready ||
           !oscHover.state ||
           oscHover.text !== text ||
@@ -466,8 +486,9 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
           return;
         const path = terminalFileUriPath(text);
         if (path) {
+          if (term.hasSelection()) return;
           term.clearSelection();
-          showFileLinkMenu(path, event);
+          openFileInInspector(path, event);
           return;
         }
         const url = sanitizeTerminalHttpUrl(text);
@@ -510,14 +531,53 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       return null;
     return `${refs.linkRevision.current}:${desiredTerminal.current}:${term.cols}:${term.rows}:${term.buffer.active.viewportY}`;
   };
-  const showFileLinkMenu = (path: string, event: MouseEvent) => {
+  let filePointerStart: { x: number; y: number; dragged: boolean } | null =
+    null;
+  container.addEventListener(
+    "mousedown",
+    (event) => {
+      filePointerStart =
+        event.button === 0
+          ? { x: event.clientX, y: event.clientY, dragged: false }
+          : null;
+    },
+    { capture: true, signal: abort.signal },
+  );
+  container.addEventListener(
+    "mousemove",
+    (event) => {
+      if (
+        filePointerStart &&
+        event.buttons === 1 &&
+        Math.hypot(
+          event.clientX - filePointerStart.x,
+          event.clientY - filePointerStart.y,
+        ) > 4
+      )
+        filePointerStart.dragged = true;
+    },
+    { capture: true, signal: abort.signal },
+  );
+  const openFileInInspector = (path: string, event: MouseEvent) => {
+    // Mouse-reporting apps own their selection, so xterm.hasSelection alone
+    // cannot distinguish a click from a drag ending inside the same link.
+    if (
+      !filePointerStart ||
+      filePointerStart.dragged ||
+      Math.hypot(
+        event.clientX - filePointerStart.x,
+        event.clientY - filePointerStart.y,
+      ) > 4
+    )
+      return;
     const workspaceId = refs.workspaceId.current;
-    if (workspaceId && linkState())
-      ui.setFileLinkMenu({
+    if (workspaceId && client.isCurrent() && !session.disposed)
+      refs.onOpenWorkspaceFile.current?.({
+        connectionId: bindings.identity.connectionId,
+        connectionGeneration: bindings.identity.generation,
+        paneId: refs.paneId.current ?? undefined,
         path,
         workspaceId,
-        x: event.clientX,
-        y: event.clientY,
       });
   };
   const linkRender = term.onRender(({ start, end }) => {
@@ -553,6 +613,13 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   };
   const fit = new TerminalFit();
   const clipboardProvider = createTerminalClipboardProvider({
+    canWrite: () => !session.disposed && client.isCurrent(),
+    format: async (text) => ({
+      ...(await terminalMarkdownContent(text, terminalClipboardRoot(refs))),
+      // Unsolicited OSC 52 may carry shell commands or source code. Preserve
+      // its plain payload; only known agent drags replace Markdown with prose.
+      text,
+    }),
     onWriteStart() {
       if (session.disposed || !client.isCurrent()) return;
       if (store.get().notice?.actionClipboardText !== undefined) {
@@ -575,6 +642,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     },
   });
   term.loadAddon(new ClipboardAddon(undefined, clipboardProvider));
+  installTerminalSerializer(term);
   term.loadAddon(new UnicodeGraphemesAddon());
   term.loadAddon(fit);
   term.open(container);
@@ -601,11 +669,15 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   refs.fit.current = fit;
   const linkProvider = registerTerminalLinkProvider(
     term,
-    showFileLinkMenu,
+    openFileInInspector,
     bindings.resolveFilePaths,
     () => refs.presentation.current?.displayedFrame != null,
     {
       state: linkState,
+      scope: () =>
+        client.isCurrent() && !session.disposed
+          ? `${desiredTerminal.current}:${refs.workspaceId.current}`
+          : null,
       resolve: async (row, col, touch) => {
         const terminalId = desiredTerminal.current;
         if (

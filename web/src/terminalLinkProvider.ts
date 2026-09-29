@@ -139,6 +139,8 @@ export function registerTerminalLinkProvider(
   inferContinuations: () => boolean = () => false,
   upstream?: {
     state: () => unknown;
+    /** Stable connection/pane identity; unrelated frame repaints may change state. */
+    scope?: () => unknown;
     resolve: (
       row: number,
       col: number,
@@ -166,6 +168,7 @@ export function registerTerminalLinkProvider(
     const rowCount = term.rows;
     const viewport = activeBuffer.viewportY;
     const state = upstream?.state();
+    const scope = upstream?.scope?.();
     const infer = inferContinuations();
     const context = readLinkContext(term, bufferLineNumber, infer);
     if (!context || state === null) {
@@ -181,10 +184,13 @@ export function registerTerminalLinkProvider(
       term.cols === columnCount &&
       term.rows === rowCount &&
       activeBuffer.viewportY === viewport &&
-      upstream?.state() === state &&
+      (upstream?.scope
+        ? upstream.scope() === scope && upstream.state() !== null
+        : upstream?.state() === state) &&
       inferContinuations() === infer &&
       JSON.stringify(readLinkContext(term, bufferLineNumber, infer)) ===
         snapshot;
+    const isFrameCurrent = () => isCurrent() && upstream?.state() === state;
     const hover = () => {
       // Inactive row caches survive repaint. Reject their actions and ask
       // xterm to reread now that this stale link is active again.
@@ -316,7 +322,12 @@ export function registerTerminalLinkProvider(
           target: { kind: "file", value: path },
           activate(event) {
             event.preventDefault();
-            if (isCurrent() && terminalLinkModifierMatches(event)) {
+            if (
+              isCurrent() &&
+              !term.hasSelection?.() &&
+              !event.shiftKey &&
+              !event.altKey
+            ) {
               term.clearSelection?.();
               onPreviewPath?.(path, event);
             }
@@ -346,7 +357,12 @@ export function registerTerminalLinkProvider(
         lineTextWithCells(previousLine, columnCount, bufferLineNumber - 1)
           .text.slice(-2)
           .trim();
-      if (first >= 0 && (rowUrls.length === 0 || continuation))
+      const hasResolvedFile = links.some((link) => link.target.kind === "file");
+      if (
+        first >= 0 &&
+        (rowUrls.length === 0 || continuation) &&
+        (!hasResolvedFile || continuation)
+      )
         columns.add(rowText!.cells[first]!.start.x - 1);
       for (const link of rowUrls) {
         const col = rowText!.cells[link.start]!.start.x - 1;
@@ -374,10 +390,14 @@ export function registerTerminalLinkProvider(
         columns.clear();
         columns.add(touch.col);
       }
+      if (!columns.size) {
+        callback(links.length ? links : undefined);
+        return;
+      }
       const resolve = async () => {
         const resolved: TerminalResolvedLink[] = [];
         for (const col of [...columns].slice(0, MAX_CANDIDATES_PER_LINE)) {
-          if (!isCurrent()) {
+          if (!isFrameCurrent()) {
             callback(undefined);
             return;
           }
@@ -392,7 +412,7 @@ export function registerTerminalLinkProvider(
           try {
             const link = await upstream.resolve(row, col, !!touch);
             if (touch && link && "uri" in link) {
-              if (!isCurrent()) {
+              if (!isFrameCurrent()) {
                 callback(undefined);
                 return;
               }
@@ -430,7 +450,7 @@ export function registerTerminalLinkProvider(
             break;
           }
         }
-        if (!isCurrent()) {
+        if (!isFrameCurrent()) {
           callback(undefined);
           return;
         }
@@ -472,7 +492,7 @@ export function registerTerminalLinkProvider(
             },
             activate(event) {
               event.preventDefault();
-              if (isCurrent() && terminalLinkModifierMatches(event)) {
+              if (isFrameCurrent() && terminalLinkModifierMatches(event)) {
                 term.clearSelection?.();
                 window.open(link.url!, "_blank", "noopener,noreferrer");
               }

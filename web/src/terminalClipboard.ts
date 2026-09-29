@@ -4,7 +4,9 @@ import type {
 } from "@xterm/addon-clipboard";
 import { t } from "./i18n";
 
-type ClipboardWriter = Pick<Clipboard, "writeText">;
+type ClipboardWriter = Pick<Clipboard, "writeText"> &
+  Partial<Pick<Clipboard, "write">>;
+export type ClipboardContent = { text: string; html?: string };
 export const MAX_TERMINAL_CLIPBOARD_CHARS = 100_000;
 export const MAX_TERMINAL_CLIPBOARD_BASE64_CHARS = 256 * 1024;
 const STANDARD_BASE64_RE =
@@ -21,6 +23,7 @@ interface TerminalClipboardProviderOptions {
   canWrite?: () => boolean;
   onWriteStart?: () => void;
   onWriteError?: (error: Error, retryText: string | null) => void;
+  format?: (text: string) => Promise<ClipboardContent>;
 }
 
 function clipboardError(error: unknown): Error {
@@ -125,10 +128,9 @@ async function writeClipboardText(
 /** Copy from a real button click or terminal keyboard shortcut. */
 export async function copyTextFromUserGesture(
   text: string,
-  options: Pick<
-    TerminalClipboardProviderOptions,
-    "clipboard" | "fallback"
-  > = {},
+  options: Pick<TerminalClipboardProviderOptions, "clipboard" | "fallback"> & {
+    html?: string;
+  } = {},
 ): Promise<void> {
   const fallback = options.fallback ?? copyWithDocument;
   const clipboard =
@@ -140,6 +142,23 @@ export async function copyTextFromUserGesture(
   // The Clipboard API call starts synchronously inside the gesture, which is
   // what WebKit requires. iOS execCommand("copy") can report success without
   // copying, so it is only the fallback (insecure origins, older browsers).
+  if (
+    options.html &&
+    clipboard?.write &&
+    typeof ClipboardItem !== "undefined"
+  ) {
+    try {
+      await clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          "text/html": new Blob([options.html], { type: "text/html" }),
+        }),
+      ]);
+      return;
+    } catch {
+      // Older browsers may expose write() but reject HTML. Keep plain copy.
+    }
+  }
   if (clipboard?.writeText) {
     try {
       await clipboard.writeText(text);
@@ -166,6 +185,7 @@ export interface PendingClipboardWrite {
  */
 export function reserveClipboardWrite(
   timeoutMs = 4000,
+  format?: (text: string) => Promise<ClipboardContent>,
 ): PendingClipboardWrite | null {
   if (
     typeof window === "undefined" ||
@@ -180,14 +200,23 @@ export function reserveClipboardWrite(
     settle = resolve;
   });
   const timer = setTimeout(() => settle(null), timeoutMs);
+  const formatted = content.then(async (text): Promise<ClipboardContent> => {
+    if (text === null) throw new Error(t("no terminal clipboard arrived"));
+    return format ? format(text) : { text };
+  });
   const written = navigator.clipboard
     .write([
       new ClipboardItem({
-        "text/plain": content.then((text) => {
-          if (text === null)
-            throw new Error(t("no terminal clipboard arrived"));
+        "text/plain": formatted.then(({ text }) => {
           return new Blob([text], { type: "text/plain" });
         }),
+        ...(format
+          ? {
+              "text/html": formatted.then(
+                ({ html }) => new Blob([html ?? ""], { type: "text/html" }),
+              ),
+            }
+          : {}),
       }),
     ])
     .finally(() => clearTimeout(timer));
@@ -238,7 +267,21 @@ export function createTerminalClipboardProvider(
 
       // Clipboard permissions may wait on browser UI. Keep that promise out of
       // xterm's OSC handler so terminal output parsing can never stall behind it.
-      void writeClipboardText(text, clipboard, fallback).catch((error) => {
+      const write =
+        options.format &&
+        clipboard?.write &&
+        typeof ClipboardItem !== "undefined"
+          ? options.format(text).then((content) => {
+              if (sequence !== writeSequence || options.canWrite?.() === false)
+                return;
+              return copyTextFromUserGesture(content.text, {
+                clipboard,
+                fallback,
+                html: content.html,
+              });
+            })
+          : writeClipboardText(text, clipboard, fallback);
+      void write.catch((error) => {
         if (sequence !== writeSequence) return;
         options.onWriteError?.(clipboardError(error), text);
       });

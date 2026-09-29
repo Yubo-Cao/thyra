@@ -1,8 +1,10 @@
 const FILE_PATH_CANDIDATE_RE =
-  /(?:\/[A-Za-z0-9._~:@%+=,/-]+|\.\/[A-Za-z0-9._~:@%+=,-]+(?:\/[A-Za-z0-9._~:@%+=,-]+)*|[A-Za-z0-9._~@%+=,-]+(?:\/[A-Za-z0-9._~:@%+=,-]+)+)/g;
+  /(?:\/[A-Za-z0-9._~:@%+=,/-]+|\.\/[A-Za-z0-9._~:@%+=,-]+(?:\/[A-Za-z0-9._~:@%+=,-]+)*|[A-Za-z0-9._~@%+=,-]+(?:\/[A-Za-z0-9._~:@%+=,-]+)+)\/?/g;
 const TRAILING_PROSE_RE = /[.,;:!?]+$/;
 const TRAILING_LOCATION_RE = /:\d+(?::\d+)?$/;
+// Unicode punctuation delimits prose, but ASCII path/URI punctuation does not.
 const PATH_BOUNDARY_RE = /[\s"'`([{<]/;
+const UNICODE_PUNCTUATION_RE = /\p{P}/u;
 export const MAX_CANDIDATES_PER_LINE = 32;
 const DEFAULT_POSITIVE_TTL_MS = 30_000;
 const DEFAULT_NEGATIVE_TTL_MS = 5_000;
@@ -34,7 +36,7 @@ function isSafePath(path: string) {
     : explicitlyRelative
       ? path.slice(2)
       : path;
-  const parts = relative.split("/");
+  const parts = relative.replace(/\/$/, "").split("/");
   return (
     parts.length >= (absolute || explicitlyRelative ? 1 : 2) &&
     parts.every((part) => part && part !== "." && part !== "..")
@@ -50,7 +52,12 @@ export function findTerminalFileLinkCandidates(
   for (const match of text.matchAll(FILE_PATH_CANDIDATE_RE)) {
     const start = match.index ?? 0;
     const previous = start > 0 ? (text[start - 1] ?? "") : "";
-    if (previous && !PATH_BOUNDARY_RE.test(previous)) continue;
+    if (
+      previous &&
+      !PATH_BOUNDARY_RE.test(previous) &&
+      !(previous.charCodeAt(0) > 127 && UNICODE_PUNCTUATION_RE.test(previous))
+    )
+      continue;
     const path = match[0]
       .replace(TRAILING_PROSE_RE, "")
       .replace(TRAILING_LOCATION_RE, "");

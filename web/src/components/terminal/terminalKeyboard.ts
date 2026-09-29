@@ -3,10 +3,9 @@ import {
   getShortcutSnapshot,
   shortcutMatches,
 } from "../../shortcutPreferences";
-import {
-  copyTextFromUserGesture,
-  normalizeTerminalSelection,
-} from "../../terminalClipboard";
+import { copyTextFromUserGesture } from "../../terminalClipboard";
+import { terminalSelectionContent } from "../../terminalRichCopy";
+import { terminalClipboardRoot } from "./terminalSession";
 import { uploadTerminalImage } from "../../terminalImageUpload";
 import {
   isTerminalImeCommittedInputType,
@@ -300,15 +299,19 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       // not interrupted by the clipboard fallback's temporary readonly input.
       if (isNativeChord(e, "c")) return false;
       cancelEvent(e);
-      const text = normalizeTerminalSelection(
+      const copied = terminalSelectionContent(
         history.text ?? term.getSelection(),
+        term,
+        terminalClipboardRoot(refs),
       );
-      if (text) {
-        void copyTextFromUserGesture(text).catch((error) => {
-          ui.setUploadError(
-            t("Copy failed: {error}", { error: (error as Error).message }),
-          );
-        });
+      if (copied.text) {
+        void copyTextFromUserGesture(copied.text, { html: copied.html }).catch(
+          (error) => {
+            ui.setUploadError(
+              t("Copy failed: {error}", { error: (error as Error).message }),
+            );
+          },
+        );
       }
       return false;
     }
