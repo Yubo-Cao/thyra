@@ -5,6 +5,7 @@ import {
 import type { TerminalHistoryViewport } from "./terminalHistorySelection";
 
 export interface TerminalPresentationFrame {
+  graphics?: import("../../shared/terminalGraphics").TerminalGraphics;
   text: string;
   size?: { cols: number; rows: number };
   history?: TerminalHistoryViewport;
@@ -107,10 +108,11 @@ export class TerminalEndpointPresentation {
     history?: TerminalHistoryViewport,
     linkFrame?: string,
     parts?: TerminalFrameParts,
+    graphics?: import("../../shared/terminalGraphics").TerminalGraphics,
   ): void {
     if (this.disposed) return;
     this.mouseReporting = mouseReporting;
-    this.pendingFrame = { text, size, history, linkFrame, parts };
+    this.pendingFrame = { text, size, history, linkFrame, parts, graphics };
     this.flush();
   }
 

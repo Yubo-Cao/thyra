@@ -1,0 +1,28 @@
+.composer-images {
+  display: flex;
+  gap: 8px;
+  height: 72px;
+  padding: 4px 0;
+  box-sizing: border-box;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.composer-images img {
+  height: 60px;
+  max-width: 120px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.composer-images img[data-uploading] {
+  opacity: 0.55;
+}
+.prompt-editor > .composer-images {
+  position: absolute;
+  left: calc(2 * var(--prompt-editor-cell));
+  right: var(--prompt-editor-cell);
+  bottom: var(--prompt-editor-pad-bottom);
+}
+.prompt-editor[data-images] > .prompt-editor-body,
+.prompt-editor[data-images] > .prompt-editor-preview {
+  bottom: calc(var(--prompt-editor-pad-bottom) + 72px);
+}

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import {
+  TerminalGraphicsStore,
+  type TerminalGraphics,
+} from "../../../shared/terminalGraphics";
+import {
   FRAME_STREAM_ACK_TIMEOUT_MS,
   FRAME_STREAM_MAX_INFLIGHT,
   FRAME_STREAM_MAX_MIN_INTERVAL_MS,
@@ -24,6 +28,46 @@ afterEach(() => {
 });
 
 describe("TerminalFrameStream", () => {
+  test("sends image bytes once, rehydrates before coalescing, and includes them on resync", () => {
+    const { frames, sent } = stream();
+    const store = new TerminalGraphicsStore();
+    const graphics: TerminalGraphics = {
+      assets: [{ id: "red", width: 1, height: 1, format: 1, data: "/wAA/w==" }],
+      placements: [
+        {
+          asset: "red",
+          id: 1,
+          x: 0,
+          y: 0,
+          cols: 1,
+          rows: 1,
+          sourceX: 0,
+          sourceY: 0,
+          sourceWidth: 1,
+          sourceHeight: 1,
+          offsetX: 0,
+          offsetY: 0,
+          z: 0,
+        },
+      ],
+    };
+    frames.offer(parts(["a", "b", "c"]), { ...meta, graphics });
+    store.update(sent[0].graphics as TerminalGraphics);
+    frames.ack(sent[0].frame_seq as number);
+    frames.offer(parts(["A", "b", "c"]), { ...meta, graphics });
+    expect((sent[1].graphics as TerminalGraphics).assets).toHaveLength(0);
+    expect(store.update(sent[1].graphics as TerminalGraphics)?.assets).toEqual(
+      graphics.assets,
+    );
+    frames.resync();
+    expect((sent[2].graphics as TerminalGraphics).assets).toEqual(
+      graphics.assets,
+    );
+    expect(store.update({ assets: [], placements: [] })?.assets).toHaveLength(
+      0,
+    );
+    frames.dispose();
+  });
   test("sends the first frame in full and later frames as changed rows", () => {
     const { frames, sent } = stream();
     frames.offer(parts(["a", "b", "c"]), meta);

@@ -3,6 +3,8 @@ import {
   type ClipboardSelectionType,
 } from "@xterm/addon-clipboard";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
+import { attachTerminalGraphics } from "../../terminalGraphics";
+import { TerminalGraphicsStore } from "../../../../shared/terminalGraphics";
 import type { IBufferRange, ITheme } from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
 import {
@@ -710,6 +712,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     store.get().status === "connected" &&
     !store.get().connectionPaused;
 
+  const graphics = attachTerminalGraphics(term);
   const presentation: TerminalEndpointPresentation =
     new TerminalEndpointPresentation(
       () => term.hasSelection() || history.active,
@@ -722,8 +725,14 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       () => ({ cols: term.cols, rows: term.rows }),
       {
         accepts: (frame) => history.accepts(frame),
-        presented: (frame) => history.presented(frame),
-        reset: () => history.reset(),
+        presented: (frame) => {
+          history.presented(frame);
+          graphics.update(frame.graphics);
+        },
+        reset: () => {
+          history.reset();
+          graphics.update();
+        },
       },
     );
   const history: TerminalHistorySelection = new TerminalHistorySelection(term, {
@@ -809,6 +818,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       attachWatchdog.cancel();
       disposeHandlers();
       presentation.dispose();
+      graphics.dispose();
       refs.presentation.current = null;
       linkRender.dispose();
       linkProvider.dispose();
@@ -841,6 +851,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       push,
     );
   const frameDecoders = new Map<string, TerminalFrameDecoder>();
+  const graphicsStore = new TerminalGraphicsStore();
   const off = bridge.onTerminal((frame) => {
     if (!current(frame)) return;
     let text: string | null;
@@ -903,6 +914,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
         frame.history,
         frame.link_frame,
         parts,
+        graphicsStore.update(frame.graphics),
       );
     } else {
       presentation.updateIncremental(text, () => {

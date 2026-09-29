@@ -66,6 +66,7 @@ import {
   terminalConnectionKey,
 } from "../terminalConnection";
 import { uploadTerminalImage } from "../terminalImageUpload";
+import { TerminalImagePreviews } from "./terminal/TerminalImagePreviews";
 import type { TerminalFileLinkMenuState } from "./TerminalFileLinkMenu";
 import {
   createWorkspaceDialog,
@@ -946,6 +947,24 @@ export function TerminalView({
                 }}
               />
             </LazyBoundary>
+          ) : null}
+          {termInstance && pane?.workspace_id && !framesPaused ? (
+            <TerminalImagePreviews
+              key={promptEditorKey}
+              term={termInstance}
+              client={connectionClient}
+              workspaceId={pane.workspace_id}
+              cwd={pane.cwd}
+              onOpen={(path) =>
+                onOpenWorkspaceFile?.({
+                  connectionId: terminalIdentity.connectionId,
+                  connectionGeneration: terminalIdentity.generation,
+                  workspaceId: pane.workspace_id,
+                  paneId: pane.pane_id,
+                  path,
+                })
+              }
+            />
           ) : null}
           {showPromptEditor && termInstance ? (
             <LazyBoundary>

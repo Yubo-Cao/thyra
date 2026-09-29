@@ -56,6 +56,8 @@ export function PromptMonaco({
       fontSize: font.size,
       lineHeight: font.lineHeight,
       wordWrap: "on",
+      // Browser-measured glyphs keep mixed CJK/fallback fonts within the box.
+      wrappingStrategy: "advanced",
       wrappingIndent: "none",
       minimap: { enabled: false },
       lineNumbers: "off",

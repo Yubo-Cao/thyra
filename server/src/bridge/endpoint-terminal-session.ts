@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { PaneGraphicsCache } from "./endpoint-graphics";
 import {
   type EndpointHostTheme,
   EndpointClient,
@@ -43,6 +44,7 @@ type ScrollDispatch = {
  * can hold either backend in one field.
  */
 export class EndpointTerminalSession extends EventEmitter {
+  private graphics = new PaneGraphicsCache();
   private client: EndpointClient;
   private classifier = new VtInputClassifier();
   private pressedMouseButtons = new Set<number>();
@@ -107,6 +109,9 @@ export class EndpointTerminalSession extends EventEmitter {
       socketPath,
       surfaceCodecsEnabled,
       ownShellClients,
+      // A stable virtual raster; the browser scales it to its actual cell size.
+      // Zero dimensions tell Herdr to suppress the graphics scene entirely.
+      { width: 8, height: 16 },
     );
     this.client.on("surface", (s) => this.onSurface(s));
     this.client.on("clipboard", (clipboard) => {
@@ -306,6 +311,7 @@ export class EndpointTerminalSession extends EventEmitter {
 
   private onSurface(surface: EndpointSurface) {
     if (this.closed) return;
+    this.graphics.update(surface.graphics);
     if (!this.paneId) return; // connect() replays after lookup
     const pane = surface.panes.find((p) => p.paneId === this.paneId);
     if (!pane?.mouseReporting) this.pressedMouseButtons.clear();
@@ -362,6 +368,11 @@ export class EndpointTerminalSession extends EventEmitter {
     }
 
     const cropped = cropFrame(surface.frame, pane.innerRect);
+    const graphics = this.graphics.pane(
+      surface.graphics,
+      pane.paneId,
+      pane.innerRect,
+    );
     // Herdr emits full surfaces even for focus and read-only link RPCs. Surface
     // sequence/object identity is not link content identity; cursor is not content.
     const content = JSON.stringify({
@@ -385,6 +396,7 @@ export class EndpointTerminalSession extends EventEmitter {
       this.linkFrame ??= { token, content, surface, frame: cropped };
       this.emit("terminal", {
         linkFrame: token,
+        graphics,
         seq: this.seq,
         width: cropped.width,
         height: cropped.height,

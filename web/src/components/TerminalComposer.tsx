@@ -38,6 +38,7 @@ import { Dialog } from "./ui/Dialog";
 import { IconButton } from "./ui/IconButton";
 import { TextArea } from "./ui/TextArea";
 import "./TerminalComposer.css";
+import { ComposerImages, useComposerImages } from "./ComposerImages";
 import {
   type DictationSpan,
   dictationCleanupEdit,
@@ -90,6 +91,7 @@ export function TerminalComposer({
   useShortcutPreferences();
   const { text, setText, submissionPending, uploadCount } =
     useTerminalComposerDraft(draftKey);
+  const images = useComposerImages(draftKey);
   const [composing, setComposing] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(
@@ -376,6 +378,7 @@ export function TerminalComposer({
             }
           }}
         />
+        <ComposerImages images={images} />
         <input
           ref={fileInputRef}
           type="file"

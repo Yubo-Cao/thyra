@@ -25,6 +25,27 @@ const submissionListeners = new Map<
 >();
 const pendingUploads = new Map<string, number>();
 const uploadListeners = new Map<string, Set<TerminalComposerUploadListener>>();
+export type ComposerImage = { id: string; file: File; path: string | null };
+const imagesByDraft = new Map<string, ComposerImage[]>();
+const imageListeners = new Map<string, Set<() => void>>();
+const NO_IMAGES: readonly ComposerImage[] = [];
+export function readComposerImages(key: string): readonly ComposerImage[] {
+  return imagesByDraft.get(key) ?? NO_IMAGES;
+}
+export function subscribeComposerImages(key: string, listener: () => void) {
+  const listeners = imageListeners.get(key) ?? new Set();
+  listeners.add(listener);
+  imageListeners.set(key, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) imageListeners.delete(key);
+  };
+}
+function setComposerImages(key: string, images: readonly ComposerImage[]) {
+  if (images.length) imagesByDraft.set(key, [...images]);
+  else imagesByDraft.delete(key);
+  for (const listener of imageListeners.get(key) ?? []) listener();
+}
 
 function notifyTerminalComposerDraft(key: string, text: string): void {
   for (const listener of draftListeners.get(key) ?? []) listener(text);
@@ -102,10 +123,17 @@ export function writeTerminalComposerDraft(key: string, text: string): void {
   if (!terminalComposerDraftKeyIsActive(key)) return;
   if (drafts.get(key) === text) return;
   drafts.set(key, text);
+  setComposerImages(
+    key,
+    readComposerImages(key).filter(
+      (image) => image.path === null || text.includes(image.path),
+    ),
+  );
   notifyTerminalComposerDraft(key, text);
 }
 
 export function clearTerminalComposerDraft(key: string): void {
+  setComposerImages(key, []);
   selections.delete(key);
   if (!drafts.delete(key)) return;
   notifyTerminalComposerDraft(key, "");
@@ -221,6 +249,9 @@ export function activateTerminalComposerDraftScope(
       clearTerminalComposerUploads(key);
     }
   }
+  for (const key of imagesByDraft.keys()) {
+    if (!terminalComposerDraftKeyIsActive(key)) setComposerImages(key, []);
+  }
 }
 
 /** Inserts into the latest shared draft so async completions cannot overwrite it. */
@@ -287,6 +318,7 @@ export async function submitTerminalComposerDraft(
   const rest = current.startsWith(draft)
     ? current.slice(draft.length)
     : current;
+  const sentImages = readComposerImages(key);
   writeTerminalComposerDraft(key, rest);
   try {
     await send(draft);
@@ -296,6 +328,15 @@ export async function submitTerminalComposerDraft(
       key,
       `${draft}${readTerminalComposerDraft(key)}`,
     );
+    if (terminalComposerDraftKeyIsActive(key)) {
+      const currentImages = readComposerImages(key);
+      setComposerImages(key, [
+        ...sentImages.filter(
+          (image) => !currentImages.some((current) => current.id === image.id),
+        ),
+        ...currentImages,
+      ]);
+    }
     throw error;
   } finally {
     finishTerminalComposerSubmission(key);
@@ -334,9 +375,36 @@ export async function uploadTerminalComposerImages(
 ): Promise<void> {
   const images = terminalComposerImageFiles(files);
   if (images.length === 0 || !beginTerminalComposerUpload(key)) return;
+  const pending = images.map(
+    (file) => ({ id: crypto.randomUUID(), file, path: null }) as ComposerImage,
+  );
+  setComposerImages(key, [...readComposerImages(key), ...pending]);
   try {
-    for (const file of images) insertPath(key, await upload(file));
+    for (const image of pending) {
+      if (!readComposerImages(key).some((item) => item.id === image.id))
+        continue;
+      const path = await upload(image.file);
+      if (
+        !terminalComposerDraftKeyIsActive(key) ||
+        !readComposerImages(key).some((item) => item.id === image.id)
+      )
+        continue;
+      insertPath(key, path);
+      setComposerImages(
+        key,
+        readComposerImages(key).map((item) =>
+          item.id === image.id ? { ...item, path } : item,
+        ),
+      );
+    }
   } finally {
+    setComposerImages(
+      key,
+      readComposerImages(key).filter(
+        (item) =>
+          item.path !== null || !pending.some((image) => image.id === item.id),
+      ),
+    );
     finishTerminalComposerUpload(key);
   }
 }

@@ -122,6 +122,7 @@ export interface PaneSurfacePaneMeta {
 }
 
 export interface EndpointSurface {
+  graphics?: import("./endpoint-graphics").EndpointGraphics;
   frame: FrameData;
   surfaceRevision: number;
   panes: PaneSurfacePaneMeta[];
@@ -176,6 +177,7 @@ export class EndpointClient extends EventEmitter {
     private surfaceCodecsEnabled = true,
     /** Registers this shell so presence does not list it as a collaborator. */
     private ownShellClients?: OwnShellClients,
+    private cellSize = { width: 0, height: 0 },
   ) {
     super();
   }
@@ -251,8 +253,8 @@ export class EndpointClient extends EventEmitter {
   private sendHello(cols: number, rows: number) {
     const hello = {
       generation: ENDPOINT_GENERATION,
-      cell_width_px: 0,
-      cell_height_px: 0,
+      cell_width_px: this.cellSize.width,
+      cell_height_px: this.cellSize.height,
       surface_size: { cols, rows },
       pixel_mouse: false,
       direct_graphics: false,

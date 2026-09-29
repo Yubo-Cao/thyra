@@ -221,6 +221,7 @@ export interface TerminalPush {
   mouse_reporting?: boolean;
   /** Opaque identity from this terminal socket's advertised read-only resolver. */
   link_frame?: string;
+  graphics?: import("../../shared/terminalGraphics").TerminalGraphics;
   /** Absolute rows of a complete endpoint pane viewport. */
   history?: import("./terminalHistorySelection").TerminalHistoryViewport;
   /** base64-encoded ANSI bytes; absent on row-update frames. */

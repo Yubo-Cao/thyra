@@ -35,6 +35,8 @@
 
 .prompt-editor-body,
 .prompt-editor-preview {
+  min-width: 0;
+  overflow: hidden;
   position: absolute;
   top: var(--prompt-editor-pad-top);
   right: var(--prompt-editor-cell);

@@ -1,4 +1,5 @@
 import type { TerminalFrameParts } from "../../../shared/terminalFrame";
+import type { TerminalGraphics } from "../../../shared/terminalGraphics";
 
 // A browser that attaches with `frame_delta` receives endpoint frames through
 // one of these streams instead of as base64 full repaints.
@@ -46,6 +47,7 @@ interface SentFrame {
 let nextFrameSeq = 1;
 
 export class TerminalFrameStream {
+  private graphicsSent = new Set<string>();
   private latest: {
     parts: TerminalFrameParts;
     meta: TerminalFrameMeta;
@@ -196,9 +198,17 @@ export class TerminalFrameStream {
         tail: parts.tail,
       };
     }
+    const graphics = meta.graphics as TerminalGraphics | undefined;
+    if (graphics && terminal.base_seq !== undefined) {
+      terminal.graphics = {
+        ...graphics,
+        assets: graphics.assets.filter((a) => !this.graphicsSent.has(a.id)),
+      };
+    }
     const bytes = this.send(terminal);
     // The socket is gone; its cleanup disposes this stream.
     if (bytes === null) return;
+    this.graphicsSent = new Set(graphics?.assets.map((a) => a.id));
     this.sent = { seq, parts, metaKey, width: meta.width };
     this.lastSentAt = Date.now();
     this.inflight.push({ seq, bytes });

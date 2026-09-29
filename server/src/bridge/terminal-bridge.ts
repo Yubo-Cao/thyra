@@ -1207,6 +1207,7 @@ export function createTerminalBridge(args: {
             parts.set(key, frameParts);
           }
           stream.offer(frameParts, {
+            ...(t.graphics ? { graphics: t.graphics } : {}),
             width,
             height,
             full: t.full,
@@ -1231,6 +1232,7 @@ export function createTerminalBridge(args: {
           payload = serialize({
             terminal: {
               terminal_id: terminalId,
+              ...(t.graphics ? { graphics: t.graphics } : {}),
               width,
               height,
               full: t.full,

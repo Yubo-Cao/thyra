@@ -55,6 +55,7 @@ import type {
   PromptEditorSurfaceProps,
 } from "./surface";
 import "./PromptEditor.css";
+import { ComposerImages, useComposerImages } from "../ComposerImages";
 
 const promptMonacoPanel = lazyPanel("prompt-editor-monaco", () =>
   import("./PromptMonaco").then((module) => module.PromptMonaco),
@@ -226,6 +227,7 @@ export function PromptEditor({
 }: PromptEditorProps) {
   const { text, submissionPending, uploadCount } =
     useTerminalComposerDraft(draftKey);
+  const images = useComposerImages(draftKey);
   const theme = useDocumentTheme();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<PromptEditorSurface | null>(null);
@@ -301,6 +303,8 @@ export function PromptEditor({
     const resized = term.onResize(() => schedule());
     const observer = new ResizeObserver(() => schedule());
     if (term.element) observer.observe(term.element);
+    const host = rootRef.current?.parentElement;
+    if (host) observer.observe(host);
     return () => {
       if (timer !== null) window.clearTimeout(timer);
       parsed.dispose();
@@ -315,7 +319,12 @@ export function PromptEditor({
     promptEditorFrame(
       placement,
       metrics.rows,
-      Math.max(1, Math.ceil(contentHeight / metrics.rowHeight - 0.01)),
+      Math.max(
+        1,
+        Math.ceil(
+          (contentHeight + (images.length ? 72 : 0)) / metrics.rowHeight - 0.01,
+        ),
+      ),
     );
 
   // A menu took the agent's box: hand its keys to the terminal, and take
@@ -541,6 +550,7 @@ export function PromptEditor({
       aria-label={t("Prompt editor")}
       data-mode={placement.mode}
       data-preview={preview || undefined}
+      data-images={images.length > 0 || undefined}
       hidden={!visible}
       style={style}
       tabIndex={-1}
@@ -575,6 +585,7 @@ export function PromptEditor({
           </LazyBoundary>
         </div>
       ) : null}
+      <ComposerImages images={images} />
       <div className="prompt-editor-actions">
         <span
           className="prompt-editor-hint"

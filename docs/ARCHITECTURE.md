@@ -352,6 +352,19 @@ Absolute previews use `scope=filesystem` download URLs; relative Markdown links
 and images resolve beside their source. Explorer caches are separate from lazy
 UI code. Mermaid previews share a lazy
 renderer, strip wrappers/metadata only for detection, and retain original source.
+Terminal graphics use the endpoint's retained Kitty scene, including binary
+full/delta frames and JSON reuse frames. The bridge retains exact u64 asset
+identities and crops placements to the selected pane on an 8-by-16 virtual pixel
+grid, scaled to the browser's actual cells. Frames carry complete placements;
+acknowledged frame streams send asset bytes only when newly needed, and resend
+them on full refresh. The browser rehydrates assets on receipt, before presentation
+coalescing, so skipped repaints and reconnects cannot drop image uploads.
+The browser presents the scene with its matching text frame, decodes RGB/RGBA/PNG
+assets with bounded pixel counts, and releases images when placements disappear.
+Printed image paths use the existing connection-scoped file preview RPC. Composer
+attachments retain local files only for the lifetime of their in-memory drafts;
+thumbnail object URLs are revoked on unmount, and failed sends restore attachments.
+
 Images are inert elements; SVG is never inserted into the app DOM, and direct
 SVG responses carry a sandbox CSP blocking scripts and external resources.
 

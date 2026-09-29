@@ -84,6 +84,11 @@ The browser only chooses an agent, never the command text.
   scroll the wheel while holding the button; after release, scroll and
   Shift-click to extend. Streaming output below does not interrupt it.
 - Paste images to upload them to the connected host and insert their paths.
+  Prompt and mobile composer drafts show thumbnails during upload and until sent.
+- Image paths in visible terminal output show compact previews that open in the
+  Inspector when clicked. Native Kitty RGB, RGBA and PNG graphics render in the
+  terminal and follow Herdr's scrolling and deletion. Sixel is not supported by
+  the current Herdr/libghostty graphics pipeline.
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; click file/directory paths

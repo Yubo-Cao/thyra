@@ -1,4 +1,5 @@
 import { BinReader } from "./bincode";
+import { readGraphics, graphicsJsonBytes } from "./endpoint-graphics";
 import type { EndpointSurface, PaneSurfacePaneMeta } from "./endpoint-client";
 import { readCellData, type CellData, type FrameData } from "./thin-client";
 
@@ -167,41 +168,6 @@ function readPopup(r: SurfaceReader, metadata: boolean): Popup | null {
   });
 }
 
-// The scene precedes delta rows on the wire even though Thyra does not
-// render it. Consume every field, without retaining image payloads.
-function skipGraphicsKey(r: SurfaceReader) {
-  if (r.number(1) === 0) {
-    r.number(1); // Pane / Popup target
-    r.string();
-    r.number(0xffffffff); // image_id
-  } else {
-    r.string();
-    r.string();
-  }
-  r.number(0xffffffff);
-  r.number(0xffffffff);
-  r.number(2); // RGB / RGBA / PNG
-  r.varint(); // data_len
-  r.varint(); // opaque u64 fingerprint, never compared as a JS number
-}
-
-function skipGraphics(r: SurfaceReader, metadata: boolean): boolean {
-  const assets = r.count(metadata ? 4096 : MAX_FRAME);
-  for (let i = 0; i < assets; i++) {
-    skipGraphicsKey(r);
-    r.bytes();
-  }
-  const placements = r.count(metadata ? 65536 : MAX_FRAME);
-  for (let i = 0; i < placements; i++) {
-    skipGraphicsKey(r);
-    // logical id, x/y, cols/rows, source rect, offsets, zigzag z, scrollback
-    for (let j = 0; j < 13; j++) r.number(0xffffffff);
-  }
-  const retained = r.count(metadata ? 65536 : MAX_FRAME);
-  for (let i = 0; i < retained; i++) skipGraphicsKey(r);
-  return assets + placements + retained > 0;
-}
-
 function readSurface(r: SurfaceReader, metadata: boolean) {
   const bootId = r.string();
   const projectionRevision = r.number();
@@ -218,7 +184,12 @@ function readSurface(r: SurfaceReader, metadata: boolean) {
     for (let j = 0; j < count; j++) r.bool();
   }
   const popup = readPopup(r, metadata);
-  const hasGraphics = skipGraphics(r, metadata);
+  const graphics = readGraphics(r);
+  const hasGraphics =
+    graphics.assets.length +
+      graphics.placements.length +
+      graphics.retained.length >
+    0;
   return {
     surface: {
       bootId,
@@ -227,6 +198,7 @@ function readSurface(r: SurfaceReader, metadata: boolean) {
       frame,
       panes,
       popup,
+      graphics,
     },
     hasGraphics,
   };
@@ -435,7 +407,13 @@ export function readSurfaceReuse(
     Buffer.byteLength(data) <= 2 * 1024 * 1024,
     "reuse exceeds frame limit",
   );
-  const reuse = object(JSON.parse(data));
+  const reuse = object(
+    JSON.parse(
+      data,
+      (key: string, value: unknown, context?: { source?: string }) =>
+        key === "data_fingerprint" ? (context?.source ?? String(value)) : value,
+    ),
+  );
   const raw = object(reuse.surface);
   const bootId = string(raw.boot_id);
   const projectionRevision = uint(raw.projection_revision);
@@ -502,5 +480,6 @@ export function readSurfaceReuse(
     frame,
     panes,
     popup: null,
+    graphics: readGraphics(new SurfaceReader(graphicsJsonBytes(raw.graphics))),
   };
 }
