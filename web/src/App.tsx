@@ -10,7 +10,7 @@ import { PaneJumpOverlay, usePaneJump } from "./app/paneJump";
 import { useStartupSettled } from "./startupGate";
 import { Button } from "./components/ui/Button";
 import { TopBar } from "./app/TopBar";
-import { TabBar } from "./components/TabBar";
+import { TabBar, tabName } from "./components/TabBar";
 import { WorkspaceTree } from "./components/WorkspaceTree";
 import {
   Latched,
@@ -24,6 +24,7 @@ import {
   useConnectionClient,
 } from "./useConnectionClient";
 import { useAppearance } from "./app/useAppearance";
+import { useDocumentTitle } from "./app/useDocumentTitle";
 import { useAppShortcuts } from "./app/useAppShortcuts";
 import { useWorkspaceInspector } from "./app/useWorkspaceInspector";
 import {
@@ -95,6 +96,18 @@ export default function App() {
   const activePane = activePaneId
     ? s.panes.find((pane) => pane.pane_id === activePaneId)
     : undefined;
+  const activeTab = s.tabs.find(
+    (tab) =>
+      tab.workspace_id === focusedWorkspace?.workspace_id &&
+      tab.tab_id === (s.layout?.tab_id ?? focusedWorkspace?.active_tab_id),
+  );
+  useDocumentTitle(
+    activePane?.label?.trim() ||
+      activePane?.terminal_title_stripped?.trim() ||
+      tabName(activeTab) ||
+      focusedWorkspace?.label ||
+      "",
+  );
   const mobileControls = useMobileControls(
     mobile,
     focusedWorkspace,
