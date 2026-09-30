@@ -1,0 +1,22 @@
+.pdf-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--panel);
+}
+
+.pdf-preview-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+.pdf-preview-pages canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  flex-shrink: 0;
+  background: white;
+}

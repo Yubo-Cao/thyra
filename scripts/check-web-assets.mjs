@@ -10,9 +10,10 @@ const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 // chunks and thyra-assets.json. Grouping the tiny shared chunks would pin
 // them (or their dependencies) into the entry; over HTTP/2 they load in
 // parallel for a few hundred bytes of headers each.
-const maxFileCount = 260;
+// The lazy PDF viewer adds its worker, CMaps, standard fonts, and image codecs.
+const maxFileCount = 330;
 // The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB.
-const maxTotalBytes = 16 * 1024 * 1024;
+const maxTotalBytes = 20 * 1024 * 1024;
 // The entry holds the app shell and switchers (workspace tree, agent list,
 // tab bar); React DOM is about 40% of it. Menus, dialogs, pickers and panels
 // load on demand (see components/lazyPanels.ts and LazyBoundary.tsx).

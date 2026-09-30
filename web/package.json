@@ -30,6 +30,7 @@
     "marked": "^18.0.14",
     "minimatch": "10.2.6",
     "monaco-editor": "^0.56.0",
+    "pdfjs-dist": "5.5.207",
     "react": "^19.3.0",
     "react-aria": "^3.52.1",
     "react-aria-components": "^1.21.1",

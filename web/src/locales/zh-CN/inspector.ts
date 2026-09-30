@@ -193,8 +193,12 @@ export default {
   "Loading preview": "正在加载预览",
   "Directories cannot be previewed.": "无法预览文件夹。",
   "PDF preview: {name}": "PDF 预览：{name}",
-  "PDF is too large to preview. Use Download from the file menu.":
-    "PDF 过大，无法预览。请使用文件菜单中的“下载”。",
+  Download: "下载",
+  "PDF is too large to preview. Use Download to open the original file.":
+    "PDF 过大，无法预览。请下载原文件。",
+  "PDF could not be rendered. Use Download to open the original file.":
+    "无法渲染 PDF。请下载原文件。",
+  "PDF page {page} of {count}": "PDF 第 {page} 页，共 {count} 页",
   "Binary file cannot be previewed.": "无法预览二进制文件。",
   "HTML is too large to render. Use Source or Download from the file menu.":
     "HTML 过大，无法渲染。请使用“源码”或文件菜单中的“下载”。",
