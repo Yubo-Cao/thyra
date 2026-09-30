@@ -26,6 +26,7 @@ import {
 import { t } from "../i18n";
 import type { FileExplorerEntry, FilePreview } from "../types";
 import { copyTextFromUserGesture } from "../terminalClipboard";
+import { downloadFileFromUrl } from "../downloadFile";
 import { useConnectionClient } from "../useConnectionClient";
 import {
   resolveWorkspaceMarkdownImageUrl,
@@ -62,6 +63,9 @@ import "./FilePreviewContent.css";
 
 const FileEditor = lazyWithReload("file-editor", () =>
   import("./FileEditor").then((module) => ({ default: module.FileEditor })),
+);
+const PdfPreview = lazyWithReload("pdf-preview", () =>
+  import("./PdfPreview").then((module) => ({ default: module.PdfPreview })),
 );
 
 type EditorDraft = {
@@ -494,6 +498,23 @@ export function FilePreviewContent({
             {entry?.name ?? t("Preview")}
           </div>
           <div className="file-preview-head-actions">
+            {!showingChanges && hasPdfPreview && preview?.workspace_id ? (
+              <Button
+                onClick={() =>
+                  void downloadFileFromUrl({
+                    url: workspaceFileUrl(
+                      connectionClient,
+                      preview.workspace_id,
+                      previewPath,
+                      { revision: preview.resource_revision },
+                    ),
+                    filename: entry?.name ?? previewPath,
+                  })
+                }
+              >
+                {t("Download")}
+              </Button>
+            ) : null}
             {!showingChanges && showDirectoryWorkspaceAction ? (
               <IconButton
                 label={t("New workspace with this directory as CWD")}
@@ -690,18 +711,21 @@ export function FilePreviewContent({
           hasPdfPreview &&
           !pdfTooLarge &&
           inlinePreviewUrl ? (
-            <iframe
-              className="file-preview-pdf"
-              src={inlinePreviewUrl}
-              title={t("PDF preview: {name}", {
-                name: entry?.name ?? previewPath,
-              })}
-            />
+            <Suspense
+              fallback={
+                <div className="file-preview-state">{t("Loading preview")}</div>
+              }
+            >
+              <PdfPreview
+                url={inlinePreviewUrl}
+                name={entry?.name ?? previewPath}
+              />
+            </Suspense>
           ) : null}
           {!loading && !error && pdfTooLarge ? (
             <div className="file-preview-state">
               {t(
-                "PDF is too large to preview. Use Download from the file menu.",
+                "PDF is too large to preview. Use Download to open the original file.",
               )}
             </div>
           ) : null}

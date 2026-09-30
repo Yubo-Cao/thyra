@@ -81,14 +81,6 @@
   overflow: hidden;
 }
 
-.file-preview-pdf {
-  flex: 1 1 auto;
-  width: 100%;
-  min-height: 0;
-  border: 0;
-  background: var(--panel);
-}
-
 .file-preview-html {
   flex: 1 1 auto;
   width: 100%;
