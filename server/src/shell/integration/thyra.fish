@@ -28,8 +28,8 @@ function __thyra_json
     set -l value (string replace -a '\\' '\\\\' -- "$argv[1]x" | string collect)
     set value (string replace -a '"' '\\"' -- "$value" | string collect)
     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
-        set -l c (printf '%b' (printf '\\x%02x' $i) | string collect -N -a)
-        set -l escaped (printf '\\u%04x' $i)
+        set -l c (printf '%b' (printf '\\\\x%02x' $i) | string collect -N -a)
+        set -l escaped (printf '\\\\u%04x' $i)
         set value (string replace -a -- "$c" "$escaped" "$value" | string collect)
     end
     printf '"%s"' (string replace -r 'x$' '' -- "$value" | string collect -a)
