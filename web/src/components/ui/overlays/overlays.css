@@ -60,14 +60,6 @@
   .ui-dialog[data-size="lg"] {
     --ui-dialog-width: 760px;
   }
-  .ui-dialog[data-size="full"] {
-    width: 100%;
-    max-height: none;
-    height: 100%;
-  }
-  .modal__container--full.ui-dialog-container {
-    padding: 0;
-  }
   .ui-dialog-header {
     flex-direction: row;
     align-items: center;
@@ -165,9 +157,6 @@
     width: 100%;
     height: auto;
     max-height: min(86dvh, 720px);
-  }
-  :where(html[data-layout="mobile"]) .ui-dialog[data-size="full"] {
-    height: 100%;
   }
   :where(html[data-layout="mobile"]) .ui-dialog-footer .button {
     --button-height: 40px;

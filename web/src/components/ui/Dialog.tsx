@@ -6,7 +6,7 @@ import {
 } from "react";
 import { LazyDialog, useOpenedOnce } from "./lazyOverlays";
 
-export type DialogSize = "sm" | "md" | "lg" | "full";
+export type DialogSize = "sm" | "md" | "lg";
 
 export type DialogProps = {
   open: boolean;
@@ -20,7 +20,7 @@ export type DialogProps = {
   children?: ReactNode;
   /** Actions, right-aligned: secondary first, primary last. */
   footer?: ReactNode;
-  /** sm 420px, md 560px (default), lg 760px, full = whole viewport. */
+  /** sm 420px, md 560px (default), lg 760px. */
   size?: DialogSize;
   /** Close on a backdrop press (default true). */
   dismissable?: boolean;

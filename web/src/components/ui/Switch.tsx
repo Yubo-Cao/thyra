@@ -10,8 +10,6 @@ export type SwitchProps = {
   "aria-label"?: string;
   description?: ReactNode;
   disabled?: boolean;
-  /** Put the label before the switch, spread across the row. */
-  labelPosition?: "end" | "start";
   className?: string;
   id?: string;
 };
@@ -27,7 +25,6 @@ export function Switch({
   "aria-label": ariaLabel,
   description,
   disabled = false,
-  labelPosition = "end",
   className,
   id,
 }: SwitchProps) {
@@ -37,7 +34,6 @@ export function Switch({
       data-slot="switch"
       data-selected={checked || undefined}
       data-disabled={disabled || undefined}
-      data-label-position={labelPosition}
       className={cn("switch switch--sm ui-switch", className)}
     >
       <label className="switch__content" data-slot="switch-content">

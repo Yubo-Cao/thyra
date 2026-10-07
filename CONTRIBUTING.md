@@ -119,7 +119,7 @@ The overlay chunk renders React Aria components with HeroUI's class names instea
 | `Token` | `tone` (`neutral`, `accent`, `info`, `success`, `warning`, `danger`), `code`, `icon`, `as="button"` for pressable tokens. |
 | `Avatar`, `AvatarGroup` | `Avatar`: `name`, `color`, `src` (initials until the picture loads; a failed picture keeps them). `AvatarGroup`: `people` (`key`, `name`, `color`, `avatarUrl`, `controller`), `max` (default 3, then a "+N" chip), `size` (`sm` = `--ui-token-height` for rows and tabs, `md` = `--ui-control-height`), `label` (accessible name and tooltip; omit inside a labelled control). Square avatars tuck behind a 1-2px gap of the real surface; hover springs neighbours up, focus-visible on a containing control does the same, touch and reduced motion do not. |
 | `Kbd`, `Spinner` | `<Kbd>Ctrl+K</Kbd>`; `<Spinner size tone label>` (`label` makes it a status). |
-| `Switch` | `checked`, `onChange(checked)`, children label or `aria-label`, `description`, `disabled`, `labelPosition="start"` for settings rows. |
+| `Switch` | `checked`, `onChange(checked)`, children label or `aria-label`, `description`, `disabled`. |
 | `Checkbox` | `checked`, `onChange(checked)`, `indeterminate`, `invalid`, `description`. |
 | `TextField`, `TextArea` | Every native input/textarea prop plus `label`, `description`, `error` (message or `true`), `fullWidth`, `onValueChange(value)`. `className` styles the wrapper; the ref is the native element. |
 | `SearchField` | `value`, `onValueChange`, leading icon, clear button; Escape clears, then propagates when empty. |
@@ -128,7 +128,7 @@ The overlay chunk renders React Aria components with HeroUI's class names instea
 | `Menu` (`DropdownMenu`) | `trigger` (a `Button`/`IconButton`), `items`: `MenuItem` (`id`, `label`, `icon`, `shortcut`, `description`, `danger`, `disabled`, `checked`, `onAction`) or sections (`title`, `danger`, `selectionMode`, `items`); items with `checked` are announced as `menuitemcheckbox` (or `menuitemradio` with `selectionMode: "single"`), `header`, `placement`, `onAction(id)`, optional `open`/`onOpenChange`. |
 | `ContextMenu` | Same items; `position` (`{x, y}` from the event, `null` closes), `onClose`. Flips and shifts into the viewport and restores focus. |
 | `Popover` | `trigger`, `children` (or `(close) => children`), `aria-label`, `placement`; a non-modal panel with role `dialog`. |
-| `Dialog` | `open`, `onOpenChange`, `title`, `description`, children (body), `footer`, `size` (`sm`, `md`, `lg`, `full`), `dismissable`, `keyboardDismissable`, `closeButton`, `onSubmit` (wraps body and footer in a form, default prevented), `headerStart`, `headerActions`, `placement="side"` (full-height end panel, a drawer), `busy`. A bottom sheet in the mobile layout. |
+| `Dialog` | `open`, `onOpenChange`, `title`, `description`, children (body), `footer`, `size` (`sm`, `md`, `lg`), `dismissable`, `keyboardDismissable`, `closeButton`, `onSubmit` (wraps body and footer in a form, default prevented), `headerStart`, `headerActions`, `placement="side"` (full-height end panel, a drawer), `busy`. A bottom sheet in the mobile layout. |
 | `ConfirmDialog` | `open`, `onOpenChange`, `title`, `message`, `confirmLabel`, `cancelLabel`, `tone="danger"`, `onConfirm` (may return a promise; a rejection keeps it open), `initialFocus` (`cancel` default, or `confirm`). |
 | `CommandList` (`ui/command`) | `sections` (`heading`, `items`: `id`, `textValue`, `children`, `disabled`, `danger`, `current`, `tooltip`), `search`, `onSearchChange`, `onAction(id)`, `placeholder`, `emptyText`, `filter(textValue, search)` (e.g. `subsequenceFilter`; omit for pre-filtered sections), `focusCurrent`. React Aria Autocomplete + ListBox: arrows move a virtual focus from the first option while the input keeps focus; `focusCurrent` focuses the `current` option instead. Render inside an overlay. |
 | `ToastRegion`, `toast` | Render `<ToastRegion />` once. `toast.show({title, description, tone, loading, action})`, `toast.info/success/warning/danger(title, content?, options?)`, `toast.update(id, patch, {timeout})`, `toast.close(id)`. `ui/toastQueue.ts` has no React runtime, so the store can call it. |
@@ -141,7 +141,6 @@ Conventions:
 - **Text.** Callers pass translated strings; wrappers add only `t()` defaults (Close, Cancel, Clear search, Notifications, Dismiss notification).
 - **Lazy loading.** Import overlays from anywhere; they cost a few hundred bytes until opened. Import `react-aria-components` only inside `ui/overlays/`, and do not import `@heroui/react` in new code. Check `bun run build:web` (initial JS gzip, initial CSS, file count) when adding a wrapper.
 - **CSS.** HeroUI rules live in `@layer components`; Thyra tuning goes in `@layer thyra`, above components and below Tailwind utilities. `tokens.css` declares the layer order first, so lazily loaded sheets slot in correctly. A wrapper that needs another HeroUI stylesheet imports it from its own sheet, which starts with `@reference` to `styles/heroui.css`. `@reference` emits no theme variables, so add any `var(--...)` the new sheet needs to the `@theme static` block in `heroui.css`. Unlayered legacy rules beat every layer: delete a screen's per-control CSS when migrating it.
-- **Gallery.** Run `bun run dev:web` and open `/ui-gallery.html?theme=light&layout=mobile&accent=teal` (`web/src/uiGallery.tsx`, dev-only). Check both themes and both layouts.
 
 Migrating a screen:
 
@@ -149,7 +148,7 @@ Migrating a screen:
 2. Hand-written `.modal-backdrop`/`.modal` markup with manual Escape, focus, and backdrop handling becomes `Dialog` or `ConfirmDialog`; delete the listeners and the `dialogFocus` calls it replaces.
 3. Floating menus (`ActionsMenu`, `.context-menu`, file menus) become `Menu` or `ContextMenu` with item objects; delete outside-click, arrow-key, and viewport-clamping code.
 4. `.settings-switch` buttons become `Switch`, `.check-row` inputs `Checkbox`, `ThemedSelect` `Select` (same props), hand-rolled tab strips `Tabs`, and `.form-field` inputs `TextField`.
-5. Remove the replaced CSS rules, then verify in the gallery and the app.
+5. Remove the replaced CSS rules, then verify in the app.
 
 ## Pages Website and Tutorial
 

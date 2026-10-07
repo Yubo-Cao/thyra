@@ -62,10 +62,7 @@ export function DialogImpl({
       <Modal
         data-slot="modal-container"
         data-placement={placement}
-        className={cn(
-          "modal__container ui-dialog-container",
-          size === "full" && "modal__container--full",
-        )}
+        className="modal__container ui-dialog-container"
       >
         <Dialog
           role={role}

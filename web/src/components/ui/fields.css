@@ -142,17 +142,6 @@
   .ui-switch > [data-slot="description"] {
     padding-inline-start: 38px;
   }
-  .ui-switch[data-label-position="start"] .switch__content {
-    width: 100%;
-    flex-direction: row-reverse;
-    justify-content: space-between;
-  }
-  .ui-switch[data-label-position="start"] {
-    width: 100%;
-  }
-  .ui-switch[data-label-position="start"] > [data-slot="description"] {
-    padding-inline-start: 0;
-  }
   .ui-switch
     .switch__content:has(.ui-choice-input:focus-visible)
     .switch__control,

@@ -84,12 +84,10 @@ async function discover(rootDir: string) {
     }
   }
   await visit(resolve(rootDir, "web/src"));
-  for (const file of ["web/index.html", "web/ui-gallery.html"]) {
-    usageFiles.push({
-      file,
-      content: await readFile(resolve(rootDir, file), "utf8"),
-    });
-  }
+  usageFiles.push({
+    file: "web/index.html",
+    content: await readFile(resolve(rootDir, "web/index.html"), "utf8"),
+  });
   return { cssFiles, usageFiles };
 }
 
