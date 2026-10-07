@@ -57,18 +57,6 @@ const endpointCases: Array<{
     method: "POST",
   },
   {
-    endpoint: "agent-session-download",
-    suffix: "/agent-session/download",
-    legacyPath: "/api/agent-session/download",
-    method: "GET",
-  },
-  {
-    endpoint: "agent-session-atif",
-    suffix: "/agent-session/atif",
-    legacyPath: "/api/agent-session/atif",
-    method: "GET",
-  },
-  {
     endpoint: "file-download",
     suffix: "/file/download",
     legacyPath: "/api/file/download",

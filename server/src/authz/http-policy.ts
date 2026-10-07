@@ -163,16 +163,6 @@ export const HTTP_POLICY = {
   "connection.invalid": { class: "read", scope: "session", guest: true },
   // Writes the image to the host's temporary directory for pasting.
   "connection.upload-image": { class: "write", scope: "connection" },
-  "connection.agent-session-download": {
-    class: "read",
-    scope: "workspace",
-    resolve: fromQuery(targetResolvers.pane),
-  },
-  "connection.agent-session-atif": {
-    class: "read",
-    scope: "workspace",
-    resolve: fromQuery(targetResolvers.pane),
-  },
   "connection.file-download": {
     class: "read",
     scope: "workspace",

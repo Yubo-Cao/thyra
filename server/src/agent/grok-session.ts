@@ -3,23 +3,15 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { SessionFile } from "./session-types";
-import {
-  cleanMessageText,
-  isRecord,
-  stringValue,
-  textFromContent,
-} from "./session-utils";
+import { isRecord, stringValue } from "./session-utils";
 
 type GrokSessionSummary = {
   sessionId: string;
   cwd: string;
-  createdAtMs?: number;
   updatedAtMs?: number;
-  modelName?: string;
-  agentVersion?: string;
 };
 
-export type GrokSessionDescriptor = {
+type GrokSessionDescriptor = {
   session: GrokSessionSummary;
   file: SessionFile;
 };
@@ -34,7 +26,7 @@ function grokHome() {
   return resolve(configured);
 }
 
-export function grokSessionsRoot() {
+function grokSessionsRoot() {
   return join(grokHome(), "sessions");
 }
 
@@ -58,10 +50,7 @@ async function readSummary(path: string): Promise<GrokSessionSummary | null> {
     return {
       sessionId,
       cwd: stringValue(info.cwd),
-      createdAtMs: dateValueMs(raw.created_at),
       updatedAtMs: dateValueMs(raw.updated_at),
-      modelName: stringValue(raw.current_model_id) || undefined,
-      agentVersion: stringValue(raw.version) || undefined,
     };
   } catch {
     return null;
@@ -88,9 +77,6 @@ async function describeSessionDirectory(
       mtimeMs: summary.updatedAtMs ?? transcriptInfo.mtimeMs,
       size: transcriptInfo.size,
       sessionId: summary.sessionId,
-      createdAtMs: summary.createdAtMs,
-      modelName: summary.modelName,
-      agentVersion: summary.agentVersion,
     },
   };
 }
@@ -114,7 +100,7 @@ async function newestDescriptor(sessionDirs: string[], cwd?: string) {
 }
 
 // The cwd directory name is percent-encoded by Grok, so lookup is constant-time
-// with respect to unrelated sessions and remains cheap when Session Inspect polls.
+// with respect to unrelated sessions and remains cheap on every agent list refresh.
 export async function findGrokSessionForCwd(
   cwd: string,
   root = grokSessionsRoot(),
@@ -171,27 +157,4 @@ export async function describeGrokSessionPath(path: string) {
     return null;
   }
   return describeSessionDirectory(info.isDirectory() ? path : dirname(path));
-}
-
-// Grok prepends environment snapshots to the first user record and emits other
-// injected context as synthetic user records. Only the explicit query is history.
-export function grokUserMessageText(record: Record<string, unknown>) {
-  if (record.type !== "user" || stringValue(record.synthetic_reason)) return "";
-  const content = textFromContent(record.content);
-  const queries = Array.from(
-    content.matchAll(/<user_query>\s*([\s\S]*?)\s*<\/user_query>/gi),
-  )
-    .map((match) => cleanMessageText(match[1] ?? ""))
-    .filter(Boolean);
-  if (queries.length > 0) return queries.join("\n\n");
-  return cleanMessageText(
-    content
-      .replace(/<user_info>[\s\S]*?<\/user_info>/gi, "")
-      .replace(/<git_status>[\s\S]*?<\/git_status>/gi, "")
-      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, ""),
-  );
-}
-
-export function grokReasoningText(record: Record<string, unknown>) {
-  return cleanMessageText(textFromContent(record.summary ?? record.content));
 }

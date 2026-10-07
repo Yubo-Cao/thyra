@@ -9,28 +9,13 @@ function quote(value: string) {
 }
 
 describe("agent session file access", () => {
-  test("reads reported session files through SSH", async () => {
+  test("stats reported session files through SSH", async () => {
     const commands: string[][] = [];
     const files = createAgentSessionFileAccess({
       sshHost: "operator@example.com",
       shQuote: quote,
       async runBinaryProcessWithTimeout(argv) {
         commands.push(argv);
-        const command = argv.at(-1) ?? "";
-        if (command.includes("head -c")) {
-          return {
-            code: 0,
-            stdout: Buffer.from('{"type":"session"}\n'),
-            stderr: "",
-          };
-        }
-        if (command.includes("cat ")) {
-          return {
-            code: 0,
-            stdout: Buffer.from('{"type":"session"}\n{"type":"message"}\n'),
-            stderr: "",
-          };
-        }
         return { code: 0, stdout: Buffer.from(metadata), stderr: "" };
       },
     });
@@ -42,17 +27,6 @@ describe("agent session file access", () => {
       identity: "1:42",
       changeToken: "1784872800.123:1784872800.456",
     });
-    expect(await files.readText(remotePath)).toContain('"type":"message"');
-    expect(
-      new TextDecoder().decode(await files.readPrefix(remotePath, 20)),
-    ).toBe('{"type":"session"}\n');
-    expect(
-      new TextDecoder().decode(
-        await new Response(
-          await files.readDownloadBody(remotePath),
-        ).arrayBuffer(),
-      ),
-    ).toContain('"type":"message"');
     expect(
       commands.every(
         (command) =>

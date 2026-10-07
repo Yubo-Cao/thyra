@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { localAgentSessionFiles } from "./session-file-access";
 import {
   createAgentSessionResolverContext,
-  resolveAgentSession,
+  resolveAgentSessionFile,
 } from "./session-resolver";
 
 const tempDirectories: string[] = [];
@@ -29,40 +29,29 @@ describe("agent session resolver context", () => {
     const sessionPath = join(sessionDirectory, `${sessionId}.jsonl`);
     await mkdir(sessionDirectory, { recursive: true });
     await writeFile(sessionPath, "{}\n");
-    const herdrCall = async () => ({
-      agent: {
-        agent: "pi",
-        workspace_id: "w1",
-        tab_id: "t1",
-        cwd: "/repo",
-        agent_session: {
-          source: "herdr:pi",
-          agent: "pi",
-          kind: "id",
-          value: sessionId,
-        },
-      },
-    });
+    const agent = {
+      agent: "pi",
+      cwd: "/repo",
+      agent_session: { agent: "pi", kind: "id", value: sessionId },
+    };
     const first = createAgentSessionResolverContext();
     const second = createAgentSessionResolverContext();
 
-    const firstResult = await resolveAgentSession(
-      { pane_id: "p1" },
-      herdrCall,
+    const firstResult = await resolveAgentSessionFile(
+      agent,
       localAgentSessionFiles,
       first,
     );
-    expect(firstResult.path).toBe(sessionPath);
+    expect(firstResult?.path).toBe(sessionPath);
     expect(first.pathCache.get(`pi:${sessionId}`)).toBe(sessionPath);
     expect(second.pathCache.size).toBe(0);
 
-    const secondResult = await resolveAgentSession(
-      { pane_id: "p1" },
-      herdrCall,
+    const secondResult = await resolveAgentSessionFile(
+      agent,
       localAgentSessionFiles,
       second,
     );
-    expect(secondResult.path).toBe(sessionPath);
+    expect(secondResult?.path).toBe(sessionPath);
     expect(second.pathCache.get(`pi:${sessionId}`)).toBe(sessionPath);
     expect(first.pathCache).not.toBe(second.pathCache);
   });

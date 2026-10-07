@@ -11,8 +11,6 @@ import {
 export type ConnectionHttpEndpoint =
   | "herdr-info"
   | "upload-image"
-  | "agent-session-download"
-  | "agent-session-atif"
   | "file-download"
   | "file-upload"
   | "file-delete";
@@ -36,18 +34,6 @@ const ENDPOINTS: EndpointDefinition[] = [
     suffix: "/upload-image",
     method: "POST",
     legacyPath: "/api/upload-image",
-  },
-  {
-    endpoint: "agent-session-download",
-    suffix: "/agent-session/download",
-    method: "GET",
-    legacyPath: "/api/agent-session/download",
-  },
-  {
-    endpoint: "agent-session-atif",
-    suffix: "/agent-session/atif",
-    method: "GET",
-    legacyPath: "/api/agent-session/atif",
   },
   {
     endpoint: "file-download",

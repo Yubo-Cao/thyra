@@ -24,14 +24,22 @@ function museSessionsRoot() {
   );
 }
 
+/** Reads the metadata prefix of a session log; a seam for cache tests. */
+export const museMetadataReader = {
+  readPrefix: (path: string) =>
+    Bun.file(path)
+      .slice(0, 256 * 1024)
+      .text(),
+};
+
 function canonicalDirectory(path: string) {
   return realpath(path).catch(() => resolve(path));
 }
 
 async function readWorkspace(path: string) {
   try {
-    const prefix = await localAgentSessionFiles.readPrefix(path, 256 * 1024);
-    for (const line of new TextDecoder().decode(prefix).split("\n")) {
+    const prefix = await museMetadataReader.readPrefix(path);
+    for (const line of prefix.split("\n")) {
       if (!line.trim()) continue;
       const record: unknown = JSON.parse(line);
       if (
@@ -59,7 +67,7 @@ async function cachedWorkspace(file: SessionFile, cache: MuseMetadataCache) {
   if (entry?.signature !== signature) {
     entry = { signature, workspace: readWorkspace(file.path) };
   }
-  // Per-connection LRU, including in-flight reads shared by History and summary.
+  // Per-connection LRU, including in-flight reads shared by concurrent lookups.
   cache.delete(file.path);
   cache.set(file.path, entry);
   while (cache.size > 512) cache.delete(cache.keys().next().value!);

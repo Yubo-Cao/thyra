@@ -156,11 +156,8 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "connections.remove": dangerous,
   "connections.test": dangerous,
 
-  // Agent sessions and history.
+  // Agents.
   "agent.list": list,
-  "agent_history.get": read(r.pane),
-  "agent_history.entry": read(r.pane),
-  "agent_session.get": read(r.pane),
 
   // Workspace files and Git.
   "file.list": read(r.files),

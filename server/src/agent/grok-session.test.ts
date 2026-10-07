@@ -2,13 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { findGrokSessionById, findGrokSessionForCwd } from "./grok-session";
+import { localAgentSessionFiles } from "./session-file-access";
 import {
-  findGrokSessionById,
-  findGrokSessionForCwd,
-  grokReasoningText,
-  grokUserMessageText,
-} from "./grok-session";
-import { resolveAgentSession } from "./session-resolver";
+  createAgentSessionResolverContext,
+  resolveAgentSessionFile,
+} from "./session-resolver";
 
 const tempRoots: string[] = [];
 const originalGrokHome = process.env.GROK_HOME;
@@ -62,7 +61,6 @@ describe("Grok Build sessions", () => {
     const found = await findGrokSessionForCwd(cwd, root);
 
     expect(found?.session.sessionId).toBe("newer");
-    expect(found?.session.modelName).toBe("grok-4.5");
     expect(found?.file.path).toEndWith("newer/chat_history.jsonl");
   });
 
@@ -94,45 +92,16 @@ describe("Grok Build sessions", () => {
       "2026-07-02T00:00:00.000Z",
     );
 
-    const resolved = await resolveAgentSession(
-      { pane_id: "p1", agent: "grok" },
-      async () => ({
-        agent: {
-          agent: "grok",
-          cwd: "/workspace/pane-identity-directory",
-          foreground_cwd: foregroundCwd,
-        },
-      }),
+    const file = await resolveAgentSessionFile(
+      {
+        agent: "grok",
+        cwd: "/workspace/pane-identity-directory",
+        foreground_cwd: foregroundCwd,
+      },
+      localAgentSessionFiles,
+      createAgentSessionResolverContext(),
     );
 
-    expect(resolved.status).toBe("ok");
-    expect(resolved.session?.value).toBe("foreground-session");
-  });
-
-  test("extracts only real user queries and reasoning summaries", () => {
-    expect(
-      grokUserMessageText({
-        type: "user",
-        content: [
-          {
-            type: "text",
-            text: "<user_info>ignored</user_info>\n<user_query>Ship it</user_query>",
-          },
-        ],
-      }),
-    ).toBe("Ship it");
-    expect(
-      grokUserMessageText({
-        type: "user",
-        synthetic_reason: "system_reminder",
-        content: [{ type: "text", text: "ignore me" }],
-      }),
-    ).toBe("");
-    expect(
-      grokReasoningText({
-        type: "reasoning",
-        summary: [{ type: "summary_text", text: "Inspect the repository" }],
-      }),
-    ).toBe("Inspect the repository");
+    expect(file?.sessionId).toBe("foreground-session");
   });
 });

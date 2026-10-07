@@ -12,9 +12,6 @@ type RunBinaryProcessWithTimeout = (
 export type AgentSessionFileAccess = {
   remote: boolean;
   statFile(path: string): Promise<SessionFile | null>;
-  readText(path: string): Promise<string>;
-  readPrefix(path: string, byteLimit: number): Promise<Uint8Array>;
-  readDownloadBody(path: string): Promise<BodyInit>;
   findPiSessionById(id: string): Promise<SessionFile | null>;
 };
 
@@ -37,15 +34,6 @@ async function localSessionFile(path: string): Promise<SessionFile | null> {
 export const localAgentSessionFiles: AgentSessionFileAccess = {
   remote: false,
   statFile: localSessionFile,
-  readText: (path) => Bun.file(path).text(),
-  async readPrefix(path, byteLimit) {
-    return new Uint8Array(
-      await Bun.file(path).slice(0, byteLimit).arrayBuffer(),
-    );
-  },
-  async readDownloadBody(path) {
-    return Bun.file(path);
-  },
   async findPiSessionById() {
     return null;
   },
@@ -71,25 +59,6 @@ export function createAgentSessionFileAccess(args: {
 }): AgentSessionFileAccess {
   if (!args.sshHost) return localAgentSessionFiles;
   const host = args.sshHost;
-
-  async function runRemote(command: string) {
-    const result = await args.runBinaryProcessWithTimeout(
-      sshCommandArgv(host, `bash -lc ${args.shQuote(command)}`),
-      SESSION_FILE_TIMEOUT_MS,
-    );
-    if (result.code !== 0) {
-      throw new Error(
-        (
-          result.stderr ||
-          result.stdout.toString("utf8") ||
-          `remote session command exited ${result.code}`
-        )
-          .trim()
-          .slice(0, 1000),
-      );
-    }
-    return result.stdout;
-  }
 
   async function statFile(path: string) {
     const command = `
@@ -125,20 +94,6 @@ printf '%s\\t%s\\t%s\\t%s\\t%s\\n' "$size" "$mtime" "$path64" "$identity" "$chan
   return {
     remote: true,
     statFile,
-    async readText(path) {
-      return (await runRemote(`set -eu\ncat ${args.shQuote(path)}`)).toString(
-        "utf8",
-      );
-    },
-    async readPrefix(path, byteLimit) {
-      return runRemote(
-        `set -eu\nhead -c ${Math.max(1, Math.floor(byteLimit))} ${args.shQuote(path)}`,
-      );
-    },
-    async readDownloadBody(path) {
-      const bytes = await runRemote(`set -eu\ncat ${args.shQuote(path)}`);
-      return Uint8Array.from(bytes).buffer;
-    },
     async findPiSessionById(id) {
       const command = `
 set -eu

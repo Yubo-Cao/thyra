@@ -734,9 +734,6 @@ const rpcOutcomes = new Map<string, { status: "error"; detail?: string }>();
 
 const IMPORTANT_RPC_METHODS = new Set([
   "bridge.pause_others",
-  "agent_history.get",
-  "agent_history.entry",
-  "agent_session.get",
   "file.read",
   "file.write",
   "git.diff_file",
@@ -1675,11 +1672,6 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     sourceWorkspaceForWorktreeCreate,
     runWorktreeSetupHook,
   } = connection.worktreeHooks;
-  const {
-    readHistory: readAgentMessageHistory,
-    readSummary: readAgentSessionSummary,
-    readEntry: readAgentHistoryEntry,
-  } = connection.agentSessions;
 
   if (
     (method === "tab.create" || method === "workspace.create") &&
@@ -1714,33 +1706,6 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       );
     } catch (e) {
       sendError("agent-list-error", e);
-    }
-    return;
-  }
-  if (method === "agent_history.get") {
-    try {
-      const result = await readAgentMessageHistory(params ?? {});
-      sendReply({ id, result }, "agent-history-get");
-    } catch (e) {
-      sendError("agent-history-get-error", e);
-    }
-    return;
-  }
-  if (method === "agent_history.entry") {
-    try {
-      const result = await readAgentHistoryEntry(params ?? {});
-      sendReply({ id, result }, "agent-history-entry");
-    } catch (e) {
-      sendError("agent-history-entry-error", e);
-    }
-    return;
-  }
-  if (method === "agent_session.get") {
-    try {
-      const result = await readAgentSessionSummary(params ?? {});
-      sendReply({ id, result }, "agent-session-get");
-    } catch (e) {
-      sendError("agent-session-get-error", e);
     }
     return;
   }
@@ -2180,16 +2145,6 @@ async function handleConnectionHttpRequest(
       response = await connection.handleHerdrInfo();
     } else if (endpoint === "upload-image") {
       response = await connection.handleImageUpload(req);
-    } else if (endpoint === "agent-session-download") {
-      response = await connection.agentSessions.downloadFile({
-        pane_id: url.searchParams.get("pane_id"),
-        agent: url.searchParams.get("agent"),
-      });
-    } else if (endpoint === "agent-session-atif") {
-      response = await connection.agentSessions.downloadAtif({
-        pane_id: url.searchParams.get("pane_id"),
-        agent: url.searchParams.get("agent"),
-      });
     } else if (endpoint === "file-download") {
       try {
         response = await connection.files.downloadWorkspaceFile({

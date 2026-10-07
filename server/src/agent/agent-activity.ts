@@ -1,7 +1,7 @@
 import type { AgentSessionFileAccess } from "./session-file-access";
 import {
   type AgentSessionResolverContext,
-  resolveAgentSessionInfo,
+  resolveAgentSessionFile,
 } from "./session-resolver";
 import { isRecord, normalizeAgentName } from "./session-utils";
 
@@ -38,13 +38,8 @@ export async function enrichAgentActivity(
         )
           continue;
         try {
-          const resolved = await resolveAgentSessionInfo(
-            { pane_id: agent.pane_id },
-            agent,
-            files,
-            context,
-          );
-          const time = resolved.file?.mtimeMs;
+          const file = await resolveAgentSessionFile(agent, files, context);
+          const time = file?.mtimeMs;
           if (typeof time === "number" && Number.isFinite(time) && time > 0) {
             agents[index] = { ...agent, last_activity_at: time };
           }

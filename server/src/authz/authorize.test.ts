@@ -20,9 +20,6 @@ import { PRINCIPALS, testDeps } from "../../test-support/authz/principals";
 const RPC_MATRIX: Record<string, string> = {
   "agent.list": "admin owner editor viewer guest guest-pane",
   "agent.prompt": "-",
-  "agent_history.entry": "admin owner editor viewer guest guest-pane",
-  "agent_history.get": "admin owner editor viewer guest guest-pane",
-  "agent_session.get": "admin owner editor viewer guest guest-pane",
   "bridge.identity": "admin owner editor viewer outsider guest guest-pane",
   "bridge.identity_profile": "admin owner editor viewer outsider",
   "bridge.pause_others": "admin",
@@ -164,9 +161,6 @@ const HTTP_MATRIX: Record<string, string> = {
   "auth.passkeys.remove": "admin owner editor viewer outsider",
   "auth.sessions": "admin owner editor viewer outsider",
   "auth.sessions.revoke": "admin owner editor viewer outsider",
-  "connection.agent-session-atif": "admin owner editor viewer guest guest-pane",
-  "connection.agent-session-download":
-    "admin owner editor viewer guest guest-pane",
   "connection.file-delete": "admin owner editor",
   "connection.file-download": "admin owner editor viewer guest",
   "connection.file-upload": "admin owner editor",

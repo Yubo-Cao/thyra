@@ -1,16 +1,25 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   describeAntigravitySessionPath,
   findAntigravitySessionById,
   findAntigravitySessionForCwd,
-  readAntigravitySessionRecords,
 } from "./antigravity-session";
-import { resolveAgentSession } from "./session-resolver";
-import { projectAgentTrajectory } from "./session-trajectory";
+import { localAgentSessionFiles } from "./session-file-access";
+import {
+  createAgentSessionResolverContext,
+  resolveAgentSessionFile,
+} from "./session-resolver";
+
+const resolve = (agent: Record<string, unknown>) =>
+  resolveAgentSessionFile(
+    agent,
+    localAgentSessionFiles,
+    createAgentSessionResolverContext(),
+  );
 
 const tempRoots: string[] = [];
 const originalHome = process.env.ANTIGRAVITY_HOME;
@@ -182,7 +191,6 @@ describe("Antigravity sessions", () => {
     const found = await findAntigravitySessionForCwd(cwd, root);
 
     expect(found?.session.sessionId).toBe("newer-session");
-    expect(found?.session.modelName).toBe("gemini-3.8-flash");
     expect(found?.file.path).toEndWith("newer-session.db");
   });
 
@@ -239,61 +247,10 @@ describe("Antigravity sessions", () => {
     expect(desc).not.toBeNull();
     expect(desc?.session.sessionId).toBe("session-desc-1");
     expect(desc?.session.cwd).toBe("/workspace/my-project");
-    expect(desc?.session.modelName).toBe("gemini-3.8-flash");
-    expect(desc?.session.agentVersion).toBe("antigravity-cli");
-    expect(desc?.session.createdAtMs).toBe(1726272000 * 1000);
-    expect(desc?.session.updatedAtMs).toBe((1726272000 + 10) * 1000);
+    expect(desc?.file.mtimeMs).toBe((1726272000 + 10) * 1000);
   });
 
-  test("reads and normalizes session records from database", async () => {
-    const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
-    tempRoots.push(root);
-    const dbPath = await createSyntheticDb(
-      root,
-      "session-records-1",
-      "/workspace/records",
-      1726272000,
-    );
-
-    const records = await readAntigravitySessionRecords(dbPath);
-    expect(records.length).toBe(4);
-
-    expect(records[0]).toMatchObject({
-      type: "user",
-      content: "Fix the bug in pult",
-    });
-
-    expect(records[1]).toMatchObject({
-      type: "assistant",
-      tool_calls: [
-        {
-          id: "call_1",
-          name: "view_file",
-          arguments: { AbsolutePath: "/dev/pult/README.md" },
-        },
-      ],
-    });
-
-    expect(records[2]).toMatchObject({
-      type: "tool_result",
-      tool_call_id: "call_1",
-      tool_name: "view_file",
-      content: "Pult documentation content",
-    });
-
-    expect(records[3]).toMatchObject({
-      type: "assistant",
-      content: "Bug is fixed!",
-      reasoning: "I checked the documentation.",
-      usage: {
-        input_tokens: 150,
-        output_tokens: 45,
-        cached_input_tokens: 30,
-      },
-    });
-  });
-
-  test("resolves Antigravity session via resolveAgentSession", async () => {
+  test("resolves a reported Antigravity session id", async () => {
     const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
     tempRoots.push(root);
     process.env.ANTIGRAVITY_CONVERSATIONS_DIR = root;
@@ -301,26 +258,14 @@ describe("Antigravity sessions", () => {
     const sessionId = "session-herdr-resolved";
     await createSyntheticDb(root, sessionId, "/workspace/test-repo");
 
-    const resolved = await resolveAgentSession(
-      { pane_id: "p1", agent: "agy" },
-      async () => ({
-        agent: {
-          agent: "agy",
-          cwd: "/workspace/test-repo",
-          agent_session: {
-            source: "herdr:antigravity_cli",
-            agent: "agy",
-            kind: "id",
-            value: sessionId,
-          },
-        },
-      }),
-    );
+    const file = await resolve({
+      agent: "agy",
+      cwd: "/workspace/test-repo",
+      agent_session: { agent: "agy", kind: "id", value: sessionId },
+    });
 
-    expect(resolved.status).toBe("ok");
-    expect(resolved.agent).toBe("agy");
-    expect(resolved.session?.value).toBe(sessionId);
-    expect(resolved.file?.path).toEndWith(`${sessionId}.db`);
+    expect(file?.sessionId).toBe(sessionId);
+    expect(file?.path).toEndWith(`${sessionId}.db`);
   });
 
   test("resolves Antigravity session via cwd fallback when agent_session is missing", async () => {
@@ -331,109 +276,23 @@ describe("Antigravity sessions", () => {
     const sessionId = "session-fallback-cwd";
     await createSyntheticDb(root, sessionId, "/workspace/fallback-dir");
 
-    const resolved = await resolveAgentSession(
-      { pane_id: "p2", agent: "antigravity" },
-      async () => ({
-        agent: {
-          agent: "antigravity",
-          cwd: "/workspace/fallback-dir",
-        },
-      }),
-    );
+    const file = await resolve({
+      agent: "antigravity",
+      cwd: "/workspace/fallback-dir",
+    });
 
-    expect(resolved.status).toBe("ok");
-    expect(resolved.agent).toBe("agy");
-    expect(resolved.session?.value).toBe(sessionId);
+    expect(file?.sessionId).toBe(sessionId);
   });
 
-  test("returns missing_session with integration command when session cannot be resolved", async () => {
+  test("returns no file when the session cannot be resolved", async () => {
     const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
     tempRoots.push(root);
     process.env.ANTIGRAVITY_CONVERSATIONS_DIR = root;
 
-    const resolved = await resolveAgentSession(
-      { pane_id: "p3", agent: "agy" },
-      async () => ({
-        agent: {
-          agent: "agy",
-          cwd: "",
-        },
-      }),
-    );
-
-    expect(resolved.status).toBe("missing_session");
-    expect(resolved.command).toBe("herdr integration install antigravity-cli");
+    expect(await resolve({ agent: "agy", cwd: "" })).toBeNull();
   });
 
-  test("extracts nested tool result protobuf and ensures content has no control characters", async () => {
-    const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
-    tempRoots.push(root);
-    const dbPath = join(root, "nested-tool-result.db");
-    const db = new Database(dbPath);
-
-    db.run(
-      "CREATE TABLE trajectory_meta (trajectory_id text, cascade_id text, trajectory_type integer, source integer, PRIMARY KEY (trajectory_id))",
-    );
-    db.run(
-      "CREATE TABLE steps (idx integer, step_type integer NOT NULL DEFAULT 0, status integer NOT NULL DEFAULT 0, has_subtrajectory numeric NOT NULL DEFAULT false, metadata blob, error_details blob, permissions blob, task_details blob, render_info blob, step_payload blob, step_format integer NOT NULL DEFAULT 0, PRIMARY KEY (idx))",
-    );
-    db.run(
-      "CREATE TABLE gen_metadata (idx integer, data blob, size integer NOT NULL DEFAULT 0, PRIMARY KEY (idx))",
-    );
-    db.run(
-      'CREATE TABLE trajectory_metadata_blob (id text DEFAULT "main", data blob, PRIMARY KEY (id))',
-    );
-
-    db.run("INSERT INTO trajectory_meta VALUES (?, ?, ?, ?)", [
-      "traj-nested",
-      "nested-tool-result",
-      4,
-      17,
-    ]);
-
-    const toolCall = {
-      id: "call_nested",
-      name: "run_command",
-      args: { CommandLine: "ls" },
-    };
-
-    // Construct nested field 2 protobuf containing:
-    // - field 1 (wireType 2): actual text output with tabs, newlines, and some control bytes
-    // - field 6 (wireType 2): binary step metadata
-    const textWithControlBytes =
-      "File Path: /dev/pult\nLine 1\tTabbed\x00\x08\x0b\x0c\x1f\ufffdClean";
-    const sf1Text = encodeField(1, 2, textWithControlBytes);
-    const sf6Meta = encodeField(
-      6,
-      2,
-      Buffer.from([0x08, 0x01, 0x12, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f]),
-    );
-    const nestedProto = Buffer.concat([sf1Text, sf6Meta]);
-
-    // Field 140 has field 2 = nestedProto
-    const f140Msg = encodeField(140, 2, encodeField(2, 2, nestedProto));
-
-    db.run(
-      "INSERT INTO steps (idx, step_type, metadata, step_payload) VALUES (?, ?, ?, ?)",
-      [0, 132, makeStepMeta(1726272000, toolCall), f140Msg],
-    );
-    db.close();
-
-    const records = await readAntigravitySessionRecords(dbPath);
-    expect(records.length).toBe(2);
-    const tr = records.find((r) => r.type === "tool_result");
-    expect(tr).toBeDefined();
-    expect(tr?.type).toBe("tool_result");
-
-    const content = (tr as { content?: string }).content;
-    expect(content).toBe("File Path: /dev/pult\nLine 1\tTabbedClean");
-
-    // Strictly assert no control characters (U+0000 - U+001F except \t, \n, \r) and no U+FFFD
-    const junkRegex = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/;
-    expect(junkRegex.test(content || "")).toBe(false);
-  });
-
-  test("fails soft with empty history on unknown tables or future schema bump", async () => {
+  test("describes unknown or future schemas with fallback metadata", async () => {
     const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
     tempRoots.push(root);
     const dbPath = join(root, "unknown-schema-session.db");
@@ -448,69 +307,5 @@ describe("Antigravity sessions", () => {
     const desc = await describeAntigravitySessionPath(dbPath);
     expect(desc).not.toBeNull();
     expect(desc?.session.sessionId).toBe("unknown-schema-session");
-
-    const records = await readAntigravitySessionRecords(dbPath);
-    expect(records).toEqual([]);
-
-    if (desc) {
-      const trajectory = projectAgentTrajectory("agy", desc.file, records);
-      expect(trajectory.schema_version).toBe("ATIF-v1.7");
-      expect(trajectory.agent.name).toBe("antigravity-cli");
-      expect(trajectory.steps).toEqual([]);
-    }
-  });
-
-  test("fails soft with empty records when steps table schema is altered", async () => {
-    const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
-    tempRoots.push(root);
-    const dbPath = join(root, "altered-steps-session.db");
-    const db = new Database(dbPath);
-    db.run("CREATE TABLE steps (step_id text, different_structure text)");
-    db.run("INSERT INTO steps VALUES (?, ?)", ["1", "not-expected-columns"]);
-    db.close();
-
-    const records = await readAntigravitySessionRecords(dbPath);
-    expect(records).toEqual([]);
-  });
-
-  test("fails soft on individual malformed step rows while recovering valid ones", async () => {
-    const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
-    tempRoots.push(root);
-    const dbPath = join(root, "partial-malformed.db");
-    const db = new Database(dbPath);
-
-    db.run(
-      "CREATE TABLE steps (idx integer, step_type integer NOT NULL DEFAULT 0, status integer NOT NULL DEFAULT 0, has_subtrajectory numeric NOT NULL DEFAULT false, metadata blob, error_details blob, permissions blob, task_details blob, render_info blob, step_payload blob, step_format integer NOT NULL DEFAULT 0, PRIMARY KEY (idx))",
-    );
-
-    // Row 0: valid user input (step_type 14)
-    const userPrompt = "Hello from valid step";
-    const userMsg = encodeField(19, 2, encodeField(2, 2, userPrompt));
-    db.run(
-      "INSERT INTO steps (idx, step_type, metadata, step_payload) VALUES (?, ?, ?, ?)",
-      [0, 14, makeStepMeta(1726272000), userMsg],
-    );
-
-    // Row 1: malformed row with corrupt metadata and payload that could trigger type errors
-    db.run(
-      "INSERT INTO steps (idx, step_type, metadata, step_payload) VALUES (?, ?, ?, ?)",
-      [1, 15, Buffer.from([0xff, 0xff, 0xff]), Buffer.from([0xff, 0xff, 0xff])],
-    );
-    db.close();
-
-    const records = await readAntigravitySessionRecords(dbPath);
-    expect(records.length).toBe(1);
-    expect(records[0].type).toBe("user");
-    expect((records[0] as { content?: string }).content).toBe(userPrompt);
-  });
-
-  test("fails soft with empty records when file is corrupt or not an sqlite database", async () => {
-    const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
-    tempRoots.push(root);
-    const corruptPath = join(root, "not-a-db.db");
-    await writeFile(corruptPath, "this is not an sqlite database at all");
-
-    const records = await readAntigravitySessionRecords(corruptPath);
-    expect(records).toEqual([]);
   });
 });

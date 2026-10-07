@@ -2,17 +2,8 @@ import { existsSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import type {
-  AgentHistoryParams,
-  AgentSessionInfo,
-  AgentSessionResolved,
-  HerdrCall,
-  SessionFile,
-} from "./session-types";
-import {
-  localAgentSessionFiles,
-  type AgentSessionFileAccess,
-} from "./session-file-access";
+import type { AgentSessionInfo, SessionFile } from "./session-types";
+import type { AgentSessionFileAccess } from "./session-file-access";
 import {
   describeGrokSessionPath,
   findGrokSessionById,
@@ -24,31 +15,15 @@ import {
   findAntigravitySessionForCwd,
 } from "./antigravity-session";
 import { findMuseSession, type MuseMetadataCache } from "./muse-session";
-import {
-  integrationInstallCommand,
-  isRecord,
-  normalizeAgentName,
-  stringValue,
-} from "./session-utils";
+import { isRecord, normalizeAgentName, stringValue } from "./session-utils";
 
 export type AgentSessionResolverContext = {
   pathCache: Map<string, string>;
   museMetadata: MuseMetadataCache;
 };
 
-const DEFAULT_RESOLVER_CONTEXT = createAgentSessionResolverContext();
-
 export function createAgentSessionResolverContext(): AgentSessionResolverContext {
   return { pathCache: new Map(), museMetadata: new Map() };
-}
-
-function normalizeParams(raw: Record<string, unknown>): AgentHistoryParams {
-  return {
-    pane_id: stringValue(raw.pane_id),
-    workspace_id: stringValue(raw.workspace_id),
-    tab_id: stringValue(raw.tab_id),
-    agent: stringValue(raw.agent),
-  };
 }
 
 function piAgentDirectory() {
@@ -208,167 +183,52 @@ async function sessionFileFor(
   return null;
 }
 
-function parseAgentInfo(result: unknown) {
-  return isRecord(result) && isRecord(result.agent) ? result.agent : null;
-}
-
-function parseAgentSession(agentInfo: Record<string, unknown> | null) {
-  const raw = agentInfo?.agent_session;
+function parseAgentSession(agentInfo: Record<string, unknown>) {
+  const raw = agentInfo.agent_session;
   if (!isRecord(raw)) return null;
   const kind = stringValue(raw.kind).toLowerCase();
   const value = stringValue(raw.value);
   if ((kind !== "id" && kind !== "path") || !value) return null;
   return {
-    source: stringValue(raw.source),
     agent: stringValue(raw.agent),
     kind,
     value,
   } satisfies AgentSessionInfo;
 }
 
-export async function resolveAgentSession(
-  rawParams: Record<string, unknown>,
-  herdrCall: HerdrCall,
-  files: AgentSessionFileAccess = localAgentSessionFiles,
-  context: AgentSessionResolverContext = DEFAULT_RESOLVER_CONTEXT,
-): Promise<AgentSessionResolved> {
-  const params = normalizeParams(rawParams);
-  if (!params.pane_id) throw new Error("agent session requires pane_id");
+const SUPPORTED_AGENTS = new Set([
+  "codex",
+  "claude",
+  "kimi",
+  "grok",
+  "pi",
+  "muse",
+  "agy",
+]);
 
-  const result = await herdrCall("agent.get", { target: params.pane_id });
-  return resolveAgentSessionInfo(
-    rawParams,
-    parseAgentInfo(result),
-    files,
-    context,
-  );
-}
-
-/** Resolve an existing agent snapshot without another Herdr request. */
-export async function resolveAgentSessionInfo(
-  rawParams: Record<string, unknown>,
-  agentInfo: Record<string, unknown> | null,
+/**
+ * Locate the native session file of an agent snapshot from `agent.list`, for
+ * its modification time. Returns null when the agent or file is unknown.
+ */
+export async function resolveAgentSessionFile(
+  agentInfo: Record<string, unknown>,
   files: AgentSessionFileAccess,
   context: AgentSessionResolverContext,
-): Promise<AgentSessionResolved> {
-  const params = normalizeParams(rawParams);
-  if (!params.pane_id) throw new Error("agent session requires pane_id");
+): Promise<SessionFile | null> {
   const session = parseAgentSession(agentInfo);
   const agent = normalizeAgentName(
-    stringValue(agentInfo?.agent) || session?.agent || params.agent || "",
+    stringValue(agentInfo.agent) || session?.agent || "",
   );
-  if (
-    agent !== "codex" &&
-    agent !== "claude" &&
-    agent !== "kimi" &&
-    agent !== "grok" &&
-    agent !== "pi" &&
-    agent !== "muse" &&
-    agent !== "agy"
-  ) {
-    throw new Error(
-      `agent session only supports codex, claude, kimi, grok, pi, muse, and agy`,
-    );
-  }
+  if (!SUPPORTED_AGENTS.has(agent)) return null;
   // Native session files follow the agent process, which may have been
   // launched after `cd`. Herdr's `cwd` remains the pane's identity directory.
   const cwd =
-    stringValue(agentInfo?.foreground_cwd) || stringValue(agentInfo?.cwd);
-  const base = {
-    version: 1 as const,
-    agent,
-    pane_id: params.pane_id,
-    workspace_id:
-      stringValue(agentInfo?.workspace_id) || params.workspace_id || "",
-    tab_id: stringValue(agentInfo?.tab_id) || params.tab_id || "",
-  };
-  let resolvedSession = session;
-  let file: SessionFile | null = null;
-  if (agent === "grok" && !resolvedSession) {
-    const descriptor = await findGrokSessionForCwd(cwd);
-    if (descriptor) {
-      file = descriptor.file;
-      resolvedSession = {
-        source: "grok-local",
-        agent: "grok",
-        kind: "id",
-        value: descriptor.session.sessionId,
-      };
-    }
-  }
-  if (agent === "agy" && !resolvedSession) {
-    const descriptor = await findAntigravitySessionForCwd(cwd);
-    if (descriptor) {
-      file = descriptor.file;
-      resolvedSession = {
-        source: "agy-local",
-        agent: "agy",
-        kind: "id",
-        value: descriptor.session.sessionId,
-      };
-    }
-  }
-  if (agent === "muse" && !resolvedSession && !files.remote) {
-    file = await findMuseSession({ cwd, metadataCache: context.museMetadata });
-    if (file?.sessionId) {
-      resolvedSession = {
-        source: "muse-local",
-        agent: "muse",
-        kind: "id",
-        value: file.sessionId,
-      };
-    }
-  }
-  if (!resolvedSession) {
-    return {
-      ...base,
-      status: "missing_session",
-      detail:
-        agent === "muse"
-          ? files.remote
-            ? "Muse session inspection over SSH requires a Herdr-reported transcript path. Local session discovery is not used for remote panes."
-            : cwd
-              ? `No local Muse Code session was found for ${cwd}. Start Muse Code in this directory without --no-session-log, then refresh Session Inspect.`
-              : "Herdr did not report a working directory for this Muse Code pane."
-          : agent === "grok"
-            ? cwd
-              ? `No local Grok Build session was found for ${cwd}. Start Grok Build in this directory, then refresh Session Inspect.`
-              : "Herdr did not report a working directory for this Grok Build pane."
-            : agent === "agy"
-              ? cwd
-                ? `No local Antigravity session was found for ${cwd}. Start Antigravity in this directory, then refresh Session Inspect.`
-                : "Herdr did not report a working directory for this Antigravity pane."
-              : "Herdr has not received an agent session id for this pane. Install the Herdr integration for this agent and start a new agent session.",
-      command:
-        agent === "grok" || agent === "muse"
-          ? undefined
-          : integrationInstallCommand(agent),
-      updated_at: new Date(0).toISOString(),
-      path: "",
-      session: null,
-      file: null,
-    };
-  }
-
-  file ??= await sessionFileFor(agent, resolvedSession, cwd, files, context);
-  if (!file) {
-    return {
-      ...base,
-      status: "missing_file",
-      detail: `Could not find the ${agent} session transcript for ${resolvedSession.value}.`,
-      updated_at: new Date(0).toISOString(),
-      path: "",
-      session: resolvedSession,
-      file: null,
-    };
-  }
-  return {
-    ...base,
-    status: "ok",
-    detail: "",
-    updated_at: new Date(file.mtimeMs).toISOString(),
-    path: file.path,
-    session: resolvedSession,
-    file,
-  };
+    stringValue(agentInfo.foreground_cwd) || stringValue(agentInfo.cwd);
+  if (session) return sessionFileFor(agent, session, cwd, files, context);
+  if (agent === "grok") return (await findGrokSessionForCwd(cwd))?.file ?? null;
+  if (agent === "agy")
+    return (await findAntigravitySessionForCwd(cwd))?.file ?? null;
+  if (agent === "muse" && !files.remote)
+    return findMuseSession({ cwd, metadataCache: context.museMetadata });
+  return null;
 }

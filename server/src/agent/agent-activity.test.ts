@@ -43,15 +43,6 @@ async function list(handler: ReturnType<typeof handlers>) {
   };
 }
 
-const noTranscriptReads = {
-  async readText(): Promise<string> {
-    throw new Error("Activity must not read transcripts");
-  },
-  async readPrefix(): Promise<Uint8Array> {
-    throw new Error("Activity must not read transcripts");
-  },
-};
-
 describe("agent activity timestamps", () => {
   test("stats current files across refreshes and fresh bridge instances despite sequence churn", async () => {
     const root = await mkdtemp(join(tmpdir(), "herdr-activity-"));
@@ -63,7 +54,7 @@ describe("agent activity timestamps", () => {
       await utimes(old, 1000, 1000);
       await utimes(recent, 2000, 2000);
       const snapshot = [agent("old", old, 482), agent("recent", recent, 474)];
-      const files = { ...localAgentSessionFiles, ...noTranscriptReads };
+      const files = localAgentSessionFiles;
       const bridge = handlers(snapshot, files);
       expect(
         (await list(bridge)).agents.map((a) => a?.last_activity_at),
@@ -95,7 +86,6 @@ describe("agent activity timestamps", () => {
     ];
     const files = {
       ...localAgentSessionFiles,
-      ...noTranscriptReads,
       async statFile(path: string) {
         if (path === "/denied") throw new Error("Permission denied");
         if (path === "/good") return { path, mtimeMs: 1234 };
@@ -122,7 +112,6 @@ describe("agent activity timestamps", () => {
     const files = (mtimeMs: number): AgentSessionFileAccess => ({
       ...localAgentSessionFiles,
       remote: true,
-      ...noTranscriptReads,
       async statFile(path) {
         paths.push(path);
         return { path, mtimeMs };
