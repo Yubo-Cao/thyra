@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { createSoftwareAuthenticator } from "./test-authenticator";
-import { startTestServer } from "./test-harness";
+import { createSoftwareAuthenticator } from "../../test-support/auth/authenticator";
+import { startTestServer } from "../../test-support/auth/harness";
 
 const ORIGIN = "https://dev.example";
 

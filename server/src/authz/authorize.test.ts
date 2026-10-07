@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { authorize } from "./authorize";
 import { HTTP_POLICY } from "./http-policy";
 import { DENIED_RPC_METHODS, RPC_POLICY } from "./policy";
-import { httpMatrix, rpcMatrix, W1_PARAMS } from "./test-matrix";
-import { PRINCIPALS, testDeps } from "./test-principals";
+import {
+  httpMatrix,
+  rpcMatrix,
+  W1_PARAMS,
+} from "../../test-support/authz/matrix";
+import { PRINCIPALS, testDeps } from "../../test-support/authz/principals";
 
 /**
  * The reviewed authorization matrix. Each row lists the roles allowed to

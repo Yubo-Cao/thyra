@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openAccountDatabase } from "../accounts/database";
 import { createAccountStore } from "../accounts/store";
-import { guest } from "../authz/test-principals";
+import { guest } from "../../test-support/authz/principals";
 import { createAccessControl } from "./access";
 
 test("share-link guests view one workspace and never receive Web Push", () => {

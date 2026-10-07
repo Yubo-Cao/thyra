@@ -10,7 +10,7 @@ import {
 import { openAccountDatabase } from "../accounts/database";
 import { createAccountStore, randomToken } from "../accounts/store";
 import { matchHttpRoute } from "../authz/http-policy";
-import { testDeps } from "../authz/test-principals";
+import { testDeps } from "../../test-support/authz/principals";
 import { createLoginRateLimiter } from "../http/login-rate-limit";
 import type { RequestAccess } from "../http/request-access";
 import { createAccountRoutes } from "./account-routes";
@@ -28,7 +28,10 @@ import { loadAuthProviders, providerEnvironment } from "./providers";
 import { createAuthRoutes } from "./routes";
 import { createInviteStore } from "./sign-in";
 import { createSignInRoutes } from "./sign-in-routes";
-import { mailedSecrets, startStubProviders } from "./test-providers";
+import {
+  mailedSecrets,
+  startStubProviders,
+} from "../../test-support/auth/providers";
 
 const ORIGIN = "https://thyra.example";
 let stub: Awaited<ReturnType<typeof startStubProviders>>;

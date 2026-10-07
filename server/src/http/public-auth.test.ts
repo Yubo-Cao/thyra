@@ -7,7 +7,7 @@ import { createPasskeyService } from "../auth/passkeys";
 import { createAuthenticator } from "../auth/principal";
 import { createPublicAuthenticator } from "../auth/public";
 import { createAuthRoutes } from "../auth/routes";
-import { testDeps } from "../authz/test-principals";
+import { testDeps } from "../../test-support/authz/principals";
 import { parseTrustedProxies } from "../identity/client-address";
 import { createLoginRateLimiter } from "./login-rate-limit";
 import {

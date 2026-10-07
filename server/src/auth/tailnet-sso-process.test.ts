@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { startTestServer } from "./test-harness";
+import { startTestServer } from "../../test-support/auth/harness";
 
 // Tailnet sign-in across the real server's two listeners: the tailnet
 // listener behind a simulated Caddy (stub `tailscale whois`) issues a code

@@ -1,12 +1,12 @@
-import type { ShareLink } from "../accounts/share-links";
-import type { WorkspaceRole } from "../accounts/store";
+import type { ShareLink } from "../../src/accounts/share-links";
+import type { WorkspaceRole } from "../../src/accounts/store";
 import {
   guestPrincipal,
   LOCAL_PRINCIPAL,
   type Principal,
   userPrincipal,
-} from "../auth/principal";
-import type { AuthzDeps, PaneClaim } from "./authorize";
+} from "../../src/auth/principal";
+import type { AuthzDeps, PaneClaim } from "../../src/authz/authorize";
 
 /**
  * Principals and authorization dependencies for tests: an instance admin,

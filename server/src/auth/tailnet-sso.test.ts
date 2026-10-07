@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { openAccountDatabase } from "../accounts/database";
 import { createAccountStore, randomToken } from "../accounts/store";
-import { testDeps } from "../authz/test-principals";
+import { testDeps } from "../../test-support/authz/principals";
 import { matchHttpRoute } from "../authz/http-policy";
 import { createLoginRateLimiter } from "../http/login-rate-limit";
 import type { RequestAccess } from "../http/request-access";

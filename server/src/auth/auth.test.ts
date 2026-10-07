@@ -3,7 +3,7 @@ import { openAccountDatabase } from "../accounts/database";
 import { type AccountStore, createAccountStore } from "../accounts/store";
 import { createLoginRateLimiter } from "../http/login-rate-limit";
 import type { RequestAccess } from "../http/request-access";
-import { testDeps } from "../authz/test-principals";
+import { testDeps } from "../../test-support/authz/principals";
 import { createPasskeyService, passkeyOrigin } from "./passkeys";
 import {
   createAuthenticator,
@@ -12,7 +12,7 @@ import {
   SESSION_COOKIE,
 } from "./principal";
 import { createAuthRoutes } from "./routes";
-import { createSoftwareAuthenticator } from "./test-authenticator";
+import { createSoftwareAuthenticator } from "../../test-support/auth/authenticator";
 
 const ORIGIN = "https://thyra.example";
 

@@ -1,7 +1,11 @@
-import { authorize } from "./authorize";
-import { authorizeHttp, HTTP_POLICY, type HttpRouteId } from "./http-policy";
-import { DENIED_RPC_METHODS, RPC_POLICY } from "./policy";
-import { MATRIX_ROLES, PRINCIPALS, testDeps } from "./test-principals";
+import { authorize } from "../../src/authz/authorize";
+import {
+  authorizeHttp,
+  HTTP_POLICY,
+  type HttpRouteId,
+} from "../../src/authz/http-policy";
+import { DENIED_RPC_METHODS, RPC_POLICY } from "../../src/authz/policy";
+import { MATRIX_ROLES, PRINCIPALS, testDeps } from "./principals";
 
 /**
  * The authorization matrix over every RPC method and HTTP route in the
