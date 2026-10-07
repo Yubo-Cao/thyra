@@ -148,7 +148,6 @@ test("layout subscription ACK and reconnect request browser and terminal reconci
     onEvent: (event) => events.push(event),
   });
   // No real sockets, settings-driven git operations, or pane processes.
-  runtime.workspaceAutoSync.start = () => undefined;
   runtime.herdr.call = async () => ({ panes: [] });
   // A reconnect can follow a live handoff that renumbered every terminal.
   const reconciled: string[] = [];

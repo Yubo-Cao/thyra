@@ -16,7 +16,6 @@ test("terminal transport settings validate input, persist by connection, and rec
   let settings: GuiSettings = {
     version: 1,
     repositories: {},
-    workspace_auto_sync: {},
     custom: { keep: true },
     terminal_transport: { beta: { surface_codecs: false } },
   };
@@ -45,9 +44,6 @@ test("terminal transport settings validate input, persist by connection, and rec
     herdr: {} as HerdrClient,
     sshHost: () => undefined,
     readPaseoWorktreeHooks: async () => null,
-    resolveWorkspaceGitRoot: async () => ({ workspace: {}, root: "/tmp" }),
-    workspaceAutoSyncIsRunning: () => false,
-    onWorkspaceAutoSyncSettingsChanged: () => {},
     safeSend: (_ws, payload) => {
       messages.push(JSON.parse(payload));
       return true;
@@ -113,9 +109,6 @@ test("settings RPC errors carry their runtime connection identity", async () => 
     herdr: {} as HerdrClient,
     sshHost: () => undefined,
     readPaseoWorktreeHooks: async () => null,
-    resolveWorkspaceGitRoot: async () => ({ workspace: {}, root: "/tmp" }),
-    workspaceAutoSyncIsRunning: () => false,
-    onWorkspaceAutoSyncSettingsChanged: () => undefined,
     safeSend: (_ws, payload) => {
       messages.push(payload);
       return true;
@@ -140,24 +133,12 @@ test("settings RPC errors carry their runtime connection identity", async () => 
   ]);
 });
 
-test("settings RPC lists and mutates only its connection namespace", async () => {
+test("settings RPC mutates only its connection namespace", async () => {
   let settings: GuiSettings = {
     version: 1 as const,
     repositories: {
       "connection:alpha:local:same": { worktree_hooks_enabled: true },
       "connection:beta:local:same": { worktree_hooks_enabled: true },
-    },
-    workspace_auto_sync: {
-      "connection:alpha:local:/same": {
-        enabled: true,
-        interval_minutes: 10,
-        checkout_path: "/same",
-      },
-      "connection:beta:local:/same": {
-        enabled: true,
-        interval_minutes: 10,
-        checkout_path: "/same",
-      },
     },
     custom: {},
   };
@@ -172,9 +153,6 @@ test("settings RPC lists and mutates only its connection namespace", async () =>
     herdr: {} as HerdrClient,
     sshHost: () => undefined,
     readPaseoWorktreeHooks: async () => null,
-    resolveWorkspaceGitRoot: async () => ({ workspace: {}, root: "/same" }),
-    workspaceAutoSyncIsRunning: () => false,
-    onWorkspaceAutoSyncSettingsChanged: () => undefined,
     safeSend: (_ws, payload) => {
       messages.push(JSON.parse(payload));
       return true;
@@ -183,38 +161,14 @@ test("settings RPC lists and mutates only its connection namespace", async () =>
   });
   const ws = {} as ServerWebSocket<unknown>;
 
-  await handler(ws, "list", "settings.workspace_auto_sync.list", {});
-  await handler(ws, "cross-auto", "settings.workspace_auto_sync.update_key", {
-    key: "connection:beta:local:/same",
-    enabled: false,
-  });
   await handler(ws, "cross-repo", "settings.update_repo", {
     key: "connection:beta:local:same",
     settings: { worktree_hooks_enabled: false },
   });
-  await handler(ws, "own-auto", "settings.workspace_auto_sync.update_key", {
-    key: "connection:alpha:local:/same",
-    enabled: false,
-  });
 
-  expect(
-    messages.find((message) => message.id === "list")?.result.configs,
-  ).toHaveLength(1);
-  expect(
-    messages.find((message) => message.id === "list")?.result.configs[0].key,
-  ).toBe("connection:alpha:local:/same");
-  expect(
-    messages.find((message) => message.id === "cross-auto")?.error.message,
-  ).toContain("another connection");
   expect(
     messages.find((message) => message.id === "cross-repo")?.error.message,
   ).toContain("another connection");
-  expect(
-    settings.workspace_auto_sync["connection:alpha:local:/same"].enabled,
-  ).toBe(false);
-  expect(
-    settings.workspace_auto_sync["connection:beta:local:/same"].enabled,
-  ).toBe(true);
   expect(
     settings.repositories["connection:beta:local:same"].worktree_hooks_enabled,
   ).toBe(true);
@@ -231,9 +185,6 @@ test("settings RPC suppresses a delayed result after replacement", async () => {
     } as unknown as HerdrClient,
     sshHost: () => undefined,
     readPaseoWorktreeHooks: async () => null,
-    resolveWorkspaceGitRoot: async () => ({ workspace: {}, root: "/tmp" }),
-    workspaceAutoSyncIsRunning: () => false,
-    onWorkspaceAutoSyncSettingsChanged: () => undefined,
     safeSend: (_ws, payload) => {
       messages.push(payload);
       return true;
@@ -268,13 +219,7 @@ test("settings RPC cancels a queued mutation after replacement", async () => {
   let settings: GuiSettings = {
     version: 1,
     repositories: {},
-    workspace_auto_sync: {
-      "connection:alpha:local:/same": {
-        enabled: true,
-        interval_minutes: 10,
-        checkout_path: "/same",
-      },
-    },
+    terminal_transport: { alpha: { surface_codecs: true } },
     custom: {},
   };
   const messages: string[] = [];
@@ -290,9 +235,7 @@ test("settings RPC cancels a queued mutation after replacement", async () => {
     herdr: {} as HerdrClient,
     sshHost: () => undefined,
     readPaseoWorktreeHooks: async () => null,
-    resolveWorkspaceGitRoot: async () => ({ workspace: {}, root: "/same" }),
-    workspaceAutoSyncIsRunning: () => false,
-    onWorkspaceAutoSyncSettingsChanged: () => {
+    onTerminalTransportSettingsChanged: () => {
       notifications += 1;
     },
     safeSend: (_ws, payload) => {
@@ -305,20 +248,15 @@ test("settings RPC cancels a queued mutation after replacement", async () => {
   const pending = handler(
     {} as ServerWebSocket<unknown>,
     "stale-mutation",
-    "settings.workspace_auto_sync.update_key",
-    {
-      key: "connection:alpha:local:/same",
-      enabled: false,
-    },
+    "settings.terminal_transport.update",
+    { surface_codecs: false },
     () => current,
   );
   current = false;
   mutationGate.resolve(undefined);
   await pending;
 
-  expect(
-    settings.workspace_auto_sync["connection:alpha:local:/same"].enabled,
-  ).toBe(true);
+  expect(settings.terminal_transport?.alpha.surface_codecs).toBe(true);
   expect(notifications).toBe(0);
   expect(JSON.parse(messages[0])).toMatchObject({
     connection_id: "alpha",

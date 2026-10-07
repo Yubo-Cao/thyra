@@ -224,10 +224,6 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "settings.terminal_transport.get": admin,
   "settings.terminal_transport.update": admin,
   "settings.worktree_hooks.get": admin,
-  "settings.workspace_auto_sync.get": admin,
-  "settings.workspace_auto_sync.list": admin,
-  "settings.workspace_auto_sync.update": admin,
-  "settings.workspace_auto_sync.update_key": admin,
   // Repository settings hold executable worktree hooks.
   "settings.update_repo": dangerous,
 

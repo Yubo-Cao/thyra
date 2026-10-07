@@ -19,7 +19,6 @@ import {
   lifecycleOpenedWorkspaceId,
   lifecycleWorktreeTitle,
   removeTemporaryWorkspaceSafely,
-  type WorkspaceAutoSyncInfo,
   type WorktreeHookInfo,
   type WorktreeLifecycleRow,
 } from "../worktreeLifecycle";
@@ -114,9 +113,6 @@ export function WorktreeLifecycleDialog({
     list: WorktreeList;
   } | null>(null);
   const [hooks, setHooks] = useState<WorktreeHookInfo | null>(null);
-  const [autoSync, setAutoSync] = useState<
-    Record<string, WorkspaceAutoSyncInfo>
-  >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [operation, setOperation] = useState<LifecycleOperation | null>(null);
@@ -150,48 +146,26 @@ export function WorktreeLifecycleDialog({
             workspace_id: repositoryWorkspaceId,
           })) as WorktreeList;
           if (!connectionClient.isCurrent()) return;
-          const repoWorkspaces = store
-            .get()
-            .workspaces.filter(
-              (workspace) =>
-                workspace.worktree?.repo_key === worktreeList.source.repo_key,
-            );
-          const [hookResult, ...syncResults] = await Promise.all([
-            connectionClient
-              .call("settings.worktree_hooks.get", {
-                workspace_id: repositoryWorkspaceId,
-              })
-              .catch((hookError) => ({
-                key: null,
-                enabled: true,
-                error: (hookError as Error).message,
-              })),
-            ...repoWorkspaces.map((workspace) =>
-              connectionClient
-                .call("settings.workspace_auto_sync.get", {
-                  workspace_id: workspace.workspace_id,
-                })
-                .catch(() => null),
-            ),
-          ]);
+          const hookResult = await connectionClient
+            .call("settings.worktree_hooks.get", {
+              workspace_id: repositoryWorkspaceId,
+            })
+            .catch((hookError) => ({
+              key: null,
+              enabled: true,
+              error: (hookError as Error).message,
+            }));
           if (
             !connectionClient.isCurrent() ||
             currentRequest !== requestId.current
           ) {
             return;
           }
-          const syncByWorkspace: Record<string, WorkspaceAutoSyncInfo> = {};
-          for (const result of syncResults) {
-            if (!result || typeof result.workspace_id !== "string") continue;
-            syncByWorkspace[result.workspace_id] =
-              result as WorkspaceAutoSyncInfo;
-          }
           setListResult({
             workspaceId: repositoryWorkspaceId,
             list: worktreeList,
           });
           setHooks(hookResult as WorktreeHookInfo);
-          setAutoSync(syncByWorkspace);
           setError("");
         } catch (loadError) {
           if (
@@ -228,7 +202,6 @@ export function WorktreeLifecycleDialog({
     if (!open || !repositoryWorkspaceId) return;
     setListResult(null);
     setHooks(null);
-    setAutoSync({});
     setError("");
     setOperation(null);
     operationIdRef.current += 1;
@@ -584,16 +557,11 @@ export function WorktreeLifecycleDialog({
           {error ? <p className="lifecycle-error">{error}</p> : null}
           <div className="lifecycle-list" role="list">
             {rows.map((row) => {
-              const workspaceIdForRow = row.workspace?.workspace_id;
-              const syncInfo = workspaceIdForRow
-                ? autoSync[workspaceIdForRow]
-                : undefined;
               const rowKey = row.worktree.path;
               return (
                 <WorktreeLifecycleRowItem
                   key={rowKey}
                   row={row}
-                  syncInfo={syncInfo}
                   operationRunning={operationRunning}
                   rowBusy={
                     operation?.status === "running" && operation.key === rowKey

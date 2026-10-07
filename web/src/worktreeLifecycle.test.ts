@@ -4,7 +4,6 @@ import {
   buildWorktreeLifecycleRows,
   lifecycleActionError,
   lifecycleActionWarning,
-  lifecycleAutoSyncLabel,
   lifecycleGitChangeCount,
   lifecycleOpenedWorkspaceId,
   removeTemporaryWorkspaceSafely,
@@ -147,18 +146,6 @@ describe("worktree lifecycle rows", () => {
     ).toBe("w42");
     expect(lifecycleOpenedWorkspaceId({ workspace: {} })).toBeUndefined();
     expect(lifecycleOpenedWorkspaceId(null)).toBeUndefined();
-  });
-
-  test("describes automatic default branch synchronization explicitly", () => {
-    expect(lifecycleAutoSyncLabel()).toBe("Default branch auto-sync off");
-    expect(
-      lifecycleAutoSyncLabel({
-        workspace_id: "w1",
-        enabled: true,
-        interval_minutes: 15,
-        running: false,
-      }),
-    ).toBe("Sync origin's default branch every 15 min");
   });
 });
 

@@ -5,18 +5,15 @@ import {
   FolderTree,
   GitBranch,
   GitMerge,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { t } from "../i18n";
 import { store } from "../store";
 import type { InspectorView } from "../workspaceResource";
 import {
-  lifecycleAutoSyncLabel,
   lifecycleGitChangeCount,
   lifecycleGitSummary,
   lifecycleWorktreeTitle,
-  type WorkspaceAutoSyncInfo,
   type WorktreeLifecycleRow as LifecycleRow,
 } from "../worktreeLifecycle";
 import { Button } from "./ui/Button";
@@ -25,7 +22,6 @@ import { Token } from "./ui/Token";
 
 export function WorktreeLifecycleRow({
   row,
-  syncInfo,
   operationRunning,
   rowBusy,
   runOperation,
@@ -35,7 +31,6 @@ export function WorktreeLifecycleRow({
   onRemove,
 }: {
   row: LifecycleRow;
-  syncInfo?: WorkspaceAutoSyncInfo;
   operationRunning: boolean;
   rowBusy: boolean;
   runOperation: (
@@ -71,18 +66,6 @@ export function WorktreeLifecycleRow({
           <span className={changed ? "has-changes" : ""}>
             {lifecycleGitSummary(row.gitStatus)}
           </span>
-          {workspace ? (
-            <span
-              className={`lifecycle-sync-status lifecycle-sync-${
-                syncInfo?.running
-                  ? "running"
-                  : (syncInfo?.last_status ?? "idle")
-              }`}
-              title={syncInfo?.last_message}
-            >
-              {lifecycleAutoSyncLabel(syncInfo)}
-            </span>
-          ) : null}
           {row.worktree.is_prunable ? (
             <span className="lifecycle-prunable">{t("Prunable")}</span>
           ) : null}
@@ -151,35 +134,6 @@ export function WorktreeLifecycleRow({
           >
             <GitMerge size={14} />
             {t("Pull")}
-          </Button>
-        ) : null}
-        {workspace ? (
-          <Button
-            aria-label={t("Auto-sync origin's default branch into {name}", {
-              name: title,
-            })}
-            aria-pressed={syncInfo?.enabled ?? false}
-            title={
-              syncInfo?.enabled
-                ? t(
-                    "Auto sync from origin's default branch is enabled. Click to disable.",
-                  )
-                : t(
-                    "Auto sync from origin's default branch into this branch. Click to enable.",
-                  )
-            }
-            disabled={!syncInfo || operationRunning}
-            onClick={() =>
-              runOperation(rowKey, t("Updating auto-sync policy"), () =>
-                store.setWorkspaceAutoSyncEnabled(
-                  workspace.workspace_id,
-                  !(syncInfo?.enabled ?? false),
-                ),
-              )
-            }
-          >
-            <RefreshCw size={13} />
-            {t("Sync")}
           </Button>
         ) : null}
         {row.worktree.is_linked_worktree && !row.worktree.is_prunable ? (

@@ -2,11 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  repoSettingsKey,
-  workspaceAutoSyncSettingsKey,
-  workspaceRepoSettingsKey,
-} from "./gui-settings";
+import { repoSettingsKey, workspaceRepoSettingsKey } from "./gui-settings";
 
 test("terminal codec preferences survive a fresh process and default to enabled", async () => {
   const home = await mkdtemp(join(tmpdir(), "thyra-settings-"));
@@ -81,12 +77,6 @@ test("settings keys preserve legacy format and isolate connection identities", (
   expect(workspaceRepoSettingsKey(workspace, undefined, "beta")).toBe(
     "connection:beta:local:same-repo",
   );
-  expect(
-    workspaceAutoSyncSettingsKey("/same/checkout", "same-host", "alpha"),
-  ).toBe("connection:alpha:ssh:same-host:/same/checkout");
-  expect(
-    workspaceAutoSyncSettingsKey("/same/checkout", "same-host", "beta"),
-  ).toBe("connection:beta:ssh:same-host:/same/checkout");
   expect(repoSettingsKey("same", undefined, "alpha:local:beta")).toBe(
     "connection:alpha%3Alocal%3Abeta:local:same",
   );

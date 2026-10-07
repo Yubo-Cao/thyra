@@ -68,9 +68,6 @@ export default {
   "Mobile terminal shortcuts": "移动端终端快捷键",
   "{panel} panel · {side} side": "面板 {panel} 个 · 侧边 {side} 个",
   "Connection:": "连接：",
-  "Automatic branch updates": "自动更新分支",
-  "Manage saved repository sync settings on this connection":
-    "管理此连接上已保存的仓库同步设置",
   "Changes require confirmation.": "更改需要确认。",
   "Changes are saved automatically.": "更改会自动保存。",
   Done: "完成",

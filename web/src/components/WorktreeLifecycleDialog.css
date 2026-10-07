@@ -229,37 +229,18 @@
   color: var(--warning-text);
 }
 
-.lifecycle-sync-status,
 .lifecycle-prunable {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  color: var(--danger-text);
 }
 
-.lifecycle-sync-status::before,
 .lifecycle-prunable::before {
   content: "";
   width: 5px;
   height: 5px;
   background: currentColor;
-}
-
-.lifecycle-sync-updated,
-.lifecycle-sync-up_to_date {
-  color: var(--success-text);
-}
-
-.lifecycle-sync-running {
-  color: var(--accent);
-}
-
-.lifecycle-sync-failed,
-.lifecycle-prunable {
-  color: var(--danger-text);
-}
-
-.lifecycle-sync-skipped {
-  color: var(--warning-text);
 }
 
 .lifecycle-row-actions {

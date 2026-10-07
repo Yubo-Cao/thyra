@@ -190,11 +190,6 @@ export default {
   "Removing worktree": "正在移除工作树",
   "Running teardown hook if configured.": "正在运行清理钩子（如已配置）。",
   "Failed to remove worktree": "移除工作树失败",
-  "Automatic branch updates enabled": "已开启分支自动更新",
-  "Automatic branch updates disabled": "已关闭分支自动更新",
-  "A sync will run now, then every 10 minutes while this workspace remains open.":
-    "将立即同步一次，之后在此工作区保持打开期间每 10 分钟同步一次。",
-  "Failed to update automatic sync settings": "更新自动同步设置失败",
   Connected: "已连接",
   Connecting: "正在连接",
   Reconnecting: "正在重新连接",

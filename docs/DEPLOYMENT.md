@@ -703,7 +703,7 @@ Responses API requests set `store: false`.
 ## Logging
 
 Logs use one line per event: timestamp, severity, scope, bounded key/value context.
-`info` covers lifecycle/failures, not routine RPC/events/frames/successful auto-sync.
+`info` covers lifecycle/failures, not routine RPC/events/frames.
 Use `thyra --log-level debug` or `THYRA_LOG_LEVEL=debug` temporarily;
 restart services after editing their environment. Debug can expose paths/IDs;
 return to `info` afterwards. Logs omit URL tokens and never contain session cookies or enrollment secrets.

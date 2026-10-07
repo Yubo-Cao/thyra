@@ -62,7 +62,6 @@ import {
   runProcessWithCodeTimeout,
   shQuote,
 } from "../utils/process-utils";
-import { createWorkspaceAutoSync } from "../workspace/auto-sync";
 import { createFileHandlers } from "../workspace/files";
 import {
   createLastStepBaselineStore,
@@ -312,18 +311,6 @@ export function createLegacyConnectionRuntime(args: {
     runProcessWithCodeTimeout,
     shQuote,
   });
-  const workspaceAutoSync = createWorkspaceAutoSync({
-    connectionId: identity.id,
-    logger: logger.child("auto-sync"),
-    formatError: sanitizeConnectionError,
-    herdr,
-    sshHost,
-    runProcessWithCodeTimeout,
-    shQuote,
-    invalidateGitStatus: status.invalidateGitStatus,
-    resolveWorkspaceGitRoot: async (workspaceId) =>
-      files.resolveWorkspaceGitRoot({ workspace_id: workspaceId }),
-  });
   const worktreeHooks = createWorktreeHookRunner({
     connectionId: identity.id,
     herdr,
@@ -368,10 +355,6 @@ export function createLegacyConnectionRuntime(args: {
     herdr,
     sshHost,
     readPaseoWorktreeHooks: worktreeHooks.readPaseoWorktreeHooks,
-    resolveWorkspaceGitRoot: async (workspaceId) =>
-      files.resolveWorkspaceGitRoot({ workspace_id: workspaceId }),
-    workspaceAutoSyncIsRunning: workspaceAutoSync.isRunning,
-    onWorkspaceAutoSyncSettingsChanged: workspaceAutoSync.settingsChanged,
     onTerminalTransportSettingsChanged: (enabled) => {
       if (disposed) return;
       terminalBridge.refreshSurfaceCodecs();
@@ -716,7 +699,6 @@ export function createLegacyConnectionRuntime(args: {
     void shell
       .start()
       .catch(() => logger.warn("shell state tracking unavailable"));
-    workspaceAutoSync.start();
     subscriptionLoop.start();
     collaborationSubscriptionLoop.start();
     agentStatusSubscriptions.start();
@@ -735,7 +717,6 @@ export function createLegacyConnectionRuntime(args: {
     herdr.off("error", onHerdrError);
     taskEvents.stop();
     pendingTaskEvents.clear();
-    const autoSyncStop = workspaceAutoSync.stop();
     terminalBridge.dispose();
     const subscriptionStop = subscriptionLoop.stop();
     const collaborationSubscriptionStop = collaborationSubscriptionLoop.stop();
@@ -748,7 +729,6 @@ export function createLegacyConnectionRuntime(args: {
       transportStart?.catch(() => undefined) ?? Promise.resolve();
     stopTask = Promise.all([
       shell.stop(),
-      autoSyncStop,
       subscriptionStop,
       collaborationSubscriptionStop,
       agentStatusStop,
@@ -777,7 +757,6 @@ export function createLegacyConnectionRuntime(args: {
     launcher,
     files,
     status,
-    workspaceAutoSync,
     worktreeHooks,
     worktreeRemovalCoordinator,
     worktreeRemovalRuntime,

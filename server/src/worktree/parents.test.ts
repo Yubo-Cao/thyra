@@ -18,7 +18,6 @@ function settings(
   return {
     version: 1,
     repositories: {},
-    workspace_auto_sync: {},
     custom: {
       worktree_parent_by_checkout: {
         [repoSettingsKey(path, undefined, connectionId)]: parentWorkspaceId,
@@ -90,7 +89,6 @@ describe("worktree parent metadata", () => {
     let stored: GuiSettings = {
       version: 1,
       repositories: {},
-      workspace_auto_sync: {},
       custom: {},
     };
     const addGate = deferred();

@@ -15,34 +15,14 @@ export type GuiRepoSettings = {
   custom?: Record<string, unknown>;
 };
 
-export type WorkspaceAutoSyncStatus =
-  | "updated"
-  | "up_to_date"
-  | "skipped"
-  | "failed";
-
-export type GuiWorkspaceAutoSyncSettings = {
-  enabled: boolean;
-  interval_minutes: number;
-  checkout_path?: string;
-  host?: string;
-  last_run_at?: string;
-  last_status?: WorkspaceAutoSyncStatus;
-  last_message?: string;
-  last_branch?: string;
-};
-
 export type GuiSettings = {
   version: 1;
   repositories: Record<string, GuiRepoSettings>;
-  workspace_auto_sync: Record<string, GuiWorkspaceAutoSyncSettings>;
   terminal_transport?: Record<string, { surface_codecs: boolean }>;
   /** Project launcher pins, commands, and history per connection ID. */
   launcher?: Record<string, LauncherSettings>;
   custom: Record<string, unknown>;
 };
-
-export const DEFAULT_WORKSPACE_AUTO_SYNC_INTERVAL_MINUTES = 10;
 
 let cachedGuiSettings: GuiSettings | null = null;
 let settingsMutationQueue: Promise<void> = Promise.resolve();
@@ -56,7 +36,6 @@ function defaultGuiSettings(): GuiSettings {
   return {
     version: 1,
     repositories: {},
-    workspace_auto_sync: {},
     terminal_transport: {},
     launcher: {},
     custom: {},
@@ -84,48 +63,9 @@ function normalizeGuiSettings(raw: unknown): GuiSettings {
           : undefined,
     };
   }
-  const workspaceAutoSync =
-    obj.workspace_auto_sync && typeof obj.workspace_auto_sync === "object"
-      ? obj.workspace_auto_sync
-      : {};
-  const normalizedWorkspaceAutoSync: Record<
-    string,
-    GuiWorkspaceAutoSyncSettings
-  > = {};
-  for (const [key, value] of Object.entries(workspaceAutoSync)) {
-    if (!value || typeof value !== "object") continue;
-    const entry = value as any;
-    const lastStatus = ["updated", "up_to_date", "skipped", "failed"].includes(
-      entry.last_status,
-    )
-      ? (entry.last_status as WorkspaceAutoSyncStatus)
-      : undefined;
-    normalizedWorkspaceAutoSync[key] = {
-      enabled: entry.enabled === true,
-      interval_minutes:
-        typeof entry.interval_minutes === "number" &&
-        Number.isFinite(entry.interval_minutes) &&
-        entry.interval_minutes >= 1
-          ? Math.round(entry.interval_minutes)
-          : DEFAULT_WORKSPACE_AUTO_SYNC_INTERVAL_MINUTES,
-      checkout_path:
-        typeof entry.checkout_path === "string"
-          ? entry.checkout_path
-          : undefined,
-      host: typeof entry.host === "string" ? entry.host : undefined,
-      last_run_at:
-        typeof entry.last_run_at === "string" ? entry.last_run_at : undefined,
-      last_status: lastStatus,
-      last_message:
-        typeof entry.last_message === "string" ? entry.last_message : undefined,
-      last_branch:
-        typeof entry.last_branch === "string" ? entry.last_branch : undefined,
-    };
-  }
   return {
     version: 1,
     repositories: normalizedRepos,
-    workspace_auto_sync: normalizedWorkspaceAutoSync,
     terminal_transport: Object.fromEntries(
       Object.entries(obj.terminal_transport ?? {}).flatMap(([key, value]) =>
         value &&
@@ -253,15 +193,6 @@ export function workspaceRepoSettingsKey(
       workspace.worktree.repo_root) ||
     workspaceSourceCheckoutPath(workspace);
   return raw ? repoSettingsKey(raw, host, connectionId) : null;
-}
-
-export function workspaceAutoSyncSettingsKey(
-  checkoutPath: string,
-  host?: string | null,
-  connectionId?: string | null,
-): string | null {
-  const path = checkoutPath.trim();
-  return path ? repoSettingsKey(path, host, connectionId) : null;
 }
 
 export async function repoWorktreeHooksEnabled(

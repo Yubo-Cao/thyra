@@ -496,7 +496,7 @@ export function CommandCombobox({
         "manage worktrees",
         "repository lifecycle",
         "git worktree status",
-        "hooks auto sync",
+        "hooks",
       ],
       run: () => setLifecycleWorkspaceId(focusedWorkspace.workspace_id),
     });

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runProcessWithCodeTimeout, shQuote } from "../utils/process-utils";
 import { syncWorktreeBase } from "../worktree/create";
-import { syncWorkspaceBranch } from "./auto-sync";
 
 async function git(...args: string[]) {
   const result = await runProcessWithCodeTimeout(["git", ...args], 10_000);
@@ -42,7 +41,7 @@ describe("origin default branch with real Git", () => {
     "head/topic",
     "release/quote'$(printf${IFS}x)&`printf${IFS}y`",
   ])(
-    "creates and syncs from %s, ignoring stale origin/HEAD",
+    "creates from %s, ignoring stale origin/HEAD",
     async (branch) => {
       const directory = await mkdtemp(join(tmpdir(), "thyra-default-branch-"));
       try {
@@ -122,27 +121,6 @@ describe("origin default branch with real Git", () => {
         expect(
           await git("-C", directory + "/created", "rev-parse", "HEAD"),
         ).toBe(expectedCommit);
-        await unlink(dirty);
-        const sync = await syncWorkspaceBranch({
-          root,
-          shQuote,
-          runProcessWithCodeTimeout,
-        });
-        expect(sync).toMatchObject({
-          last_status: "updated",
-          last_message: `Merged origin/${branch} into feature/test.`,
-        });
-        expect(await git("-C", root, "rev-parse", "HEAD")).toBe(expectedCommit);
-        expect(
-          await git(
-            "-C",
-            root,
-            "show-ref",
-            "--verify",
-            "refs/remotes/origin/main",
-          ),
-        ).toBe(trackingRefs);
-        expect(await readFile(fetchHeadPath, "utf8")).toBe(fetchHead);
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -162,7 +140,7 @@ describe("origin default branch with real Git", () => {
         const remote = join(directory, "remote.git");
         const root = join(directory, "checkout");
         await git("init", `--initial-branch=${from}`, seed);
-        const original = await commit(seed, "initial");
+        await commit(seed, "initial");
         await git("clone", "--bare", seed, remote);
         await git("clone", remote, root);
         await git("-C", root, "checkout", "-b", "feature/test");
@@ -193,16 +171,6 @@ describe("origin default branch with real Git", () => {
         expect(
           await git("-C", join(directory, "created"), "rev-parse", "HEAD"),
         ).toBe(next);
-        const sync = await syncWorkspaceBranch({
-          root,
-          shQuote,
-          runProcessWithCodeTimeout,
-        });
-        expect(sync.last_status).toBe("updated");
-        expect(await git("-C", root, "rev-parse", "HEAD")).toBe(next);
-        expect(
-          await git("-C", root, "rev-parse", `refs/remotes/origin/${from}`),
-        ).toBe(original);
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -228,12 +196,6 @@ describe("origin default branch with real Git", () => {
       });
       expect(base.base).toBe("origin/master");
       expect(base.commit).toBe(expectedCommit);
-      const sync = await syncWorkspaceBranch({
-        root,
-        shQuote,
-        runProcessWithCodeTimeout,
-      });
-      expect(sync.last_status).toBe("up_to_date");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

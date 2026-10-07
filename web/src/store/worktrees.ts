@@ -189,20 +189,6 @@ function openWorktree(
   });
 }
 
-function autoSyncUpdatedNotice(enabled: boolean, detail?: string): Notice {
-  return {
-    kind: "success",
-    message: enabled
-      ? t("Automatic branch updates enabled")
-      : t("Automatic branch updates disabled"),
-    detail,
-    autoDismissMs: 5000,
-  };
-}
-
-const autoSyncFailure = () =>
-  failWith(t("Failed to update automatic sync settings"));
-
 function announceWorktreeRemoved(
   lease: StoreConnectionLease,
   workspace: Workspace | undefined,
@@ -343,43 +329,5 @@ export const worktreeActions = {
       await refreshNow(lease);
       return result;
     });
-  },
-
-  setWorkspaceAutoSyncEnabled(workspaceId: string, enabled: boolean) {
-    return action(
-      async (lease) => {
-        const result = await lease.client.call(
-          "settings.workspace_auto_sync.update",
-          { workspace_id: workspaceId, enabled },
-        );
-        noticeFor(
-          lease,
-          autoSyncUpdatedNotice(
-            enabled,
-            enabled
-              ? t(
-                  "A sync will run now, then every 10 minutes while this workspace remains open.",
-                )
-              : undefined,
-          ),
-        );
-        return result;
-      },
-      { refresh: "none", failureNotice: autoSyncFailure() },
-    );
-  },
-
-  setWorkspaceAutoSyncConfigEnabled(key: string, enabled: boolean) {
-    return action(
-      async (lease) => {
-        const result = await lease.client.call(
-          "settings.workspace_auto_sync.update_key",
-          { key, enabled },
-        );
-        noticeFor(lease, autoSyncUpdatedNotice(enabled, key));
-        return result;
-      },
-      { refresh: "none", failureNotice: autoSyncFailure() },
-    );
   },
 };

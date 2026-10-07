@@ -556,7 +556,6 @@ test.each([
         () => true,
       ),
   });
-  runtime.workspaceAutoSync.start = () => {};
   runtime.herdr.call = async (method, params, timeout) => {
     if (method === "pane.list") return { panes: [pane] };
     expect(params).toEqual({ workspace_id: "w1" });

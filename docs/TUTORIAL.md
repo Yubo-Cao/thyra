@@ -113,8 +113,6 @@ is not a backup.** Cancel bulk actions if unsure.
 **You are done when:** parallel tasks have different checkout directories and branches.
 Before removal, save wanted results, end tasks, and review confirmation.
 [Failed teardown blocks removal](./DEPLOYMENT.md#worktree-hooks).
-Leave [automatic branch updates](../FEATURES.md#automatic-branch-updates) off for
-this exercise; when enabled they fetch/merge, never push.
 
 ### Continue from your phone
 

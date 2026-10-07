@@ -22,18 +22,6 @@ export type WorktreeHookInfo = {
   error?: string;
 };
 
-export type AutoSyncStatus = "updated" | "up_to_date" | "skipped" | "failed";
-
-export type WorkspaceAutoSyncInfo = {
-  workspace_id: string;
-  enabled: boolean;
-  interval_minutes: number;
-  last_run_at?: string;
-  last_status?: AutoSyncStatus;
-  last_message?: string;
-  running: boolean;
-};
-
 type LifecycleActionResult = {
   skipped_remove?: boolean;
   setup_hook?: { status?: string; error?: string; stderr?: string };
@@ -134,25 +122,6 @@ export async function removeTemporaryWorkspaceSafely<T>({
     throw new Error(t("Worktree removal did not complete."));
   }
   return result;
-}
-
-export function lifecycleAutoSyncLabel(info?: WorkspaceAutoSyncInfo): string {
-  if (!info?.enabled) return t("Default branch auto-sync off");
-  if (info.running) return t("Syncing origin's default branch");
-  switch (info.last_status) {
-    case "updated":
-      return t("Synced with origin's default branch");
-    case "up_to_date":
-      return t("Up to date with origin's default branch");
-    case "skipped":
-      return t("Last sync skipped");
-    case "failed":
-      return t("Last sync failed");
-    default:
-      return t("Sync origin's default branch every {minutes} min", {
-        minutes: info.interval_minutes,
-      });
-  }
 }
 
 export function lifecycleActionError(result: unknown): string | undefined {

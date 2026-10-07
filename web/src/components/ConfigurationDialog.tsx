@@ -16,7 +16,6 @@ import {
   Bell,
   ChevronRight,
   Download,
-  GitBranch,
   Hand,
   Keyboard,
   Languages,
@@ -84,7 +83,6 @@ import { cn } from "../utils";
 import { AccountSettings } from "./AccountSettings";
 import { AgentIntegrationsSettings } from "./AgentIntegrationsSettings";
 import { useInstanceAdmin } from "../principal";
-import { AutoSyncRepositoriesDialog } from "./AutoSyncRepositoriesDialog";
 import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 import { TerminalTransportSettings } from "./TerminalTransportSettings";
 import { ProjectLauncherSettings } from "./ProjectLauncherSettings";
@@ -163,7 +161,7 @@ const TAB_LABELS: Record<ConfigurationTab, string> = {
   Integrations: msg("Integrations"),
   Account: msg("Account"),
 };
-type Detail = "terminal" | "layout" | "keyboard" | "mobile" | "sync";
+type Detail = "terminal" | "layout" | "keyboard" | "mobile";
 
 export function ConfigurationDialog({
   onClose,
@@ -563,14 +561,6 @@ export function ConfigurationDialog({
       <div className="configuration-launcher-settings">
         <ProjectLauncherSettings heading key={scopeKey} />
       </div>
-      <DetailRow
-        icon={<GitBranch size={15} />}
-        title={t("Automatic branch updates")}
-        description={t(
-          "Manage saved repository sync settings on this connection",
-        )}
-        onClick={(event) => openDetail(event, "sync")}
-      />
     </>
   );
 
@@ -664,10 +654,6 @@ export function ConfigurationDialog({
         sideShortcuts={props.mobileTerminalSideShortcuts}
         onChange={props.onMobileTerminalShortcutsChange}
         onSideChange={props.onMobileTerminalSideShortcutsChange}
-        onClose={closeDetail}
-      />
-      <AutoSyncRepositoriesDialog
-        open={detail === "sync"}
         onClose={closeDetail}
       />
     </Dialog>

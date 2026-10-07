@@ -98,7 +98,6 @@ export default {
   "Configure worktree hooks…": "配置工作树钩子…",
   "New worktree…": "新建工作树…",
   "Pull from Git": "从 Git 拉取",
-  "Configure branch auto-update…": "配置分支自动更新…",
   "Remove worktree": "移除工作树",
   "Close workspace": "关闭工作区",
   "Linked worktree": "关联的工作树",
@@ -156,14 +155,6 @@ export default {
   "{message}\nTemporary workspace cleanup failed: {cleanup}":
     "{message}\n临时工作区清理失败：{cleanup}",
   "Worktree removal did not complete.": "工作树移除未完成。",
-  "Default branch auto-sync off": "默认分支自动同步已关闭",
-  "Syncing origin's default branch": "正在同步 origin 的默认分支",
-  "Synced with origin's default branch": "已与 origin 的默认分支同步",
-  "Up to date with origin's default branch": "已与 origin 的默认分支保持一致",
-  "Last sync skipped": "上次同步已跳过",
-  "Last sync failed": "上次同步失败",
-  "Sync origin's default branch every {minutes} min":
-    "每 {minutes} 分钟同步 origin 的默认分支",
   "Repository hook failed": "仓库钩子失败",
   "Removal was stopped before deleting the checkout.":
     "移除在删除检出前已停止。",
@@ -223,14 +214,6 @@ export default {
   "Git pull": "Git 拉取",
   "Pulling current branch": "正在拉取当前分支",
   Pull: "拉取",
-  "Auto-sync origin's default branch into {name}":
-    "将 origin 的默认分支自动同步到 {name}",
-  "Auto sync from origin's default branch is enabled. Click to disable.":
-    "已启用从 origin 默认分支自动同步。点击以停用。",
-  "Auto sync from origin's default branch into this branch. Click to enable.":
-    "从 origin 默认分支自动同步到此分支。点击以启用。",
-  "Updating auto-sync policy": "正在更新自动同步策略",
-  Sync: "同步",
   "Remove {name}": "移除 {name}",
 
   // Open worktree dialog
@@ -247,40 +230,9 @@ export default {
   "Branch or absolute path": "分支或绝对路径",
   "feature/my-branch or /repo/worktree": "feature/my-branch 或 /repo/worktree",
 
-  // Automatic branch updates
-  "Automatic branch updates": "自动更新分支",
-  "Automatic Branch Updates": "自动更新分支",
-  "Every {minutes} minutes, fetch {remote}'s default branch and merge it into this workspace's current branch. A dirty workspace is skipped, and conflicting merges are aborted automatically. Updates run only while this workspace is open in the current Thyra connection.":
-    "每 {minutes} 分钟获取 {remote} 的默认分支，并将其合并到此工作区的当前分支。有未提交更改的工作区会被跳过，发生冲突的合并会自动中止。仅当此工作区在当前 Thyra 连接中打开时才会更新。",
-  "Loading automatic update settings...": "正在加载自动更新设置…",
-  "Last run": "上次运行",
-  "Keep branch updated": "保持分支最新",
-  "Syncing origin's default branch now...": "正在同步 origin 的默认分支…",
-  "Not run yet": "尚未运行",
-  "Updated from origin's default branch": "已从 origin 的默认分支更新",
-  "Already up to date": "已是最新",
-  "Last run was skipped": "上次运行已跳过",
-  "Last run failed": "上次运行失败",
-  "No sync has run yet": "尚未进行同步",
-  "Automatic branch update repositories": "自动更新分支的仓库",
-  "Saved configurations run when their workspace is open":
-    "已保存的配置会在其工作区打开时运行",
-  "Loading repository configurations...": "正在加载仓库配置…",
-  Syncing: "正在同步",
-  "Every {minutes} min": "每 {minutes} 分钟",
-  "Branch {branch}": "分支 {branch}",
-  "Automatic updates for {name}": "{name} 的自动更新",
-  "No saved repositories": "没有已保存的仓库",
-  "Enable automatic updates from a Workspace context menu first.":
-    "请先从工作区上下文菜单启用自动更新。",
   Settings: "设置",
   Updated: "已更新",
   "Up to date": "已是最新",
-  Skipped: "已跳过",
-  Failed: "失败",
-  "Not run": "未运行",
-  "Never run": "从未运行",
-  "Last run {time}": "上次运行：{time}",
 
   // Command menu
   "Rename Tab": "重命名标签页",

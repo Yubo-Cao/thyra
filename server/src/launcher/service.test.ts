@@ -26,7 +26,6 @@ function harness(
   let settings: GuiSettings = {
     version: 1,
     repositories: {},
-    workspace_auto_sync: {},
     launcher: options.launcher ?? {},
     custom: {},
   };

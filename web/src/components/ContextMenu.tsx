@@ -12,7 +12,6 @@ import { luckyWorktreeBranchName } from "../luckyName";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
 import { WorktreeHooksDialog } from "./WorktreeHooksDialog";
 import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
-import { WorkspaceAutoSyncDialog } from "./WorkspaceAutoSyncDialog";
 import { worktreeCreationSource } from "../worktree";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
 import { isWorkspacePinned } from "../workspacePins";
@@ -38,7 +37,6 @@ type Opened = {
     | "close-workspace"
     | "open-worktree"
     | "worktree-hooks"
-    | "auto-sync"
     | "lifecycle"
     | "share";
   workspaceId: string;
@@ -212,26 +210,15 @@ export function ContextMenu({
       { title: t("Worktrees"), items: worktreeItems },
       {
         title: t("Source control"),
-        items: [
-          ...(editor
-            ? [
-                {
-                  id: "git-pull",
-                  label: t("Pull from Git"),
-                  onAction: () => void store.gitPullWorkspace(w.workspace_id),
-                },
-              ]
-            : []),
-          ...(admin
-            ? [
-                {
-                  id: "auto-sync",
-                  label: t("Configure branch auto-update…"),
-                  onAction: () => open("auto-sync"),
-                },
-              ]
-            : []),
-        ],
+        items: editor
+          ? [
+              {
+                id: "git-pull",
+                label: t("Pull from Git"),
+                onAction: () => void store.gitPullWorkspace(w.workspace_id),
+              },
+            ]
+          : [],
       },
       {
         title: t("Close"),
@@ -362,11 +349,6 @@ export function ContextMenu({
       <WorktreeHooksDialog
         open={opened?.kind === "worktree-hooks"}
         workspaceId={openedId("worktree-hooks") ?? undefined}
-        onClose={close}
-      />
-      <WorkspaceAutoSyncDialog
-        open={opened?.kind === "auto-sync"}
-        workspaceId={openedId("auto-sync") ?? undefined}
         onClose={close}
       />
       <WorktreeLifecycleDialog
