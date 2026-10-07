@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Terminal } from "@xterm/xterm";
+import { headlessTerminal } from "./terminalEngine.fixture";
 import { terminalFrameText } from "../../shared/terminalFrame";
 import {
   TerminalEndpointPresentation,
@@ -219,11 +219,7 @@ describe("endpoint selection presentation", () => {
   test.each([false, true])(
     "reset retains the physical write gate for a new selection (reporting=%s)",
     async (reporting) => {
-      const terminal = new Terminal({
-        allowProposedApi: true,
-        cols: 10,
-        rows: 3,
-      });
+      const terminal = await headlessTerminal(10, 3);
       let selected = false;
       let copied = "";
       const presentation = new TerminalEndpointPresentation(
@@ -231,14 +227,14 @@ describe("endpoint selection presentation", () => {
         (text, parsed) => terminal.write(text, parsed),
       );
       try {
-        await new Promise<void>((resolve) => terminal.write("A", resolve));
+        terminal.write("A");
         presentation.update("\x1b[HB", reporting);
-        presentation.reset(); // same xterm is retained on close/reconnect
+        presentation.reset(); // the same terminal is retained on reconnect
         expect(presentation.mouseReporting).toBeUndefined();
         expect(
           presentation.beginSelection(() => {
             selected = true;
-            copied = terminal.buffer.active.getLine(0)!.translateToString(true);
+            copied = terminal.line(0).translateToString(true);
           }),
         ).toBe(false);
         await Bun.sleep(30);
@@ -246,9 +242,7 @@ describe("endpoint selection presentation", () => {
         expect(selected).toBe(true);
         presentation.update("\x1b[HC", false);
         await Bun.sleep(30);
-        expect(terminal.buffer.active.getLine(0)!.translateToString(true)).toBe(
-          "B",
-        );
+        expect(terminal.line(0).translateToString(true)).toBe("B");
       } finally {
         presentation.reset();
         terminal.dispose();
@@ -321,12 +315,8 @@ describe("endpoint selection presentation", () => {
     }
   });
 
-  test("selection initiation awaits the real xterm parser before later output is retained", async () => {
-    const terminal = new Terminal({
-      allowProposedApi: true,
-      cols: 10,
-      rows: 3,
-    });
+  test("selection initiation awaits the terminal's parse callback before later output is retained", async () => {
+    const terminal = await headlessTerminal(10, 3);
     let selected = false;
     let copied = "";
     const presentation = new TerminalEndpointPresentation(
@@ -334,43 +324,35 @@ describe("endpoint selection presentation", () => {
       (text, parsed) => terminal.write(text, parsed),
     );
     try {
-      await new Promise<void>((resolve) => terminal.write("A", resolve));
+      terminal.write("A");
       presentation.update("\x1b[HB", true);
       expect(
         presentation.beginSelection(() => {
           selected = true;
-          copied = terminal.buffer.active.getLine(0)!.translateToString(true);
+          copied = terminal.line(0).translateToString(true);
         }),
       ).toBe(false);
       expect(selected).toBe(false);
       await Bun.sleep(30);
       expect(copied).toBe("B");
-      expect(terminal.modes.mouseTrackingMode).toBe("drag");
+      expect(terminal.mouseTracking()).toBe(true);
       presentation.update("\x1b[HC", false);
       await Bun.sleep(30);
-      expect(terminal.buffer.active.getLine(0)!.translateToString(true)).toBe(
-        "B",
-      );
+      expect(terminal.line(0).translateToString(true)).toBe("B");
       selected = false;
       presentation.selectionDrag = false;
       presentation.flush();
       await Bun.sleep(30);
-      expect(terminal.buffer.active.getLine(0)!.translateToString(true)).toBe(
-        "C",
-      );
-      expect(terminal.modes.mouseTrackingMode).toBe("none");
+      expect(terminal.line(0).translateToString(true)).toBe("C");
+      expect(terminal.mouseTracking()).toBe(false);
     } finally {
       presentation.reset();
       terminal.dispose();
     }
   });
 
-  test("the pinned xterm negotiates cell drag reports and returns to selection mode", async () => {
-    const terminal = new Terminal({
-      allowProposedApi: true,
-      cols: 10,
-      rows: 3,
-    });
+  test("the engine negotiates cell drag reports and returns to selection mode", async () => {
+    const terminal = await headlessTerminal(10, 3);
     const writes: Promise<void>[] = [];
     const presentation = new TerminalEndpointPresentation(
       () => false,
@@ -388,10 +370,10 @@ describe("endpoint selection presentation", () => {
     try {
       presentation.update("hello", true);
       await Promise.all(writes);
-      expect(terminal.modes.mouseTrackingMode).toBe("drag");
+      expect(terminal.mouseTracking()).toBe(true);
       presentation.update("hello", false);
       await Promise.all(writes);
-      expect(terminal.modes.mouseTrackingMode).toBe("none");
+      expect(terminal.mouseTracking()).toBe(false);
     } finally {
       terminal.dispose();
     }
@@ -481,7 +463,7 @@ describe("endpoint row updates", () => {
   const size = { cols: 10, rows: 3 };
   const frame = (rows: string[]) => ({ rows, tail });
 
-  test("writes only changed rows while the xterm viewport is unchanged", () => {
+  test("writes only changed rows while the terminal viewport is unchanged", () => {
     let viewport = { ...size };
     const writes: string[] = [];
     const presentation = new TerminalEndpointPresentation(
@@ -509,7 +491,7 @@ describe("endpoint row updates", () => {
     expect(writes[writes.length - 1]).toBe(
       `\x1b[0m\x1b[?7l\x1b[2;1H\x1b[0m\x1b[2KTWO${tail}`,
     );
-    // xterm may reflow or pull scrollback on resize: repaint fully.
+    // A resize may reflow or pull scrollback: repaint fully.
     viewport = { cols: 12, rows: 4 };
     show(["one", "2", "three"]);
     expect(writes[writes.length - 1]).toContain("\x1b[2J");

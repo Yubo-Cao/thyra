@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Terminal } from "@xterm/xterm";
+import { parseTerminalColor, resttyTheme } from "./terminalEngine";
 import {
   CUSTOM_TERMINAL_THEME_SELECTION_ALPHA,
   MAX_CUSTOM_TERMINAL_THEMES,
   TERMINAL_THEME_PRESETS,
-  applyTerminalTheme,
-  customTerminalThemeToITheme,
+  customTerminalThemeToTheme,
   defaultTerminalThemeId,
   hexToRgba,
   normalizeCustomTerminalThemes,
@@ -23,50 +22,24 @@ import {
 } from "./terminalThemes";
 
 describe("terminal themes", () => {
-  test("preserves explicit backgrounds when Herdr elides repeated SGR", async () => {
-    const term = new Terminal({ allowProposedApi: true, cols: 120, rows: 3 });
-    try {
-      const frame =
-        "\x1b[0;39;48;2;40;44;52mA" +
-        " ".repeat(100) +
-        "\x1b[0;38;2;255;255;255;48;2;80;0;0m X";
-      await new Promise<void>((resolve) => term.write(frame, resolve));
-      for (const theme of ["light", "dark"] as const) {
-        applyTerminalTheme(term, terminalThemeFor(theme));
-        const line = term.buffer.active.getLine(0)!;
-        expect(line.getCell(100)?.getBgColor()).toBe(0x282c34);
-        expect(line.getCell(101)?.getBgColor()).toBe(0x500000);
-        expect(line.getCell(102)?.getChars()).toBe("X");
-        expect(term.options.theme?.background).toBe(
-          terminalThemeFor(theme).background,
-        );
-      }
-    } finally {
-      term.dispose();
+  test("converts to the engine's palette with xterm's default ANSI colors", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const theme = terminalThemeFor(mode);
+      const converted = resttyTheme(theme);
+      expect(converted.colors.background).toEqual(
+        parseTerminalColor(theme.background),
+      );
+      expect(converted.colors.palette).toHaveLength(256);
+      expect(converted.colors.palette[0]).toBeDefined();
+      expect(converted.colors.palette[16]).toBeUndefined();
     }
-  });
-
-  test("leaves RGB components and indexed colors to xterm's parser", async () => {
-    const term = new Terminal({ allowProposedApi: true });
-    try {
-      for (const theme of ["light", "dark"] as const) {
-        applyTerminalTheme(term, terminalThemeFor(theme));
-        await new Promise<void>((resolve) =>
-          term.write(
-            "\x1b[H\x1b[0;38;2;48;2;200;48;2;40;44;52mX" +
-              "\x1b[38;5;208;48;5;17mY",
-            resolve,
-          ),
-        );
-        const line = term.buffer.active.getLine(0)!;
-        expect(line.getCell(0)?.getFgColor()).toBe(0x3002c8);
-        expect(line.getCell(0)?.getBgColor()).toBe(0x282c34);
-        expect(line.getCell(1)?.getFgColor()).toBe(208);
-        expect(line.getCell(1)?.getBgColor()).toBe(17);
-      }
-    } finally {
-      term.dispose();
-    }
+    expect(resttyTheme({}).colors.palette[1]).toEqual({ r: 204, g: 0, b: 0 });
+    expect(parseTerminalColor("rgba(110,160,255,0.3)")).toEqual({
+      r: 110,
+      g: 160,
+      b: 255,
+      a: 77,
+    });
   });
 });
 
@@ -225,7 +198,7 @@ describe("custom terminal themes", () => {
   });
 
   test("renders selection with translucency", () => {
-    const theme = customTerminalThemeToITheme({
+    const theme = customTerminalThemeToTheme({
       id: "custom-1",
       name: "Mine",
       variant: "dark",

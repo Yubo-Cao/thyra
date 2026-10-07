@@ -16,6 +16,7 @@ import { terminalCellAt, terminalWheelScroll } from "../terminalScroll";
 import { attachTerminalRenderer, TerminalFit } from "../terminalRenderer";
 import { b64toText, bytesToB64 } from "../utils";
 import { Dialog } from "./ui/Dialog";
+import "@xterm/xterm/css/xterm.css";
 import "./PopupOverlay.css";
 
 const RESIZE_DEBOUNCE_MS = 150;

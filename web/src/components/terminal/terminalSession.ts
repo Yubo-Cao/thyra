@@ -1,12 +1,5 @@
-import {
-  ClipboardAddon,
-  type ClipboardSelectionType,
-} from "@xterm/addon-clipboard";
-import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { attachTerminalGraphics } from "../../terminalGraphics";
 import { TerminalGraphicsStore } from "../../../../shared/terminalGraphics";
-import type { IBufferRange, ITheme } from "@xterm/xterm";
-import { Terminal } from "@xterm/xterm";
 import {
   type RefObject,
   useCallback,
@@ -20,10 +13,7 @@ import {
   type TerminalConnectionIdentity,
   terminalPushMatches,
 } from "../../terminalConnection";
-import {
-  resolveTerminalFontFamily,
-  terminalFontOptions,
-} from "../../appearance";
+import { terminalFontLocalFamily, terminalFontOptions } from "../../appearance";
 import { t } from "../../i18n";
 import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../../layoutPreferences";
 import { detectShortcutPlatform } from "../../shortcutBindings";
@@ -54,7 +44,7 @@ import {
   sanitizeTerminalHttpUrl,
   terminalFileUriPath,
 } from "../../terminalLinks";
-import { attachTerminalRenderer, TerminalFit } from "../../terminalRenderer";
+import { TerminalEngine, type TerminalTheme } from "../../terminalEngine";
 import {
   TerminalAttachFrameWatchdog,
   TerminalResizeSync,
@@ -74,7 +64,6 @@ import {
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import type { TerminalFileLinkMenuState } from "../TerminalFileLinkMenu";
 import {
-  installTerminalSerializer,
   terminalSelectionContent,
   terminalMarkdownContent,
 } from "../../terminalRichCopy";
@@ -196,28 +185,11 @@ export function swallowEvent(e: Event) {
 }
 
 /** Gate keyboard input; a read-only textarea keeps the device keyboard shut. */
-export function setTerminalStdinDisabled(term: Terminal, disabled: boolean) {
-  term.options.disableStdin = disabled;
-  if (term.textarea) term.textarea.readOnly = disabled;
-}
-
-/** Release xterm's document drag listeners with a synthetic mouseup. */
-export function dispatchMouseRelease(doc: Document, at?: MouseEvent) {
-  doc.dispatchEvent(
-    new MouseEvent("mouseup", {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      button: 0,
-      buttons: 0,
-      ...(at && {
-        clientX: at.clientX,
-        clientY: at.clientY,
-        screenX: at.screenX,
-        screenY: at.screenY,
-      }),
-    }),
-  );
+export function setTerminalStdinDisabled(
+  term: TerminalEngine,
+  disabled: boolean,
+) {
+  term.setOptions({ disableStdin: disabled });
 }
 
 export function terminalClipboardRoot(refs?: TerminalRefs) {
@@ -253,7 +225,6 @@ export function copyFinishedSelection(text: string, refs?: TerminalRefs) {
 }
 
 const box = <T>(current: T): RefObject<T> => ({ current });
-const SYSTEM_CLIPBOARD = "c" as ClipboardSelectionType;
 const TERMINAL_EVICTION_WINDOW_MS = 60_000;
 const TERMINAL_EVICTION_MAX_RETRIES = 3;
 
@@ -268,13 +239,12 @@ export type TerminalWorkspaceFileRequest = {
 function createTerminalRefs(initial: {
   composerOpen: boolean;
   viewOnly: boolean;
-  terminalTheme: ITheme;
+  terminalTheme: TerminalTheme;
   uiScale: number;
   fontFamily: string;
 }) {
   return {
-    term: box<Terminal | null>(null),
-    fit: box<TerminalFit | null>(null),
+    term: box<TerminalEngine | null>(null),
     presentation: box<TerminalEndpointPresentation | null>(null),
     resizeSync: box<TerminalResizeSync | null>(null),
     touchSelection: box<TerminalTouchSelection | null>(null),
@@ -297,7 +267,7 @@ function createTerminalRefs(initial: {
     onOpenWorkspaceFile: box<
       ((request: TerminalWorkspaceFileRequest) => void) | undefined
     >(undefined),
-    // Theme, scale and font update xterm in place without recreating it.
+    // Theme, scale and font update the terminal in place without recreating it.
     terminalTheme: box(initial.terminalTheme),
     uiScale: box(initial.uiScale),
     fontFamily: box(initial.fontFamily),
@@ -321,14 +291,14 @@ function createTerminalRefs(initial: {
 }
 
 /**
- * While following another device's size, keep xterm at the frame size and
+ * While following another device's size, keep the grid at the frame size and
  * scale it down (never up) to fit the container; otherwise undo the scale.
  * Pinch zoom magnifies that fitted view (`live` previews a pinch in progress)
  * and `pan`, clamped in place, shows the part that no longer fits. Returns the
  * applied scale.
  */
 export function applyTerminalFollowScale(
-  term: Terminal,
+  term: TerminalEngine,
   container: HTMLElement,
   follow: boolean,
   pan = { x: 0, y: 0 },
@@ -343,19 +313,16 @@ export function applyTerminalFollowScale(
     return 1;
   }
   const element = term.element;
-  const screen = element?.querySelector<HTMLElement>(".xterm-screen");
+  const screen = term.screenSize();
   let scale = live;
   let width = 0;
   let height = 0;
-  if (element && screen && screen.offsetWidth > 0 && screen.offsetHeight > 0) {
+  if (screen.width > 0 && screen.height > 0) {
     const computed = getComputedStyle(element);
     const px = (value: string) => Number.parseFloat(value) || 0;
-    width =
-      screen.offsetWidth + px(computed.paddingLeft) + px(computed.paddingRight);
+    width = screen.width + px(computed.paddingLeft) + px(computed.paddingRight);
     height =
-      screen.offsetHeight +
-      px(computed.paddingTop) +
-      px(computed.paddingBottom);
+      screen.height + px(computed.paddingTop) + px(computed.paddingBottom);
     // The font already carries the zoom: fit as if the container did too.
     const zoom = terminalZoom();
     scale *= Math.min(
@@ -380,7 +347,7 @@ export function applyTerminalFollowScale(
   return scale;
 }
 
-/** Mutable state a terminal view and its xterm session share across renders. */
+/** Mutable state a terminal view and its terminal session share across renders. */
 export type TerminalRefs = ReturnType<typeof createTerminalRefs>;
 
 export function useTerminalRefs(
@@ -413,7 +380,7 @@ export function useTerminalInput(refs: TerminalRefs) {
     [refs],
   );
   const openTerminalInput = useCallback(
-    (term: Terminal, disableStdin: boolean) => {
+    (term: TerminalEngine, disableStdin: boolean) => {
       refs.inputActive.current = true;
       setInputActive(true);
       setTerminalStdinDisabled(term, disableStdin);
@@ -429,7 +396,7 @@ export type TerminalTouchLinkState = TerminalTouchLink & {
 
 /** React state setters a session reports into (all stable). */
 export type TerminalViewSetters = {
-  setTermInstance: (term: Terminal | null) => void;
+  setTermInstance: (term: TerminalEngine | null) => void;
   setFileLinkMenu: (menu: TerminalFileLinkMenuState | null) => void;
   setTouchLink: (link: TerminalTouchLinkState | null) => void;
   setTouchHandles: (handles: TerminalTouchSelection["handles"]) => void;
@@ -444,7 +411,7 @@ export type TerminalViewSetters = {
 
 /** What the hosting view hands its terminal session. */
 export type TerminalSessionBindings = TerminalViewInputs & {
-  /** Fits xterm to its container; null while the container is hidden. */
+  /** Fits the terminal to its container; null while the container is hidden. */
   fitVisibleTerminal: () => TerminalSize | null;
   focusTerminalSoon: () => void;
   relayViewportFor: (size: TerminalSize) => TerminalSize | null;
@@ -462,75 +429,26 @@ export type TerminalViewInputs = {
   applyKeyModifiers: (key: TerminalKey) => TerminalKey;
   assertInputAllowed: () => void;
   closeTerminalInput: (blurInput?: boolean) => void;
-  openTerminalInput: (term: Terminal, disableStdin: boolean) => void;
+  openTerminalInput: (term: TerminalEngine, disableStdin: boolean) => void;
   container: HTMLDivElement | null;
 };
 
-/** One xterm instance and the state its input, stream and gesture handlers share. */
+/** One terminal and the state its input, stream and gesture handlers share. */
 export type TerminalSession = ReturnType<typeof openTerminalSession>;
 
-/** Creates the xterm with its addons and streams the pane's frames into it. */
+/** Creates the terminal and streams the pane's frames into it. */
 export function openTerminalSession(bindings: TerminalSessionBindings) {
   // The session and its installers destructure in one shared order.
   const { client, refs, ui } = bindings;
   const container = bindings.container as HTMLDivElement;
-  const term = new Terminal({
-    cursorBlink: true,
+  const term = new TerminalEngine(container, {
     disableStdin:
       refs.composerOpen.current ||
       refs.viewOnly.current ||
       shouldAvoidVirtualKeyboard(),
-    fontFamily: resolveTerminalFontFamily(refs.fontFamily.current),
+    fontFamily: terminalFontLocalFamily(refs.fontFamily.current),
     ...terminalDensity(refs.uiScale.current),
     theme: refs.terminalTheme.current,
-    allowProposedApi: true,
-    // Nerd Font icons wider than a cell shrink to fit instead of spilling.
-    rescaleOverlappingGlyphs: true,
-    linkHandler: {
-      // Opt in only to route local file URIs below; all other schemes stay inert.
-      allowNonHttpProtocols: true,
-      hover(_event, text, range) {
-        oscHover = { text, state: linkState(), range, ready: false };
-        // Native hover can reuse an inactive line cache. A new range object
-        // after a full refresh proves xterm actually reread the OSC8 target.
-        if (!oscRefreshRange) {
-          oscRefreshRange = range;
-          queueMicrotask(() => {
-            if (!session.disposed) term.refresh(0, term.rows - 1);
-          });
-        }
-      },
-      leave() {
-        oscHover = null;
-      },
-      activate(event, text) {
-        event.preventDefault();
-        if (
-          (!terminalFileUriPath(text) && !terminalLinkModifierMatches(event)) ||
-          event.shiftKey ||
-          event.altKey ||
-          !oscHover?.ready ||
-          !oscHover.state ||
-          oscHover.text !== text ||
-          oscHover.state !== linkState()
-        )
-          return;
-        const path = terminalFileUriPath(text);
-        if (path) {
-          if (term.hasSelection()) return;
-          term.clearSelection();
-          openFileInInspector(path, event);
-          return;
-        }
-        const url = sanitizeTerminalHttpUrl(text);
-        if (url) {
-          term.clearSelection();
-          window.open(url, "_blank", "noopener,noreferrer");
-        }
-      },
-    },
-    scrollbar: { showScrollbar: false },
-    scrollback: 2000,
   });
   const { desiredTerminal } = refs;
   const { closeTerminalInput, fitVisibleTerminal } = bindings;
@@ -538,13 +456,6 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   const { attachTimeouts, attachEvictions } = refs;
   const abort = new AbortController();
   let leaseDisposed = false;
-  let oscHover: {
-    text: string;
-    state: string | null;
-    range: IBufferRange;
-    ready: boolean;
-  } | null = null;
-  let oscRefreshRange: IBufferRange | null = null;
   const linkState = () => {
     const presentation = refs.presentation.current;
     if (
@@ -565,7 +476,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   let filePointerStart: { x: number; y: number; dragged: boolean } | null =
     null;
   container.addEventListener(
-    "mousedown",
+    "pointerdown",
     (event) => {
       filePointerStart =
         event.button === 0
@@ -575,7 +486,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     { capture: true, signal: abort.signal },
   );
   container.addEventListener(
-    "mousemove",
+    "pointermove",
     (event) => {
       if (
         filePointerStart &&
@@ -590,8 +501,8 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     { capture: true, signal: abort.signal },
   );
   const openFileInInspector = (path: string, event: MouseEvent) => {
-    // Mouse-reporting apps own their selection, so xterm.hasSelection alone
-    // cannot distinguish a click from a drag ending inside the same link.
+    // Mouse-reporting apps own their selection, so hasSelection alone cannot
+    // distinguish a click from a drag ending inside the same link.
     if (
       !filePointerStart ||
       filePointerStart.dragged ||
@@ -611,27 +522,29 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
         workspaceId,
       });
   };
-  const linkRender = term.onRender(({ start, end }) => {
-    // Public onRender fires before xterm's active-link invalidation listener.
-    queueMicrotask(() => {
-      if (!oscHover) oscRefreshRange = null;
-      if (
-        !session.disposed &&
-        start === 0 &&
-        end === term.rows - 1 &&
-        oscHover &&
-        oscRefreshRange &&
-        oscHover.range !== oscRefreshRange &&
-        oscHover.state === linkState()
-      ) {
-        oscHover.ready = true;
-        oscRefreshRange = null;
-      }
-    });
-  });
+  // OSC 8 hyperlinks: local files open on a plain click, web links with the
+  // link modifier; both only while the link's frame is still displayed.
+  term.linkHandler = (uri, event) => {
+    const path = terminalFileUriPath(uri);
+    if (
+      (!path && !terminalLinkModifierMatches(event)) ||
+      event.shiftKey ||
+      event.altKey ||
+      !linkState()
+    )
+      return;
+    if (path) {
+      if (!term.hasSelection()) openFileInInspector(path, event);
+      return;
+    }
+    const url = sanitizeTerminalHttpUrl(uri);
+    if (url) {
+      term.clearSelection();
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
   // Full refreshes only clear hover decorations of links that went stale.
-  // Without a hover pointer there are none, and repainting every row on each
-  // keystroke and frame is what makes typing stutter on phones.
+  // Without a hover pointer there are none.
   const pointerHovers = window.matchMedia("(any-hover: hover)").matches;
   const retireTouchLink = () => {
     refs.touchLinkIntent.current++;
@@ -640,9 +553,8 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   const invalidateLinks = () => {
     retireTouchLink();
     refs.linkRevision.current++;
-    if (pointerHovers) term.refresh(0, term.rows - 1);
+    if (pointerHovers) term.refresh();
   };
-  const fit = new TerminalFit();
   const clipboardProvider = createTerminalClipboardProvider({
     canWrite: () => !session.disposed && client.isCurrent(),
     format: async (text) => ({
@@ -672,32 +584,11 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       });
     },
   });
-  term.loadAddon(new ClipboardAddon(undefined, clipboardProvider));
-  installTerminalSerializer(term);
-  term.loadAddon(new UnicodeGraphemesAddon());
-  term.loadAddon(fit);
-  term.open(container);
-  // Startup warmups elsewhere wait for the first rendered output.
-  const firstOutput = term.onWriteParsed(() => {
-    firstOutput.dispose();
-    noteTerminalOutput();
-  });
-  const detachRenderer = attachTerminalRenderer(term, () => {
-    const size = fitVisibleTerminal();
-    if (size) refs.resizeSync.current?.schedule(size);
-  });
+  // Startup warmups elsewhere wait for the first output the engine draws.
+  term.ready.then(noteTerminalOutput, () => {});
   const applePlatform = isApplePlatform();
-  if (applePlatform) term.element?.classList.add("xterm-apple-row-spacing-fix");
-  try {
-    fit.fit();
-  } catch {
-    // ResizeObserver will retry after the terminal becomes measurable.
-  }
-  if (term.textarea)
-    term.textarea.readOnly = term.options.disableStdin === true;
   refs.term.current = term;
   ui.setTermInstance(term);
-  refs.fit.current = fit;
   const linkProvider = registerTerminalLinkProvider(
     term,
     openFileInInspector,
@@ -749,7 +640,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
         term.write(text, () => {
           parsed();
           if (!session.disposed && linksChanged && pointerHovers)
-            term.refresh(0, term.rows - 1);
+            term.refresh();
         }),
       () => ({ cols: term.cols, rows: term.rows }),
       {
@@ -821,8 +712,6 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     latestEndpointText: undefined as string | undefined,
     // A clipboard write reserved inside a gesture for a later OSC 52 copy.
     reservedClipboard: null as PendingClipboardWrite | null,
-    // Replaying a delayed local selection must never synthesize pane input.
-    replayingSelection: false,
     replayingWheel: false,
     invalidateLinks,
     retireTouchLink,
@@ -831,7 +720,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       acceptsEndpointInput() &&
       refs.isActivePane.current &&
       (!shouldAvoidVirtualKeyboard() || refs.inputActive.current),
-    // Stops input and listeners, runs `disposeHandlers`, then frees xterm.
+    // Stops input and listeners, runs `disposeHandlers`, then frees the terminal.
     dispose(disposeHandlers: () => void): void {
       touch.cancelPending();
       refs.touchSelection.current = null;
@@ -849,7 +738,6 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       presentation.dispose();
       graphics.dispose();
       refs.presentation.current = null;
-      linkRender.dispose();
       linkProvider.dispose();
       const terminalId = attachedTerminal.current ?? desiredTerminal.current;
       if (terminalId && !leaseDisposed && client.isCurrent())
@@ -858,11 +746,9 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       const rendered = refs.renderedTerminal.current;
       if (rendered) terminalScreens.keep?.(rendered, term);
       terminalScreens.open.delete(term);
-      detachRenderer();
       term.dispose();
       refs.term.current = null;
       ui.setTermInstance(null);
-      refs.fit.current = null;
       attachedTerminal.current = null;
       attachingTerminal.current = null;
       desiredTerminal.current = null;
@@ -871,7 +757,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   };
 
   // A mount owns exactly one connection generation. Drop pushes from an
-  // inactive connection or a prior terminal attach before touching xterm.
+  // inactive connection or a prior terminal attach before touching the screen.
   const current = (push: Parameters<typeof terminalPushMatches>[3]) =>
     terminalPushMatches(
       bindings.identity,
@@ -932,7 +818,6 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       applyTerminalFollowScale(term, container, true, refs.followPan.current);
     }
     if (typeof frame.mouse_reporting === "boolean") {
-      term.options.macOptionClickForcesSelection = true;
       presentation.update(
         text,
         frame.mouse_reporting,
@@ -968,13 +853,11 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       const reserved = session.reservedClipboard;
       session.reservedClipboard = null;
       if (!reserved) {
-        clipboardProvider.writeText(SYSTEM_CLIPBOARD, text);
+        clipboardProvider.writeText(text);
         return;
       }
       // The write reserved at the end of the drag keeps WebKit's gesture.
-      reserved
-        .resolve(text)
-        .catch(() => clipboardProvider.writeText(SYSTEM_CLIPBOARD, text));
+      reserved.resolve(text).catch(() => clipboardProvider.writeText(text));
     }
   });
   const offClosed = bridge.onTerminalClosed((closed) => {
@@ -1066,7 +949,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   const applyDensity = () => {
     touch.reset();
     closeTerminalInput();
-    term.options = terminalDensity(refs.uiScale.current);
+    term.setOptions(terminalDensity(refs.uiScale.current));
     const size = fitVisibleTerminal();
     if (size) resizeSync.sendNow(size);
   };

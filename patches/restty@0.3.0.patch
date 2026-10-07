@@ -1,0 +1,235 @@
+diff --git a/node_modules/restty/.bun-tag-1da53985077d5c64 b/.bun-tag-1da53985077d5c64
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-8747452460d81869 b/.bun-tag-8747452460d81869
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-b4b2630233cad9a5 b/.bun-tag-b4b2630233cad9a5
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-ec2837af7be89f6 b/.bun-tag-ec2837af7be89f6
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..2478e3d93e95d1c20f02a01909c3e8a9e2c4b679 100644
+--- a/dist/chunk-c0rcpsc5.js
++++ b/dist/chunk-c0rcpsc5.js
+@@ -45775,7 +45775,7 @@ function buildFontAtlasIfNeeded(params) {
+   if (!atlas || !atlas.bitmap?.width || !atlas.bitmap?.rows) {
+     return { rebuilt: false, atlas: null, rgba: null, preferNearest: false };
+   }
+-  const colorGlyphs = colorGlyphAtlas ? new Set(atlas.glyphs.keys()) : undefined;
++  const colorGlyphs = colorGlyphAtlas && !/text fallback/i.test(entry.label ?? "") ? new Set(atlas.glyphs.keys()) : undefined;
+   atlas.colorGlyphs = colorGlyphs;
+   let rgba = atlasBitmapToRGBA(atlas);
+   if (!rgba) {
+@@ -47447,6 +47447,7 @@ function createShaderStageRuntime(options) {
+ }
+ 
+ // src/runtime/create-runtime/font-runtime/color-glyph-atlas.ts
++var TEXT_FALLBACK_FONT_STACK = 'ui-monospace,Menlo,Consolas,"DejaVu Sans Mono","Apple Symbols","Segoe UI Symbol","Noto Sans Symbols 2","Noto Sans Symbols","Apple SD Gothic Neo","Malgun Gothic","Noto Sans CJK KR",sans-serif';
+ var COLOR_EMOJI_FONT_STACK = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","EmojiOne Color","Twemoji Mozilla",sans-serif';
+ function createColorGlyphAtlasHelpers(options) {
+   const { pixelModeRgba, atlasToRGBA } = options;
+@@ -47463,6 +47464,8 @@ function createColorGlyphAtlasHelpers(options) {
+     return colorGlyphCtx;
+   }
+   function resolveColorGlyphFontCss(entry, fontSize) {
++    if (/text fallback/i.test(entry.label ?? ""))
++      return `${Math.max(1, Math.round(fontSize))}px ${TEXT_FALLBACK_FONT_STACK}`;
+     const label = String(entry.label ?? "").split("(")[0].trim().replace(/"/g, "\\\"");
+     const families = [];
+     if (label && !/openmoji/i.test(label)) {
+@@ -47588,7 +47591,7 @@ function createColorGlyphAtlasHelpers(options) {
+         glyphs: glyphMetrics,
+         glyphsByWidth: new Map,
+         fontSize,
+-        colorGlyphs: new Set(glyphMetrics.keys())
++        colorGlyphs: /text fallback/i.test(fontEntry.label ?? "") ? new Set : new Set(glyphMetrics.keys())
+       },
+       constrainedGlyphWidths: null
+     };
+@@ -48059,7 +48062,7 @@ function createPointerAuxHandlers(options) {
+     }
+   };
+   const onWheel = (event) => {
+-    if (shouldRoutePointerToAppMouse(event.shiftKey)) {
++    if (shouldRoutePointerToAppMouse(event.shiftKey || event.altKey && /mac/i.test(navigator.platform))) {
+       if (inputHandler.sendMouseEvent("wheel", event)) {
+         event.preventDefault();
+         return;
+@@ -48071,7 +48074,7 @@ function createPointerAuxHandlers(options) {
+     event.preventDefault();
+   };
+   const onContextMenu = (event) => {
+-    if (shouldRoutePointerToAppMouse(event.shiftKey))
++    if (shouldRoutePointerToAppMouse(event.shiftKey || event.altKey && /mac/i.test(navigator.platform)))
+       event.preventDefault();
+   };
+   const onPointerLeave = () => {
+@@ -48181,7 +48184,7 @@ function createPointerUpHandler(options) {
+         markNeedsRender();
+       }
+     } else {
+-      if (shouldRoutePointerToAppMouse(event.shiftKey) && inputHandler.sendMouseEvent("up", event)) {
++      if (shouldRoutePointerToAppMouse(event.shiftKey || event.altKey && /mac/i.test(navigator.platform)) && inputHandler.sendMouseEvent("up", event)) {
+         event.preventDefault();
+         return;
+       }
+@@ -48205,7 +48208,7 @@ function createPointerUpHandler(options) {
+       }
+     }
+     if (!selectionState.active && event.button === 0 && linkState.hoverUri) {
+-      openLink(linkState.hoverUri);
++      openLink(linkState.hoverUri, event);
+     }
+   };
+ }
+@@ -48305,7 +48308,7 @@ function bindPointerEvents(options) {
+   };
+   canvas.style.touchAction = touchSelectionMode === "long-press" || touchSelectionMode === "drag" ? "none" : "pan-y pinch-zoom";
+   const onPointerDown = (event) => {
+-    if (shouldRoutePointerToAppMouse(event.shiftKey) && inputHandler.sendMouseEvent("down", event)) {
++    if (shouldRoutePointerToAppMouse(event.shiftKey || event.altKey && /mac/i.test(navigator.platform)) && inputHandler.sendMouseEvent("down", event)) {
+       clearPendingDesktopSelection();
+       event.preventDefault();
+       canvas.setPointerCapture?.(event.pointerId);
+@@ -48408,7 +48411,7 @@ function bindPointerEvents(options) {
+       markNeedsRender();
+       return;
+     }
+-    if (shouldRoutePointerToAppMouse(event.shiftKey) && inputHandler.sendMouseEvent("move", event)) {
++    if (shouldRoutePointerToAppMouse(event.shiftKey || event.altKey && /mac/i.test(navigator.platform)) && inputHandler.sendMouseEvent("move", event)) {
+       event.preventDefault();
+       return;
+     }
+@@ -53444,7 +53447,7 @@ function createFontRuntimeGridHelpers(options) {
+     const advanceUnits = glyphId !== undefined && glyphId !== null ? primary.font.advanceWidth(glyphId) : shapeClusterWithFont(primary, "M").advance;
+     const cellW = Math.max(1, Math.round(advanceUnits * scale));
+     const lineHeight = fontHeightUnits2(primary.font) * scale;
+-    const cellH = Math.max(1, Math.round(lineHeight));
++    const cellH = Math.max(1, Math.round(lineHeight * (fontConfig.lineHeight ?? 1)));
+     const baselineOffset = primary.font.ascender * scale;
+     const yPad = Math.max(0, (cellH - lineHeight) * 0.5);
+     return { cellW, cellH, fontSizePx, scale, lineHeight, baselineOffset, yPad };
+@@ -55249,7 +55252,8 @@ function createResttyRuntime2(options) {
+   inputHandler = createInputHandler2({
+     getCursorPosition: resolveCursorForCpr,
+     sendReply: (data) => {
+-      ptyTransport.sendInput(data);
++      if (forwardTerminalReplies)
++        ptyTransport.sendInput(data);
+     },
+     positionToCell,
+     positionToPixel,
+@@ -55278,14 +55282,8 @@ function createResttyRuntime2(options) {
+       const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
+       return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
+     },
+-    onClipboardWrite: async (text) => {
+-      if (!text)
+-        return;
+-      await copyToClipboard2(text);
+-    },
+-    onClipboardRead: async () => {
+-      return await pasteFromClipboard2() ?? "";
+-    },
++    onClipboardWrite: undefined,
++    onClipboardRead: undefined,
+     getKittyKeyboardFlags: () => {
+       if (!wasm || !wasmHandle)
+         return 0;
+@@ -55332,9 +55330,11 @@ function createResttyRuntime2(options) {
+       getLastKeydownSeq: () => lastKeydownSeq,
+       getLastKeydownSeqAt: () => lastKeydownSeqAt,
+       keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
+-      openLink
++      openLink: (uri, event) => hostLinkHandler ? hostLinkHandler(uri, event) : openLink(uri)
+     });
+   }
++  let hostLinkHandler = null;
++  const hostRenderListeners = new Set();
+   bindCanvasEvents();
+   const fontState = {
+     font: null,
+@@ -55828,6 +55828,8 @@ function createResttyRuntime2(options) {
+     },
+     set lastRenderState(value) {
+       lastRenderState = value;
++      for (const listener of hostRenderListeners)
++        listener();
+     }
+   });
+   const readRuntimeControllerState = () => ({
+@@ -55923,7 +55925,7 @@ function createResttyRuntime2(options) {
+       maxScrollback: terminal.maxScrollback
+     }
+   });
+-  return runtimeController.createPublicApi({
++  const publicApi = runtimeController.createPublicApi({
+     terminal: {
+       setFontSize: applyFontSize,
+       setLigatures,
+@@ -55950,6 +55952,62 @@ function createResttyRuntime2(options) {
+       getShaderStages
+     }
+   });
++  const hostRenderState = () => {
++    if (!wasmReady || !wasm || !wasmHandle)
++      return null;
++    wasm.renderUpdate(wasmHandle);
++    return wasm.getRenderState(wasmHandle);
++  };
++  publicApi.host = {
++    canvas: () => canvas,
++    imeInput: () => imeInput,
++    grid: () => ({ cols: gridState.cols, rows: gridState.rows, cellW: gridState.cellW, cellH: gridState.cellH, dpr: currentDpr }),
++    renderState: hostRenderState,
++    selection: () => selectionState.active && selectionState.anchor && selectionState.focus ? { anchor: { ...selectionState.anchor }, focus: { ...selectionState.focus }, dragging: selectionState.dragging } : null,
++    select: (anchor, focus) => {
++      selectionState.active = true;
++      selectionState.dragging = false;
++      selectionState.anchor = { ...anchor };
++      selectionState.focus = { ...focus };
++      updateCanvasCursor();
++      needsRender = true;
++    },
++    clearSelection,
++    selectionText: getSelectionText,
++    linkUri: (row, col) => {
++      const render = lastRenderState;
++      if (!render?.linkIds || row < 0 || col < 0 || row >= render.rows || col >= render.cols)
++        return "";
++      return resolveLinkUri(render, render.linkIds[row * render.cols + col] ?? 0);
++    },
++    setLinkHandler: (handler) => {
++      hostLinkHandler = handler;
++    },
++    onRender: (listener) => {
++      hostRenderListeners.add(listener);
++      return () => hostRenderListeners.delete(listener);
++    },
++    scrollbar: () => wasmReady && wasmHandle && wasmExports?.restty_scrollbar_total ? { total: wasmExports.restty_scrollbar_total(wasmHandle), offset: wasmExports.restty_scrollbar_offset(wasmHandle), len: wasmExports.restty_scrollbar_len(wasmHandle) } : null,
++    scrollViewport: (delta) => {
++      if (!wasmReady || !wasm || !wasmHandle)
++        return;
++      wasm.scrollViewport(wasmHandle, delta);
++      wasm.renderUpdate(wasmHandle);
++      needsRender = true;
++    },
++    positionToCell,
++    requestRender: () => {
++      needsRender = true;
++    },
++    mouseActive: () => inputHandler.isMouseActive(),
++    bracketedPaste: () => !!inputHandler.isBracketedPaste(),
++    setLineHeight: (value) => {
++      fontConfig.lineHeight = value;
++      updateGrid();
++      needsRender = true;
++    }
++  };
++  return publicApi;
+ }
+ 
+ export { createInputHandler2, isSymbolFont2, isNerdSymbolFont2, fontMaxCellSpan2, fontScaleOverride2, fontRasterScale2, fontHeightUnits2, computeCellMetrics2, createGridState2, updateGridState2, clamp2, createFontEntry2, resetFontEntry2, createFontManagerState2, fontHasGlyph2, fontAdvanceUnits2, glyphWidthUnits2, NERD_SYMBOL_RANGES2, isNerdSymbolCodepoint2, pickFontIndexForText2, tryFetchFontBuffer2, tryLocalFontBuffer2, loadPrimaryFontBuffer2, loadFallbackFontBuffers2, NERD_CONSTRAINTS2, getNerdConstraint2, createPtyConnection2, connectPty2, disconnectPty2, sendPtyInput2, sendPtyResize2, isPtyConnected2, createWebSocketPtyTransport2, BOX_STYLE_NONE2, BOX_STYLE_LIGHT2, BOX_STYLE_HEAVY2, BOX_STYLE_DOUBLE2, isPrivateUse2, isSpaceCp2, isBoxDrawing2, isBlockElement2, isLegacyComputing2, isPowerline2, isBraille2, isGraphicsElement2, isSymbolCp2, applyAlpha2, pushRect2, pushRectSnapped2, pushRectBox2, drawBlockElement2, BOX_LINE_MAP2, drawBoxDrawing2, drawBraille2, drawPowerline2, constrainGlyphBox2, RECT_SHADER2, GLYPH_SHADER2, initWebGPUCore2, initWebGPU2, initWebGL2, ensureInstanceBuffer2, configureContext2, ensureGLInstanceBuffer2, createResizeState2, createScrollbarState2, createImeState2, setPreedit2, clearPreedit2, startComposition2, updateComposition2, endComposition2, syncImeSelection2, updateImePosition2, PREEDIT_BG2, PREEDIT_ACTIVE_BG2, PREEDIT_FG2, PREEDIT_UL2, PREEDIT_CARET2, createSelectionState2, clearSelection2, startSelection2, updateSelection2, endSelection2, selectionForRow2, normalizeSelectionCell2, positionToCell2, getSelectionText2, copyToClipboard2, pasteFromClipboard2, createResttyRuntimeSession2, getDefaultResttyRuntimeSession2, cloneShaderStages, normalizeShaderStage, normalizeShaderStages, sortShaderStages, parseGhosttyColor2, colorToFloats2, colorToRgbU322, parseGhosttyTheme2, listBuiltinThemeNames2, isBuiltinThemeName2, getBuiltinThemeSource2, getBuiltinTheme2, createResttyRuntime2 };

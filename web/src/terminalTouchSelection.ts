@@ -1,5 +1,5 @@
 /// <reference lib="es2022.intl" />
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "./terminalEngine";
 import { t } from "./i18n";
 
 export const TERMINAL_LONG_PRESS_MS = 450;
@@ -7,7 +7,7 @@ const SLOP = 8;
 type Point = { x: number; y: number };
 
 /** Public buffer cells preserve graphemes and omit only wide-wrap filler. */
-export function terminalSelectedText(term: Terminal): string {
+export function terminalSelectedText(term: TerminalEngine): string {
   const range = term.getSelectionPosition();
   if (!range) return "";
   let text = "";
@@ -49,7 +49,7 @@ export class TerminalTouchSelection {
   active = false;
 
   constructor(
-    private term: Terminal,
+    private term: TerminalEngine,
     private options: {
       begin: (activate: () => void) => void;
       changed: () => void;
@@ -59,9 +59,7 @@ export class TerminalTouchSelection {
   ) {}
 
   private bounds() {
-    return this.term.element
-      ?.querySelector(".xterm-screen")
-      ?.getBoundingClientRect();
+    return this.term.screenBounds();
   }
 
   private cell(point: Point, boundary = false) {

@@ -7,16 +7,6 @@ import { copyTextFromUserGesture } from "../../terminalClipboard";
 import { terminalSelectionContent } from "../../terminalRichCopy";
 import { terminalClipboardRoot } from "./terminalSession";
 import { uploadTerminalImage } from "../../terminalImageUpload";
-import {
-  isTerminalImeCommittedInputType,
-  TerminalImeCommitGuard,
-  TerminalImeFallbackTracker,
-  TerminalImeKeyEventTracker,
-  TerminalImeTextareaFallbackTracker,
-  terminalImeEventTime,
-  terminalImeFallbackText,
-  terminalImeTextareaDelta,
-} from "../../terminalIme";
 import { terminalShortcutKey } from "../../terminalKeys";
 import type { TerminalKey } from "../../../../shared/terminalKey";
 import type { TerminalModifiedInput } from "../../terminalModifiers";
@@ -53,37 +43,31 @@ function withClipboardTimeout<T>(promise: Promise<T>, message: string) {
   });
 }
 
-/** Keyboard input, shortcuts, IME recovery and paste for a session. */
+/**
+ * Keyboard shortcuts and paste for a session. The engine encodes keys, IME
+ * composition and mouse reports itself; everything it sends passes through
+ * `onData`, where input is gated, modified and forwarded to the pane.
+ */
 export function installTerminalKeyboard(session: TerminalSession): () => void {
   const { client, refs, ui, container, term } = session;
   const { desiredTerminal } = refs;
   const { signal, applePlatform, presentation, history } = session;
   const { acceptsInput, applyModifiers, applyKeyModifiers } = session;
-  const imeFallback = new TerminalImeFallbackTracker();
-  const imeKeyEvent = new TerminalImeKeyEventTracker();
-  const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
-  const imeCommitGuard = new TerminalImeCommitGuard();
   const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
-    const textarea = term.textarea;
-    const value = textarea?.value ?? "";
-    const selectionStart = textarea?.selectionStart ?? value.length;
+    const { textarea } = term;
+    const value = textarea.value;
+    const selectionStart = textarea.selectionStart ?? value.length;
     return {
       value,
       selectionStart,
-      selectionEnd: textarea?.selectionEnd ?? selectionStart,
+      selectionEnd: textarea.selectionEnd ?? selectionStart,
     };
   };
-  let imeTextareaTimer: number | null = null;
-  let terminalCompositionActive = false;
-  let compositionSettleTimer: number | null = null;
-  let compositionStartTextareaValue = "";
   let nativePasteFallbackTimer: number | null = null;
-  let pasteTextareaClearTimer: number | null = null;
   let pasteTextareaBeforeInput: TerminalPasteTextareaSnapshot | null = null;
   let pastePaneIdBeforeInput: string | null = null;
-  let lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
 
-  term.onData((data) => {
+  const data = term.onData((data) => {
     session.invalidateLinks();
     if (session.replayingWheel && session.acceptsEndpointInput()) {
       sendTerminalBytes(
@@ -93,25 +77,15 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       );
       return;
     }
-    // Replaying a delayed local selection must never synthesize pane input.
-    if (!acceptsInput() || session.replayingSelection) return;
+    if (!acceptsInput()) return;
     if (history.active) {
       history.reset();
       term.clearSelection();
       presentation.cancelSelection();
     }
-    const unsuppressedData = imeTextareaFallback.recordXtermData(data);
-    if (!unsuppressedData) return;
-    const dataAt = performance.now();
-    if (!imeCommitGuard.filterXtermData(unsuppressedData, dataAt)) {
-      return;
-    }
-    const shouldSend = imeFallback.recordXtermData(unsuppressedData, dataAt);
-    if (!shouldSend) return;
     const terminalId = desiredTerminal.current;
     if (!terminalId) return;
-    imeKeyEvent.recordXtermData(unsuppressedData);
-    sendInput(applyModifiers(unsuppressedData), terminalId);
+    sendInput(applyModifiers(data), terminalId);
   });
 
   const sendInput = (input: TerminalModifiedInput, terminalId: string) => {
@@ -131,7 +105,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   };
   const sendKey = (key: TerminalKey) => {
     const terminalId = desiredTerminal.current;
-    if (!terminalId || session.replayingSelection) return;
+    if (!terminalId) return;
     session.invalidateLinks();
     if (key.kind !== "release" && history.active) {
       history.reset();
@@ -152,7 +126,6 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       destinationPaneId !== (refs.paneId.current ?? null)
     )
       return;
-    imeCommitGuard.beginIndependentInput();
     if (destinationPaneId) {
       const request = terminalPasteRequest(destinationPaneId, text);
       await client.call(request.method, request.params);
@@ -169,42 +142,13 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     ui.setUploadError(
       t("Text paste failed: {error}", { error: (error as Error).message }),
     );
-  const sendMissingImeText = (
-    text: string,
-    eventTime: number,
-    observedAt: number,
-  ) => {
-    if (imeCommitGuard.consumeSuppressedDuplicate(text, observedAt)) return;
-    const shouldSend = imeFallback.recordInput(text, eventTime, observedAt);
-    if (!shouldSend) return;
-    sendText(text);
-  };
-  const cancelImeTextareaFallback = () => {
-    if (imeTextareaTimer !== null) {
-      window.clearTimeout(imeTextareaTimer);
-      imeTextareaTimer = null;
-    }
-    imeTextareaFallback.cancel();
-    imeCommitGuard.completeRecoveryCycle();
-  };
-  const cancelCompositionSettle = () => {
-    if (compositionSettleTimer === null) return;
-    window.clearTimeout(compositionSettleTimer);
-    compositionSettleTimer = null;
-  };
   const cancelNativePasteFallback = () => {
     if (nativePasteFallbackTimer === null) return;
     window.clearTimeout(nativePasteFallbackTimer);
     nativePasteFallbackTimer = null;
   };
-  const cancelPasteTextareaClear = () => {
-    if (pasteTextareaClearTimer === null) return;
-    window.clearTimeout(pasteTextareaClearTimer);
-    pasteTextareaClearTimer = null;
-  };
   const cancelPasteRecovery = () => {
     cancelNativePasteFallback();
-    cancelPasteTextareaClear();
     pasteTextareaBeforeInput = null;
     pastePaneIdBeforeInput = null;
   };
@@ -281,10 +225,6 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     }
   };
   const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
-  const shouldRecoverCommittedImeInput = (input: InputEvent) =>
-    applePlatform &&
-    !terminalCompositionActive &&
-    isTerminalImeCommittedInputType(input.inputType);
 
   // The platform's own copy/paste chord: Cmd on Apple, Ctrl elsewhere.
   const isNativeChord = (e: KeyboardEvent, key: "c" | "v") =>
@@ -304,7 +244,8 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     }
     if (e.type === "keydown" && shortcutMatches(e, "terminal.copy")) {
       // Keep native copy on the terminal textarea so Safari's IME focus is
-      // not interrupted by the clipboard fallback's temporary readonly input.
+      // not interrupted by the clipboard fallback's temporary readonly input;
+      // the copy listener (terminalGestures) writes the rich content.
       if (isNativeChord(e, "c")) return true;
       cancelEvent(e);
       const copied = terminalSelectionContent(
@@ -350,19 +291,11 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     }
     return false;
   };
-  // Any key starts a new input cycle for the IME duplicate guards.
-  const noteKeyDown = (e: KeyboardEvent) => {
-    if (e.type !== "keydown") return;
-    imeCommitGuard.beginIndependentInput();
-    if (e.keyCode !== 229) imeTextareaFallback.cancelPending();
-  };
-
   // Hardware keys go to Herdr as semantic keys before the engine sees them.
   installTerminalKeyEvents(container, {
     apple: applePlatform,
     signal,
     accepts: acceptsInput,
-    keydown: noteKeyDown,
     shortcut: handleShortcut,
     send: sendKey,
   });
@@ -373,255 +306,63 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       cancelEvent(e);
       return false;
     }
-    // xterm's capture listener runs before our textarea keydown listener.
-    // Its custom handler is the boundary before any synchronous onData.
-    noteKeyDown(e);
-    if (e.type === "keydown" && applePlatform) imeKeyEvent.begin();
     return !handleShortcut(e);
   });
 
-  const flushTextareaImeFallback = (
-    event: Event,
-    final = false,
-  ): "pending" | "unhandled" | "handled" => {
-    const result = imeTextareaFallback.flush(term.textarea?.value ?? "", final);
-    if (result.status === "handled" && result.text) {
-      const observedAt = performance.now();
-      const eventAt = terminalImeEventTime(event, observedAt);
-      sendMissingImeText(result.text, eventAt, observedAt);
-    }
-    if (result.status === "handled") {
-      imeCommitGuard.completeRecoveryCycle();
-    }
-    return result.status;
-  };
-  const scheduleImeTextareaFinal = (event: Event) => {
-    if (imeTextareaTimer !== null) window.clearTimeout(imeTextareaTimer);
-    imeTextareaTimer = window.setTimeout(() => {
-      imeTextareaTimer = null;
-      flushTextareaImeFallback(event, true);
-      imeTextareaFallback.complete();
-      imeCommitGuard.completeRecoveryCycle();
-    }, 0);
-  };
-  const onTerminalKeyDown = (event: KeyboardEvent) => {
-    lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
-    if (!applePlatform || event.keyCode !== 229 || terminalCompositionActive) {
-      return;
-    }
-    // Do not trust event.isComposing here. Third-party iOS keyboards can set
-    // it without dispatching a real composition lifecycle.
-    imeTextareaFallback.begin(lastTerminalTextareaSnapshot.value);
-  };
-  const onTerminalKeyUp = (event: KeyboardEvent) => {
-    imeKeyEvent.end();
-    if (!applePlatform || !imeTextareaFallback.hasPending()) return;
-
-    // A keydown reported as 229 can have a keyup reported as 0 or as the
-    // concrete key code. Flush the pending cycle regardless of keyup code.
-    // If the value is not visible yet, keep it for one final task, matching
-    // xterm's upstream fallback.
-    flushTextareaImeFallback(event);
-    scheduleImeTextareaFinal(event);
-  };
-  // A composition start or a blur ends the current IME and paste cycle.
-  const restartImeCycle = (compositionActive: boolean) => {
-    imeCommitGuard.beginIndependentInput();
-    imeKeyEvent.end();
-    cancelCompositionSettle();
-    terminalCompositionActive = compositionActive;
-    cancelPasteRecovery();
-    lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
-  };
-  const onTerminalCompositionStart = () => {
-    restartImeCycle(true);
-    compositionStartTextareaValue = lastTerminalTextareaSnapshot.value;
-    cancelImeTextareaFallback();
-  };
-  const onTerminalCompositionEnd = () => {
-    lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
-    // Only arm the guard when the composition actually committed text. A
-    // canceled composition leaves no delta, so a stray emission right
-    // after Escape can never be captured as a commit.
-    imeCommitGuard.endComposition(
-      performance.now(),
-      terminalImeTextareaDelta(
-        compositionStartTextareaValue,
-        lastTerminalTextareaSnapshot.value,
-      ),
-    );
-    cancelImeTextareaFallback();
-    cancelCompositionSettle();
-    // This listener runs after xterm's compositionend listener. Keep fallback
-    // disabled until xterm's queued composition finalization has completed.
-    compositionSettleTimer = window.setTimeout(() => {
-      compositionSettleTimer = null;
-      terminalCompositionActive = false;
-    }, 0);
-  };
   const onTerminalBlur = () => {
     // Desktop window blur retains activeElement for native focus restoration.
     // Explicitly blurring it would discard that target when switching apps.
     session.closeTerminalInput(shouldAvoidVirtualKeyboard());
-    restartImeCycle(false);
-    cancelImeTextareaFallback();
+    cancelPasteRecovery();
   };
+  // Capture listeners on the input run before the engine's own; stopping
+  // them there keeps it from also inserting what Thyra pastes.
   const onTerminalBeforeInput = (e: Event) => {
     if (!acceptsInput()) {
       swallowEvent(e);
       return;
     }
-    // A new native mutation cannot recover the preceding input's duplicate.
-    // Do not disarm commit capture: OS replay can also have beforeinput.
-    imeCommitGuard.completeRecoveryCycle();
     const input = e as InputEvent;
     if (input.inputType === "insertFromPaste" && !input.isComposing) {
-      imeCommitGuard.beginIndependentInput();
+      e.stopImmediatePropagation();
       if (!pasteTextareaBeforeInput) {
         pasteTextareaBeforeInput = readTerminalTextareaSnapshot();
         pastePaneIdBeforeInput = refs.paneId.current ?? null;
       }
-      return;
     }
-    if (shouldRecoverCommittedImeInput(input)) {
-      // Some third-party keyboards emit beforeinput/input without a preceding
-      // keydown, or emit input before keydown 229. Capture the pre-mutation
-      // value here so the input/keyup path can recover arbitrary committed
-      // text rather than punctuation only.
-      imeTextareaFallback.begin(readTerminalTextareaSnapshot().value);
-      scheduleImeTextareaFinal(input);
-      return;
-    }
-
-    const fallbackText = terminalCompositionActive
-      ? null
-      : terminalImeFallbackText(input);
-    if (!fallbackText || !input.cancelable) return;
-    const observedAt = performance.now();
-    const eventAt = terminalImeEventTime(input, observedAt);
-
-    // xterm reads IME textarea mutations from a timer. Sending the committed
-    // punctuation before that mutation keeps rapid input ordered and avoids
-    // relying on the bridge round trip before the next key is processed.
-    cancelEvent(input);
-    sendMissingImeText(fallbackText, eventAt, observedAt);
-  };
-  const handleTerminalTextInput = (e: Event) => {
-    const input = e as InputEvent;
-    const xtermHandledCurrentInput = imeKeyEvent.consumeInput(input);
-    const textareaSnapshot = readTerminalTextareaSnapshot();
-    const textareaBeforeInput = lastTerminalTextareaSnapshot;
-    const hadPasteSnapshot = pasteTextareaBeforeInput !== null;
-    const beforePaste = pasteTextareaBeforeInput ?? textareaBeforeInput;
-    const destinationPaneId = hadPasteSnapshot
-      ? pastePaneIdBeforeInput
-      : (refs.paneId.current ?? null);
-    const pastedText = terminalPasteInputText(
-      input,
-      beforePaste,
-      textareaSnapshot.value,
-    );
-    if (pastedText !== null) {
-      cancelImeTextareaFallback();
-      cancelPasteRecovery();
-      const textarea = term.textarea;
-      if (textarea) {
-        // Restore xterm's keydown baseline until its queued 229 timer runs.
-        // Clearing immediately makes xterm emit a spurious DEL.
-        textarea.value = beforePaste.value;
-        textarea.setSelectionRange(
-          beforePaste.selectionStart,
-          beforePaste.selectionEnd,
-        );
-        lastTerminalTextareaSnapshot = beforePaste;
-        pasteTextareaClearTimer = window.setTimeout(() => {
-          pasteTextareaClearTimer = null;
-          if (
-            term.textarea === textarea &&
-            textarea.value === beforePaste.value
-          ) {
-            textarea.value = "";
-            lastTerminalTextareaSnapshot = {
-              value: "",
-              selectionStart: 0,
-              selectionEnd: 0,
-            };
-          }
-        }, 0);
-      }
-      input.stopPropagation();
-      void runPasteOperation(() =>
-        pasteText(pastedText, destinationPaneId),
-      ).catch(reportTextPasteError);
-      return;
-    }
-
-    lastTerminalTextareaSnapshot = textareaSnapshot;
-    if (input.inputType === "insertFromPaste") {
-      input.stopPropagation();
-      if (nativePasteFallbackTimer === null) {
-        pasteTextareaBeforeInput = null;
-        pastePaneIdBeforeInput = null;
-      }
-      return;
-    }
-    cancelPasteRecovery();
-
-    if (xtermHandledCurrentInput) {
-      // Safari still mutates the helper textarea after xterm handles some
-      // printable keys in keypress. Do not replay that same committed text.
-      imeTextareaFallback.cancelPending();
-      return;
-    }
-
-    if (shouldRecoverCommittedImeInput(input)) {
-      // beforeinput is not guaranteed on every WebKit keyboard. The previous
-      // observed textarea value is the best safe append-only baseline when it
-      // is absent; begin() preserves an earlier keydown/beforeinput baseline.
-      imeTextareaFallback.begin(textareaBeforeInput.value);
-      const flushStatus = flushTextareaImeFallback(input);
-      scheduleImeTextareaFinal(input);
-      if (flushStatus === "handled") return;
-    }
-
-    const fallbackText = terminalCompositionActive
-      ? null
-      : terminalImeFallbackText(input);
-    if (!fallbackText) return;
-    const observedAt = performance.now();
-    const eventAt = terminalImeEventTime(input, observedAt);
-    sendMissingImeText(fallbackText, eventAt, observedAt);
   };
   const onTerminalTextInput = (e: Event) => {
     if (!acceptsInput()) {
       e.stopImmediatePropagation();
       return;
     }
-    try {
-      handleTerminalTextInput(e);
-    } finally {
-      // Without beforeinput, xterm has already emitted before this listener.
-      // Keep its tombstone through recovery, but never into the next input.
-      if (!imeTextareaFallback.hasPending()) {
-        imeCommitGuard.completeRecoveryCycle();
-      }
+    const input = e as InputEvent;
+    if (input.inputType !== "insertFromPaste") return;
+    e.stopImmediatePropagation();
+    const before = pasteTextareaBeforeInput;
+    const destinationPaneId = before
+      ? pastePaneIdBeforeInput
+      : (refs.paneId.current ?? null);
+    const pastedText = before
+      ? terminalPasteInputText(input, before, term.textarea.value)
+      : null;
+    term.textarea.value = "";
+    if (pastedText === null) {
+      // The native insertion exposed nothing; the clipboard event's text
+      // follows from its fallback timer.
+      if (nativePasteFallbackTimer === null) cancelPasteRecovery();
+      return;
     }
+    cancelPasteRecovery();
+    void runPasteOperation(() =>
+      pasteText(pastedText, destinationPaneId),
+    ).catch(reportTextPasteError);
   };
   const capture = { capture: true, signal };
-  const textarea = term.textarea;
-  textarea?.addEventListener("keydown", onTerminalKeyDown, capture);
-  textarea?.addEventListener("keyup", onTerminalKeyUp, capture);
-  textarea?.addEventListener(
-    "compositionstart",
-    onTerminalCompositionStart,
-    capture,
-  );
-  textarea?.addEventListener("compositionend", onTerminalCompositionEnd, {
-    signal,
-  });
-  textarea?.addEventListener("blur", onTerminalBlur, capture);
-  textarea?.addEventListener("beforeinput", onTerminalBeforeInput, capture);
-  textarea?.addEventListener("input", onTerminalTextInput, capture);
+  const { textarea } = term;
+  textarea.addEventListener("blur", onTerminalBlur, capture);
+  textarea.addEventListener("beforeinput", onTerminalBeforeInput, capture);
+  textarea.addEventListener("input", onTerminalTextInput, capture);
 
   const onPaste = async (e: ClipboardEvent) => {
     if (!acceptsInput()) {
@@ -640,20 +381,16 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       container.contains(target as Node | null) ||
       (active ? container.contains(active) : false);
     if (!isTerminalPaste && isEditableElement(target)) return;
-    imeCommitGuard.beginIndependentInput();
     const destinationPaneId = refs.paneId.current ?? null;
     if (!img && appleTouchPlatform && isTerminalPaste) {
-      cancelImeTextareaFallback();
       cancelNativePasteFallback();
-      cancelPasteTextareaClear();
       const beforePaste = readTerminalTextareaSnapshot();
       pasteTextareaBeforeInput = beforePaste;
       pastePaneIdBeforeInput = destinationPaneId;
-      lastTerminalTextareaSnapshot = beforePaste;
 
       // Keep WebKit's native insertion so insertFromPaste can expose the full
-      // text, but stop xterm's target listener from consuming truncated
-      // ClipboardEvent data and clearing the textarea first.
+      // text, but stop the engine's listener from consuming truncated
+      // ClipboardEvent data and clearing the input first.
       e.stopPropagation();
       if (text) {
         nativePasteFallbackTimer = window.setTimeout(() => {
@@ -669,7 +406,6 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       return;
     }
     if (!img && !text) return;
-    cancelImeTextareaFallback();
     cancelPasteRecovery();
     cancelEvent(e);
     try {
@@ -690,12 +426,8 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   document.addEventListener("paste", onPaste, capture);
 
   return () => {
-    cancelImeTextareaFallback();
-    cancelCompositionSettle();
+    data.dispose();
     cancelNativePasteFallback();
-    cancelPasteTextareaClear();
     disposePasteOperations();
-    imeFallback.dispose();
-    imeCommitGuard.dispose();
   };
 }

@@ -1,4 +1,4 @@
-import type { ITheme, Terminal } from "@xterm/xterm";
+import type { TerminalEngine, TerminalTheme } from "../../terminalEngine";
 import {
   useEffect,
   useId,
@@ -58,8 +58,8 @@ export function ShellEditor({
   client: ConnectionClient;
   paneId: string;
   draftKey: string;
-  term: Terminal;
-  terminalTheme: ITheme;
+  term: TerminalEngine;
+  terminalTheme: TerminalTheme;
   active: boolean;
   /** Focus may move on the user's behalf (see programmaticFocusAllowed). */
   focusAllowed: boolean;
@@ -216,7 +216,7 @@ export function ShellEditor({
     const resized = term.onResize(measure);
     const scroll = term.onScroll(measure);
     const observer = new ResizeObserver(measure);
-    if (term.element) observer.observe(term.element);
+    observer.observe(term.element);
     return () => {
       parsed.dispose();
       resized.dispose();
@@ -559,10 +559,9 @@ export function ShellEditor({
       : 0;
   useLayoutEffect(() => {
     const element = term.element;
-    if (!element) return;
     const previous = element.style.translate;
-    const screen = element.querySelector<HTMLElement>(".xterm-screen");
-    const scale = screen?.offsetHeight
+    const screen = term.screen;
+    const scale = screen.offsetHeight
       ? screen.getBoundingClientRect().height / screen.offsetHeight
       : 1;
     lifted.current = lift;
@@ -581,7 +580,7 @@ export function ShellEditor({
           metrics.width - col * metrics.cellWidth,
         ),
         height: editorHeight,
-        fontFamily: term.options.fontFamily,
+        fontFamily: term.cssFontFamily,
         fontSize: metrics.fontSize,
         "--prompt-editor-row": `${lineHeight}px`,
         "--shell-editor-hint-height": `${hint || search !== null ? lineHeight : 0}px`,
@@ -621,7 +620,7 @@ export function ShellEditor({
             label={t("Shell command line")}
             placeholder=""
             font={{
-              family: term.options.fontFamily ?? "monospace",
+              family: term.cssFontFamily,
               size: metrics?.fontSize ?? 13,
               lineHeight,
             }}

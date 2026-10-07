@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  ClipboardAddon,
-  type ClipboardSelectionType,
-} from "@xterm/addon-clipboard";
-import type { Terminal } from "@xterm/xterm";
-import {
   copyTextFromUserGesture,
   createTerminalClipboardProvider,
   decodeTerminalClipboard,
@@ -12,9 +7,6 @@ import {
   MAX_TERMINAL_CLIPBOARD_CHARS,
   normalizeTerminalSelection,
 } from "./terminalClipboard";
-
-const systemClipboard = "c" as ClipboardSelectionType;
-const primaryClipboard = "p" as ClipboardSelectionType;
 
 function flushClipboardWrite() {
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -96,72 +88,7 @@ describe("terminal OSC 52 clipboard access", () => {
     expect(decodeTerminalClipboard("")).toBeNull();
   });
 
-  test("decodes a Pi-style OSC 52 payload through the xterm addon", async () => {
-    const writes: string[] = [];
-    let oscHandler: ((data: string) => boolean | Promise<boolean>) | undefined;
-    const provider = createTerminalClipboardProvider({
-      clipboard: {
-        writeText: async (text) => {
-          writes.push(text);
-        },
-      },
-    });
-    const addon = new ClipboardAddon(undefined, provider);
-    addon.activate({
-      parser: {
-        registerOscHandler(
-          ident: number,
-          handler: (data: string) => boolean | Promise<boolean>,
-        ) {
-          expect(ident).toBe(52);
-          oscHandler = handler;
-          return { dispose() {} };
-        },
-      },
-    } as unknown as Terminal);
-
-    const text = "selected tree message\nwith multiple lines";
-    const encoded = Buffer.from(text).toString("base64");
-    const handled = oscHandler?.(`c;${encoded}`);
-
-    expect(handled).toBe(true);
-    expect(writes).toEqual([text]);
-  });
-
-  test("does not block terminal parsing on a pending browser permission", () => {
-    let finishWrite: (() => void) | undefined;
-    let oscHandler: ((data: string) => boolean | Promise<boolean>) | undefined;
-    const addon = new ClipboardAddon(
-      undefined,
-      createTerminalClipboardProvider({
-        clipboard: {
-          writeText: () =>
-            new Promise<void>((resolve) => {
-              finishWrite = resolve;
-            }),
-        },
-      }),
-    );
-    addon.activate({
-      parser: {
-        registerOscHandler(
-          _ident: number,
-          handler: (data: string) => boolean | Promise<boolean>,
-        ) {
-          oscHandler = handler;
-          return { dispose() {} };
-        },
-      },
-    } as unknown as Terminal);
-
-    const handled = oscHandler?.(`c;${Buffer.from("copy").toString("base64")}`);
-
-    expect(handled).toBe(true);
-    expect(finishWrite).toBeFunction();
-    finishWrite?.();
-  });
-
-  test("writes system clipboard requests through the browser API", async () => {
+  test("writes OSC 52 copies through the browser API", async () => {
     const writes: string[] = [];
     const provider = createTerminalClipboardProvider({
       clipboard: {
@@ -172,7 +99,7 @@ describe("terminal OSC 52 clipboard access", () => {
       fallback: () => false,
     });
 
-    provider.writeText(systemClipboard, "copied from Pi");
+    provider.writeText("copied from Pi");
     await flushClipboardWrite();
 
     expect(writes).toEqual(["copied from Pi"]);
@@ -192,26 +119,15 @@ describe("terminal OSC 52 clipboard access", () => {
       },
     });
 
-    provider.writeText(systemClipboard, "tree branch");
+    provider.writeText("tree branch");
     await flushClipboardWrite();
 
     expect(fallbacks).toEqual(["tree branch"]);
   });
 
-  test("ignores non-system writes and refuses clipboard reads", async () => {
-    let writes = 0;
-    const provider = createTerminalClipboardProvider({
-      clipboard: {
-        writeText: async () => {
-          writes += 1;
-        },
-      },
-    });
-
-    provider.writeText(primaryClipboard, "ignored");
-
-    expect(writes).toBe(0);
-    expect(await provider.readText(systemClipboard)).toBe("");
+  test("offers terminals no way to read the clipboard", () => {
+    const provider = createTerminalClipboardProvider({ clipboard: null });
+    expect(Object.keys(provider)).toEqual(["writeText"]);
   });
 
   test("ignores empty writes and writes from an inactive pane", async () => {
@@ -225,8 +141,8 @@ describe("terminal OSC 52 clipboard access", () => {
       canWrite: () => false,
     });
 
-    provider.writeText(systemClipboard, "background pane");
-    provider.writeText(systemClipboard, "");
+    provider.writeText("background pane");
+    provider.writeText("");
     await flushClipboardWrite();
 
     expect(writes).toEqual([]);
@@ -240,7 +156,7 @@ describe("terminal OSC 52 clipboard access", () => {
       onWriteError: (error) => errors.push(error),
     });
 
-    provider.writeText(systemClipboard, "cannot copy");
+    provider.writeText("cannot copy");
     await flushClipboardWrite();
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("unavailable");
@@ -258,10 +174,7 @@ describe("terminal OSC 52 clipboard access", () => {
       onWriteError: (error, retryText) => errors.push({ error, retryText }),
     });
 
-    provider.writeText(
-      systemClipboard,
-      "x".repeat(MAX_TERMINAL_CLIPBOARD_CHARS + 1),
-    );
+    provider.writeText("x".repeat(MAX_TERMINAL_CLIPBOARD_CHARS + 1));
 
     expect(writes).toBe(0);
     expect(errors).toHaveLength(1);
@@ -289,8 +202,8 @@ describe("terminal OSC 52 clipboard access", () => {
       onWriteError: (error) => errors.push(error),
     });
 
-    provider.writeText(systemClipboard, "older copy");
-    provider.writeText(systemClipboard, "newer copy");
+    provider.writeText("older copy");
+    provider.writeText("newer copy");
     rejectFirst?.(new Error("older request denied"));
     await flushClipboardWrite();
 

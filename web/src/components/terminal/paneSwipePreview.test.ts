@@ -1,5 +1,5 @@
 import { describe, expect, jest, test } from "bun:test";
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "../../terminalEngine";
 import {
   FETCH_TIMEOUT_MS,
   LINES_TTL_MS,
@@ -132,6 +132,6 @@ test("a terminal's screen is its visible rows, trailing blanks trimmed", () => {
             : undefined,
       },
     },
-  } as unknown as Terminal;
+  } as unknown as TerminalEngine;
   expect(terminalScreenText(term)).toBe("$ echo hi\nhi\n$");
 });

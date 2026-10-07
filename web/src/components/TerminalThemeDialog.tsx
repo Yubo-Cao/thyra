@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { ITheme } from "@xterm/xterm";
+import type { TerminalTheme } from "../terminalEngine";
 import { Check, Copy, Moon, Pencil, Plus, Sun, Trash2, X } from "lucide-react";
 import type { ResolvedTheme } from "../appearance";
 import { msg, t } from "../i18n";
 import {
   type CustomTerminalTheme,
-  customTerminalThemeToITheme,
+  customTerminalThemeToTheme,
   defaultTerminalThemeId,
   MAX_CUSTOM_TERMINAL_THEMES,
   MAX_TERMINAL_THEME_NAME_LENGTH,
@@ -121,8 +121,8 @@ type TerminalThemeDraft = {
   colors: Record<TerminalThemeColorKey, string>;
 };
 
-function draftColorsFromITheme(
-  theme: ITheme,
+function draftColorsFromTheme(
+  theme: TerminalTheme,
 ): Record<TerminalThemeColorKey, string> {
   const colors = {} as Record<TerminalThemeColorKey, string>;
   for (const key of ALL_COLOR_KEYS) {
@@ -139,7 +139,7 @@ function draftFromDefinition(
     id: null,
     name,
     variant: definition.variant,
-    colors: draftColorsFromITheme(definition.theme),
+    colors: draftColorsFromTheme(definition.theme),
   };
 }
 
@@ -242,7 +242,7 @@ export function TerminalThemeDialog({
           name: custom.name,
           variant: custom.variant,
           builtin: false,
-          theme: customTerminalThemeToITheme(custom),
+          theme: customTerminalThemeToTheme(custom),
         },
       })),
   ];
@@ -390,7 +390,7 @@ export function TerminalThemeDialog({
                   }
                 >
                   <TerminalThemePreview
-                    colors={draftColorsFromITheme(card.definition.theme)}
+                    colors={draftColorsFromTheme(card.definition.theme)}
                   />
                   <span className="terminal-theme-card-name">
                     {active ? <Check size={13} aria-hidden="true" /> : null}

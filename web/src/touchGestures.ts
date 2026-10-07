@@ -1,5 +1,5 @@
 import { thyraLocalStorage } from "./browserStorage";
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "./terminalEngine";
 
 // Multi-touch gestures on the terminal: two-finger pinch zooms its font, and a
 // two-, three- or four-finger horizontal swipe moves between panes (see
@@ -178,6 +178,6 @@ export function paneSwipeFingers(): PaneSwipeFingers {
  * the swipe previews a neighbouring pane from these.
  */
 export const terminalScreens: {
-  open: Map<Terminal, { current: string | null }>;
-  keep?(terminalId: string, term: Terminal): void;
+  open: Map<TerminalEngine, { current: string | null }>;
+  keep?(terminalId: string, term: TerminalEngine): void;
 } = { open: new Map() };

@@ -104,7 +104,7 @@ export function terminalShortcutActions(
   viewOnly: boolean,
 ) {
   const blurTerminalInput = () => {
-    if (shouldAvoidVirtualKeyboard()) refs.term.current?.textarea?.blur();
+    if (shouldAvoidVirtualKeyboard()) refs.term.current?.textarea.blur();
   };
   const run = (shortcut: MobileTerminalShortcut) => {
     const execution = mobileTerminalShortcutExecution(shortcut.action);

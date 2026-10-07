@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
+import type {
+  TerminalEngine,
+  TerminalLink,
+  TerminalLinkProvider,
+} from "./terminalEngine";
 import { registerTerminalLinkProvider } from "./terminalLinkProvider";
 import { TerminalFileResolutionCache } from "./terminalFileLinks";
 import {
@@ -8,7 +12,7 @@ import {
 } from "./shortcutPreferences";
 
 function fixture(rows: string[], cols: number, wrapped: number[] = []) {
-  let provider!: ILinkProvider;
+  let provider!: TerminalLinkProvider;
   const lines = rows.map((text, index) => ({
     text,
     isWrapped: wrapped.includes(index + 1),
@@ -24,11 +28,11 @@ function fixture(rows: string[], cols: number, wrapped: number[] = []) {
   const term = {
     cols,
     buffer: { active: buffer },
-    registerLinkProvider(value: ILinkProvider) {
+    registerLinkProvider(value: TerminalLinkProvider) {
       provider = value;
       return { dispose() {} };
     },
-  } as unknown as Terminal;
+  } as unknown as TerminalEngine;
   const requests: string[][] = [];
   const previewed: string[] = [];
   const existing = new Set<string>();
@@ -43,7 +47,7 @@ function fixture(rows: string[], cols: number, wrapped: number[] = []) {
   const resolve = (paths: string[]) =>
     cache.resolve("test", "workspace", paths);
   const links = (row: number) =>
-    new Promise<ILink[]>((done) =>
+    new Promise<TerminalLink[]>((done) =>
       provider.provideLinks(row, (found) => done(found ?? [])),
     );
   return {
@@ -54,12 +58,14 @@ function fixture(rows: string[], cols: number, wrapped: number[] = []) {
     resolve,
     previewed,
     links,
-    provide: (row: number, callback: (links: ILink[] | undefined) => void) =>
-      provider.provideLinks(row, callback),
+    provide: (
+      row: number,
+      callback: (links: TerminalLink[] | undefined) => void,
+    ) => provider.provideLinks(row, callback),
   };
 }
 
-// These exercise the actual provider registered with xterm, including async
+// These exercise the actual provider registered with the terminal, including async
 // resolution and the one-based, inclusive ranges used for mouse activation.
 describe("terminal link provider", () => {
   test("keeps a resolved file usable when an unrelated frame repaints during lookup", async () => {
@@ -487,7 +493,7 @@ describe("endpoint terminal link provider", () => {
         return new Promise(() => {});
       },
     });
-    let found: ILink[] | undefined;
+    let found: TerminalLink[] | undefined;
     f.provide(2, (links) => {
       found = links;
     });
@@ -748,10 +754,10 @@ describe("endpoint terminal link provider", () => {
   test("refreshes a stale cached file on hover without enabling its old action", async () => {
     const f = fixture(["/tmp/old.md"], 30);
     let state = 1;
-    const refreshed: number[][] = [];
+    const refreshed: unknown[][] = [];
     Object.assign(f.term, {
       rows: 10,
-      refresh: (...rows: number[]) => refreshed.push(rows),
+      refresh: (...args: unknown[]) => refreshed.push(args),
     });
     registerTerminalLinkProvider(
       f.term,
@@ -771,7 +777,7 @@ describe("endpoint terminal link provider", () => {
     link!.activate(event, link!.text);
     await Promise.resolve();
     expect(f.previewed).toEqual([]);
-    expect(refreshed).toEqual([[0, 9]]);
+    expect(refreshed).toEqual([[]]);
     expect((await f.links(1))[0]?.text).toBe("/tmp/new.md");
   });
 

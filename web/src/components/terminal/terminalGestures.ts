@@ -12,14 +12,11 @@ import {
   terminalCellAtPoint,
   terminalWheelScroll,
 } from "../../terminalScroll";
-import { TerminalSelectionDragGuard } from "../../terminalSelectionGuard";
 import { terminalSelectedText } from "../../terminalTouchSelection";
 import {
   cancelEvent,
   copyFinishedSelection,
   terminalClipboardRoot,
-  dispatchMouseRelease,
-  isSafariBrowser,
   shouldAvoidVirtualKeyboard,
   swallowEvent,
   type TerminalSession,
@@ -130,71 +127,30 @@ export function installTerminalGestures(
   };
   container.addEventListener("copy", onCopy, capture);
   // WebKit enables Copy only for a DOM range selection unless beforecopy is
-  // cancelled; xterm's textarea holds just a caret, so opt in explicitly.
+  // cancelled; the terminal's input holds just a caret, so opt in explicitly.
   const onBeforeCopy = (e: Event) => {
     if (term.hasSelection() || history.active) e.preventDefault();
   };
   container.addEventListener("beforecopy", onBeforeCopy, capture);
 
-  const onClick = (e: MouseEvent) => {
-    if (
-      !terminalMouseUsesSelection(presentation.mouseReporting, e, applePlatform)
-    )
-      return;
-    if (!isSafariBrowser() || term.hasSelection()) return;
-    term.clearSelection();
-    dispatchMouseRelease(container.ownerDocument, e);
-  };
-  container.addEventListener("click", onClick, { signal });
-
-  // xterm only disarms its document-level drag listeners on mouseup. When
-  // the release is lost (released outside the window, or the browser drops
-  // the mouseup after the mousedown target was re-rendered mid-gesture),
-  // every later move keeps growing the selection without a button pressed.
-  // Detect the lost release on the first button-less move and force it.
-  const selectionDragGuard = new TerminalSelectionDragGuard();
-  let deferredMove: MouseEvent | null = null;
-  let deferredUp: MouseEvent | null = null;
-  const replayMouse = (target: EventTarget, event: MouseEvent) => {
-    // The reporting mode may have changed while parsing. Preserve the
-    // original modifiers and add only xterm's local selection escape.
-    const forceSelection = term.modes.mouseTrackingMode !== "none";
-    target.dispatchEvent(
-      new MouseEvent(event.type, {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        button: event.button,
-        buttons: event.buttons,
-        detail: event.detail,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        screenX: event.screenX,
-        screenY: event.screenY,
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
-        altKey: event.altKey || (forceSelection && applePlatform),
-        shiftKey: event.shiftKey || (forceSelection && !applePlatform),
-      }),
-    );
-  };
   let selectionDragActive = false;
   // A drag handed to the pane app (mouse reporting) may end in an OSC 52
   // copy that arrives after the gesture; reserve the write while it lasts.
   let appDragStart: { x: number; y: number } | null = null;
-  const onTerminalMouseDown = (e: MouseEvent) => {
-    if (session.replayingSelection) return;
-    if (touch.active && !isTouchMouse(e)) touch.reset();
+  // The engine selects on pointer events; these capture listeners run first.
+  const onTerminalPointerDown = (e: PointerEvent) => {
+    if (touch.active && e.pointerType !== "touch") touch.reset();
     if (
-      (lastPointerType !== "mouse" &&
-        window.matchMedia("(pointer: coarse)").matches) ||
-      isTouchMouse(e)
+      e.pointerType === "touch" ||
+      (e.pointerType !== "mouse" &&
+        window.matchMedia("(pointer: coarse)").matches)
     ) {
+      // Touch gestures (below) own fingers; the engine never sees them.
       swallowEvent(e);
-      if (!isTouchMouse(e)) closeTerminalInput();
+      if (e.pointerType !== "touch") closeTerminalInput();
       return;
     }
-    // A physical mouse on a hybrid desktop retains normal xterm input.
+    // A physical mouse on a hybrid desktop retains normal terminal input.
     openTerminalInput(
       term,
       refs.composerOpen.current || refs.touchSelection.current?.active === true,
@@ -219,74 +175,24 @@ export function installTerminalGestures(
       return;
     }
     appDragStart = null;
-    selectionDragGuard.mouseDown(e.button);
     if (e.button !== 0) return;
     selectionDragActive = true;
     history.reset();
-    if (
-      presentation.mouseReporting === undefined &&
-      !presentation.writePending
-    ) {
-      presentation.selectionDrag = true;
-      return;
-    }
-    const terminalId = desiredTerminal.current;
-    deferredMove = deferredUp = null;
-    if (
-      !presentation.beginSelection(() => {
-        if (
-          session.disposed ||
-          !client.isCurrent() ||
-          terminalId !== desiredTerminal.current ||
-          !(e.target instanceof Node) ||
-          !e.target.isConnected
-        )
-          return;
-        session.replayingSelection = true;
-        try {
-          replayMouse(e.target, e);
-          if (deferredMove) replayMouse(container.ownerDocument, deferredMove);
-          if (deferredUp) replayMouse(container.ownerDocument, deferredUp);
-        } finally {
-          session.replayingSelection = false;
-          deferredMove = deferredUp = null;
-        }
-      })
-    ) {
-      swallowEvent(e);
-    }
+    // Frames hold while the drag selects, so it copies what was displayed.
+    presentation.beginSelection(() => {});
   };
-  const onDeferredMouseMove = (e: MouseEvent) => {
+  const onDocumentPointerMove = (e: PointerEvent) => {
     if (
-      !presentation.selectionPending &&
+      e.pointerType === "mouse" &&
       history.move(
         e,
         presentation.selectionDrag && !(e.altKey && !applePlatform),
       )
-    ) {
+    )
       swallowEvent(e);
-      return;
-    }
-    if (!presentation.selectionPending || deferredUp) return;
-    if (e.buttons === 0) {
-      // A lost release finalizes at the last held-button move, not this hover.
-      deferredUp = new MouseEvent("mouseup", e);
-      selectionDragGuard.mouseUp();
-    } else {
-      deferredMove = e;
-    }
-    swallowEvent(e);
   };
-  const onDocumentMouseUp = (e: MouseEvent) => {
-    if (history.releasingNative) return;
+  const onDocumentPointerUp = (e: PointerEvent) => {
     history.finish();
-    if (presentation.selectionPending) {
-      if (deferredUp) return; // the first release froze this gesture
-      deferredUp = e;
-      selectionDragGuard.mouseUp();
-      swallowEvent(e);
-      return;
-    }
     if (
       appDragStart &&
       e.button === 0 &&
@@ -299,6 +205,9 @@ export function installTerminalGestures(
       );
     }
     appDragStart = null;
+  };
+  // After the engine finished the gesture: its selection is final.
+  const onSelectionReleased = (e: PointerEvent) => {
     if (
       selectionDragActive &&
       e.button === 0 &&
@@ -310,55 +219,27 @@ export function installTerminalGestures(
       if (selected) copyFinishedSelection(selected, refs);
     }
     selectionDragActive = false;
-    selectionDragGuard.mouseUp();
-    presentation.selectionDrag = false;
-    queueMicrotask(() => {
-      if (!session.disposed) presentation.flush();
-    });
-  };
-  const onNativeMouseDown = (e: MouseEvent) => {
-    // A new physical gesture anywhere owns document listeners now. Cancel
-    // this deferred replay before a sibling terminal can start an app drag.
-    // Synthetic selection replay must not cancel another pane's intent.
-    if (!e.isTrusted) return;
-    if (history.active) {
-      history.finish();
-      selectionDragGuard.reset();
-      presentation.selectionDrag = false;
-    }
-    if (!presentation.selectionPending) return;
-    deferredMove = deferredUp = null;
-    selectionDragGuard.reset();
     presentation.cancelSelection();
   };
   const onSelectionBlur = () => {
     touch.cancelPending();
     history.finish();
-    if (presentation.selectionPending) {
-      deferredMove = deferredUp = null;
-      selectionDragGuard.reset();
-      presentation.cancelSelection();
-      return;
-    }
-    if (
-      presentation.mouseReporting === undefined ||
-      !presentation.selectionDrag
-    )
-      return;
-    // End xterm's document listeners too; merely resetting our guard would
-    // leave a lost native release extending the selection on later moves.
-    dispatchMouseRelease(container.ownerDocument);
+    if (selectionDragActive) presentation.cancelSelection();
+    selectionDragActive = false;
   };
-  const onDocumentMouseMove = (e: MouseEvent) => {
-    if (!selectionDragGuard.mouseMoveNeedsRelease(e.buttons)) return;
-    dispatchMouseRelease(container.ownerDocument, e);
-  };
-  container.addEventListener("mousedown", onTerminalMouseDown, capture);
+  container.addEventListener("pointerdown", onTerminalPointerDown, capture);
   window.addEventListener("blur", onSelectionBlur, { signal });
-  document.addEventListener("mousedown", onNativeMouseDown, capture);
-  document.addEventListener("mouseup", onDocumentMouseUp, capture);
-  document.addEventListener("mousemove", onDeferredMouseMove, capture);
-  document.addEventListener("mousemove", onDocumentMouseMove, { signal });
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      // A new physical gesture anywhere ends a history drag.
+      if (e.isTrusted && history.active) history.finish();
+    },
+    capture,
+  );
+  document.addEventListener("pointerup", onDocumentPointerUp, capture);
+  document.addEventListener("pointerup", onSelectionReleased, { signal });
+  document.addEventListener("pointermove", onDocumentPointerMove, capture);
 
   const onWheel = (e: WheelEvent) => {
     if (session.replayingWheel) return;
@@ -394,8 +275,8 @@ export function installTerminalGestures(
         cancelEvent(e);
         return;
       }
-      // Let xterm produce pane-local SGR coordinates and modifiers only on
-      // endpoint streams. Legacy AttachScroll routing stays unchanged.
+      // Let the engine produce pane-local SGR coordinates and modifiers only
+      // on endpoint streams. Legacy AttachScroll routing stays unchanged.
       if (
         presentation.mouseReporting &&
         term.modes.mouseTrackingMode !== "none"
@@ -403,14 +284,11 @@ export function installTerminalGestures(
         if (session.acceptsInput()) return;
         swallowEvent(e);
         if (!session.acceptsEndpointInput()) return;
-        // Let xterm encode only this wheel event without authorizing keyboard input.
-        const disabled = term.options.disableStdin;
+        // Let the engine encode only this wheel event, not keyboard input.
         session.replayingWheel = true;
         try {
-          term.options.disableStdin = false;
-          e.target?.dispatchEvent(new WheelEvent("wheel", e));
+          term.screen.dispatchEvent(new WheelEvent("wheel", e));
         } finally {
-          term.options.disableStdin = disabled;
           session.replayingWheel = false;
         }
         return;
@@ -509,16 +387,13 @@ export function installTerminalGestures(
     if (!touch.active) presentation.cancelSelection();
     const tapped = touchStartX !== null && touchStartY !== null && !touchMoved;
     const endTouch = e.changedTouches[0];
-    const screen = term.element
-      ?.querySelector(".xterm-screen")
-      ?.getBoundingClientRect();
+    const screen = term.screenBounds();
     // Taps on the agent input rows mean "type here": open the keyboard, or
     // keep it open. Taps higher up are for reading and dismiss it.
     const inInputZone =
       tapped &&
       !touch.active &&
       !!endTouch &&
-      !!screen &&
       screen.height > 0 &&
       terminalTapOpensInput(
         Math.floor(
@@ -542,7 +417,7 @@ export function installTerminalGestures(
         refs.inputActive.current,
       );
     resetTouch();
-    // Cancel compatibility mouse events before xterm can focus or report them.
+    // Cancel compatibility mouse events before the engine can see them.
     swallowEvent(e);
     if (dismissInput) closeTerminalInput();
     if (openInput) {
@@ -581,7 +456,7 @@ export function installTerminalGestures(
       )
     )
       return;
-    term.textarea?.blur();
+    term.textarea.blur();
   };
   const onTerminalFocus = () => {
     if (touch.active) {
@@ -613,7 +488,7 @@ export function installTerminalGestures(
       return;
     swallowEvent(e);
   };
-  term.textarea?.addEventListener("focus", onTerminalFocus, { signal });
+  term.textarea.addEventListener("focus", onTerminalFocus, { signal });
   for (const event of ["mouseup", "click", "dblclick", "contextmenu"] as const)
     container.addEventListener(event, blockMobileMouse, capture);
   container.addEventListener("touchstart", onTouchStart, {

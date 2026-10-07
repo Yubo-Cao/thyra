@@ -1,4 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "../../terminalEngine";
 import { ChevronRight, SquareTerminal } from "lucide-react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
@@ -132,7 +132,7 @@ function paneAfter(from: string | null, step: -1 | 1) {
 // change (the default alias resolving to its profile) over the same panes.
 const previews = new PanePreviews();
 
-function keepScreen(terminalId: string, term: Terminal) {
+function keepScreen(terminalId: string, term: TerminalEngine) {
   const text = terminalScreenText(term);
   if (text)
     previews.keep(terminalId, {
@@ -148,7 +148,7 @@ terminalScreens.keep = keepScreen;
 function keepVisibleScreens(surface: HTMLElement) {
   let live: { font: PaneFont; rows: number } | null = null;
   for (const [term, rendered] of terminalScreens.open) {
-    if (!term.element || !surface.contains(term.element)) continue;
+    if (!surface.contains(term.element)) continue;
     if (rendered.current) keepScreen(rendered.current, term);
     live ??= { font: terminalFont(term), rows: term.rows };
   }

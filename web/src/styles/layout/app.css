@@ -347,7 +347,7 @@
   text-transform: uppercase;
 }
 
-/* ===== terminal (xterm.js) ===== */
+/* ===== terminal ===== */
 .pane-layout {
   position: relative;
   min-height: 0;

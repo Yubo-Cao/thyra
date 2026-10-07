@@ -1,4 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "../../terminalEngine";
 import { useLayoutEffect } from "react";
 export type TerminalMetrics = {
   left: number;
@@ -12,18 +12,17 @@ export type TerminalMetrics = {
 
 /** The terminal grid in the editor's coordinates (CSS zoom and follow scale included). */
 export function measureTerminal(
-  term: Terminal,
+  term: TerminalEngine,
   host: HTMLElement | null,
 ): TerminalMetrics | null {
-  const screen = term.element?.querySelector<HTMLElement>(".xterm-screen");
-  if (!host || !screen || !screen.offsetHeight || !term.rows || !term.cols)
-    return null;
-  const bounds = screen.getBoundingClientRect();
+  const screen = term.screenSize();
+  if (!host || !screen.height || !term.rows || !term.cols) return null;
+  const bounds = term.screenBounds();
   const origin = host.getBoundingClientRect();
   const hostScaleX = host.offsetWidth ? origin.width / host.offsetWidth : 1;
   const hostScaleY = host.offsetHeight ? origin.height / host.offsetHeight : 1;
   const left = (bounds.left - origin.left) / hostScaleX;
-  const scale = bounds.height / screen.offsetHeight / hostScaleY;
+  const scale = bounds.height / screen.height / hostScaleY;
   return {
     left,
     top: (bounds.top - origin.top) / hostScaleY,

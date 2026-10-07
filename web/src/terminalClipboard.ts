@@ -1,7 +1,3 @@
-import type {
-  ClipboardSelectionType,
-  IClipboardProvider,
-} from "@xterm/addon-clipboard";
 import { t } from "./i18n";
 
 type ClipboardWriter = Pick<Clipboard, "writeText"> &
@@ -233,10 +229,13 @@ export function reserveClipboardWrite(
   };
 }
 
-/** Allow OSC 52 writes while deliberately refusing terminal clipboard reads. */
+/**
+ * Writes a pane's OSC 52 copy to the browser clipboard. Terminals can never
+ * read it: there is deliberately no read side.
+ */
 export function createTerminalClipboardProvider(
   options: TerminalClipboardProviderOptions = {},
-): IClipboardProvider {
+): { writeText(text: string): void } {
   const clipboard =
     options.clipboard === undefined
       ? typeof navigator !== "undefined"
@@ -247,12 +246,8 @@ export function createTerminalClipboardProvider(
   let writeSequence = 0;
 
   return {
-    // A remote terminal must never be able to exfiltrate the browser clipboard.
-    readText() {
-      return "";
-    },
-    writeText(selection: ClipboardSelectionType, text: string) {
-      if (selection !== "c" || !text || options.canWrite?.() === false) return;
+    writeText(text: string) {
+      if (!text || options.canWrite?.() === false) return;
       const sequence = ++writeSequence;
       options.onWriteStart?.();
       if (text.length > MAX_TERMINAL_CLIPBOARD_CHARS) {
@@ -265,8 +260,7 @@ export function createTerminalClipboardProvider(
         return;
       }
 
-      // Clipboard permissions may wait on browser UI. Keep that promise out of
-      // xterm's OSC handler so terminal output parsing can never stall behind it.
+      // Clipboard permissions may wait on browser UI; never block on them.
       const write =
         options.format &&
         clipboard?.write &&

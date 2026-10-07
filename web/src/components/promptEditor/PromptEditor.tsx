@@ -4,7 +4,7 @@ import {
   type TerminalMetrics,
   useEditorSpan,
 } from "./metrics";
-import type { ITheme, Terminal } from "@xterm/xterm";
+import type { TerminalEngine, TerminalTheme } from "../../terminalEngine";
 import { CornerDownLeft, Eye, PenLine, X } from "lucide-react";
 import {
   type CSSProperties,
@@ -91,8 +91,8 @@ export type PromptEditorControl = {
 export type PromptEditorProps = {
   draftKey: string;
   agent: AgentKind;
-  term: Terminal;
-  terminalTheme: ITheme;
+  term: TerminalEngine;
+  terminalTheme: TerminalTheme;
   /** The pane is the selected one; only it takes focus. */
   active: boolean;
   /** Touch first: a plain textarea and a send button. */
@@ -115,7 +115,7 @@ export type PromptEditorProps = {
   onSpanChange: (span: EditorSpan | null) => void;
 };
 
-function visibleRows(term: Terminal): string[] {
+function visibleRows(term: TerminalEngine): string[] {
   const buffer = term.buffer.active;
   const rows: string[] = [];
   for (let row = 0; row < term.rows; row++)
@@ -126,16 +126,19 @@ function visibleRows(term: Terminal): string[] {
 }
 
 /** Rows `from`..`to` with dim cells (agent placeholder hints) blanked. */
-function undimmedRows(term: Terminal, from: number, to: number): string[] {
+function undimmedRows(
+  term: TerminalEngine,
+  from: number,
+  to: number,
+): string[] {
   const buffer = term.buffer.active;
-  const cell = buffer.getNullCell();
   const rows: string[] = [];
   for (let row = from; row <= to; row++) {
     const line = buffer.getLine(buffer.viewportY + row);
     let text = "";
     for (let col = 0; line && col < line.length; col++) {
-      line.getCell(col, cell);
-      if (cell.getWidth() === 0) continue;
+      const cell = line.getCell(col);
+      if (!cell || cell.getWidth() === 0) continue;
       text += cell.isDim() ? " " : cell.getChars() || " ";
     }
     rows[row] = text;
@@ -302,7 +305,7 @@ export function PromptEditor({
     const parsed = term.onWriteParsed(() => schedule());
     const resized = term.onResize(() => schedule());
     const observer = new ResizeObserver(() => schedule());
-    if (term.element) observer.observe(term.element);
+    observer.observe(term.element);
     const host = rootRef.current?.parentElement;
     if (host) observer.observe(host);
     return () => {
@@ -477,8 +480,8 @@ export function PromptEditor({
   };
 
   const font: PromptEditorFont = {
-    family: term.options.fontFamily ?? "monospace",
-    size: metrics?.fontSize ?? term.options.fontSize ?? 13,
+    family: term.cssFontFamily,
+    size: metrics?.fontSize ?? term.options.fontSize,
     lineHeight: metrics?.rowHeight ?? 17,
   };
   const surfaceProps: PromptEditorSurfaceProps = {

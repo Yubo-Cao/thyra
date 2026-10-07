@@ -1,4 +1,8 @@
-import type { IBufferLine, ILink, Terminal } from "@xterm/xterm";
+import type {
+  TerminalBufferLine,
+  TerminalEngine,
+  TerminalLink,
+} from "./terminalEngine";
 import { terminalLinkModifierMatches } from "./shortcutPreferences";
 import {
   findTerminalHttpLinks,
@@ -18,12 +22,11 @@ const PATH_EDGE = /^[A-Za-z0-9._~:@%+=,/-]$/;
 type Position = { x: number; y: number };
 type CellSpan = { start: Position; end: Position };
 
-function lineTextWithCells(line: IBufferLine, cols: number, y: number) {
-  const reusable = line.getCell(0);
+function lineTextWithCells(line: TerminalBufferLine, cols: number, y: number) {
   let text = "";
   const cells: CellSpan[] = [];
   for (let x = 0; x < Math.min(line.length, cols); x++) {
-    const cell = line.getCell(x, reusable);
+    const cell = line.getCell(x);
     if (!cell || cell.getWidth() === 0) continue;
     const chars = cell.getChars() || " ";
     const span = {
@@ -36,9 +39,9 @@ function lineTextWithCells(line: IBufferLine, cols: number, y: number) {
   return { text, cells, wrapped: line.isWrapped };
 }
 
-/** Reconstruct logical text while retaining xterm's cell-based coordinates. */
+/** Reconstruct logical text while retaining the cell-based coordinates. */
 function readLinkContext(
-  term: Terminal,
+  term: TerminalEngine,
   row: number,
   inferContinuations: boolean,
 ) {
@@ -133,7 +136,7 @@ export type TerminalResolvedLink = {
 };
 
 export function registerTerminalLinkProvider(
-  term: Terminal,
+  term: TerminalEngine,
   onPreviewPath?: (path: string, event: MouseEvent) => void,
   resolvePaths?: (paths: string[]) => Promise<Map<string, string>>,
   inferContinuations: () => boolean = () => false,
@@ -150,7 +153,7 @@ export function registerTerminalLinkProvider(
 ) {
   let disposed = false;
   let requestGeneration = 0;
-  type TargetLink = ILink & { target: TerminalTouchLink };
+  type TargetLink = TerminalLink & { target: TerminalTouchLink };
   const provideLinks = (
     bufferLineNumber: number,
     reply: (links: TargetLink[] | undefined) => void,
@@ -159,7 +162,7 @@ export function registerTerminalLinkProvider(
     const generation = touch ? requestGeneration : ++requestGeneration;
     const requestCurrent = () =>
       touch ? touch.current() : generation === requestGeneration;
-    // xterm stores replies in its current row cache, even for older requests.
+    // The hover keeps only replies for its current row, even for older requests.
     const callback = (links: TargetLink[] | undefined) => {
       if (touch || (!disposed && requestCurrent())) reply(links);
     };
@@ -192,11 +195,10 @@ export function registerTerminalLinkProvider(
         snapshot;
     const isFrameCurrent = () => isCurrent() && upstream?.state() === state;
     const hover = () => {
-      // Inactive row caches survive repaint. Reject their actions and ask
-      // xterm to reread now that this stale link is active again.
+      // A stale link rereads the row now that it is hovered again.
       if (!isCurrent())
         queueMicrotask(() => {
-          if (!disposed) term.refresh(0, term.rows - 1);
+          if (!disposed) term.refresh();
         });
     };
     const rangeFor = (span: TextRange) => {
@@ -473,7 +475,7 @@ export function registerTerminalLinkProvider(
             continue;
           if (!link.regions.some((region) => region.row === row)) continue;
           // The bridge validates contiguous regions. Keep one logical range so
-          // xterm underlines every wrapped row, whichever row is hovered.
+          // every wrapped row underlines, whichever row is hovered.
           const first = link.regions[0]!;
           const last = link.regions[link.regions.length - 1]!;
           accepted.push({
@@ -524,7 +526,7 @@ export function registerTerminalLinkProvider(
   };
   const registration = term.registerLinkProvider({ provideLinks });
   return {
-    /** Independent lookup: never replaces xterm's pending hover row generation. */
+    /** Independent lookup: never replaces the pending hover row generation. */
     resolveTouch(row: number, col: number, current: () => boolean) {
       const y = term.buffer.active.viewportY + row + 1;
       return new Promise<TerminalTouchLink | null>((reply) => {

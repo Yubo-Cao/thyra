@@ -1,6 +1,5 @@
-import type { ITheme, Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { resolveTerminalFontFamily } from "../../appearance";
+import { terminalFontLocalFamily } from "../../appearance";
 import { t } from "../../i18n";
 import { keyboardKindNow } from "../../hardwareKeyboard";
 import { activePaneIdForSnapshot } from "../../paneJump";
@@ -24,8 +23,8 @@ import {
   terminalEndpointViewportSize,
   terminalRelayViewportSize,
 } from "../../terminalResize";
+import type { TerminalEngine, TerminalTheme } from "../../terminalEngine";
 import { terminalPageScroll } from "../../terminalScroll";
-import { applyTerminalTheme } from "../../terminalThemes";
 import { terminalScreens } from "../../touchGestures";
 import { installTerminalKeyboard } from "./terminalKeyboard";
 import {
@@ -80,7 +79,7 @@ export function useTerminalBindings(
         // A terminal or a prompt editor (of any pane) is input this pane may
         // take over; other editable fields keep their focus.
         const activeIsTerminalInput = !!activeElement?.closest(
-          ".xterm, .prompt-editor, .shell-editor",
+          ".terminal-engine, .prompt-editor, .shell-editor",
         );
         if (!term || (isEditableElement(active) && !activeIsTerminalInput))
           return;
@@ -90,37 +89,32 @@ export function useTerminalBindings(
         // Keep whichever of this pane's inputs has focus; otherwise its
         // prompt editor, when shown, is where typing goes.
         const editor = refs.promptEditor.current;
-        if (editor?.hasFocus() || term.element?.contains(activeElement)) return;
+        if (editor?.hasFocus() || term.element.contains(activeElement)) return;
         if (editor?.focus() || shouldAvoidVirtualKeyboard()) return;
         term.focus();
       }, 0);
     });
   }, [client, refs]);
-  // Fits the xterm to its container, unless the container is hidden or
+  // Fits the terminal to its container, unless the container is hidden or
   // unmounted (e.g. the diff/files view covers it with display:none). Fitting
   // a hidden container would collapse the terminal to a 2x1 minimum and leak a
   // bogus resize to the server, so callers must treat null as "keep the last
   // known size everywhere".
   const fitVisibleTerminal = useCallback(() => {
     const term = refs.term.current;
-    const fit = refs.fit.current;
-    if (!term || !fit) return null;
+    if (!term) return null;
     if (!container || !container.isConnected) return null;
     if (container.clientWidth === 0 || container.clientHeight === 0) {
       return null;
     }
-    // Another device sizes the pane: keep xterm at its size and scale it
+    // Another device sizes the pane: keep the grid at its size and scale it
     // to fit. There is no size of ours to send.
     if (refs.followShared.current) {
       applyTerminalFollowScale(term, container, true, refs.followPan.current);
       return null;
     }
     applyTerminalFollowScale(term, container, false);
-    try {
-      fit.fit();
-    } catch {
-      // A hidden or detaching terminal can reject a transient fit.
-    }
+    term.fit();
     return { cols: term.cols, rows: term.rows };
   }, [container, refs]);
   const relayViewportFor = useCallback(
@@ -148,7 +142,7 @@ export function useTerminalBindings(
     (direction: "up" | "down", amount: "full" | "half" = "full") => {
       const term = refs.term.current;
       if (!term) return;
-      if (shouldAvoidVirtualKeyboard()) term.textarea?.blur();
+      if (shouldAvoidVirtualKeyboard()) term.textarea.blur();
       const targetTerminalId =
         refs.desiredTerminal.current ?? refs.paneTerminalId.current;
       if (
@@ -157,7 +151,7 @@ export function useTerminalBindings(
       )
         return;
       refs.linkRevision.current++;
-      term.refresh(0, term.rows - 1);
+      term.refresh();
       ui.setFileLinkMenu(null);
       client
         .call("terminal.scroll", {
@@ -246,7 +240,7 @@ export function useTerminalBindings(
   );
 }
 
-/** Owns the xterm instance, recreated whenever the bindings change. */
+/** Owns the terminal, recreated whenever the bindings change. */
 export function useTerminalSession(bindings: TerminalSessionBindings) {
   useEffect(() => {
     if (!bindings.container) return;
@@ -269,7 +263,7 @@ export function useTerminalSession(bindings: TerminalSessionBindings) {
 /** Attaches the pane's terminal, again after reconnects and resumes. */
 export function useTerminalAttach(
   bindings: TerminalSessionBindings,
-  term: Terminal | null,
+  term: TerminalEngine | null,
   paneTerminalId: string | null,
   {
     status,
@@ -518,14 +512,7 @@ export function useTerminalAttach(
         }
       }
       attachTimeouts.current = 0;
-      const term = refs.term.current;
-      if (term) {
-        try {
-          term.refresh(0, term.rows - 1);
-        } catch {
-          // The attach recovery below still applies.
-        }
-      }
+      refs.term.current?.refresh();
       if (!desiredTerminal.current) return;
       if (store.get().status !== "connected") return;
       // A live attach keeps streaming on its own; only a terminal that lost
@@ -552,35 +539,35 @@ export function useTerminalAttach(
   }, [refs, ui]);
 }
 
-/** Applies theme, UI scale and font changes to the live xterm in place. */
+/** Applies theme, UI scale and font changes to the live terminal in place. */
 export function useTerminalAppearance(
   { refs, fitVisibleTerminal }: TerminalSessionBindings,
-  term: Terminal | null,
+  term: TerminalEngine | null,
   {
     terminalTheme,
     uiScale,
     fontFamily,
-  }: { terminalTheme: ITheme; uiScale: number; fontFamily: string },
+  }: { terminalTheme: TerminalTheme; uiScale: number; fontFamily: string },
 ) {
   useEffect(() => {
     refs.uiScale.current = uiScale;
     if (!term) return;
-    term.options = terminalDensity(uiScale);
+    term.setOptions(terminalDensity(uiScale));
     const size = fitVisibleTerminal();
     if (size) refs.resizeSync.current?.sendNow(size);
   }, [uiScale, term, fitVisibleTerminal, refs]);
 
   useEffect(() => {
     if (!term) return;
-    const resolved = resolveTerminalFontFamily(fontFamily);
-    if (term.options.fontFamily === resolved) return;
-    term.options.fontFamily = resolved;
+    const family = terminalFontLocalFamily(fontFamily);
+    if (term.options.fontFamily === family) return;
+    term.setOptions({ fontFamily: family });
     const size = fitVisibleTerminal();
     if (size) refs.resizeSync.current?.sendNow(size);
   }, [fontFamily, term, fitVisibleTerminal, refs]);
 
   useEffect(() => {
     refs.terminalTheme.current = terminalTheme;
-    if (term) applyTerminalTheme(term, terminalTheme);
+    term?.setOptions({ theme: terminalTheme });
   }, [terminalTheme, term, refs]);
 }

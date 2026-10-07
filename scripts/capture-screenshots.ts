@@ -754,7 +754,12 @@ function grow(
 /** Wait for the workspace list, terminal output, and web fonts. */
 async function waitForApp(ui: Ui, device: Device) {
   const { page } = ui;
-  await page.waitForSelector(".xterm-screen", { timeout: 60_000 });
+  await page.waitForSelector(".terminal-engine-screen", { timeout: 60_000 });
+  // The GPU engine replaces the text preview once it draws.
+  await page.waitForSelector(".terminal-engine-preview", {
+    state: "detached",
+    timeout: 60_000,
+  });
   if (device === "desktop") {
     await page
       .getByText("translate", { exact: true })
@@ -771,7 +776,7 @@ async function waitForApp(ui: Ui, device: Device) {
  * Focus returns to the first (agent) terminal.
  */
 async function paintTerminals(ui: Ui) {
-  const screens = ui.page.locator(".xterm-screen");
+  const screens = ui.page.locator(".terminal-engine-screen");
   const count = await screens.count();
   for (let index = count - 1; index >= 0; index -= 1) {
     const screen = screens.nth(index);

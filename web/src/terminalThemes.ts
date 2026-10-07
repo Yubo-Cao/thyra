@@ -1,4 +1,4 @@
-import type { ITheme, Terminal } from "@xterm/xterm";
+import type { TerminalTheme } from "./terminalEngine";
 import type { ResolvedTheme } from "./appearance";
 import { msg, t } from "./i18n";
 
@@ -9,22 +9,21 @@ export const MAX_TERMINAL_THEME_NAME_LENGTH = 40;
 export const CUSTOM_TERMINAL_THEME_SELECTION_ALPHA = 0.3;
 
 // Dark keeps the historical palette exactly: only background, foreground,
-// cursor, and selection are overridden; ANSI colors stay at xterm defaults.
-const DARK_TERMINAL_THEME: ITheme = {
+// cursor, and selection are overridden; ANSI colors stay at xterm's defaults
+// (terminalEngine.ts).
+const DARK_TERMINAL_THEME: TerminalTheme = {
   background: "#0e1014",
   foreground: "#d4d8df",
   cursor: "#6ea0ff",
-  overviewRulerBorder: "rgba(0,0,0,0)",
   selectionBackground: "rgba(110,160,255,0.3)",
 };
 
 // Light mode needs the full 16-color ANSI palette: the dark-oriented default
 // palette (bright blues, greens, yellows) is unreadable on a light background.
-const LIGHT_TERMINAL_THEME: ITheme = {
+const LIGHT_TERMINAL_THEME: TerminalTheme = {
   background: "#ffffff",
   foreground: "#24292f",
   cursor: "#2f6fe0",
-  overviewRulerBorder: "rgba(0,0,0,0)",
   selectionBackground: "rgba(47,111,224,0.2)",
   black: "#24292f",
   red: "#cf222e",
@@ -49,7 +48,7 @@ export type TerminalThemeDefinition = {
   name: string;
   variant: ResolvedTheme;
   builtin: boolean;
-  theme: ITheme;
+  theme: TerminalTheme;
 };
 
 export function terminalThemeName(theme: TerminalThemeDefinition): string {
@@ -60,8 +59,6 @@ export type TerminalThemeSelection = {
   dark: string;
   light: string;
 };
-
-const NO_RULER_BORDER = "rgba(0,0,0,0)";
 
 export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
   {
@@ -89,7 +86,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#839496",
       cursor: "#839496",
       cursorAccent: "#002b36",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(88,110,117,0.35)",
       black: "#073642",
       red: "#dc322f",
@@ -119,7 +115,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#f8f8f2",
       cursor: "#f8f8f2",
       cursorAccent: "#282a36",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(68,71,90,0.6)",
       black: "#21222c",
       red: "#ff5555",
@@ -149,7 +144,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#abb2bf",
       cursor: "#528bff",
       cursorAccent: "#282c34",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(62,68,81,0.9)",
       black: "#3f4451",
       red: "#e06c75",
@@ -179,7 +173,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#d8dee9",
       cursor: "#d8dee9",
       cursorAccent: "#2e3440",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(67,76,94,0.7)",
       black: "#3b4252",
       red: "#bf616a",
@@ -209,7 +202,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#c0caf5",
       cursor: "#c0caf5",
       cursorAccent: "#1a1b26",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(51,70,124,0.6)",
       black: "#15161e",
       red: "#f7768e",
@@ -239,7 +231,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#cdd6f4",
       cursor: "#f5e0dc",
       cursorAccent: "#1e1e2e",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(88,91,112,0.5)",
       black: "#45475a",
       red: "#f38ba8",
@@ -269,7 +260,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#e6edf3",
       cursor: "#e6edf3",
       cursorAccent: "#0d1117",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(56,139,253,0.4)",
       black: "#484f58",
       red: "#ff7b72",
@@ -299,7 +289,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#657b83",
       cursor: "#657b83",
       cursorAccent: "#fdf6e3",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(238,232,213,0.9)",
       black: "#073642",
       red: "#dc322f",
@@ -329,7 +318,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#1f2328",
       cursor: "#1f2328",
       cursorAccent: "#ffffff",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(9,105,218,0.2)",
       black: "#24292f",
       red: "#cf222e",
@@ -359,7 +347,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
       foreground: "#383a42",
       cursor: "#526eff",
       cursorAccent: "#fafafa",
-      overviewRulerBorder: NO_RULER_BORDER,
       selectionBackground: "rgba(56,58,66,0.12)",
       black: "#383a42",
       red: "#e45649",
@@ -432,7 +419,7 @@ export function defaultTerminalThemeId(variant: ResolvedTheme): string {
   return variant === "light" ? "herdr-light" : "herdr-dark";
 }
 
-export function terminalThemeFor(resolvedTheme: ResolvedTheme): ITheme {
+export function terminalThemeFor(resolvedTheme: ResolvedTheme): TerminalTheme {
   return resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
 }
 
@@ -470,10 +457,10 @@ export function terminalColorToHex(value: string | undefined): string {
   return `#${channel(rgba[1])}${channel(rgba[2])}${channel(rgba[3])}`;
 }
 
-export function customTerminalThemeToITheme(
+export function customTerminalThemeToTheme(
   custom: CustomTerminalTheme,
-): ITheme {
-  const theme: ITheme = { overviewRulerBorder: NO_RULER_BORDER };
+): TerminalTheme {
+  const theme: TerminalTheme = {};
   for (const key of TERMINAL_THEME_COLOR_KEYS) {
     const value = custom.colors[key];
     if (!value) continue;
@@ -622,7 +609,7 @@ export function terminalThemeById(
     name: custom.name,
     variant: custom.variant,
     builtin: false,
-    theme: customTerminalThemeToITheme(custom),
+    theme: customTerminalThemeToTheme(custom),
   };
 }
 
@@ -648,26 +635,9 @@ export function resolveTerminalTheme(
   resolvedTheme: ResolvedTheme,
   selection: TerminalThemeSelection,
   customThemes: CustomTerminalTheme[],
-): ITheme {
+): TerminalTheme {
   return resolveTerminalThemeDefinition(resolvedTheme, selection, customThemes)
     .theme;
-}
-
-export function applyTerminalTheme(term: Terminal, theme: ITheme) {
-  // The ANSI stream does not distinguish Herdr's resolved default background
-  // from an application's explicit RGB background. Preserve both; only xterm
-  // defaults and its ANSI palette follow the app theme. No repaint/reset is needed.
-  term.options.theme = theme;
-  term.element?.style.setProperty(
-    "--terminal-canvas-foreground",
-    theme.foreground ?? "",
-  );
-  if (theme.background) {
-    term.element?.style.setProperty(
-      "--terminal-canvas-background",
-      theme.background,
-    );
-  }
 }
 
 function normalizedHex(value: string | undefined): string | null {
@@ -681,10 +651,10 @@ function normalizedHex(value: string | undefined): string | null {
 }
 
 /**
- * The `terminal.host_theme` payload for an xterm theme: default colors, the
+ * The `terminal.host_theme` payload for a terminal theme: default colors, the
  * 16 ANSI colors, and whether the background reads as light or dark.
  */
-export function terminalHostThemeReport(theme: ITheme) {
+export function terminalHostThemeReport(theme: TerminalTheme) {
   const background = normalizedHex(theme.background);
   const foreground = normalizedHex(theme.foreground);
   if (!background || !foreground) return null;

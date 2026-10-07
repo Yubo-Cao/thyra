@@ -68,6 +68,14 @@ export function resolveTerminalFontFamily(value: string | null): string {
     : TERMINAL_FONT_FAMILY;
 }
 
+/** The installed family a preset asks the GPU terminal for; "" is bundled. */
+export function terminalFontLocalFamily(value: string | null): string {
+  const preset = TERMINAL_FONT_OPTIONS.find(
+    (option) => option.value === normalizeTerminalFontFamily(value),
+  );
+  return preset?.fontFamily.replace(/"/g, "") ?? "";
+}
+
 export function normalizeAccentColor(value: string | null): AccentColor {
   return ACCENT_OPTIONS.some((option) => option.value === value)
     ? (value as AccentColor)

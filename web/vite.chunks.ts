@@ -24,13 +24,10 @@ export function packageName(id: string): string | null {
 // Long-lived vendor code gets its own chunks, so an app-only update does not
 // re-download it on a slow link. Groups are ordered by how rarely they change.
 const REACT_PACKAGES = new Set(["react", "react-dom", "scheduler"]);
-// The terminal needs xterm with these addons; the WebGL addon stays a separate
-// lazy chunk because it is optional.
-const XTERM_PACKAGES = new Set([
-  "@xterm/xterm",
-  "@xterm/addon-unicode-graphemes",
-  "@xterm/addon-clipboard",
-]);
+// The GPU terminal engine (WASM core, renderer, text shaper) loads lazily
+// after the terminal view; the popup terminal still uses xterm.
+const TERMINAL_PACKAGES = new Set(["restty", "text-shaper"]);
+const XTERM_PACKAGES = new Set(["@xterm/xterm"]);
 const UI_PACKAGE =
   /^(?:@floating-ui\/.+|tslib|@heroui\/.+|react-aria|react-aria-components|react-stately|@react-aria\/.+|@react-stately\/.+|@react-types\/.+|@internationalized\/.+|@swc\/helpers|tailwind-variants|tailwind-merge|clsx|client-only)$/;
 
@@ -73,6 +70,7 @@ export function vendorChunk(
   const name = packageName(id);
   if (!name) return undefined;
   if (REACT_PACKAGES.has(name)) return "vendor-react";
+  if (TERMINAL_PACKAGES.has(name)) return "vendor-terminal";
   if (XTERM_PACKAGES.has(name)) return "vendor-xterm";
   if (!UI_PACKAGE.test(name)) return undefined;
   if (eagerSet(meta).has(id)) return "vendor-ui";
@@ -136,9 +134,9 @@ function findChunk(
  * - `assets`: every fingerprinted file under /assets (the service worker
  *   drops cached files that no recent build lists);
  * - `boot`: what the server compresses before the first request (the terminal
- *   view's static closure and the terminal font stylesheets);
+ *   view's static closure, the terminal engine and the font stylesheets);
  * - `precache`: the versioned app shell the service worker keeps ready (the
- *   entry and terminal closures, the WebGL renderer, the core font stylesheet
+ *   entry and terminal closures, the terminal engine, the core font stylesheet
  *   and its regular and bold slices).
  */
 export function assetManifestPlugin(
@@ -168,10 +166,13 @@ export function assetManifestPlugin(
           chunk.facadeModuleId?.replace(/\\/g, "/").endsWith(bootModule) ===
             true,
       );
-      boot = terminal ? chunkClosure(bundle, terminal.fileName) : [];
-      const webgl = findChunk(bundle, (chunk) =>
-        chunk.moduleIds.some((id) => /[/\\]addon-webgl[/\\]/.test(id)),
+      const engine = findChunk(bundle, (chunk) =>
+        chunk.moduleIds.some((id) => /[/\\]restty[/\\]/.test(id)),
       );
+      boot = [
+        ...(terminal ? chunkClosure(bundle, terminal.fileName) : []),
+        ...(engine ? chunkClosure(bundle, engine.fileName) : []),
+      ];
       shell = [
         ...Object.values(bundle).flatMap((chunk) =>
           chunk.type === "chunk" && chunk.isEntry
@@ -179,7 +180,6 @@ export function assetManifestPlugin(
             : [],
         ),
         ...boot,
-        ...(webgl ? chunkClosure(bundle, webgl.fileName) : []),
       ];
     },
     closeBundle() {

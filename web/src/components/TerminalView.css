@@ -3,7 +3,7 @@
 }
 
 .terminal-view {
-  /* xterm measures cells without CSS zoom; scale its font in TerminalView. */
+  /* The terminal sizes cells in CSS pixels without zoom; its font scales instead. */
   zoom: calc(1 / var(--ui-scale, 1));
   flex: 1 1 auto;
   width: 100%;
@@ -16,9 +16,9 @@
   touch-action: none;
 }
 
-/* Another device sizes this pane: xterm keeps its size, scaled down to fit,
+/* Another device sizes this pane: the grid keeps its size, scaled down to fit,
    or pinch-zoomed past it and panned. */
-.terminal-view.is-following .xterm {
+.terminal-view.is-following .terminal-engine {
   width: max(
     calc(100% / var(--terminal-follow-scale, 1)),
     var(--terminal-follow-width, 0px)
@@ -66,52 +66,55 @@
   overflow-wrap: anywhere;
 }
 
-.terminal-view .xterm {
+.terminal-view .terminal-engine {
+  position: relative;
   height: 100%;
   padding: 4px 0 4px 4px;
   box-sizing: border-box;
   touch-action: none;
-  font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
-  font-variant-ligatures: none;
-  font-feature-settings:
-    "liga" 0,
-    "calt" 0;
-}
-
-/* The GPU renderer draws joined ligature runs as one glyph; the texture
-   atlas canvas inherits these features from the terminal element. */
-.terminal-view .xterm.xterm-gpu {
-  font-variant-ligatures: contextual;
-  font-feature-settings:
-    "liga" 1,
-    "calt" 1;
-}
-
-.terminal-view .xterm.xterm-apple-row-spacing-fix .xterm-rows {
-  /*
-   * xterm's DOM renderer derives a fractional correction from integer
-   * offsetWidth measurements. With SF Mono that correction accumulates across
-   * the row and pushes the final cells past xterm's clipped row viewport.
-   * Cells snap to device pixels (terminalRenderer.ts), which sets the exact
-   * correction from the font's canvas width instead.
-   */
-  letter-spacing: var(--terminal-letter-spacing, 0) !important;
-}
-
-.terminal-view .xterm:not(.allow-transparency) .xterm-viewport {
-  /* xterm.css hard-codes black here, which otherwise leaks through below the
-     final fractional-height row and around the terminal padding. Include
-     xterm's transparency state so this wins even when its CSS loads later. */
   background-color: var(--terminal-canvas-background, var(--terminal-bg));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: none;
 }
 
-.terminal-view .xterm .composition-view {
-  background-color: var(--terminal-canvas-background, var(--terminal-bg));
+.terminal-engine-screen {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  /* The engine asks for pan-y; Thyra's touch gestures scroll instead. */
+  touch-action: none !important;
+}
+
+/* Keys, IME and paste land here; the engine moves it to the cursor. */
+.terminal-engine-input {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  resize: none;
+}
+
+/* The latest screen as text until the GPU terminal draws its first frame. */
+.terminal-engine-preview {
+  position: absolute;
+  inset: 4px 0 4px 4px;
+  margin: 0;
+  overflow: hidden;
+  white-space: pre;
   color: var(--terminal-canvas-foreground, var(--terminal-fg));
+  pointer-events: none;
+}
+
+/* The hovered link's underline. */
+.terminal-engine-link {
+  position: absolute;
+  z-index: 2;
+  height: 1px;
+  background: var(--terminal-canvas-foreground, var(--terminal-fg));
+  pointer-events: none;
 }
 
 /* Pane actions live in the pane header; they never float over output. */
@@ -344,13 +347,13 @@
     display: none;
   }
 
-  .terminal-view .xterm {
+  .terminal-view .terminal-engine {
     padding: 5px 0 calc(6px + env(safe-area-inset-bottom, 0px)) 6px;
   }
 
   /* The composer already carries the bottom safe-area padding, so the
      terminal above it drops the extra inset that otherwise reads as a gap. */
-  .terminal-shell:has(.terminal-composer) .terminal-view .xterm {
+  .terminal-shell:has(.terminal-composer) .terminal-view .terminal-engine {
     padding-bottom: 6px;
   }
 }

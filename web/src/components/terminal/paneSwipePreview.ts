@@ -1,4 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "../../terminalEngine";
 
 // What a pane swipe shows of the pane it reveals, cheapest first: the screen
 // that pane last rendered on this page, else the last lines of its text,
@@ -103,7 +103,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /** The rows a terminal shows now, trailing blanks trimmed. */
-export function terminalScreenText(term: Terminal): string {
+export function terminalScreenText(term: TerminalEngine): string {
   const buffer = term.buffer.active;
   const rows: string[] = [];
   for (let y = 0; y < term.rows; y++)
@@ -117,17 +117,15 @@ export function terminalScreenText(term: Terminal): string {
  * The font a terminal draws in, as displayed: a view that follows another
  * device's size is scaled, and so is its preview.
  */
-export function terminalFont(term: Terminal): PaneFont {
-  const view = term.element?.closest<HTMLElement>(
-    ".terminal-view.is-following",
-  );
+export function terminalFont(term: TerminalEngine): PaneFont {
+  const view = term.element.closest<HTMLElement>(".terminal-view.is-following");
   const scale =
     Number.parseFloat(
       view?.style.getPropertyValue("--terminal-follow-scale") ?? "",
     ) || 1;
   return {
-    fontFamily: term.options.fontFamily ?? "monospace",
-    fontSize: (term.options.fontSize ?? 13) * scale,
-    lineHeight: term.options.lineHeight ?? 1,
+    fontFamily: term.cssFontFamily,
+    fontSize: term.options.fontSize * scale,
+    lineHeight: term.options.lineHeight,
   };
 }

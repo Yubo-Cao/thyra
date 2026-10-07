@@ -99,8 +99,9 @@ export function inlineScriptHashes(html: string): string[] {
 /**
  * Content Security Policy for Thyra's own pages on the public listener.
  * Scripts come only from this origin (plus the listed inline-script hashes
- * of the SPA entry); WebAssembly is needed for voice activity detection.
- * Inline styles stay allowed for React style attributes and xterm.
+ * of the SPA entry); WebAssembly runs the terminal engine and voice activity
+ * detection.
+ * Inline styles stay allowed for React style attributes and the terminal.
  */
 export function publicContentSecurityPolicy(
   scriptHashes: string[],

@@ -513,10 +513,11 @@ export const INSTRUMENTATION = `(() => {
         if (visible(found.snapshotItem(i))) { mark("switcher"); break; }
       }
     }
-    const screen = document.querySelector(".xterm-screen");
+    const screen = document.querySelector(".terminal-engine");
     if (screen && visible(screen)) mark("xterm");
     if (marks.terminalData !== undefined && marks.xterm !== undefined) mark("terminal");
-    const rows = document.querySelector(".xterm-rows");
+    // The text shown before the GPU engine has loaded.
+    const rows = document.querySelector(".terminal-engine-preview");
     if (rows && rows.textContent.includes(${JSON.stringify(MARKER)})) mark("terminalDomText");
     if (!(marks.switcher && marks.terminal)) {
       if (document.visibilityState === "visible") requestAnimationFrame(tick);

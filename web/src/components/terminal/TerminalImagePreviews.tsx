@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "../../terminalEngine";
 import type { ConnectionClient } from "../../api";
 import type { FilePreview } from "../../types";
 import { findTerminalFileLinkCandidates } from "../../terminalFileLinks";
@@ -11,7 +11,7 @@ export function TerminalImagePreviews({
   cwd,
   onOpen,
 }: {
-  term: Terminal;
+  term: TerminalEngine;
   client: ConnectionClient;
   workspaceId: string;
   cwd?: string;

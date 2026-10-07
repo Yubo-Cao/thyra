@@ -1,4 +1,4 @@
-import type { ITheme } from "@xterm/xterm";
+import type { TerminalTheme } from "../terminalEngine";
 import { Suspense, useEffect, useRef } from "react";
 import { commandComboboxPanel } from "../components/CommandMenu";
 import { configMenuPanel } from "../components/ConfigMenu";
@@ -112,7 +112,11 @@ const LazyPopupOverlay = lazyWithReload("popup-overlay", () =>
   })),
 );
 
-export function PopupOverlay({ terminalTheme }: { terminalTheme: ITheme }) {
+export function PopupOverlay({
+  terminalTheme,
+}: {
+  terminalTheme: TerminalTheme;
+}) {
   // Gate the dynamic import on popup presence, not just its content, so a
   // session that never opens one never fetches xterm.js for it.
   const hasPopup = useStoreSelector((s) => s.popup !== null);

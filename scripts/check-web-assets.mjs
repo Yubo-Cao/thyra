@@ -12,8 +12,9 @@ const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 // parallel for a few hundred bytes of headers each.
 // The lazy PDF viewer adds its worker, CMaps, standard fonts, and image codecs.
 const maxFileCount = 330;
-// The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB.
-const maxTotalBytes = 20 * 1024 * 1024;
+// The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB,
+// the lazy GPU terminal engine (its WASM core inlined) ~2.7 MiB.
+const maxTotalBytes = 22 * 1024 * 1024;
 // The entry holds the app shell and switchers (workspace tree, agent list,
 // tab bar); React DOM is about 40% of it. Menus, dialogs, pickers and panels
 // load on demand (see components/lazyPanels.ts and LazyBoundary.tsx).
@@ -22,9 +23,9 @@ const maxInitialJsGzipBytes = 168 * 1024;
 // Inline HeroUI component styles and Tailwind utilities (styles/heroui.css);
 // overlay styles and feature styles load with their lazy components.
 const maxInitialCssBytes = 126 * 1024;
-// The first screen also renders the active terminal, whose chunk (xterm.js
-// and its eager addons) loads right after the entry. The WebGL renderer
-// loads after first output and is not counted.
+// The first screen also renders the active terminal, whose chunk loads right
+// after the entry and shows output as text; the GPU terminal engine (WASM
+// core and renderer) loads alongside it and is not counted.
 const firstScreenFeature = "TerminalView";
 const maxFirstScreenJsGzipBytes = 315 * 1024;
 const maxFirstScreenCssBytes = 143 * 1024;

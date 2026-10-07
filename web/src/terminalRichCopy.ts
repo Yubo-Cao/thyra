@@ -1,5 +1,4 @@
-import { SerializeAddon } from "@xterm/addon-serialize";
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "./terminalEngine";
 import {
   normalizeTerminalSelection,
   type ClipboardContent,
@@ -7,12 +6,65 @@ import {
 import { findTerminalFileLinkCandidates } from "./terminalFileLinks";
 import { findTerminalHttpLinks } from "./terminalLinks";
 
-const serializers = new WeakMap<Terminal, SerializeAddon>();
+/** The selected cells as styled HTML rows, built through the DOM. */
+function selectionHtml(term: TerminalEngine): string {
+  const range = term.getSelectionPosition();
+  const pre = document.createElement("pre");
+  const { background = "", foreground = "" } = term.options.theme;
+  Object.assign(pre.style, {
+    backgroundColor: background,
+    color: foreground,
+    fontFamily: term.cssFontFamily,
+  });
+  const buffer = term.buffer.active;
+  for (let y = range?.start.y ?? 0; range && y <= range.end.y; y++) {
+    const line = buffer.getLine(y);
+    const row = document.createElement("div");
+    let span: HTMLSpanElement | null = null;
+    let key = "";
+    const start = y === range.start.y ? range.start.x : 0;
+    const end = y === range.end.y ? range.end.x : term.cols;
+    for (let x = start; line && x < end; x++) {
+      const cell = line.getCell(x);
+      if (!cell || cell.getWidth() === 0) continue;
+      const style = [
+        cell.foreground(),
+        cell.background(),
+        cell.isBold(),
+        cell.isItalic(),
+        cell.isUnderline(),
+      ];
+      if (!span || style.join() !== key) {
+        key = style.join();
+        span = document.createElement("span");
+        Object.assign(span.style, {
+          color: cell.foreground(),
+          backgroundColor:
+            cell.background() === parseRgb(background) ? "" : cell.background(),
+          fontWeight: cell.isBold() ? "bold" : "",
+          fontStyle: cell.isItalic() ? "italic" : "",
+          textDecoration: cell.isUnderline() ? "underline" : "",
+        });
+        row.append(span);
+      }
+      span.textContent += cell.getChars() || " ";
+    }
+    // Trailing padding is not part of the copied text.
+    if (span) span.textContent = span.textContent!.replace(/ +$/, "");
+    pre.append(row);
+  }
+  return pre.outerHTML;
+}
 
-export function installTerminalSerializer(term: Terminal) {
-  const addon = new SerializeAddon();
-  term.loadAddon(addon);
-  serializers.set(term, addon);
+/** `#rrggbb` as the engine's `rgb(r g b)`, to drop default backgrounds. */
+function parseRgb(hex: string) {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex);
+  return match
+    ? `rgb(${match
+        .slice(1)
+        .map((part) => Number.parseInt(part, 16))
+        .join(" ")})`
+    : "";
 }
 
 function absolutePath(path: string, root?: string) {
@@ -82,22 +134,16 @@ export function enrichTerminalClipboard(
 
 export function terminalSelectionContent(
   text: string,
-  term?: Terminal | null,
+  term?: TerminalEngine | null,
   root?: string,
 ): ClipboardContent {
   const plain = normalizeTerminalSelection(text);
-  const serializer = term ? serializers.get(term) : undefined;
-  // History can contain rows no longer in xterm. Never export a different range.
+  // History can contain rows no longer on screen. Never export a different range.
   if (
-    serializer &&
     term?.hasSelection() &&
     normalizeTerminalSelection(term.getSelection()) === plain
   ) {
-    return enrichTerminalClipboard(
-      serializer.serializeAsHTML({ onlySelection: true }),
-      plain,
-      root,
-    );
+    return enrichTerminalClipboard(selectionHtml(term), plain, root);
   }
   const pre = document.createElement("pre");
   pre.textContent = plain;

@@ -1,8 +1,8 @@
 import "./TerminalHistory.css";
-import { Terminal } from "@xterm/xterm";
 import { ArrowDownToLine } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ConnectionClient } from "../../api";
+import { TerminalEngine } from "../../terminalEngine";
 import { t } from "../../i18n";
 import { Button } from "../ui/Button";
 import { applyTerminalFollowScale } from "./terminalSession";
@@ -28,7 +28,7 @@ export function TerminalHistory({
   client: ConnectionClient;
   paneId: string;
   /** The live terminal, whose size, font and colors the copy uses. */
-  live: Terminal;
+  live: TerminalEngine;
   /** The live terminal is scaled to another device's size. */
   follow: boolean;
   /** How many lines above the bottom to open at. */
@@ -44,20 +44,13 @@ export function TerminalHistory({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const term = new Terminal({
-      cols: live.cols,
-      rows: live.rows,
-      fontFamily: live.options.fontFamily,
-      fontSize: live.options.fontSize,
-      lineHeight: live.options.lineHeight,
-      letterSpacing: live.options.letterSpacing,
-      theme: live.options.theme,
+    const term = new TerminalEngine(element, {
+      ...live.options,
       scrollback: HISTORY_LINES + live.rows,
       disableStdin: true,
       cursorBlink: false,
-      cursorInactiveStyle: "none",
     });
-    term.open(element);
+    term.resize(live.cols, live.rows);
     applyTerminalFollowScale(term, element, follow);
     let ready = false;
     let disposed = false;
@@ -66,35 +59,37 @@ export function TerminalHistory({
     const scrolled = term.onScroll(() => {
       if (ready && atBottom()) close.current();
     });
-    client
-      .call("terminal.history", { pane_id: paneId, lines: HISTORY_LINES })
-      .then(
-        (result: { text?: unknown } | null) => {
-          if (disposed) return;
-          const text = typeof result?.text === "string" ? result.text : "";
-          // Lines end in CRLF already; hide the snapshot's cursor.
-          term.write(
-            `${text.replace(/\r?\n/g, "\r\n").replace(/\s+$/, "")}\x1b[?25l`,
-            () => {
-              if (disposed) return;
-              setLoading(false);
-              term.scrollToBottom();
-              term.scrollLines(-Math.max(1, lines));
-              ready = true;
-              // Nothing above the screen: there is no history to browse.
-              if (atBottom()) close.current();
-              else element.focus({ preventScroll: true });
-            },
-          );
-        },
-        (failure: unknown) => {
-          if (disposed) return;
-          setLoading(false);
-          setError(
-            failure instanceof Error ? failure.message : String(failure),
-          );
-        },
-      );
+    Promise.all([
+      client.call("terminal.history", {
+        pane_id: paneId,
+        lines: HISTORY_LINES,
+      }),
+      term.ready,
+    ]).then(
+      ([result]: [{ text?: unknown } | null, void]) => {
+        if (disposed) return;
+        const text = typeof result?.text === "string" ? result.text : "";
+        // Lines end in CRLF already; hide the snapshot's cursor.
+        term.write(
+          `${text.replace(/\r?\n/g, "\r\n").replace(/\s+$/, "")}\x1b[?25l`,
+          () => {
+            if (disposed) return;
+            setLoading(false);
+            term.scrollToBottom();
+            term.scrollLines(-Math.max(1, lines));
+            ready = true;
+            // Nothing above the screen: there is no history to browse.
+            if (atBottom()) close.current();
+            else element.focus({ preventScroll: true });
+          },
+        );
+      },
+      (failure: unknown) => {
+        if (disposed) return;
+        setLoading(false);
+        setError(failure instanceof Error ? failure.message : String(failure));
+      },
+    );
     const onKey = (event: KeyboardEvent) => {
       const page = Math.max(1, term.rows - 1);
       const moves: Record<string, () => void> = {

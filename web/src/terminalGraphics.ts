@@ -1,4 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "./terminalEngine";
 import type {
   TerminalGraphics,
   TerminalImageAsset,
@@ -38,19 +38,15 @@ async function decode(asset: TerminalImageAsset): Promise<ImageBitmap> {
 }
 
 /** Herdr has already decoded Kitty commands, scrolled and clipped placements. */
-export function attachTerminalGraphics(term: Terminal) {
+export function attachTerminalGraphics(term: TerminalEngine) {
   const canvas = document.createElement("canvas");
   canvas.className = "terminal-graphics";
   Object.assign(canvas.style, {
     position: "absolute",
-    inset: "0",
-    width: "100%",
-    height: "100%",
     pointerEvents: "none",
     zIndex: "1",
   });
-  const screen = term.element?.querySelector<HTMLElement>(".xterm-screen");
-  screen?.append(canvas);
+  term.element.append(canvas);
   let disposed = false;
   let revision = 0;
   let scene: TerminalGraphics | undefined;
@@ -69,10 +65,15 @@ export function attachTerminalGraphics(term: Terminal) {
     const bitmaps = await Promise.all(
       placements.map((p) => cache.get(p.asset)?.catch(() => null)),
     );
-    if (disposed || current !== revision || !screen) return;
+    if (disposed || current !== revision) return;
     const ratio = window.devicePixelRatio || 1;
-    const width = screen.clientWidth,
-      height = screen.clientHeight;
+    const { width, height } = term.screenSize();
+    Object.assign(canvas.style, {
+      left: `${term.screen.offsetLeft}px`,
+      top: `${term.screen.offsetTop}px`,
+      width: `${width}px`,
+      height: `${height}px`,
+    });
     canvas.width = Math.ceil(width * ratio);
     canvas.height = Math.ceil(height * ratio);
     const ctx = canvas.getContext("2d");
@@ -97,7 +98,8 @@ export function attachTerminalGraphics(term: Terminal) {
     });
   };
   const observer = new ResizeObserver(() => void draw());
-  if (screen) observer.observe(screen);
+  observer.observe(term.element);
+  const resized = term.onResize(() => void draw());
   return {
     update(next?: TerminalGraphics) {
       const key = JSON.stringify([
@@ -121,6 +123,7 @@ export function attachTerminalGraphics(term: Terminal) {
     dispose() {
       disposed = true;
       observer.disconnect();
+      resized.dispose();
       canvas.remove();
       for (const id of cache.keys()) clearAsset(id);
     },

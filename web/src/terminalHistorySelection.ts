@@ -1,4 +1,4 @@
-import type { IBufferRange, Terminal } from "@xterm/xterm";
+import type { TerminalBufferRange, TerminalEngine } from "./terminalEngine";
 import { t } from "./i18n";
 import type { TerminalPresentationFrame } from "./terminalEndpointPresentation";
 
@@ -19,7 +19,7 @@ export class TerminalHistoryRange {
   readonly anchor: Point;
   cursor: Point;
 
-  constructor(range: IBufferRange, top: number, backwards: boolean) {
+  constructor(range: TerminalBufferRange, top: number, backwards: boolean) {
     const start = { row: top + range.start.y, col: range.start.x };
     const end = { row: top + range.end.y, col: range.end.x };
     this.anchor = backwards ? end : start;
@@ -60,7 +60,7 @@ export class TerminalHistoryRange {
     const [start, end] = this.ordered;
     const lines: string[] = [];
     for (let row = start.row; row <= end.row; row++) {
-      // xterm end coordinates are exclusive; column zero ends the preceding row.
+      // End coordinates are exclusive; column zero ends the preceding row.
       if (row === end.row && end.col === 0) break;
       const cells = this.captured.get(row);
       if (!cells) return ""; // Never copy a range with an unseen gap.
@@ -87,8 +87,8 @@ export class TerminalHistoryRange {
 }
 
 /**
- * xterm sees full endpoint repaints, so it cannot scroll native history itself.
- * Promote an ordinary xterm drag only at the pane edge. Read each newly exposed
+ * The terminal sees full endpoint repaints, so it cannot scroll native history
+ * itself. Promote an ordinary drag only at the pane edge. Read each newly exposed
  * viewport before requesting the next, preserving the entire range for copying.
  */
 export class TerminalHistorySelection {
@@ -101,10 +101,9 @@ export class TerminalHistorySelection {
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private request = 0;
-  releasingNative = false;
 
   constructor(
-    private term: Terminal,
+    private term: TerminalEngine,
     private options: {
       frame: () => TerminalPresentationFrame | null;
       scroll: (direction: "up" | "down", lines: number) => Promise<unknown>;
@@ -120,9 +119,7 @@ export class TerminalHistorySelection {
   }
 
   private bounds() {
-    return this.term.element
-      ?.querySelector(".xterm-screen")
-      ?.getBoundingClientRect();
+    return this.term.screenBounds();
   }
 
   private edge(): "up" | "down" | null {
@@ -133,8 +130,7 @@ export class TerminalHistorySelection {
     return null;
   }
 
-  move(e: MouseEvent, selecting: boolean): boolean {
-    if (this.releasingNative) return false;
+  move(e: PointerEvent, selecting: boolean): boolean {
     if (!(e.buttons & 1)) {
       this.finish();
       return false;
@@ -151,7 +147,7 @@ export class TerminalHistorySelection {
     return true;
   }
 
-  /** Take over xterm's selection in absolute history rows. */
+  /** Take over the terminal's selection in absolute history rows. */
   private promote(backwards: boolean, dragging: boolean): boolean {
     const history = this.options.frame()?.history;
     const selection = this.term.getSelectionPosition();
@@ -175,18 +171,8 @@ export class TerminalHistorySelection {
     this.viewport = history;
     this.stopped = false;
     this.capture();
-    if (dragging) {
-      // Retire xterm's document drag timer before taking over absolute rows.
-      this.releasingNative = true;
-      try {
-        this.term.element?.ownerDocument.dispatchEvent(
-          new MouseEvent("mouseup", { bubbles: true, button: 0, buttons: 0 }),
-        );
-      } finally {
-        this.releasingNative = false;
-      }
-      this.dragging = true;
-    }
+    // Selecting programmatically (highlight) ends the engine's own drag.
+    if (dragging) this.dragging = true;
     return true;
   }
 

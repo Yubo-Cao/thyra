@@ -47,8 +47,8 @@ export function installTerminalPinch(
   const finish = (commit: boolean) => {
     const pinched = pinch.mode === "pinch";
     pinch.end(commit, performance.now());
-    term.element?.style.removeProperty("transform");
-    term.element?.style.removeProperty("transform-origin");
+    term.element.style.removeProperty("transform");
+    term.element.style.removeProperty("transform-origin");
     if (!commit) pan.current = start.pan;
     const zoom =
       commit && pinched
@@ -95,7 +95,7 @@ export function installTerminalPinch(
         applyTerminalFollowScale(term, container, true, pan.current, scale);
         return pan.current.y - start.pan.y;
       }
-      if (move.mode === "pinch" && term.element) {
+      if (move.mode === "pinch") {
         term.element.style.transformOrigin = `${start.x}px ${start.y}px`;
         term.element.style.transform = `scale(${scale})`;
       }
@@ -121,7 +121,7 @@ export function installTerminalPinch(
   // A committed zoom refits every terminal once; only a device that sizes
   // its pane sends the new grid (a follower's fit returns no size).
   const onZoom = () => {
-    term.options = terminalDensity(refs.uiScale.current);
+    term.setOptions(terminalDensity(refs.uiScale.current));
     const size = session.fitVisibleTerminal();
     if (size) refs.resizeSync.current?.sendNow(size);
     else if (refs.followShared.current)

@@ -1,4 +1,10 @@
-import type { Terminal } from "@xterm/xterm";
+/** A terminal's grid: the engine knows its cell area, xterm its padded element. */
+type CellGrid = {
+  cols: number;
+  rows: number;
+  element?: HTMLElement | null;
+  screenBounds?: () => DOMRect;
+};
 
 export type TerminalScroll = {
   direction: "up" | "down";
@@ -63,24 +69,27 @@ export function terminalPageScroll(
  * into the request as "no cell".
  */
 export function terminalCellAtPoint(
-  term: Terminal,
+  term: CellGrid,
   clientX: number,
   clientY: number,
 ) {
   const element = term.element;
   if (!element || term.cols <= 0 || term.rows <= 0) return {};
-  const rect = element.getBoundingClientRect();
-  const style = window.getComputedStyle(element);
-  const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
-  const paddingRight = Number.parseFloat(style.paddingRight) || 0;
-  const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-  const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
-  const width = rect.width - paddingLeft - paddingRight;
-  const height = rect.height - paddingTop - paddingBottom;
+  let { left, top, width, height } = element.getBoundingClientRect();
+  if (term.screenBounds) {
+    ({ left, top, width, height } = term.screenBounds());
+  } else {
+    const style = window.getComputedStyle(element);
+    const px = (value: string) => Number.parseFloat(value) || 0;
+    left += px(style.paddingLeft);
+    top += px(style.paddingTop);
+    width -= px(style.paddingLeft) + px(style.paddingRight);
+    height -= px(style.paddingTop) + px(style.paddingBottom);
+  }
   if (width <= 0 || height <= 0) return {};
 
-  const x = clientX - rect.left - paddingLeft;
-  const y = clientY - rect.top - paddingTop;
+  const x = clientX - left;
+  const y = clientY - top;
   const column = Math.max(
     0,
     Math.min(term.cols - 1, Math.floor(x / (width / term.cols))),
@@ -92,6 +101,6 @@ export function terminalCellAtPoint(
   return { column, row };
 }
 
-export function terminalCellAt(term: Terminal, e: WheelEvent) {
+export function terminalCellAt(term: CellGrid, e: WheelEvent) {
   return terminalCellAtPoint(term, e.clientX, e.clientY);
 }

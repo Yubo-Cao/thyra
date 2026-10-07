@@ -2,7 +2,7 @@ import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
 import { shortcutMatches } from "../shortcutPreferences";
-import type { ITheme, Terminal } from "@xterm/xterm";
+import type { TerminalEngine, TerminalTheme } from "../terminalEngine";
 import { Keyboard } from "lucide-react";
 import { usePaneControl } from "../usePaneControl";
 import { paneDisplayName } from "../paneIdentity";
@@ -26,7 +26,6 @@ import {
   TerminalTextPreview,
   type TerminalPreviewMode,
 } from "./terminal/TerminalPreview";
-import "@xterm/xterm/css/xterm.css";
 import { bridge } from "../api";
 import {
   defaultMobileTerminalShortcutRows,
@@ -181,7 +180,7 @@ export function TerminalView({
   onOpenWorkspaceFile,
 }: {
   paneId?: string;
-  terminalTheme: ITheme;
+  terminalTheme: TerminalTheme;
   uiScale: number;
   fontFamily?: string;
   showMobileKeys?: boolean;
@@ -280,11 +279,11 @@ export function TerminalView({
       localScroll.current = null;
     };
   }, [control.localScroll]);
-  // Mirrors refs.term as state so the attach effect re-runs when the xterm
-  // instance is recreated: the session's disposal resets the attach state,
+  // Mirrors refs.term as state so the attach effect re-runs when the terminal
+  // is recreated: the session's disposal resets the attach state,
   // and without an instance change in the deps the attach effect would not
   // fire again, leaving the recreated terminal detached and blank.
-  const [termInstance, setTermInstance] = useState<Terminal | null>(null);
+  const [termInstance, setTermInstance] = useState<TerminalEngine | null>(null);
   const ui = useMemo<TerminalViewSetters>(
     () => ({
       setTermInstance,
@@ -414,7 +413,7 @@ export function TerminalView({
   const { focusTerminalSoon } = sessionBindings;
   useLayoutEffect(() => {
     refs.linkRevision.current++;
-    refs.term.current?.refresh(0, refs.term.current.rows - 1);
+    refs.term.current?.refresh();
     setFileLinkMenu(null);
     setWorkspaceDirectory(null);
     if (desiredTerminal.current !== (pane?.terminal_id ?? null))

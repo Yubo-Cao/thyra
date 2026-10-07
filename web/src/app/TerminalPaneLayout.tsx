@@ -1,4 +1,4 @@
-import type { ITheme } from "@xterm/xterm";
+import type { TerminalTheme } from "../terminalEngine";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   type ComponentProps,
@@ -186,7 +186,7 @@ function resizeTargetForSplit(
 }
 
 export type TerminalPaneLayoutProps = {
-  terminalTheme: ITheme;
+  terminalTheme: TerminalTheme;
   uiScale: number;
   fontFamily: string;
   mobileShortcuts: MobileTerminalShortcutRows;

@@ -1,5 +1,5 @@
 import { describe, expect, test, jest } from "bun:test";
-import { Terminal } from "@xterm/xterm";
+import type { TerminalEngine } from "./terminalEngine";
 import {
   TerminalTouchSelection,
   TERMINAL_LONG_PRESS_MS,
@@ -9,7 +9,7 @@ import { TerminalEndpointPresentation } from "./terminalEndpointPresentation";
 describe("TerminalTouchSelection deadlines", () => {
   test("slop, cancel and reset invalidate even a parser-deferred long press", () => {
     jest.useFakeTimers();
-    const term = { clearSelection() {} } as Terminal;
+    const term = { clearSelection() {} } as unknown as TerminalEngine;
     let begins = 0,
       releases = 0;
     let activate: (() => void) | null = null;
