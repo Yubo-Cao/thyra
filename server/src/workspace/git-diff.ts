@@ -4,7 +4,9 @@ import {
   GIT_DIFF_TIMEOUT_MS,
   GIT_PULL_TIMEOUT_MS,
   GIT_UNTRACKED_NUMSTAT_CONCURRENCY,
+  PREVIEW_IMAGE_MAX_BYTES,
 } from "./file-constants";
+import { imageMimeForPath } from "../../../shared/filePreview";
 import { sanitizeExplorerPath } from "./file-paths";
 import type {
   GitDiffEntry,
@@ -34,14 +36,46 @@ type GitContext = {
 
 type Stats = Map<string, { additions: number; deletions: number }>;
 
-function runGit(context: GitContext, command: string) {
-  const fullCommand = `git -C ${context.shQuote(context.root)} -c core.quotepath=false ${command}`;
+function runShell(context: GitContext, command: string) {
   return context.runProcessWithCodeTimeout(
     context.host
-      ? sshCommandArgv(context.host, fullCommand)
-      : ["sh", "-lc", fullCommand],
+      ? sshCommandArgv(context.host, command)
+      : ["sh", "-lc", command],
     GIT_DIFF_TIMEOUT_MS,
   );
+}
+
+function runGit(context: GitContext, command: string) {
+  return runShell(
+    context,
+    `git -C ${context.shQuote(context.root)} -c core.quotepath=false ${command}`,
+  );
+}
+
+/**
+ * One side of an image change as a data URL: a Git object (`rev:path`, `:path`
+ * for the index) or, for `null`, the working-tree file. Missing or oversized
+ * images are omitted.
+ */
+async function readImage(
+  context: GitContext,
+  path: string,
+  object: string | null,
+) {
+  const mime = imageMimeForPath(path);
+  const q = context.shQuote;
+  const source =
+    object === null
+      ? `cat -- ${q(`${context.root}/${path}`)}`
+      : `git -C ${q(context.root)} cat-file blob ${q(object)}`;
+  const result = await runShell(
+    context,
+    `${source} 2>/dev/null | head -c ${PREVIEW_IMAGE_MAX_BYTES + 1} | base64 | tr -d '\\n'`,
+  );
+  const data = result.stdout.trim();
+  if (!mime || !data || data.length > ((PREVIEW_IMAGE_MAX_BYTES + 2) / 3) * 4)
+    return undefined;
+  return `data:${mime};base64,${data}`;
 }
 
 function gitError(
@@ -361,22 +395,52 @@ export async function readDiffFile({
           params.kind === "conflicted"
         ? params.kind
         : "unstaged";
-  const commands: Record<GitDiffKind, () => Promise<string>> = {
-    branch: async () =>
-      `diff --no-ext-diff --find-renames ${context.shQuote(await resolveMainBase(context))}...HEAD -- ${pathspec}`,
-    staged: async () => `diff --cached --no-ext-diff -- ${pathspec}`,
-    untracked: async () =>
-      `diff --no-ext-diff --no-index -- /dev/null ${context.shQuote(path)}`,
-    conflicted: async () => `diff --cc --no-ext-diff -- ${pathspec}`,
-    unstaged: async () => `diff --no-ext-diff -- ${pathspec}`,
+  const base = kind === "branch" ? await resolveMainBase(context) : undefined;
+  const commands: Record<GitDiffKind, string> = {
+    branch: `diff --no-ext-diff --find-renames ${context.shQuote(base ?? "")}...HEAD -- ${pathspec}`,
+    staged: `diff --cached --no-ext-diff -- ${pathspec}`,
+    untracked: `diff --no-ext-diff --no-index -- /dev/null ${context.shQuote(path)}`,
+    conflicted: `diff --cc --no-ext-diff -- ${pathspec}`,
+    unstaged: `diff --no-ext-diff -- ${pathspec}`,
   };
-  const result = await runGit(context, await commands[kind]());
+  const result = await runGit(context, commands[kind]);
   // `--no-index` exits 1 when the files differ.
   if (result.code !== 0 && !(kind === "untracked" && result.code === 1)) {
     throw gitError(result, "git diff");
   }
   const truncated = Buffer.byteLength(result.stdout) > GIT_DIFF_MAX_BYTES;
+  // `images` asks for both sides of a binary image change.
+  let images: { old_image?: string; new_image?: string } = {};
+  if (
+    params.images === true &&
+    imageMimeForPath(path) &&
+    (!result.stdout || /^(Binary files|GIT binary patch)/m.test(result.stdout))
+  ) {
+    const before = oldPath || path;
+    const mergeBase = base
+      ? (
+          await runGit(context, `merge-base ${context.shQuote(base)} HEAD`)
+        ).stdout.trim()
+      : "";
+    const sides: Record<
+      GitDiffKind,
+      [string | null | undefined, string | null]
+    > = {
+      branch: [`${mergeBase}:${before}`, `HEAD:${path}`],
+      staged: [`HEAD:${before}`, `:${path}`],
+      untracked: [undefined, null],
+      conflicted: [`HEAD:${before}`, null],
+      unstaged: [`:${before}`, null],
+    };
+    const [oldSide, newSide] = sides[kind];
+    const [old_image, new_image] = await Promise.all([
+      oldSide === undefined ? undefined : readImage(context, before, oldSide),
+      readImage(context, path, newSide),
+    ]);
+    images = { old_image, new_image };
+  }
   return {
+    ...images,
     workspace_id: workspaceId,
     root: context.root,
     path,

@@ -148,6 +148,16 @@ const descriptions: Description[] = [
     msg("Preview & review"),
   ],
   [
+    "diff.nextChange",
+    msg("Go to the next change in a diff"),
+    msg("Preview & review"),
+  ],
+  [
+    "diff.previousChange",
+    msg("Go to the previous change in a diff"),
+    msg("Preview & review"),
+  ],
+  [
     "preview.selectAll",
     msg("Select all in the file preview"),
     msg("Preview & review"),

@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
+  padding: 0 8px 0 6px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -49,13 +49,17 @@
   contain-intrinsic-size: auto var(--ui-row-height);
 }
 
+.changes-row > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
 .changes-row:hover,
 .changes-row[aria-current="true"] {
   background: var(--accent-soft);
 }
 
-.changes-row-name,
-.changes-row-dir {
+.changes-row-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -63,14 +67,12 @@
 }
 
 .changes-row-name {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
-/* The directory gives way first; the row tooltip has the full path. */
-.changes-row-dir {
-  flex: 1 1 0;
-  color: var(--muted);
-  font-size: 11px;
+.changes-row-twisty {
+  width: 13px;
+  flex: 0 0 13px;
 }
 
 .changes-row-stats {

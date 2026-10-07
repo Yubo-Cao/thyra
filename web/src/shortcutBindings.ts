@@ -43,6 +43,8 @@ const base = {
   "workspaces.open": ["Ctrl+Alt+O"],
   "files.toggle": ["Ctrl+Alt+E"],
   "diff.toggle": ["Ctrl+Alt+G"],
+  "diff.nextChange": ["Alt+ArrowDown"],
+  "diff.previousChange": ["Alt+ArrowUp"],
   "terminal.pageUp": ["PageUp"],
   "terminal.pageDown": ["PageDown"],
   "terminal.halfPageUp": ["Alt+PageUp"],

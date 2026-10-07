@@ -210,6 +210,7 @@ export function gitDiffFileQuery(
           path: entry.path,
           old_path: entry.old_path,
           kind: entry.kind,
+          images: true,
         },
         { signal },
       )) as GitDiffFile;

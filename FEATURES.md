@@ -234,11 +234,13 @@ that another fetch could change.
 
 ## Diff Viewer
 
-- Review **Working tree** or **Against main**. Each changed file is one row with
+- Review **Working tree** or **Against main** as a collapsible folder tree with
   status tokens and added/deleted counts; a file both staged and unstaged shows
-  both patches.
-- The selected file's unified diff loads on demand with syntax highlighting.
-  **Wrap** toggles line wrapping; **Open in Files** jumps to the file preview.
+  both patches. Right-click or long-press opens the file or copies its path.
+- The selected file's unified diff loads on demand with syntax highlighting;
+  changed images show before and after. Step through changes with the arrow
+  buttons or `Alt+Down`/`Alt+Up`; **Wrap** toggles line wrapping and
+  **Open in Files** jumps to the file preview.
 - Changes is read-only: stage, discard, and commit in a terminal.
 
 Scope and wrapping persist per browser. Refresh reloads the list and the shown diff.
@@ -381,6 +383,7 @@ Common defaults (Linux/Android exceptions follow):
 | File Explorer | `Cmd+Shift+E` | `Ctrl+Alt+E` |
 | Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
 | Search raw preview | `Cmd+F` | `Ctrl+F` |
+| Next / previous change in a diff | `Option+Down` / `Option+Up` | `Alt+Down` / `Alt+Up` |
 | Send composer or prompt editor | `Cmd+Enter` | `Ctrl+Enter` |
 | Show / hide the prompt editor; focus terminal or editor | `Ctrl+Option+P` / `Ctrl+Option+I` | `Ctrl+Alt+P` / `Ctrl+Alt+I` |
 | Preview the prompt as Markdown | `Cmd+Shift+V` | `Ctrl+Shift+V` |

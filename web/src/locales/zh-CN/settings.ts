@@ -345,4 +345,6 @@ export default {
     "将 {keys} 等浏览器快捷键发送到终端（全屏；按住 Esc 退出）",
   "Capture keyboard": "接管键盘",
   "Release keyboard": "释放键盘",
+  "Go to the next change in a diff": "跳到差异中的下一处更改",
+  "Go to the previous change in a diff": "跳到差异中的上一处更改",
 } satisfies Record<string, string>;

@@ -212,6 +212,18 @@ describe("git diff in a repository", () => {
       expect(branchFile.kind).toBe("branch");
       expect(branchFile.diff).toContain("+two");
       expect(branchFile.diff).not.toContain("+three");
+
+      await writeFile(join(root, "logo.png"), Buffer.from([1, 2, 0, 3]));
+      await git(root, "add", "logo.png");
+      await git(root, "commit", "-m", "logo");
+      await writeFile(join(root, "logo.png"), Buffer.from([4, 0, 5]));
+      const image = await readDiffFile({
+        ...context,
+        workspaceId: "w1",
+        params: { path: "logo.png", images: true },
+      });
+      expect(image.old_image).toBe("data:image/png;base64,AQIAAw==");
+      expect(image.new_image).toBe("data:image/png;base64,BAAF");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

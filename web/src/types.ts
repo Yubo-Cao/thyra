@@ -219,4 +219,7 @@ export interface GitDiffFile {
   kind: GitDiffKind;
   diff: string;
   truncated: boolean;
+  /** Both sides of a binary image change, as data URLs, when requested. */
+  old_image?: string;
+  new_image?: string;
 }

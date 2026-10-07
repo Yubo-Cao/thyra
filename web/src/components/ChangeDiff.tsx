@@ -6,11 +6,13 @@ import {
   type WorkerInitializationRenderOptions,
   type WorkerPoolOptions,
 } from "@pierre/diffs/react";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, FolderOpen } from "lucide-react";
+import { useQueries } from "@tanstack/react-query";
+import { ChevronDown, ChevronLeft, ChevronUp, FolderOpen } from "lucide-react";
 import {
   Component,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -24,7 +26,8 @@ import {
   inspectorQueries,
 } from "../inspectorQueries";
 import { bundledLanguages, syntaxLanguageForPath } from "../syntaxLanguage";
-import type { GitDiffEntry } from "../types";
+import { shortcutMatches, shortcutTitle } from "../shortcutPreferences";
+import type { GitDiffEntry, GitDiffFile } from "../types";
 import { GitStatusTokens } from "./ChangesList";
 import { useDocumentTheme } from "./documentTheme";
 import { Button } from "./ui/Button";
@@ -106,54 +109,130 @@ function HighlightedPatch({
   return <FileDiff fileDiff={fileDiff} options={options} />;
 }
 
+export type ChangeTarget = {
+  patch: number;
+  line: number;
+  side: "addition" | "deletion";
+  /** Position within the patch, for scrolling to a not-yet-rendered line. */
+  ratio: number;
+};
+
+/** The first changed line of every hunk in a unified patch. */
+export function hunkTargets(patch: string): ChangeTarget[] {
+  const targets: Omit<ChangeTarget, "ratio">[] = [];
+  let oldLine = 0;
+  let newLine = 0;
+  let inHunk = false;
+  let pending = false;
+  for (const line of patch.split("\n")) {
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(line);
+    if (header) {
+      oldLine = Number(header[1]);
+      newLine = Number(header[2]);
+      inHunk = pending = true;
+    } else if (inHunk && (line[0] === "+" || line[0] === "-")) {
+      const side = line[0] === "+" ? "addition" : "deletion";
+      if (pending) {
+        targets.push({
+          patch: 0,
+          line: side === "addition" ? newLine : oldLine,
+          side,
+        });
+        pending = false;
+      }
+      if (side === "addition") newLine += 1;
+      else oldLine += 1;
+    } else if (inHunk && line[0] === " ") {
+      oldLine += 1;
+      newLine += 1;
+    }
+  }
+  const last = Math.max(1, newLine, oldLine);
+  return targets.map((target) => ({ ...target, ratio: target.line / last }));
+}
+
+const hunkTargetCache = new WeakMap<GitDiffFile, ChangeTarget[]>();
+function cachedHunkTargets(file: GitDiffFile, index: number) {
+  let targets = hunkTargetCache.get(file);
+  if (!targets) hunkTargetCache.set(file, (targets = hunkTargets(file.diff)));
+  return targets.map((target) => ({ ...target, patch: index }));
+}
+
+/** Scrolls a change into view; Pierre renders lines near the viewport only. */
+function revealChange(section: HTMLElement, target: ChangeTarget, attempt = 0) {
+  const patch =
+    section.querySelectorAll<HTMLElement>("[data-patch]")[target.patch];
+  const line = patch
+    ?.querySelector("diffs-container")
+    ?.shadowRoot?.querySelector<HTMLElement>(
+      `[data-line='${target.line}'][data-line-type='change-${target.side}']`,
+    );
+  if (line) {
+    line.scrollIntoView({ block: "center" });
+    return;
+  }
+  const scroller = section.querySelector<HTMLElement>(".change-diff-scroll");
+  if (!patch || !scroller || attempt > 20) return;
+  if (attempt === 0) {
+    const top =
+      patch.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop +=
+      top + target.ratio * patch.offsetHeight - scroller.clientHeight / 2;
+  }
+  requestAnimationFrame(() => revealChange(section, target, attempt + 1));
+}
+
 function Patch({
-  client,
-  workspaceId,
-  mode,
-  entry,
+  file,
+  error,
+  path,
   label,
   options,
 }: {
-  client: ConnectionClient;
-  workspaceId: string;
-  mode: GitDiffSummaryMode;
-  entry: GitDiffEntry;
+  file?: GitDiffFile;
+  error: Error | null;
+  path: string;
   label?: string;
   options: DiffOptions;
 }) {
-  const { data, error } = useQuery(
-    gitDiffFileQuery(client, workspaceId, mode, entry),
-    inspectorQueries,
-  );
+  const images = [
+    [t("Before"), file?.old_image],
+    [t("After"), file?.new_image],
+  ].filter((side): side is [string, string] => !!side[1]);
   return (
     <>
       {label ? <div className="change-diff-note">{label}</div> : null}
       {error ? (
         <div className="diff-content-state is-error">{error.message}</div>
-      ) : !data ? (
+      ) : !file ? (
         <div className="diff-content-state">
           <span className="file-loading-spinner" />
           {t("Loading diff")}
         </div>
-      ) : !data.diff ? (
+      ) : images.length ? (
+        <div className="change-diff-images">
+          {images.map(([caption, src]) => (
+            <figure key={caption}>
+              <figcaption>{caption}</figcaption>
+              <img src={src} alt={`${caption}: ${path}`} />
+            </figure>
+          ))}
+        </div>
+      ) : !file.diff ? (
         <div className="diff-content-state">
           {t("No textual diff available.")}
         </div>
       ) : (
         <>
-          {data.truncated ? (
+          {file.truncated ? (
             <div className="change-diff-note">
               {t("Diff truncated at 512 KB.")}
             </div>
           ) : null}
           {/* Remount on a new patch: Pierre's line cache can index out of
               range when a reload replaces the whole patch. */}
-          <RawFallback key={data.diff} patch={data.diff}>
-            <HighlightedPatch
-              patch={data.diff}
-              path={entry.path}
-              options={options}
-            />
+          <RawFallback key={file.diff} patch={file.diff}>
+            <HighlightedPatch patch={file.diff} path={path} options={options} />
           </RawFallback>
         </>
       )}
@@ -202,10 +281,50 @@ export function ChangeDiff({
     [theme, wrap],
   );
   const entry = entries[0];
+  const results = useQueries(
+    {
+      queries: entries.map((candidate) =>
+        gitDiffFileQuery(client, workspaceId, mode, candidate),
+      ),
+    },
+    inspectorQueries,
+  );
+  const files = results.map((result) => result.data);
+  const targets = files.flatMap((file, index) =>
+    file && !file.old_image && !file.new_image
+      ? cachedHunkTargets(file, index)
+      : [],
+  );
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [change, setChange] = useState(-1);
+  // A new selection or refresh starts before the first change again.
+  useEffect(() => setChange(-1), [entries]);
+  const goToChange = (delta: 1 | -1) => {
+    if (!targets.length || !sectionRef.current) return;
+    const next =
+      change < 0
+        ? delta > 0
+          ? 0
+          : targets.length - 1
+        : (change + delta + targets.length) % targets.length;
+    setChange(next);
+    revealChange(sectionRef.current, targets[next]!);
+  };
   return (
     <section
+      ref={sectionRef}
       className="change-diff"
       aria-label={embedded ? t("File changes") : t("Diff Viewer content")}
+      onKeyDown={(event) => {
+        const delta = shortcutMatches(event.nativeEvent, "diff.nextChange")
+          ? 1
+          : shortcutMatches(event.nativeEvent, "diff.previousChange")
+            ? -1
+            : 0;
+        if (!delta) return;
+        event.preventDefault();
+        goToChange(delta);
+      }}
     >
       <div className="ui-bar change-diff-bar">
         {onBack ? (
@@ -224,6 +343,26 @@ export function ChangeDiff({
           </>
         ) : null}
         <span className="ui-bar-spacer" />
+        {targets.length ? (
+          <span className="change-diff-nav" aria-label={t("Change navigation")}>
+            <IconButton
+              label={t("Previous change")}
+              tooltip={shortcutTitle(
+                t("Previous change"),
+                "diff.previousChange",
+              )}
+              onClick={() => goToChange(-1)}
+              icon={<ChevronUp size={14} />}
+            />
+            <span>{`${change < 0 ? "-" : change + 1}/${targets.length}`}</span>
+            <IconButton
+              label={t("Next change")}
+              tooltip={shortcutTitle(t("Next change"), "diff.nextChange")}
+              onClick={() => goToChange(1)}
+              icon={<ChevronDown size={14} />}
+            />
+          </span>
+        ) : null}
         <Button
           aria-pressed={wrap}
           onClick={() => {
@@ -247,22 +386,22 @@ export function ChangeDiff({
           highlighterOptions={HIGHLIGHTER_OPTIONS}
         >
           <Virtualizer className="change-diff-scroll">
-            {entries.map((candidate) => (
-              <Patch
-                client={client}
-                key={`${candidate.kind}:${candidate.path}`}
-                workspaceId={workspaceId}
-                mode={mode}
-                entry={candidate}
-                label={
-                  entries.length > 1
-                    ? candidate.kind === "staged"
-                      ? t("staged")
-                      : t("unstaged")
-                    : undefined
-                }
-                options={options}
-              />
+            {entries.map((candidate, index) => (
+              <div key={`${candidate.kind}:${candidate.path}`} data-patch>
+                <Patch
+                  file={files[index]}
+                  error={results[index]?.error ?? null}
+                  path={candidate.path}
+                  label={
+                    entries.length > 1
+                      ? candidate.kind === "staged"
+                        ? t("staged")
+                        : t("unstaged")
+                      : undefined
+                  }
+                  options={options}
+                />
+              </div>
             ))}
           </Virtualizer>
         </WorkerPoolContextProvider>
