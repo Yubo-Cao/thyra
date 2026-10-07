@@ -569,7 +569,7 @@ export class TerminalEngine {
     }
     noteScreenText(text);
     this.trackModes(text);
-    this.linkGeneration++;
+    // Links stay until refresh(): providers check their own frame currency.
     this.stateGeneration++;
     queueMicrotask(() => {
       if (this.disposed) return;
@@ -814,42 +814,59 @@ export class TerminalEngine {
     this.scrollLines(this.host?.scrollbar()?.total ?? 0);
   }
 
-  /** The visible screen, in xterm's buffer shape. */
+  /**
+   * The visible screen, in xterm's buffer shape. As in xterm, each screen
+   * (normal, alternate) keeps one identity while its contents change.
+   */
   get buffer() {
-    const host = this.host;
-    const bar = host?.scrollbar();
-    const viewportY = bar?.offset ?? 0;
-    const baseY = bar ? Math.max(0, bar.total - bar.len) : 0;
-    if (this.stateCache?.generation !== this.stateGeneration)
-      this.stateCache = {
-        generation: this.stateGeneration,
-        state: host?.renderState() ?? null,
-      };
-    const state = this.stateCache.state;
-    const preview = state ? null : this.textScreen.rows;
-    const cols = this.cols;
-    const line = (y: number): TerminalBufferLine | undefined => {
-      const row = y - viewportY;
-      if (row < 0 || row >= this.rows) return undefined;
-      if (!state) {
-        const text = [...(preview?.[row] ?? "")];
-        return textLine(text, cols);
-      }
-      if (row >= state.rows) return undefined;
-      return stateLine(state, row);
+    const alternate = [47, 1047, 1049].some((mode) =>
+      this.privateModes.has(mode),
+    );
+    return { active: alternate ? this.alternateBuffer : this.normalBuffer };
+  }
+
+  private normalBuffer = this.screenBuffer("normal");
+  private alternateBuffer = this.screenBuffer("alternate");
+
+  private screenBuffer(type: "normal" | "alternate") {
+    const state = () => {
+      if (this.stateCache?.generation !== this.stateGeneration)
+        this.stateCache = {
+          generation: this.stateGeneration,
+          state: this.host?.renderState() ?? null,
+        };
+      return this.stateCache.state;
     };
+    const bar = () => this.host?.scrollbar() ?? null;
+    const viewportY = () => bar()?.offset ?? 0;
+    const line = (y: number): TerminalBufferLine | undefined => {
+      const row = y - viewportY();
+      if (row < 0 || row >= this.rows) return undefined;
+      const screen = state();
+      if (!screen)
+        return textLine([...(this.textScreen.rows[row] ?? "")], this.cols);
+      return row < screen.rows ? stateLine(screen, row) : undefined;
+    };
+    const rows = () => this.rows;
     return {
-      active: {
-        type: [47, 1047, 1049].some((mode) => this.privateModes.has(mode))
-          ? ("alternate" as const)
-          : ("normal" as const),
-        viewportY,
-        baseY,
-        length: bar?.total ?? this.rows,
-        cursorX: state?.cursor?.col ?? 0,
-        cursorY: state?.cursor?.row ?? 0,
-        getLine: line,
+      type,
+      get viewportY() {
+        return viewportY();
       },
+      get baseY() {
+        const scroll = bar();
+        return scroll ? Math.max(0, scroll.total - scroll.len) : 0;
+      },
+      get length() {
+        return bar()?.total ?? rows();
+      },
+      get cursorX() {
+        return state()?.cursor?.col ?? 0;
+      },
+      get cursorY() {
+        return state()?.cursor?.row ?? 0;
+      },
+      getLine: line,
     };
   }
 

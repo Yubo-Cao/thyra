@@ -17,7 +17,8 @@ Browsers cannot open Unix sockets or Windows named pipes. The bridge connects
 `herdr.sock` (NDJSON control) and `herdr-client.sock` (binary terminal traffic),
 serves the frontend, and owns authentication, local/SSH runtimes, host operations,
 notifications, health, and updates. React owns presentation and browser-local
-preferences; xterm displays Herdr-rendered output, not a bridge-owned PTY.
+preferences; the terminal engine (restty) displays Herdr-rendered output, not a
+bridge-owned PTY.
 
 Browser RPC sends `{ id, method, params }` and receives `{ id, result }` or
 `{ id, error }`. Subscribed events use `{ event: ... }`; downstream traffic also
@@ -119,7 +120,7 @@ full frame, and a 10 s acknowledgement timeout releases the window. Viewers
 that do not opt in, popups, and legacy streams keep base64 `bytes` repaints.
 A viewer may thin only its own stream: `min_frame_interval_ms` (0–10000, on `terminal.attach` or `terminal.stream`) sends at most the newest frame per interval, and `terminal.stream { paused: true }` sends none until it is resumed with a full frame.
 Full repaints (attach, resize, resync) are never held back, and other viewers of the same terminal keep their rate.
-The browser writes only changed rows into xterm while its viewport is unchanged.
+The browser writes only changed rows into the terminal while its viewport is unchanged.
 
 The browser reports its terminal colors with `terminal.host_theme`
 (`appearance`, `foreground`, `background`, 16-color `palette`). Every endpoint
@@ -143,12 +144,15 @@ pane borders, not app chrome; surface feedback corrects stale hints. Legacy
 attachments use pane dimensions. Repaints clip wide characters and cursors to
 the viewer's viewport; browsers reject oversized frames after shrinking.
 
-Root CSS zoom scales the UI. Terminals cancel it and scale xterm fonts directly,
+Root CSS zoom scales the UI. Terminals cancel it and scale their fonts directly,
 keeping cell measurements, IME, selection, and mouse input in viewport CSS pixels.
 Popover positioning likewise cancels zoom and reapplies it to content.
 
-The first output renders with xterm's DOM renderer in a fallback font; the WebGL renderer and the bundled font load after it (`terminalRenderer.ts`).
-Neither may change `cols`/`rows`, which would reflow a full-screen app: cell widths snap to device pixels as the WebGL renderer's do, the fit uses that grid whichever renderer is active, and the bundled font's cell size is fixed before it downloads (its nominal metrics, or the size this browser measured on an earlier load).
+Terminals render with restty (libghostty-vt in WASM, drawn with WebGPU or WebGL2, text shaped with ligatures) behind `web/src/terminalEngine.ts`; `patches/restty@*.patch` exposes the internals Thyra uses and disables terminal clipboard reads and replies.
+The engine (about 0.55 MiB Brotli, its WASM inlined) loads in parallel with the first attach; until it draws, the latest screen shows as plain text in the bundled font.
+It shapes text from font files: the regular Latin slices of the bundled font first, bold and italic after the first screen, and further slices as their characters appear (`terminalFonts.ts`).
+Two coverage fonts follow (`scripts/build-terminal-emoji-font.py`): emoji and symbols or scripts the bundled font lacks draw with the browser's own fonts, emoji in color, the rest in the cell's color.
+The grid before the engine loads uses the bundled font's nominal metrics, which match the engine's, so loading never changes `cols`/`rows`.
 
 Input waits for readiness and revalidates attachment/session/runtime leases;
 it is never replayed into a replacement terminal. Disconnect rejects pending
@@ -163,7 +167,7 @@ requests and invalidates clipboard ownership.
   `0x1f` in a shell and `CSI 47;5u` in a Kitty-keyboard app, as from Ghostty.
   IME composition, dead keys, paste and on-screen keyboards keep the
   `terminal.input` byte path; both share one ordered queue per terminal.
-  Direct attaches (popups, `THYRA_DISABLE_ENDPOINT`) encode keys as xterm legacy
+  Direct attaches (popups, `THYRA_DISABLE_ENDPOINT`) encode keys as xterm-style legacy
   bytes in the bridge. On macOS, Cmd belongs to Thyra's bindings and native
   copy/paste; other Cmd chords reach the pane with Super, except the browser's
   reload/address/tab/window/zoom/find/select-all chords, which the opt-in exclusive keyboard
@@ -177,7 +181,7 @@ requests and invalidates clipboard ownership.
   Herdr alone decides keys versus scrollback from the app's DECSET 1007 and its `[terminal] alternate_scroll` setting (default on); without the capability, or on the normal screen, the wheel scrolls Herdr's history with `pane.scroll`.
   Only the pane's writer sends wheel input: the bridge turns anyone else's scroll into history.
 - Herdr keeps one history position per pane, shared by every viewer, so a read-only viewer (workspace viewer or share-link guest) never sends `terminal.scroll` (the bridge refuses it).
-  Its first scroll up reads the last 1000 lines with `terminal.history` (`pane.read`, `recent`, ANSI: Herdr's passive snapshot, never input) into a second, input-less xterm over the live one, at the live terminal's size, font and colors.
+  Its first scroll up reads the last 1000 lines with `terminal.history` (`pane.read`, `recent`, ANSI: Herdr's passive snapshot, never input) into a second, input-less terminal over the live one, at the live terminal's size, font and colors.
   Scrolling back to the bottom, Escape, End, or **Back to live** closes it; the live stream never stops.
 - Mouse cells are zero-based and pane-local. Only an in-pane press owns a drag;
   subsequent positions clamp to edges. Reporting changes/closure cancel ownership.
@@ -200,7 +204,7 @@ requests and invalidates clipboard ownership.
   user activation. A drag handed to a mouse-aware app reserves a
   `ClipboardItem` write at mouseup that its later OSC 52 copy fulfills.
   Clipboard writes carry both plain text and HTML. Native visible selections
-  use xterm's serialize addon; agent-owned drag copies render sanitized Markdown.
+  copy the engine's cell colors and styles; agent-owned drag copies render sanitized Markdown.
   History outside the active buffer retains text and detected links. Ordinary
   OSC 52 writes keep their original plain payload, including source code.
 
@@ -216,7 +220,7 @@ not retire their actions. Remote link metadata still requires the exact frame.
 
 Endpoint repaints carry an opaque `link_frame` identity, stable across identical,
 cursor-only, and focus-only surfaces. Content, hyperlink, viewport/scroll, input,
-or resize changes invalidate it. Identical repaints do not rewrite xterm, keeping
+or resize changes invalidate it. Identical repaints do not rewrite the terminal, keeping
 native link IDs and in-progress clicks intact.
 
 `terminal.link.resolve` verifies attachment ownership and frame identity. OSC 8
@@ -524,7 +528,7 @@ While a pane has a display owner, the bridge enforces it for every other device 
 - Their input tells Herdr not to claim size ownership (below).
 
 Panes without a display owner keep the claim-based browser rules above.
-In the browser, a device that may not size the pane mirrors the shared size and scales xterm down to fit; its pinch zoom magnifies and pans that scaled view and never sends a resize, while a device that sizes the pane refits it once when the pinch ends.
+In the browser, a device that may not size the pane mirrors the shared size and scales the terminal down to fit; its pinch zoom magnifies and pans that scaled view and never sends a resize, while a device that sizes the pane refits it once when the pinch ends.
 The claim holder of a pane another device displays is input-only: it opens the composer, previews at one frame per second (`min_frame_interval_ms: 1000`), or pauses frames and polls `terminal.preview_text` (last 60 lines, every 1.5 s while visible) for a text preview; the bridge reads it with Herdr `pane.read` in ANSI format and strips ANSI, so the page never picks read parameters that could replay input.
 "Type here, keep size on {device}" claims the pane without touching the display; "Take control and resize here" also takes it.
 
@@ -607,16 +611,16 @@ Everything under `/assets/` is content-addressed; never write an unfingerprinted
 Because those files are public open-source bundles with identical bytes and `ETag` on both listeners, Cloudflare caches them for the public listener (see [Cloudflare edge caching](./DEPLOYMENT.md#cloudflare-edge-caching)); the primary listener routes them (`static.asset` in `http-policy.ts`) before authentication, so tailnet login sets its cookie on navigations, API calls and the WebSocket upgrade only.
 Revalidated files carry a strong per-encoding `ETag`, so revalidation costs a `304`.
 Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip with `Vary: Accept-Encoding`, compressed once per file version off the event loop.
-At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure and font stylesheets) before the first request.
+At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure, the terminal engine and font stylesheets) before the first request.
 
 The first screen downloads only the entry and the terminal view's closure; the page opens its WebSocket before rendering, so the socket does not queue behind those chunks for a browser's six HTTP/1.1 connections.
 Everything else waits for the first terminal output (`startupGate.ts`): the WebGL renderer, the terminal font (a small ASCII/Latin-1/Powerline stylesheet, then the CJK and icon chunks when idle), warmups, prefetches and the service worker.
 The gate's fallback for output that never comes starts only once a terminal attach has completed, so it cannot expire while the terminal code is still downloading.
 Zstandard and compression dictionaries are not offered: WebKit supports neither, and quality-11 Brotli is smaller than zstd for these bundles.
 
-The build splits long-lived vendor code into `vendor-react`, `vendor-xterm`, `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
+The build splits long-lived vendor code into `vendor-react`, the lazy `vendor-terminal` (the terminal engine), `vendor-xterm` (the popup terminal), `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
 Chunks that import from the entry still change with it.
-It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the WebGL renderer, and the core font stylesheet with its regular and bold slices.
+It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the terminal engine, and the core font stylesheet with its regular and bold slices.
 
 ### Service worker
 
