@@ -1,10 +1,6 @@
 import type { McpActivityEvent } from "./activity";
 import { createFilePolicy } from "./file-policy";
-import type {
-  AgentEntriesResult,
-  GitDiffSummary,
-  McpConnection,
-} from "./gateway";
+import type { GitDiffSummary, McpConnection } from "./gateway";
 import type { McpToolContext } from "./tools";
 import { type McpPrincipal, parseScope } from "./tokens";
 
@@ -20,40 +16,6 @@ export function fakeConnection(
 ): McpConnection {
   const calls = overrides.calls ?? [];
   const track = (name: string) => calls.push(name);
-  const entries: AgentEntriesResult["entries"] = [
-    {
-      id: "e1",
-      role: "user",
-      kind: "message",
-      text: "please fix the login bug",
-      sent_at: "2026-09-27T10:00:00.000Z",
-    },
-    {
-      id: "e2",
-      role: "tool",
-      kind: "tool_call",
-      tool_name: "Bash",
-      source_call_id: "c1",
-      text: '{"command": "bun test"}',
-      sent_at: "2026-09-27T10:00:01.000Z",
-    },
-    {
-      id: "e3",
-      role: "tool",
-      kind: "tool_result",
-      tool_name: "Bash",
-      source_call_id: "c1",
-      text: `12 pass\nOPENAI_API_KEY=${PLANTED_SECRET}`,
-      sent_at: "2026-09-27T10:00:02.000Z",
-    },
-    {
-      id: "e4",
-      role: "assistant",
-      kind: "message",
-      text: "The login bug is fixed; all tests pass.",
-      sent_at: "2026-09-27T10:00:03.000Z",
-    },
-  ];
   const diffSummary: GitDiffSummary = {
     root: "/repo/alpha",
     mode: "working",
@@ -188,31 +150,6 @@ export function fakeConnection(
             last_activity_at: Date.parse("2026-09-27T11:00:00.000Z"),
           },
         ],
-      };
-    },
-    async agentEntries(paneId) {
-      track(`agent_history.get:${paneId}`);
-      return {
-        agent: paneId === "w1:p1" ? "claude" : "codex",
-        pane_id: paneId,
-        workspace_id: paneId.split(":")[0] ?? "",
-        status: "ok",
-        detail: "",
-        updated_at: "2026-09-27T10:00:03.000Z",
-        path: "/sessions/s.jsonl",
-        stats: { turns: 1, records: 4, token_usage: null },
-        entries:
-          paneId === "w1:p1"
-            ? entries
-            : [
-                {
-                  id: "x1",
-                  role: "user",
-                  kind: "message",
-                  text: "beta secret plan about login",
-                  sent_at: "2026-09-27T11:00:00.000Z",
-                },
-              ],
       };
     },
     async collaborationList() {

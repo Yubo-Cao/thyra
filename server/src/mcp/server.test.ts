@@ -119,7 +119,7 @@ describe("MCP HTTP endpoint", () => {
       name: string;
       annotations: Record<string, boolean>;
     }>;
-    expect(tools).toHaveLength(10);
+    expect(tools).toHaveLength(8);
     for (const tool of tools) {
       expect(tool.annotations.readOnlyHint).toBe(true);
       expect(tool.annotations.destructiveHint).toBe(false);

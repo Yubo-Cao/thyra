@@ -18,8 +18,6 @@ describe("MCP tools", () => {
       "list_workspaces",
       "get_pane_output",
       "list_agent_sessions",
-      "get_agent_session",
-      "search_sessions",
       "get_git_status",
       "get_git_diff",
       "read_file",
@@ -146,90 +144,6 @@ describe("MCP tools", () => {
     expect(scoped.sessions.map((s: { pane_id: string }) => s.pane_id)).toEqual([
       "w1:p1",
     ]);
-  });
-
-  test("get_agent_session returns clipped entries with paging", async () => {
-    const result = await runMcpTool(
-      "get_agent_session",
-      { pane_id: "w1:p1", limit: 2, max_chars_per_entry: 100 },
-      toolContext(),
-    );
-    const data = json(result.text);
-    expect(data.total_entries).toBe(4);
-    expect(data.entries.map((entry: { id: string }) => entry.id)).toEqual([
-      "e3",
-      "e4",
-    ]);
-    expect(data.next_before).toBe(2);
-    expect(result.text).not.toContain(PLANTED_SECRET);
-
-    const older = json(
-      (
-        await runMcpTool(
-          "get_agent_session",
-          { pane_id: "w1:p1", limit: 2, before: 2 },
-          toolContext(),
-        )
-      ).text,
-    );
-    expect(older.entries.map((entry: { id: string }) => entry.id)).toEqual([
-      "e1",
-      "e2",
-    ]);
-    expect(older.next_before).toBeUndefined();
-
-    const noTools = json(
-      (
-        await runMcpTool(
-          "get_agent_session",
-          { pane_id: "w1:p1", include_tools: false },
-          toolContext(),
-        )
-      ).text,
-    );
-    expect(noTools.entries.map((entry: { id: string }) => entry.id)).toEqual([
-      "e1",
-      "e4",
-    ]);
-  });
-
-  test("search_sessions finds matches within scope only", async () => {
-    const all = json(
-      (await runMcpTool("search_sessions", { query: "LOGIN" }, toolContext()))
-        .text,
-    );
-    expect(all.total_matches).toBe(3);
-    expect(all.matches[0]).toMatchObject({ pane_id: "w2:p1", entry_id: "x1" });
-
-    const scoped = json(
-      (
-        await runMcpTool(
-          "search_sessions",
-          { query: "login" },
-          toolContext({ scope: "w1" }),
-        )
-      ).text,
-    );
-    expect(scoped.matches.map((m: { pane_id: string }) => m.pane_id)).toEqual([
-      "w1:p1",
-      "w1:p1",
-    ]);
-    expect(JSON.stringify(scoped)).not.toContain("beta secret plan");
-  });
-
-  test("search_sessions only searches tool output when asked", async () => {
-    const without = json(
-      (await runMcpTool("search_sessions", { query: "12 pass" }, toolContext()))
-        .text,
-    );
-    expect(without.total_matches).toBe(0);
-    const withTools = await runMcpTool(
-      "search_sessions",
-      { query: "12 pass", include_tools: true },
-      toolContext(),
-    );
-    expect(json(withTools.text).total_matches).toBe(1);
-    expect(withTools.text).not.toContain(PLANTED_SECRET);
   });
 
   test("get_git_status lists branch and changed files", async () => {

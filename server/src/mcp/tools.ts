@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
 import type { McpActivityEvent } from "./activity";
 import type { FilePolicy } from "./file-policy";
-import type { AgentEntriesResult, McpConnection } from "./gateway";
+import type { McpConnection } from "./gateway";
 import { redactDeep, redactText } from "./redact";
 import { type McpPrincipal, scopeAllows } from "./tokens";
 
@@ -66,12 +66,6 @@ function num(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
-}
-
-function clip(text: string, max: number) {
-  return text.length > max
-    ? { text: `${text.slice(0, max)}...`, clipped: true }
-    : { text, clipped: false };
 }
 
 /** Workspace owning a Herdr id such as `w1`, `w1:t2`, or `w1:p3`. */
@@ -208,23 +202,6 @@ async function scopedAgents(
         (b.last_activity_at ?? "").localeCompare(a.last_activity_at ?? "") ||
         String(a.pane_id).localeCompare(String(b.pane_id)),
     );
-}
-
-function entryView(
-  entry: AgentEntriesResult["entries"][number],
-  maxChars: number,
-) {
-  const { text, clipped } = clip(entry.text ?? "", maxChars);
-  return {
-    id: entry.id,
-    kind: entry.kind,
-    role: entry.role,
-    ...(entry.tool_name ? { tool: entry.tool_name } : {}),
-    ...(entry.is_error ? { error: true } : {}),
-    sent_at: entry.sent_at,
-    text,
-    ...(clipped ? { text_chars: entry.text.length } : {}),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -466,133 +443,6 @@ const listAgentSessions = defineTool({
         ...(args.offset + page.length < agents.length
           ? { next_offset: args.offset + page.length }
           : {}),
-      },
-    };
-  },
-});
-
-const getAgentSession = defineTool({
-  name: "get_agent_session",
-  title: "Get agent session",
-  description:
-    "Read recent structured history of the agent running in a pane: user and assistant messages, tool calls, and tool results, newest last. Page backwards with `before`.",
-  inputSchema: z.object({
-    pane_id: paneIdField,
-    connection_id: connectionIdField,
-    limit: z.number().int().min(1).max(200).default(30),
-    before: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe(
-        "Return entries before this index (from a previous next_before).",
-      ),
-    include_tools: z
-      .boolean()
-      .default(true)
-      .describe("Include tool calls and results (default true)."),
-    max_chars_per_entry: z.number().int().min(100).max(20000).default(2000),
-  }),
-  async handler(ctx, args) {
-    const connection = singleConnection(ctx, args.connection_id);
-    await findPane(ctx, connection, args.pane_id);
-    const history = await connection.agentEntries(args.pane_id);
-    const entries = history.entries.filter(
-      (entry) => args.include_tools || entry.role !== "tool",
-    );
-    const end = Math.min(args.before ?? entries.length, entries.length);
-    const start = Math.max(0, end - args.limit);
-    return {
-      data: {
-        connection_id: connection.id,
-        pane_id: args.pane_id,
-        workspace_id: history.workspace_id,
-        agent: history.agent,
-        status: history.status,
-        ...(history.status !== "ok" ? { detail: history.detail } : {}),
-        updated_at: history.updated_at,
-        stats: history.stats
-          ? { turns: history.stats.turns, records: history.stats.records }
-          : undefined,
-        total_entries: entries.length,
-        entries: entries
-          .slice(start, end)
-          .map((entry) => entryView(entry, args.max_chars_per_entry)),
-        ...(start > 0 ? { next_before: start } : {}),
-      },
-    };
-  },
-});
-
-const MAX_SEARCHED_SESSIONS = 25;
-const SNIPPET_RADIUS = 100;
-
-const searchSessions = defineTool({
-  name: "search_sessions",
-  title: "Search agent sessions",
-  description:
-    "Case-insensitive text search across the recent history of agent sessions in open panes. Returns matching entries with snippets and ids for get_agent_session.",
-  inputSchema: z.object({
-    query: z.string().min(2).max(200),
-    connection_id: connectionIdField,
-    workspace_id: workspaceIdField.optional(),
-    include_tools: z.boolean().default(false),
-    limit: z.number().int().min(1).max(100).default(20),
-  }),
-  async handler(ctx, args) {
-    const needle = args.query.toLowerCase();
-    const matches = [];
-    let searched = 0;
-    const skipped: string[] = [];
-    outer: for (const connection of connectionsFor(ctx, args.connection_id)) {
-      if (args.workspace_id)
-        assertWorkspace(ctx, connection, args.workspace_id);
-      const agents = (
-        await scopedAgents(ctx, connection, args.workspace_id)
-      ).filter((agent) => agent.session && agent.pane_id);
-      for (const agent of agents) {
-        if (searched >= MAX_SEARCHED_SESSIONS) break outer;
-        searched += 1;
-        let history: AgentEntriesResult;
-        try {
-          history = await connection.agentEntries(agent.pane_id as string);
-        } catch {
-          skipped.push(agent.pane_id as string);
-          continue;
-        }
-        for (const entry of history.entries) {
-          if (!args.include_tools && entry.role === "tool") continue;
-          const text = entry.text ?? "";
-          const index = text.toLowerCase().indexOf(needle);
-          if (index < 0) continue;
-          const from = Math.max(0, index - SNIPPET_RADIUS);
-          const to = Math.min(
-            text.length,
-            index + needle.length + SNIPPET_RADIUS,
-          );
-          matches.push({
-            connection_id: connection.id,
-            pane_id: agent.pane_id,
-            workspace_id: agent.workspace_id,
-            agent: agent.agent,
-            entry_id: entry.id,
-            kind: entry.kind,
-            role: entry.role,
-            sent_at: entry.sent_at,
-            snippet: `${from > 0 ? "..." : ""}${text.slice(from, to)}${to < text.length ? "..." : ""}`,
-          });
-        }
-      }
-    }
-    matches.sort((a, b) => b.sent_at.localeCompare(a.sent_at));
-    return {
-      data: {
-        query: args.query,
-        sessions_searched: searched,
-        ...(skipped.length ? { sessions_unreadable: skipped } : {}),
-        total_matches: matches.length,
-        matches: matches.slice(0, args.limit),
       },
     };
   },
@@ -924,8 +774,6 @@ export const MCP_TOOLS = [
   listWorkspaces,
   getPaneOutput,
   listAgentSessions,
-  getAgentSession,
-  searchSessions,
   getGitStatus,
   getGitDiff,
   readFile,

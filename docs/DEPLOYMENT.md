@@ -212,7 +212,7 @@ visible to other Herdr clients.
 
 ## MCP server
 
-Thyra can give MCP-capable agents (Claude Code, Codex, and others) a **read-only** view of your workspaces: workspaces, tabs, and panes with agent status and viewers; recent pane output; agent session history and search; Git status and diffs; files inside workspace checkouts; and current activity.
+Thyra can give MCP-capable agents (Claude Code, Codex, and others) a **read-only** view of your workspaces: workspaces, tabs, and panes with agent status and viewers; recent pane output; Git status and diffs; files inside workspace checkouts; and current activity.
 No MCP tool can type into a terminal, run commands, or change files.
 The [architecture notes](./ARCHITECTURE.md#mcp) describe the guarantees.
 

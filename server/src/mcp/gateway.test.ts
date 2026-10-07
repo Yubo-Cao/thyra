@@ -44,7 +44,6 @@ function fakeRuntime(args: { root?: string; sshHost?: string } = {}) {
     collaboration: { call: async () => ({ snapshot: {} }) },
     agentSessions: {
       listWithActivity: async () => ({ agents: [] }),
-      readEntries: async (params) => ({ ...params, entries: [] }),
     },
     files: {
       async listWorkspaceFiles(params) {

@@ -1,6 +1,5 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { HistoryEntry } from "../agent/session-history";
 import { DENIED_RPC_METHODS, RPC_POLICY } from "../authz/policy";
 import { sanitizeExplorerPath } from "../workspace/file-paths";
 import type {
@@ -25,7 +24,6 @@ export const MCP_READ_OPERATIONS = {
   "pane.list": "read",
   "pane.read": "read",
   "agent.list": "read",
-  "agent_history.get": "read",
   "collaboration.list": "read",
   "file.list": "read",
   "file.read": "read",
@@ -67,18 +65,6 @@ export function assertMcpReadOperation(
 
 export type PaneReadResult = { text: string; truncated: boolean };
 
-export type AgentEntriesResult = {
-  agent: string;
-  pane_id: string;
-  workspace_id: string;
-  status: string;
-  detail: string;
-  updated_at: string;
-  path: string;
-  stats?: { turns: number; records: number; token_usage: unknown };
-  entries: HistoryEntry[];
-};
-
 /** Read-only view of one Herdr connection, as MCP tools see it. */
 export type McpConnection = {
   id: string;
@@ -91,7 +77,6 @@ export type McpConnection = {
   paneList(): Promise<unknown>;
   paneRead(paneId: string, lines: number): Promise<PaneReadResult>;
   agentList(): Promise<unknown>;
-  agentEntries(paneId: string): Promise<AgentEntriesResult>;
   collaborationList(): Promise<unknown>;
   fileList(workspaceId: string, path: string): Promise<FileListResult>;
   /** Reads a workspace-relative path that must stay inside the checkout. */
@@ -156,7 +141,6 @@ export type ReadableRuntime = {
   };
   agentSessions: {
     listWithActivity(params: Record<string, unknown>): Promise<unknown>;
-    readEntries(params: Record<string, unknown>): Promise<unknown>;
   };
   files: {
     listWorkspaceFiles(params: Record<string, unknown>): Promise<unknown>;
@@ -260,12 +244,6 @@ export function createMcpConnection(
     async agentList() {
       gate("agent.list");
       return runtime.agentSessions.listWithActivity({});
-    },
-    async agentEntries(paneId) {
-      gate("agent_history.get");
-      return (await runtime.agentSessions.readEntries({
-        pane_id: paneId,
-      })) as AgentEntriesResult;
     },
     async collaborationList() {
       gate("collaboration.list");
