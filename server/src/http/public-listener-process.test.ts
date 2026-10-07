@@ -188,7 +188,7 @@ esac
         { host: "thyra.example", "x-forwarded-for": "100.64.7.7" },
       ];
       for (const headers of spoofs) {
-        for (const path of ["/api/health", "/api/herdr/status", "/mcp"]) {
+        for (const path of ["/api/health", "/api/herdr/status"]) {
           const response = await pub(path, {
             headers: { ...headers, origin: "https://thyra.example" },
           });

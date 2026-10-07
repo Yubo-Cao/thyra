@@ -200,8 +200,6 @@ import { voiceCleanupFromEnv } from "./voice/cleanup";
 import { createIdentityServiceFromEnv } from "./identity/from-env";
 import type { ClientContext } from "./identity/identity-service";
 import { optionalString } from "./utils/rpc-params";
-import { runMcpCommand } from "./mcp/cli";
-import { createThyraMcpService } from "./mcp/service";
 import { runShellIntegrationCommand } from "./shell/cli";
 import { refreshShellScripts } from "./shell/installer";
 
@@ -223,13 +221,6 @@ const herdrCommandResult = await runHerdrCommand(
 );
 if (herdrCommandResult !== null) {
   process.exit(herdrCommandResult);
-}
-const mcpCommandResult = await runMcpCommand(
-  process.argv.slice(2),
-  APP_VERSION,
-);
-if (mcpCommandResult !== null) {
-  process.exit(mcpCommandResult);
 }
 const accountsCommandResult = await runAccountsCommand(process.argv.slice(2));
 if (accountsCommandResult !== null) {
@@ -969,16 +960,6 @@ const connectionManager = new ConnectionManager<LegacyConnectionRuntime>(
   logger.child("connections"),
 );
 
-const mcp = createThyraMcpService({
-  version: APP_VERSION,
-  readyRuntimes: () =>
-    connectionManager
-      .list()
-      .flatMap((status) => connectionManager.readyRuntime(status.id) ?? []),
-  defaultConnectionId: () => connectionManager.defaultId(),
-  logger: logger.child("mcp"),
-});
-
 const { handleHerdrStatus, handleHerdrSetup } = createHerdrSetupHandlers({
   ping: () => {
     const runtime = connectionManager.defaultReadyRuntime();
@@ -1041,7 +1022,6 @@ function runtimeFactoryForProfile(
             : null;
         },
         onTaskEvent: (event) => {
-          mcp.recordTaskEvent(identity.id, event);
           const connections = connectionProfiles.list();
           webPush.notify(
             {
@@ -1066,7 +1046,6 @@ function runtimeFactoryForProfile(
         },
         onEvent: (event, eventIdentity) => {
           if (!context.isCurrent()) return;
-          mcp.recordHerdrEvent(eventIdentity.id, event);
           logger.debug("Herdr event", {
             connection: eventIdentity.id,
             detail: summarizeHerdrEvent(event),
@@ -2420,11 +2399,10 @@ async function primaryFetch(
   // Before any session work, so tailnet login never adds a cookie to them.
   if (routeId === "static.asset") return servePublicAsset(req);
 
-  // Direct local use, the session cookie, or tailnet login. Bearer MCP,
-  // icons, the login script, logout, share links and tailnet sign-in (which
-  // runs `whois` itself) never start a session.
+  // Direct local use, the session cookie, or tailnet login. Icons, the login
+  // script, logout, share links and tailnet sign-in (which runs `whois`
+  // itself) never start a session.
   const auth: AuthResult =
-    routeId === "mcp" ||
     routeId === "login.icon" ||
     routeId === "login.script" ||
     routeId === "logout" ||
@@ -2463,11 +2441,6 @@ async function primaryFetch(
   if (routeId === "login.icon") {
     return serveStatic(req, config.publicDir);
   }
-  // MCP authenticates with its own bearer tokens, never the cookie.
-  if (routeId === "mcp") {
-    server.timeout(req, 60);
-    return mcp.handle(req, access.clientAddress ?? peer);
-  }
   if (!principal) return new Response("unauthorized", { status: 401 });
   return withSessionCookie(
     await routeAuthenticated(req, server, {
@@ -2488,7 +2461,7 @@ async function primaryFetch(
  * The public listener (`THYRA_PUBLIC_LISTEN`) behind Cloudflare Tunnel.
  * Only the public authenticator can authenticate a request here; without a
  * principal it serves the login page and static assets, and answers every
- * API, MCP and WebSocket request with 401.
+ * API and WebSocket request with 401.
  */
 async function publicFetch(
   req: Request,
@@ -2577,10 +2550,6 @@ async function publicRoute(
       status: 401,
       headers: { "cache-control": "no-store" },
     });
-  }
-  // MCP agents use bearer tokens on the private listener only.
-  if (url.pathname === "/mcp") {
-    return new Response("not found", { status: 404 });
   }
   const route = httpRoute(req, url, requestPathname);
   if (!route.routeId) return unmatchedRoute(url);

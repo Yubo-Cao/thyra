@@ -69,7 +69,7 @@ The optional **public listener** (`THYRA_PUBLIC_LISTEN`, for Cloudflare Tunnel) 
 Thyra is the only authentication layer: tailnet devices authenticate by their Tailscale identity, other devices with a passkey, and share-link visitors are read-only guests; it does not rely on an edge login such as Cloudflare Access.
 On the public listener `X-Forwarded-*` and Tailscale headers are ignored, `CF-Connecting-IP` sets only the rate-limit address (and only from `THYRA_PUBLIC_TRUSTED_PROXIES`, loopback by default), and `Host` and `Origin` must be `THYRA_PUBLIC_ORIGIN`.
 It sends HSTS and a strict Content Security Policy (the login page's script is the same-origin `/auth/passkey.js`), and sets only `__Host-` cookies.
-Before login it serves the login and enrollment pages, the passkey ceremonies, tailnet sign-in's configuration, start, callback and redemption, share-link landing and redemption, and static assets, and refuses every other API, MCP and WebSocket request; MCP is never served there.
+Before login it serves the login and enrollment pages, the passkey ceremonies, tailnet sign-in's configuration, start, callback and redemption, share-link landing and redemption, and static assets, and refuses every other API and WebSocket request.
 On the primary listener, the public host gets `421` and a request carrying Cloudflare headers never gets tailnet login, so a misrouted tunnel fails closed.
 See [public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
 

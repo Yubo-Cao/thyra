@@ -441,7 +441,7 @@ export function createLegacyConnectionRuntime(args: {
     readPaneText: async (paneId, lines) => {
       // ANSI format keeps Herdr on its passive snapshot path: a plain-text
       // read of an alternate-screen app may replay wheel input to harvest
-      // history, which would be input on the pane (see the MCP gateway).
+      // history, which would be input on the pane.
       const result = await herdr.call(
         "pane.read",
         {

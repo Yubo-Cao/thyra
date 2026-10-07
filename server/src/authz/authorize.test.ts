@@ -173,7 +173,6 @@ const HTTP_MATRIX: Record<string, string> = {
   "login.script":
     "admin owner editor viewer outsider guest guest-pane anonymous",
   logout: "admin owner editor viewer outsider guest guest-pane anonymous",
-  mcp: "admin owner editor viewer outsider guest guest-pane anonymous",
   "passkey.login":
     "admin owner editor viewer outsider guest guest-pane anonymous",
   "passkey.register":

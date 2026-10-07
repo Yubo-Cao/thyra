@@ -445,28 +445,6 @@ available version. CLI commands have five-second timeouts; missing binaries,
 failed SSH commands, malformed output, and version mismatches leave missing
 metadata unknown without failing the list. There is no remote-to-local fallback.
 
-## MCP
-
-`server/src/mcp` exposes a read-only [Model Context Protocol](https://modelcontextprotocol.io) server over Streamable HTTP at `/mcp` and over stdio through `thyra mcp`; setup is in [Deployment](./DEPLOYMENT.md#mcp-server).
-It uses the official `@modelcontextprotocol/server` SDK in stateless mode, so every HTTP request is served by a fresh server instance, 2025-era and 2026-07-28 clients both work, and no session state is kept.
-The stdio subcommand serves the same tool definitions locally and forwards each `tools/call` to a running Thyra's `/mcp`, so authentication, scope, redaction, rate limiting, and audit always happen in the server.
-
-Tools: `list_workspaces`, `get_pane_output`, `list_agent_sessions`, `get_git_status`, `get_git_diff`, `read_file`, `list_files`, and `get_activity`.
-They reach Herdr and the workspace only through `gateway.ts`, which maps each tool need to one fixed read operation with an explicit parameter set (for example, file reads never carry `scope: "filesystem"`).
-`assertMcpReadOperation` gates every call: the operation must be in the MCP read list and classified `read`, deferring to the RPC policy table's class for methods it lists.
-No tool can send input, resize, focus, claim panes, run commands, or write files.
-Pane output uses Herdr `pane.read` in ANSI format (then strips ANSI) because a plain-text read of an alternate-screen app may replay wheel input to harvest history.
-
-Authentication uses dedicated bearer tokens (`thyra mcp token create`), never the login cookie; `mcp-tokens.json` in the data directory stores only SHA-256 digests and is reread when it changes, so revocation needs no restart.
-A token's scope is `all` or a list of workspace ids; an unqualified id names a workspace on the default connection, and `connection/w1` names one elsewhere.
-Out-of-scope workspaces and panes are reported as not found and are never read.
-`/mcp` passes the same Host allowlist as other routes and the Origin check in `read` mode: agents may omit `Origin`, but a present browser Origin must be allowed (and must match the request host), because the endpoint trusts only the bearer header, never ambient cookies.
-Each token has a token-bucket rate limit, and repeated failed authentication is limited per client address.
-
-Every tool result passes through `redact.ts` (provider keys, bearer and basic credentials, JWTs, private key blocks, URL passwords, and secret-named `KEY=value` or JSON fields) and is capped at 100,000 characters; tools also page and cap their own output.
-`read_file`, `list_files`, and `get_git_diff` apply a deny-list (`.env*`, `*.pem`, `*.key`, `id_*`, credential and keystore files, `.ssh`, `.aws`, `.git`, and others) to the requested path and, on local connections, to the symlink-resolved path; paths that resolve outside the checkout are refused, and remote connections refuse symlinked path components.
-`mcp-audit.jsonl` records each call's time, token, transport, tool, summarized redacted arguments, outcome, duration, and size, keeping one rotated generation.
-
 ## Voice input
 
 The AudioContext is created and resumed synchronously in the tap handler, before any `await`, because iOS Safari only starts audio during a user gesture; an interrupted context (calls, app switches) resumes when the page is visible again.
@@ -547,7 +525,7 @@ While a pane has a display owner, the bridge enforces it for every other device 
 
 Panes without a display owner keep the claim-based browser rules above.
 In the browser, a device that may not size the pane mirrors the shared size and scales xterm down to fit; its pinch zoom magnifies and pans that scaled view and never sends a resize, while a device that sizes the pane refits it once when the pinch ends.
-The claim holder of a pane another device displays is input-only: it opens the composer, previews at one frame per second (`min_frame_interval_ms: 1000`), or pauses frames and polls `terminal.preview_text` (last 60 lines, every 1.5 s while visible) for a text preview; the bridge reads it with Herdr `pane.read` in ANSI format and strips ANSI, like the MCP pane read, so the page never picks read parameters that could replay input.
+The claim holder of a pane another device displays is input-only: it opens the composer, previews at one frame per second (`min_frame_interval_ms: 1000`), or pauses frames and polls `terminal.preview_text` (last 60 lines, every 1.5 s while visible) for a text preview; the bridge reads it with Herdr `pane.read` in ANSI format and strips ANSI, so the page never picks read parameters that could replay input.
 "Type here, keep size on {device}" claims the pane without touching the display; "Take control and resize here" also takes it.
 
 Herdr decides which of its clients sizes a tab: pane input, focus, and navigation from a shell make it Herdr's foreground client and the tab's geometry controller.
@@ -744,7 +722,7 @@ The public router (`publicFetch` in `server/src/index.ts`) rate-limits per clien
 It shares the account database and routes with the primary listener, but its authenticator has no local bypass and no tailnet login, and the primary listener's cookie name differs, so neither listener accepts the other's cookie.
 **Tailnet sign-in** (`server/src/auth/tailnet-sso.ts`, `THYRA_TAILNET_SSO_URL`) bridges the two: the `tailnet` listener issues a code (`sso.code` for the public login page's silent CORS request, `sso.authorize` for the redirect flow) to the account that Tailscale `whois` names for the proxied connection, and the `public` listener redeems it (`sso.redeem`, `sso.callback` after `sso.start`) for its own session, and `sso.config` tells the public login page the tailnet origin, which its HTML never names (the redirect button appears only in a browser with an earlier tailnet sign-in, the `__Host-thyra_tailnet_device` cookie, or a refused Chrome Local Network Access prompt); each route answers `404` on the other listener kind.
 Codes live in `tailnet_sso_codes`, bound to a PKCE challenge and `THYRA_PUBLIC_ORIGIN`, and are deleted by the redeeming `DELETE … RETURNING`, so a replay finds nothing; the primary listener skips its Origin allowlist only for `sso.code`, whose handler allows exactly the public origin.
-Without a principal only those routes and fingerprinted assets are served and everything else is `401` or a redirect to `/login`; with one, requests go through the same HTTP and RPC authorization as on the primary listener, and MCP is never served.
+Without a principal only those routes and fingerprinted assets are served and everything else is `401` or a redirect to `/login`; with one, requests go through the same HTTP and RPC authorization as on the primary listener.
 Public responses add HSTS, a strict CSP (the SPA entry's inline scripts are allowed by hash), and `__Host-` cookies.
 
 The browser accepts one unscoped bridge hello before other messages. Message kinds

@@ -365,15 +365,12 @@ export function isSafeMethod(method: string): boolean {
  * Whether a request needs the Origin check, and whether strictly: WebSocket
  * upgrades and state-changing methods always, API reads too (they return
  * workspace data or have side effects). Page and asset loads do not, so
- * links from other sites still open Thyra. MCP authenticates with a bearer
- * header, never ambient cookies, so agents may omit `Origin`; a browser
- * Origin must still be allowed.
+ * * links from other sites still open Thyra.
  */
 export function originCheckMode(
   pathname: string,
   method: string,
 ): "strict" | "read" | "none" {
-  if (pathname === "/mcp") return "read";
   if (pathname === "/ws" || !isSafeMethod(method)) return "strict";
   if (pathname === "/api" || pathname.startsWith("/api/")) return "read";
   return "none";

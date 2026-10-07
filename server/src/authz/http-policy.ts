@@ -12,8 +12,7 @@ import { targetResolvers } from "./policy";
  *
  * - `public`: no login (health, login and enrollment, logout, the login
  *   page's icons, fingerprinted assets, share-link pages and redemption,
- *   tailnet sign-in, and `/mcp`, which authenticates with its own bearer
- *   tokens).
+ *   and tailnet sign-in).
  * - `session`: any logged-in principal; the handler acts on its own data.
  *   Share-link guests reach only the routes marked `guest`.
  * - `workspace`: `resolve` names the target from the query string; the caller
@@ -57,7 +56,6 @@ export const HTTP_POLICY = {
   // Needs a session or an enrollment secret, checked by the handler.
   "passkey.register": { class: "write", scope: "public" },
   logout: { class: "write", scope: "public" },
-  mcp: { class: "read", scope: "public" },
   // The share-link landing page and redemption (rate-limited); the secret
   // stays in the URL fragment until the page posts it.
   "share.page": { class: "read", scope: "public" },
@@ -262,8 +260,8 @@ export function connectionRouteId(endpoint: string): HttpRouteId | null {
 
 /**
  * The route id for a method and path outside the connection-scoped API.
- * Unknown `/api/` paths and `/mcp` subpaths match nothing; other GET/HEAD
- * paths are public static assets or the application shell.
+ * Unknown `/api/` paths match nothing; other GET/HEAD paths are public
+ * static assets or the application shell.
  */
 export function matchHttpRoute(
   method: string,
@@ -271,7 +269,6 @@ export function matchHttpRoute(
 ): HttpRouteId | null {
   const exact = Object.hasOwn(EXACT, pathname) ? EXACT[pathname] : undefined;
   if (exact) return exact[method] ?? null;
-  if (pathname === "/mcp") return "mcp";
   const oauth = OAUTH_PATH.exec(pathname);
   if (oauth)
     return oauth[1] === "start"
@@ -291,7 +288,6 @@ export function matchHttpRoute(
       ? "share.page"
       : null;
   if (pathname === "/api" || pathname.startsWith("/api/")) return null;
-  if (pathname.startsWith("/mcp/")) return null;
   if (method !== "GET" && method !== "HEAD") return null;
   return isPublicStaticAsset(pathname) ? "static.asset" : "static";
 }

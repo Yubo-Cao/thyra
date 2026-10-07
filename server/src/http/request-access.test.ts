@@ -300,7 +300,6 @@ describe("originCheckMode", () => {
     ["/anything", "DELETE", "strict"],
     ["/api/health", "GET", "read"],
     ["/api/connections/default/file/download", "HEAD", "read"],
-    ["/mcp", "POST", "read"],
     ["/", "GET", "none"],
     ["/assets/index.js", "GET", "none"],
   ] as const)("%s %s is %s", (path, method, mode) => {

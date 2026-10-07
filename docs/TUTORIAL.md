@@ -169,7 +169,7 @@ Hop B: Thyra -> Herdr       (local sockets / Thyra SSH profile)
   tailnet users ([accounts and login](./DEPLOYMENT.md#accounts-and-login)).
 - Use trusted HTTPS/encrypted tunnels and restrict listener/access policy.
   Workspace roles limit what people see and whether they type, but a terminal is still your shell: see [Security](../SECURITY.md#trust-model).
-- Keep enrollment links, MCP tokens, and Tailcat addresses out of screenshots, issues,
+- Keep enrollment links and Tailcat addresses out of screenshots, issues,
   chats, and committed configuration. Read [Security](../SECURITY.md).
 
 <a id="tailscale"></a>

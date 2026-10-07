@@ -107,7 +107,6 @@ Thyra 进程必须保持运行且可以访问。**PWA 模式不提供离线访�
 - [网站](https://thyra.yubo.fun/)和[上手教程](https://thyra.yubo.fun/tutorial/)（[Markdown](./docs/TUTORIAL.md)）：本机使用、手机访问和私密远程访问。
 - [功能与快捷键](./FEATURES.md)
 - [部署](./docs/DEPLOYMENT.md)：安装、配置、服务和构建。
-- [MCP 服务](./docs/DEPLOYMENT.md#mcp-server)：为 Claude Code、Codex 等智能体提供只读的工作区访问。
 - [架构](./docs/ARCHITECTURE.md)：系统约定。
 - [安全](./SECURITY.md)和[贡献指南](./CONTRIBUTING.md)。
 
