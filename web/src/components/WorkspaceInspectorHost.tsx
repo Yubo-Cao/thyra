@@ -44,13 +44,8 @@ import {
   type InspectorView,
   type WorkspaceInspectorState,
 } from "../workspaceResource";
+import { ChangesList, type ChangesSelection } from "./ChangesList";
 import { SplitResizer } from "./SplitResizer";
-import {
-  type ActiveDiffSelection,
-  DiffViewerPanel,
-  type DiffViewerPanelHandle,
-  type DiffViewerPanelProps,
-} from "./DiffViewerPanel";
 import { FileExplorerPanel } from "./FileExplorerDialog";
 import {
   type ActiveFilePreviewSelection,
@@ -63,10 +58,8 @@ import { Tabs } from "./ui/Tabs";
 import { Token } from "./ui/Token";
 import "./WorkspaceInspectorHost.css";
 
-const DiffContentView = lazyWithReload("diff-content-view", () =>
-  import("./DiffContentView").then((module) => ({
-    default: module.DiffContentView,
-  })),
+const ChangeDiff = lazyWithReload("change-diff", () =>
+  import("./ChangeDiff").then((module) => ({ default: module.ChangeDiff })),
 );
 
 function changedCount(workspace?: Workspace) {
@@ -112,15 +105,15 @@ export function WorkspaceInspectorHost({
   workspace?: Workspace;
   fileSelection: ActiveFilePreviewSelection;
   previewRequestRef: React.MutableRefObject<number>;
-  diffSelection: ActiveDiffSelection;
+  diffSelection: ChangesSelection;
   connectionClient: ConnectionClient;
   onFileSelectionChange: Parameters<
     typeof FileExplorerPanel
   >[0]["onPreviewChange"];
-  onDiffSelectionChange: DiffViewerPanelProps["onSelectionChange"];
+  onDiffSelectionChange: Parameters<typeof ChangesList>[0]["onSelectionChange"];
   onOpenDocument: (path: string, fragment?: string) => void;
   onRefreshFile: () => void;
-  onOpenDiffFile: (entry: ActiveDiffSelection["entry"]) => void;
+  onOpenDiffFile: (entry: GitDiffEntry) => void;
   onViewChange: (view: InspectorView) => void;
   onDockChange: (dock: InspectorDock) => void;
   onExpandedChange: (expanded: boolean) => void;
@@ -131,7 +124,6 @@ export function WorkspaceInspectorHost({
   useLayoutEffect(() => {
     onReady?.();
   }, [onReady]);
-  const diffViewerRef = useRef<DiffViewerPanelHandle | null>(null);
   const splitId = useId();
   const [hostWidth, setHostWidth] = useState(0);
   const [fileDiffState, setFileDiffState] = useState<{
@@ -221,23 +213,15 @@ export function WorkspaceInspectorHost({
     }) as CSSProperties;
   const changeCount = changedCount(workspace);
   const detailAvailable =
-    state.view === "files" ? !!fileSelection.entry : !!diffSelection.entry;
+    state.view === "files"
+      ? !!fileSelection.entry
+      : diffSelection.entries.length > 0;
   const hasDetail = detailAvailable && drillInByView[state.view];
   const fileChangesEntries = fileSelection.entry
     ? fileDiffEntries.filter(
         (entry) => entry.path === fileSelection.entry?.path,
       )
     : [];
-  const primaryFileChangesEntry =
-    fileChangesEntries[fileChangesEntries.length - 1] ?? null;
-  const fileDiffSelectionMatches = fileChangesEntries.some(
-    (entry) =>
-      diffSelection.entry?.path === entry.path &&
-      diffSelection.entry.kind === entry.kind,
-  );
-  const fileChangesKey = fileChangesEntries
-    .map((entry) => `${entry.kind}:${entry.status}:${entry.path}`)
-    .join("|");
 
   useEffect(() => {
     if (state.view !== "files" || !fileSelection.entry) return;
@@ -464,17 +448,8 @@ export function WorkspaceInspectorHost({
                       }
                     : undefined
                 }
-                onOpenChanges={
-                  primaryFileChangesEntry
-                    ? () =>
-                        diffViewerRef.current?.selectWorkingEntries(
-                          fileChangesEntries,
-                        )
-                    : undefined
-                }
-                changesKey={fileChangesKey || undefined}
                 changesContent={
-                  primaryFileChangesEntry ? (
+                  fileChangesEntries.length ? (
                     <Suspense
                       fallback={
                         <div className="diff-content-state">
@@ -483,37 +458,11 @@ export function WorkspaceInspectorHost({
                         </div>
                       }
                     >
-                      <DiffContentView
-                        key={`${contentResourceKey}:file-changes`}
-                        entry={
-                          fileDiffSelectionMatches
-                            ? diffSelection.entry
-                            : primaryFileChangesEntry
-                        }
-                        file={
-                          fileDiffSelectionMatches ? diffSelection.file : null
-                        }
-                        loading={
-                          !fileDiffSelectionMatches || diffSelection.loading
-                        }
-                        error={
-                          fileDiffSelectionMatches ? diffSelection.error : null
-                        }
+                      <ChangeDiff
+                        client={connectionClient}
+                        workspaceId={workspace.workspace_id}
+                        mode="working"
                         entries={fileChangesEntries}
-                        files={
-                          fileDiffSelectionMatches ? diffSelection.files : {}
-                        }
-                        fileErrors={
-                          fileDiffSelectionMatches
-                            ? diffSelection.fileErrors
-                            : {}
-                        }
-                        resourceKey={`${contentResourceKey}:file:${fileChangesKey}`}
-                        mobile={compact}
-                        connectionClient={connectionClient}
-                        onSelectFile={(entry) =>
-                          diffViewerRef.current?.selectWorkingEntry(entry)
-                        }
                         embedded
                       />
                     </Suspense>
@@ -532,19 +481,19 @@ export function WorkspaceInspectorHost({
               id={navigationIds.changes}
               className="workspace-inspector-navigation"
             >
-              <DiffViewerPanel
-                ref={diffViewerRef}
+              <ChangesList
+                client={connectionClient}
                 workspaceId={workspace.workspace_id}
                 resourceKey={resourceKey}
-                onOpenFile={onOpenDiffFile}
+                selection={diffSelection}
                 onSelectionChange={(selection, meta) => {
-                  if (selection.entry && meta?.userInitiated) {
+                  if (selection.entries.length && meta?.userInitiated) {
                     setDrillInByView((current) => ({
                       ...current,
                       changes: true,
                     }));
                   }
-                  onDiffSelectionChange?.(selection, meta);
+                  onDiffSelectionChange(selection, meta);
                 }}
               />
             </div>
@@ -563,43 +512,26 @@ export function WorkspaceInspectorHost({
               {state.view === "changes" ? (
                 <Suspense
                   fallback={
-                    <div className="diff-content-view">
-                      <div className="diff-content-state">
-                        <span className="file-loading-spinner" />
-                        {t("Loading Diff Viewer")}
-                      </div>
+                    <div className="diff-content-state">
+                      <span className="file-loading-spinner" />
+                      {t("Loading Diff Viewer")}
                     </div>
                   }
                 >
-                  <DiffContentView
-                    key={contentResourceKey}
-                    selectionRevision={diffSelection.selectionRevision}
-                    entry={diffSelection.entry}
-                    file={diffSelection.file}
-                    loading={diffSelection.loading}
-                    error={diffSelection.error}
+                  <ChangeDiff
+                    client={connectionClient}
+                    workspaceId={workspace.workspace_id}
+                    mode={diffSelection.mode}
                     entries={diffSelection.entries}
-                    files={diffSelection.files}
-                    fileErrors={diffSelection.fileErrors}
-                    summaryLoading={diffSelection.summaryLoading}
-                    mobile={compact}
-                    resourceKey={contentResourceKey}
-                    connectionClient={connectionClient}
-                    onSelectFile={(target) =>
-                      diffViewerRef.current?.selectEntry(target)
-                    }
                     onOpenFile={onOpenDiffFile}
-                    backAction={
+                    onBack={
                       compact && hasDetail
-                        ? {
-                            label: t("Changed files"),
-                            onClick: () => {
-                              setDrillInByView((current) => ({
-                                ...current,
-                                changes: false,
-                              }));
-                              onBack();
-                            },
+                        ? () => {
+                            setDrillInByView((current) => ({
+                              ...current,
+                              changes: false,
+                            }));
+                            onBack();
                           }
                         : undefined
                     }
@@ -647,9 +579,9 @@ export function WorkspaceInspectorPanel({
     return !!current && resourceStateKey(current.scope) === stateKey;
   };
   const openDiffFile = useCallback(
-    (entry: ActiveDiffSelection["entry"]) => {
+    (entry: GitDiffEntry) => {
       const current = stateRef.current;
-      if (!entry || !current) return;
+      if (!current) return;
       const target = resolveWorkspaceForScope(
         current.scope,
         store.get().workspaces,

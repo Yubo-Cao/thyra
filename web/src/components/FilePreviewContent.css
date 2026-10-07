@@ -90,22 +90,6 @@
   color-scheme: light;
 }
 
-.file-preview-code {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  position: relative;
-  z-index: 0;
-}
-
-.file-preview-code .cm-editor {
-  height: 100%;
-}
-
-.file-preview-code .cm-focused {
-  outline: none;
-}
-
 .file-preview-mermaid {
   flex: 1 1 auto;
   min-height: 0;

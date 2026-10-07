@@ -37,3 +37,11 @@ export function gitDiffCodeLabel(code: GitDiffCode): string {
       return t("Unknown");
   }
 }
+
+export const GIT_DIFF_CODE_TONES = {
+  U: "info",
+  A: "success",
+  M: "warning",
+  D: "danger",
+  C: "danger",
+} as const satisfies Record<GitDiffCode, string>;

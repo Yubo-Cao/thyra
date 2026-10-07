@@ -168,8 +168,6 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "git.diff_summary": read(r.workspace),
   "git.diff_file": read(r.workspace),
   "git.pull": write(r.workspace),
-  "git.file_action": write(r.workspace),
-  "git.repo_action": write(r.workspace),
 
   // Terminal streaming. Methods without terminal_id act on the socket's
   // current terminal, which the bridge fills in before authorizing.

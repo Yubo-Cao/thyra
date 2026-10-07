@@ -4,11 +4,9 @@ import { bridge, type ConnectionClient } from "./api";
 import {
   inspectorQueries,
   refreshGitDiffSummary,
-  retireGitDiffSummary,
   retireGitDiffSummaryResource,
   scopedKey,
 } from "./inspectorQueries";
-import { publishLastStepCompletion } from "./lastStepCompletionStore";
 import { appStore } from "./store/core";
 import type { GitDiffSummary } from "./types";
 
@@ -23,7 +21,6 @@ function summary(workspaceId: string): GitDiffSummary {
       untracked: 0,
       conflicted: 0,
       branch: 0,
-      "last-step": 0,
     },
   };
 }
@@ -133,28 +130,6 @@ describe("inspector git diff summaries", () => {
     calls[1]?.resolve(fresh);
     expect(await current).toBe(fresh);
     expect(inspectorQueries.getQueryData<GitDiffSummary>(key)).toBe(fresh);
-  });
-
-  test("a finished agent step drops only that workspace's last-step summary", async () => {
-    const { client, calls } = manualClient("last-step-edge");
-    const lastStep = summaryKey(client, "workspace", "last-step");
-    const working = summaryKey(client, "workspace", "working");
-    const other = summaryKey(client, "other", "last-step");
-    const loads = [
-      refreshGitDiffSummary(client, "workspace", "last-step"),
-      refreshGitDiffSummary(client, "workspace", "working"),
-      refreshGitDiffSummary(client, "other", "last-step"),
-    ];
-    for (const call of calls) call.resolve(summary("snapshot"));
-    await Promise.all(loads);
-
-    publishLastStepCompletion("last-step-edge", "workspace");
-    expect(inspectorQueries.getQueryData(lastStep)).toBeUndefined();
-    expect(inspectorQueries.getQueryData(working)).toBeDefined();
-    expect(inspectorQueries.getQueryData(other)).toBeDefined();
-
-    retireGitDiffSummary(client, "workspace", "working");
-    expect(inspectorQueries.getQueryData(working)).toBeUndefined();
   });
 
   test("switching connections drops every other connection scope", async () => {

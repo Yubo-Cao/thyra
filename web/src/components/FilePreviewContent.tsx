@@ -142,9 +142,7 @@ export function FilePreviewContent({
   error,
   fragment,
   changesContent,
-  changesKey,
   backAction,
-  onOpenChanges,
   onOpenFile,
   onRefresh,
 }: {
@@ -154,9 +152,7 @@ export function FilePreviewContent({
   error: string | null;
   fragment?: string;
   changesContent?: ReactNode;
-  changesKey?: string;
   backAction?: { label: string; onClick: () => void };
-  onOpenChanges?: () => void;
   onOpenFile?: (path: string, fragment?: string) => void;
   onRefresh?: () => void;
 }) {
@@ -165,8 +161,6 @@ export function FilePreviewContent({
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const previewContentRef = useRef<HTMLDivElement | null>(null);
   const codePreviewRef = useRef<CodePreviewHandle | null>(null);
-  const onOpenChangesRef = useRef(onOpenChanges);
-  onOpenChangesRef.current = onOpenChanges;
   const [previewMode, setPreviewMode] = useState<"rendered" | "raw">(
     "rendered",
   );
@@ -267,8 +261,7 @@ export function FilePreviewContent({
     return (path: string) =>
       workspaceFileUrl(connectionClient, preview.workspace_id, path);
   }, [connectionClient, preview?.workspace_id]);
-  const changesAvailable =
-    changesContent !== undefined && !!changesKey && !!onOpenChanges;
+  const changesAvailable = changesContent !== undefined;
   const showingChanges = detailTab === "changes" && changesAvailable;
   const directoryPath = directoryPreviewPath(preview);
   const directoryWorkspaceRoot = directoryPath
@@ -412,12 +405,6 @@ export function FilePreviewContent({
     }
     onRefresh?.();
   };
-
-  useEffect(() => {
-    if (detailTab === "changes" && changesAvailable) {
-      onOpenChangesRef.current?.();
-    }
-  }, [changesAvailable, changesKey, detailTab]);
 
   useEffect(() => {
     if (showingChanges || !hasPreviewText || editing) return;

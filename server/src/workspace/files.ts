@@ -39,13 +39,7 @@ import {
   uploadRemoteFile,
   writeRemoteFile,
 } from "./remote-files";
-import {
-  pullGit,
-  readDiffFile,
-  readDiffSummary,
-  type LastStepBaselineStore,
-} from "./git-diff";
-import { runGitFileAction, runGitRepoAction } from "./git-actions";
+import { pullGit, readDiffFile, readDiffSummary } from "./git-diff";
 import { collectIgnoredNames } from "./git-ignore";
 import { GIT_DIFF_TIMEOUT_MS } from "./file-constants";
 import { inlinePreviewMimeForPath } from "./preview";
@@ -65,13 +59,11 @@ export function createFileHandlers({
   sshHost,
   runProcessWithCodeTimeout,
   shQuote,
-  lastStepBaselines,
 }: {
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
-  lastStepBaselines?: LastStepBaselineStore;
 }) {
   const remoteHomes = new Map<string, Promise<string>>();
 
@@ -605,7 +597,6 @@ export function createFileHandlers({
       host: sshHost(),
       shQuote,
       runProcessWithCodeTimeout,
-      lastStepBaselines,
     });
   }
 
@@ -618,7 +609,6 @@ export function createFileHandlers({
       host: sshHost(),
       shQuote,
       runProcessWithCodeTimeout,
-      lastStepBaselines,
     });
   }
 
@@ -633,30 +623,6 @@ export function createFileHandlers({
     });
   }
 
-  async function runWorkspaceGitFileAction(params: Record<string, unknown>) {
-    const { workspaceId, root } = await workspaceAndGitRoot(
-      params,
-      "git.file_action",
-    );
-    const result = await runGitFileAction({
-      context: { root, host: sshHost(), shQuote, runProcessWithCodeTimeout },
-      params,
-    });
-    return { workspace_id: workspaceId, root, ...result };
-  }
-
-  async function runWorkspaceGitRepoAction(params: Record<string, unknown>) {
-    const { workspaceId, root } = await workspaceAndGitRoot(
-      params,
-      "git.repo_action",
-    );
-    const result = await runGitRepoAction({
-      context: { root, host: sshHost(), shQuote, runProcessWithCodeTimeout },
-      params,
-    });
-    return { workspace_id: workspaceId, root, ...result };
-  }
-
   return {
     listWorkspaceFiles: listFiles,
     resolveWorkspaceFiles: resolveFiles,
@@ -669,8 +635,6 @@ export function createFileHandlers({
     readGitDiffSummary,
     readGitDiffFile,
     runGitPull,
-    runWorkspaceGitFileAction,
-    runWorkspaceGitRepoAction,
     resolveWorkspaceGitRoot: workspaceAndGitRoot,
   };
 }

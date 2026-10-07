@@ -7,7 +7,6 @@ import {
   projectBrowserNavigation,
 } from "../browserNavigation";
 import { parseEndpointAvailability } from "../endpointAvailability";
-import { publishLastStepCompletion } from "../lastStepCompletionStore";
 import { forgetTabLayoutsExcept, rememberTabLayout } from "../tabLayout";
 import { forgetTerminalRelayViewportsExcept } from "../terminalResize";
 import type { PaneLayout, Tab, Workspace } from "../types";
@@ -362,12 +361,6 @@ export function handleHerdrEvent(event: HerdrEventMsg) {
       event.connection_generation,
     )
   ) {
-    if (
-      event.event === "workspace.last_step_completed" &&
-      typeof event.data.workspace_id === "string"
-    ) {
-      publishLastStepCompletion(event.connection_id, event.data.workspace_id);
-    }
     // Presence snapshots carry their own state (see collaboration.ts) and
     // arrive while anyone types; they never change workspace metadata.
     if (

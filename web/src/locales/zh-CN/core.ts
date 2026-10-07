@@ -150,12 +150,6 @@ export default {
   "Git pull completed": "git pull 已完成",
   "Already up to date.": "已是最新。",
   "Git pull failed": "git pull 失败",
-  "{action} failed": "{action}失败",
-  "{message} (1 file)": "{message}（1 个文件）",
-  "{message} ({count} files)": "{message}（{count} 个文件）",
-  "{completed} of {total} files completed. {error}":
-    "已完成 {completed}/{total} 个文件。{error}",
-  "Git action failed": "Git 操作失败",
 
   // Worktrees
   "Stopped 1 process still using the checkout.":

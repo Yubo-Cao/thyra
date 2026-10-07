@@ -81,7 +81,7 @@ explanation in its terminal. A `done` status is not proof that checks passed.
 
 1. Open **File Explorer**, select `README.md`, and compare **Preview / Source**.
 2. Open **Diff Viewer > Working tree** and read the added/removed lines.
-3. Search with `Cmd/Ctrl+F` for the new command; verify it in the project's configuration.
+3. In the file preview, search with `Cmd/Ctrl+F` for the new command; verify it in the project's configuration.
 
 **You are done when:** you can identify the change and verify its command.
 
@@ -93,8 +93,7 @@ Uploads, deletions, and SSH file operations affect real target-host files.
 
 This exercise needs no commit. Before committing, run `git status` and follow
 the project's checks. Staging is not committing; committing is not pushing.
-**Discard Unstaged loses changes; Delete Untracked deletes files. Confirmation
-is not a backup.** Cancel bulk actions if unsure.
+Changes only displays diffs; stage, discard, and commit in a terminal.
 
 ## 3. Parallel work and mobile access
 
@@ -118,7 +117,7 @@ on a phone points to the phone, not your computer.
 
 1. Open Thyra on your phone, authenticate if required, and select your project/pane.
 2. Use the floating terminal shortcuts for Ctrl/arrows, then open Changes to review
-   the unified diff. Long-press opens file actions. The folder button starts
+   the unified diff. The folder button starts
    Claude or Codex in a pinned or recent folder.
 3. Adjust **Configuration > Appearance > Text size** if needed and install the PWA:
 

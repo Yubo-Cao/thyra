@@ -1,12 +1,11 @@
 import { type Query, QueryClient, useQuery } from "@tanstack/react-query";
 import { bridge, type ConnectionClient } from "./api";
 import { t } from "./i18n";
-import { lastStepCompletions } from "./lastStepCompletionStore";
 import { appStore } from "./store/core";
-import type { GitDiffSummary } from "./types";
+import type { GitDiffEntry, GitDiffFile, GitDiffSummary } from "./types";
 
 // RPC result caches of the lazily loaded inspector: diff summaries, file
-// previews and in-flight diff file requests. Only lazy chunks import this
+// previews and per-file patches. Only lazy chunks import this
 // module, so TanStack Query never loads with the app shell. Every key starts
 // with [connectionId, client generation, kind], so a connection switch or a
 // generation bump drops every other scope (and aborts its requests).
@@ -98,7 +97,7 @@ export function fetchFresh<T>(
 
 // --- Git diff summaries ---
 
-export type GitDiffSummaryMode = "working" | "branch-main" | "last-step";
+export type GitDiffSummaryMode = "working" | "branch-main";
 
 retainQueries("git-diff-summary", 24);
 
@@ -129,21 +128,6 @@ function gitDiffSummaryQuery(
     },
   };
 }
-
-// A finished agent step invalidates that workspace's last-step summaries.
-lastStepCompletions.subscribe((revisions, previous) => {
-  for (const key of Object.keys(revisions)) {
-    if (revisions[key] === previous[key]) continue;
-    const [connectionId, workspaceId] = key.split("\u0000");
-    inspectorQueries.removeQueries({
-      predicate: ({ queryKey }) =>
-        queryKey[0] === connectionId &&
-        queryKey[2] === "git-diff-summary" &&
-        queryKey[4] === workspaceId &&
-        queryKey[5] === "last-step",
-    });
-  }
-});
 
 /** The shared summary of a workspace, loaded by `refreshGitDiffSummary`. */
 export function useGitDiffSummaryState(
@@ -183,29 +167,62 @@ export function refreshGitDiffSummary(
   );
 }
 
-export function retireGitDiffSummary(
-  client: Scope,
-  workspaceId: string,
-  mode: GitDiffSummaryMode,
-  resourceKey = workspaceId,
-) {
-  inspectorQueries.removeQueries({
-    queryKey: scopedKey(
-      client,
-      "git-diff-summary",
-      resourceKey,
-      workspaceId,
-      mode,
-    ),
-    exact: true,
-  });
-}
-
 export function retireGitDiffSummaryResource(
   client: Scope,
   resourceKey: string,
 ) {
   inspectorQueries.removeQueries({
     queryKey: scopedKey(client, "git-diff-summary", resourceKey),
+  });
+}
+
+// --- Git diff files ---
+
+retainQueries<GitDiffFile>(
+  "git-diff-file",
+  16 * 1024 * 1024,
+  (file) => file.diff.length * 2,
+);
+
+/** One file's patch; `invalidateGitDiffFiles` refetches the shown ones. */
+export function gitDiffFileQuery(
+  client: ConnectionClient,
+  workspaceId: string,
+  mode: GitDiffSummaryMode,
+  entry: GitDiffEntry,
+) {
+  return {
+    queryKey: scopedKey(
+      client,
+      "git-diff-file",
+      workspaceId,
+      mode,
+      entry.kind,
+      entry.path,
+      entry.old_path ?? "",
+    ),
+    queryFn: async ({ signal }: { signal: AbortSignal }) => {
+      const file = (await client.call(
+        "git.diff_file",
+        {
+          workspace_id: workspaceId,
+          mode,
+          path: entry.path,
+          old_path: entry.old_path,
+          kind: entry.kind,
+        },
+        { signal },
+      )) as GitDiffFile;
+      if (!client.isCurrent()) {
+        throw new Error(t("connection changed during diff request"));
+      }
+      return file;
+    },
+  };
+}
+
+export function invalidateGitDiffFiles(client: Scope, workspaceId: string) {
+  void inspectorQueries.invalidateQueries({
+    queryKey: scopedKey(client, "git-diff-file", workspaceId),
   });
 }

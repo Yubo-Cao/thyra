@@ -96,7 +96,6 @@ describe("file explorer git status", () => {
         untracked: 0,
         conflicted: 0,
         branch: 0,
-        "last-step": 0,
       },
     };
 
@@ -125,7 +124,6 @@ describe("file explorer git status", () => {
         untracked: 1,
         conflicted: 0,
         branch: 0,
-        "last-step": 0,
       },
     };
 

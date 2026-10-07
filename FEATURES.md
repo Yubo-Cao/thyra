@@ -234,19 +234,14 @@ that another fetch could change.
 
 ## Diff Viewer
 
-- Review **Working tree**, **Against main**, or **Last step** (the latest completed
-  activity snapshot, not proof of agent ownership). See staged, unstaged,
-  untracked, conflict, and branch-diff badges with added/deleted counts.
-- Use side-by-side/unified desktop views; mobile is unified. Search and syntax
-  highlighting work across diffs; images have previews. Large, truncated, and
-  generated diffs start collapsed.
-- File/folder context menus offer open, copy path, stage, unstage, mark resolved,
-  discard unstaged, and delete untracked, plus repository-wide bulk actions.
-  Destructive actions require confirmation. Status/content is rechecked to reject
-  stale menus instead of destroying newer work.
+- Review **Working tree** or **Against main**. Each changed file is one row with
+  status tokens and added/deleted counts; a file both staged and unstaged shows
+  both patches.
+- The selected file's unified diff loads on demand with syntax highlighting.
+  **Wrap** toggles line wrapping; **Open in Files** jumps to the file preview.
+- Changes is read-only: stage, discard, and commit in a terminal.
 
-Scope, view, wrapping, and selection persist per checkout/browser; wrapping is
-separate for desktop/mobile. Jump from a diff to its file preview.
+Scope and wrapping persist per browser. Refresh reloads the list and the shown diff.
 
 ![Changes inspector showing a wrapped working-tree diff beside a live agent terminal](docs/images/thyra-desktop-changes.png)
 
@@ -385,7 +380,7 @@ Common defaults (Linux/Android exceptions follow):
 | Workspaces | `Ctrl+Shift+W` | `Ctrl+Alt+O` |
 | File Explorer | `Cmd+Shift+E` | `Ctrl+Alt+E` |
 | Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
-| Search raw preview / diff | `Cmd+F` | `Ctrl+F` |
+| Search raw preview | `Cmd+F` | `Ctrl+F` |
 | Send composer or prompt editor | `Cmd+Enter` | `Ctrl+Enter` |
 | Show / hide the prompt editor; focus terminal or editor | `Ctrl+Option+P` / `Ctrl+Option+I` | `Ctrl+Alt+P` / `Ctrl+Alt+I` |
 | Preview the prompt as Markdown | `Cmd+Shift+V` | `Ctrl+Shift+V` |
@@ -408,5 +403,4 @@ goes full screen and hands browser chords such as `Ctrl/Cmd+W/T/N` to the
 terminal; hold Escape to leave. Native editing/IME/app keys
 remain available; remapped paste requires the Clipboard API. Touch shortcuts
 have a separate editor. Esc dismisses transient UI; Tab/arrows navigate controls,
-except in the pane switcher's search, which keeps typing in its field;
-Enter/Shift+Enter advances/reverses diff search.
+except in the pane switcher's search, which keeps typing in its field.

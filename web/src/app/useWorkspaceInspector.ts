@@ -8,8 +8,7 @@ import {
 import type { ConnectionClient } from "../api";
 import { thyraLocalStorage } from "../browserStorage";
 import { focusIfUnchanged } from "../components/dialogFocus";
-import { clearDiffContentResourceState } from "../components/diffContentState";
-import type { ActiveDiffSelection } from "../components/diffViewerResources";
+import type { ChangesSelection } from "../components/ChangesList";
 import type { ActiveFilePreviewSelection } from "../components/FilePreviewContent";
 import type { TerminalWorkspaceFileRequest } from "../components/TerminalView";
 import { t } from "../i18n";
@@ -37,7 +36,7 @@ import {
   writeInspectorPreferences,
   writeResourceFileSelection,
 } from "../workspaceResource";
-import { diffViewerResources, fileExplorerResources } from "./lazySurfaces";
+import { fileExplorerResources, gitDiffQueries } from "./lazySurfaces";
 import type { MobileView } from "./useShellLayout";
 
 type OpenInspectorOptions = {
@@ -49,17 +48,8 @@ type OpenInspectorOptions = {
   focusInspector?: boolean;
 };
 
-export function emptyActiveDiffSelection(): ActiveDiffSelection {
-  return {
-    entry: null,
-    file: null,
-    loading: false,
-    error: null,
-    entries: [],
-    files: {},
-    fileErrors: {},
-    summaryLoading: false,
-  };
+export function emptyActiveDiffSelection(): ChangesSelection {
+  return { mode: "working", entries: [] };
 }
 
 export function emptyActiveFilePreviewSelection(): ActiveFilePreviewSelection {
@@ -125,7 +115,7 @@ export function useWorkspaceInspector({
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const pendingRequestRef = useRef<WorkspaceInspectorRequest | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const [activeDiff, setActiveDiff] = useState<ActiveDiffSelection>(
+  const [activeDiff, setActiveDiff] = useState<ChangesSelection>(
     emptyActiveDiffSelection,
   );
   const [activeFilePreview, setActiveFilePreview] =
@@ -568,14 +558,6 @@ export function useWorkspaceInspector({
           thyraLocalStorage,
         ),
       );
-      clearDiffContentResourceState(resourceStateKey(scope));
-      void diffViewerResources().then((resources) =>
-        resources.clearDiffViewerResourceCache(
-          connectionClient,
-          resourceKey,
-          thyraLocalStorage,
-        ),
-      );
       writeResourceFileSelection(thyraLocalStorage, scope, null);
       const current = stateRef.current;
       if (current && sameResourceOwner(current.scope, scope)) reset();
@@ -669,13 +651,16 @@ export function useWorkspaceInspector({
           resourceKey,
         ),
       );
-      void diffViewerResources().then((resources) =>
-        resources.prefetchDiffViewerWorkspace(
-          workspaceId,
-          connectionClient,
-          resourceKey,
-        ),
-      );
+      void gitDiffQueries()
+        .then((queries) =>
+          queries.refreshGitDiffSummary(
+            connectionClient,
+            workspaceId,
+            "working",
+            resourceKey,
+          ),
+        )
+        .catch(() => undefined);
     }
   }, [connectionClient, focusedWorkspace, state, startupReady]);
 

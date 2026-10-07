@@ -85,10 +85,9 @@ export type GitDiffKind =
   | "unstaged"
   | "untracked"
   | "conflicted"
-  | "branch"
-  | "last-step";
+  | "branch";
 
-export type GitDiffMode = "working" | "branch-main" | "last-step";
+export type GitDiffMode = "working" | "branch-main";
 
 export type GitDiffEntry = {
   path: string;
@@ -98,8 +97,6 @@ export type GitDiffEntry = {
   additions?: number;
   deletions?: number;
   generated?: boolean;
-  mtime_ms?: number;
-  size?: number;
 };
 
 export type RunProcessWithCodeTimeout = (

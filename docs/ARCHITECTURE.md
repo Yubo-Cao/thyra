@@ -326,7 +326,7 @@ A failed send is returned as `start_error` next to the created tab rather than h
 
 A **checkout** owns Files/Changes; a workspace supplies routing, a tab a return
 location, and a pane optional path/session context. Repository groups are not
-merged working trees. Changes and Last step snapshots do not prove agent ownership.
+merged working trees. Changes do not prove agent ownership.
 
 Git resource keys pair endpoint-qualified `worktree.gui_settings_key` with the
 normalized checkout path, scoped by connection. Blank keys fall back to the

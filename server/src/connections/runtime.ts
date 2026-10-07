@@ -62,11 +62,6 @@ import {
   shQuote,
 } from "../utils/process-utils";
 import { createFileHandlers } from "../workspace/files";
-import {
-  createLastStepBaselineStore,
-  type LastStepBaselineStore,
-} from "../workspace/git-diff";
-import { createLastStepTurnTracker } from "../workspace/last-step-turns";
 import { runBinaryProcessWithTimeout } from "../workspace/process";
 import { createStatusEnricher } from "../workspace/status";
 import { createWorktreeParentStore } from "../worktree/parents";
@@ -169,10 +164,6 @@ export function createLegacyConnectionRuntime(args: {
   presentSnapshot?: <T>(snapshot: T, context: PresenceContext) => T;
   /** The bridge-assigned participant and device of a browser socket. */
   socketIdentity?: (ws: ServerWebSocket<unknown>) => SocketIdentity | null;
-  /** Test seam for deterministic shutdown coverage. */
-  lastStepBaselines?: LastStepBaselineStore;
-  resolveLastStepWorkspaceGitRoot?: (workspaceId: string) => Promise<string>;
-  lastStepTransitionDebounceMs?: number;
 }) {
   const { config } = args;
   const logger = args.logger ?? silentLogger;
@@ -289,19 +280,11 @@ export function createLegacyConnectionRuntime(args: {
   const { handleHerdrInfo } = createHerdrInfoHandler({
     ping: () => herdr.ping(),
   });
-  const lastStepBaselines =
-    args.lastStepBaselines ??
-    createLastStepBaselineStore({
-      host: sshHost(),
-      runProcessWithCodeTimeout,
-      shQuote,
-    });
   const files = createFileHandlers({
     herdr,
     sshHost,
     runProcessWithCodeTimeout,
     shQuote,
-    lastStepBaselines,
   });
   const status = createStatusEnricher({
     connectionId: identity.id,
@@ -480,46 +463,6 @@ export function createLegacyConnectionRuntime(args: {
     },
   });
 
-  const lastStepTurns = createLastStepTurnTracker({
-    captureWorkspaceBaseline: async (workspaceId) => {
-      await lastStepBaselines.captureWorkspace(workspaceId, async () => {
-        if (args.resolveLastStepWorkspaceGitRoot) {
-          return args.resolveLastStepWorkspaceGitRoot(workspaceId);
-        }
-        const { root } = await files.resolveWorkspaceGitRoot({
-          workspace_id: workspaceId,
-        });
-        return root;
-      });
-    },
-    completeWorkspaceStep: async (workspaceId) => {
-      const published = await lastStepBaselines.completeWorkspace(workspaceId);
-      if (!published || disposed) return;
-      args.onEvent(
-        {
-          event: "workspace.last_step_completed",
-          data: {
-            type: "workspace.last_step_completed",
-            workspace_id: workspaceId,
-          },
-        },
-        identity,
-      );
-    },
-    onCaptureError: (error, workspaceId) =>
-      logger.warn("last-step baseline failed", {
-        connection: identity.id,
-        workspace: workspaceId,
-        error: sanitizeConnectionError(error),
-      }),
-    onCompleteError: (error, workspaceId) =>
-      logger.warn("last-step completion failed", {
-        connection: identity.id,
-        workspace: workspaceId,
-        error: sanitizeConnectionError(error),
-      }),
-    transitionDebounceMs: args.lastStepTransitionDebounceMs ?? 150,
-  });
   const agentStatusRecovery = createRecoveryReporter({
     logger: logger.child("agent-status"),
     failureMessage: "agent status subscription failed",
@@ -571,12 +514,10 @@ export function createLegacyConnectionRuntime(args: {
       }),
     onPaneListStart: () => {
       taskListRevision = taskEvents.beginPaneList();
-      return lastStepTurns.beginPaneList();
+      return taskListRevision;
     },
-    onPaneList: (result, revision) => {
-      taskEvents.reconcilePaneList(result, taskListRevision);
-      lastStepTurns.reconcilePaneList(result, revision);
-    },
+    onPaneList: (result) =>
+      taskEvents.reconcilePaneList(result, taskListRevision),
     log: (message) => {
       agentStatusRecovery.recovered({ connection: identity.id });
       logger.debug(message, { connection: identity.id });
@@ -585,7 +526,6 @@ export function createLegacyConnectionRuntime(args: {
 
   const onHerdrEvent = (event: unknown) => {
     taskEvents.handleHerdrEvent(event);
-    lastStepTurns.handleHerdrEvent(event);
     agentStatusSubscriptions.handleHerdrEvent(event);
     const name = (event as { event?: string })?.event;
     if (name === "workspace.focused")
@@ -708,9 +648,6 @@ export function createLegacyConnectionRuntime(args: {
     const subscriptionStop = subscriptionLoop.stop();
     const collaborationSubscriptionStop = collaborationSubscriptionLoop.stop();
     const agentStatusStop = agentStatusSubscriptions.stop();
-    const lastStepStop = lastStepTurns
-      .stop()
-      .then(() => lastStepBaselines.dispose());
     const transportCleanup = sshTunnel.cleanupAutoSshTunnel();
     const transportStop =
       transportStart?.catch(() => undefined) ?? Promise.resolve();
@@ -719,7 +656,6 @@ export function createLegacyConnectionRuntime(args: {
       subscriptionStop,
       collaborationSubscriptionStop,
       agentStatusStop,
-      lastStepStop,
       transportCleanup,
       transportStop,
     ]).then(() => undefined);

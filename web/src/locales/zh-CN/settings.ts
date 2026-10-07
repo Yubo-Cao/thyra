@@ -281,7 +281,7 @@ export default {
     "在 Agent 窗格默认打开提示词编辑器",
   "Voice typing: hold to talk, tap to start or insert":
     "语音输入：按住说话，轻按开始或插入",
-  "Search the raw file preview or diff": "在原始文件预览或差异中搜索",
+  "Search the raw file preview": "在原始文件预览中搜索",
   "Select all in the file preview": "在文件预览中全选",
 
   // Shared labels

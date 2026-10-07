@@ -1,5 +1,4 @@
-// Git actions on a workspace checkout: pull. The Changes panel's per-file and
-// repository actions live in ./gitFiles and load with that panel.
+// Git actions on a workspace checkout: pull.
 import { t } from "../i18n";
 import { action, noticeFor } from "./actions";
 import { failWith } from "./core";

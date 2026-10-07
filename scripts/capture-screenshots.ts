@@ -803,7 +803,6 @@ async function desktopChanges(ui: Ui) {
   await paintTerminals(ui);
   await openInspector(ui, "Changes");
   await ui.text("rate-limit.ts");
-  await ui.click("Wrap");
   await ui.settle(1500);
 }
 
@@ -835,7 +834,6 @@ async function mobileLauncher(ui: Ui) {
 async function mobileChanges(ui: Ui) {
   await ui.click("Show workspace changes");
   await ui.text("rate-limit.ts");
-  await ui.click("Wrap");
   await ui.click("Hide mobile controls");
   await ui.settle(1200);
 }

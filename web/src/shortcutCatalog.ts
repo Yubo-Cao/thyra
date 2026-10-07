@@ -144,7 +144,7 @@ const descriptions: Description[] = [
   ],
   [
     "preview.search",
-    msg("Search the raw file preview or diff"),
+    msg("Search the raw file preview"),
     msg("Preview & review"),
   ],
   [
