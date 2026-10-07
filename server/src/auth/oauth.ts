@@ -1,4 +1,5 @@
-import { randomInt, timingSafeEqual } from "node:crypto";
+import { randomInt } from "node:crypto";
+import { sameDigest } from "../utils/digest";
 import {
   CodeChallengeMethod,
   generateCodeVerifier,
@@ -101,13 +102,6 @@ function toFlow(row: Row): OAuthFlow {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
   };
-}
-
-function sameDigest(a: string | null, b: string): boolean {
-  if (!a) return false;
-  const left = Buffer.from(a, "hex");
-  const right = Buffer.from(b, "hex");
-  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 export type OAuthFlowStore = ReturnType<typeof createOAuthFlowStore>;

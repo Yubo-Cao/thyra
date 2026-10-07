@@ -1,5 +1,7 @@
-import { randomInt, timingSafeEqual } from "node:crypto";
+import { randomInt } from "node:crypto";
 
+import { escapeHtml } from "../utils/html";
+import { sameDigest } from "../utils/digest";
 import { type AccountStore, hashSecret, randomToken } from "../accounts/store";
 import type { EmailConfig } from "./providers";
 
@@ -66,14 +68,6 @@ export function createResendMailer(
       return { id: typeof body.id === "string" ? body.id : null };
     },
   };
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 const MINUTES = EMAIL_CODE_TTL_MS / 60_000;
@@ -180,12 +174,6 @@ export type EmailCodeResult =
       userId: string | null;
     }
   | { ok: false; reason: "invalid" | "expired" | "used" | "attempts" };
-
-function sameDigest(a: string, b: string): boolean {
-  const left = Buffer.from(a, "hex");
-  const right = Buffer.from(b, "hex");
-  return left.length === right.length && timingSafeEqual(left, right);
-}
 
 export type EmailCodeStore = ReturnType<typeof createEmailCodeStore>;
 

@@ -1,4 +1,5 @@
 import { imageMimeForPath } from "../../../shared/filePreview";
+import { diffEntryKey } from "./diffViewerResources";
 import { thyraLocalStorage } from "../browserStorage";
 import { shortcutMatches } from "../shortcutPreferences";
 import { DEFAULT_THEMES, getSingularPatch } from "@pierre/diffs";
@@ -220,10 +221,6 @@ function loadMobileDiffWrap() {
 
 function loadDesktopDiffWrap() {
   return thyraLocalStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
-}
-
-function diffEntryKey(entry: GitDiffEntry) {
-  return `${entry.kind}:${entry.path}`;
 }
 
 export function diffContentEntries(

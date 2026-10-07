@@ -4,6 +4,7 @@ import {
   inspectAvatar,
   AVATAR_MAX_BYTES,
 } from "../accounts/avatars";
+import { RequestError, readJsonObject } from "../utils/request";
 import {
   type AccountStore,
   cleanText,
@@ -46,37 +47,8 @@ const MAX_BODY_BYTES = 8 * 1024;
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const NO_STORE = { "cache-control": "no-store" };
 
-class RequestError extends Error {
-  constructor(
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message);
-  }
-}
-
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: NO_STORE });
-}
-
-async function readJson(req: Request): Promise<Record<string, unknown>> {
-  if (
-    req.headers.get("content-type")?.split(";")[0]?.trim() !==
-    "application/json"
-  )
-    throw new RequestError("expected a JSON request", 415);
-  const text = await req.text();
-  if (text.length > MAX_BODY_BYTES)
-    throw new RequestError("request too large", 413);
-  let value: unknown;
-  try {
-    value = text ? JSON.parse(text) : {};
-  } catch {
-    throw new RequestError("invalid JSON");
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new RequestError("expected a JSON object");
-  return value as Record<string, unknown>;
 }
 
 /** Read at most `limit` bytes of a body. */
@@ -459,7 +431,7 @@ export function createAccountRoutes(args: {
             return json(methods(principal, access));
           case "auth.profile": {
             const user = account(principal);
-            const body = await readJson(req);
+            const body = await readJsonObject(req, MAX_BODY_BYTES);
             const name = cleanText(
               typeof body.display_name === "string" ? body.display_name : "",
               80,
@@ -506,14 +478,25 @@ export function createAccountRoutes(args: {
             });
           }
           case "auth.identities.remove":
-            return removeIdentity(principal, access, await readJson(req));
+            return removeIdentity(
+              principal,
+              access,
+              await readJsonObject(req, MAX_BODY_BYTES),
+            );
           case "auth.email.add":
-            return await addEmail(principal, access, await readJson(req));
+            return await addEmail(
+              principal,
+              access,
+              await readJsonObject(req, MAX_BODY_BYTES),
+            );
           case "auth.email.confirm":
-            return confirmEmail(principal, await readJson(req));
+            return confirmEmail(
+              principal,
+              await readJsonObject(req, MAX_BODY_BYTES),
+            );
           case "auth.passkeys.rename": {
             const user = account(principal);
-            const body = await readJson(req);
+            const body = await readJsonObject(req, MAX_BODY_BYTES);
             if (
               typeof body.id !== "string" ||
               typeof body.name !== "string" ||
@@ -526,7 +509,12 @@ export function createAccountRoutes(args: {
           case "auth.sessions.revoke_others":
             return revokeOthers(principal);
           case "invites.create":
-            return await invite(principal, access, url, await readJson(req));
+            return await invite(
+              principal,
+              access,
+              url,
+              await readJsonObject(req, MAX_BODY_BYTES),
+            );
           default:
             return null;
         }

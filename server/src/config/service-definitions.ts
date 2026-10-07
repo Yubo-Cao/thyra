@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { powershellSingleQuotedString } from "../utils/powershell";
 import { dirname, join } from "node:path";
 
 export const SERVICE_LABEL = "dev.thyra";
@@ -148,10 +149,6 @@ TimeoutStopSec=15
 [Install]
 WantedBy=default.target
 `;
-}
-
-function powershellSingleQuotedString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
 }
 
 export function renderWindowsTaskDefinition(

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { powershellSingleQuotedString } from "../utils/powershell";
 import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -118,10 +119,6 @@ async function defaultDownload(
     throw new Error(`Herdr download failed: HTTP ${response.status}`);
   }
   await Bun.write(destinationPath, response);
-}
-
-function powershellSingleQuotedString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
 }
 
 /**

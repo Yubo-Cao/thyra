@@ -4,6 +4,7 @@ import {
   type SessionRecord,
   type User,
 } from "../accounts/store";
+import { readJsonObject } from "../utils/request";
 import { type AuthzDeps, authorizeTarget } from "../authz/authorize";
 import type { HttpRouteId } from "../authz/http-policy";
 import {
@@ -47,22 +48,6 @@ function json(
 
 function error(message: string, status: number): Response {
   return json({ error: message }, status);
-}
-
-async function readJson(req: Request): Promise<Record<string, unknown>> {
-  if (
-    req.headers.get("content-type")?.split(";")[0]?.trim() !==
-    "application/json"
-  )
-    throw new PasskeyError("expected a JSON request", 415);
-  const text = await req.text();
-  if (text.length > MAX_BODY_BYTES)
-    throw new PasskeyError("request too large", 413);
-  if (!text) return {};
-  const value = JSON.parse(text) as unknown;
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new PasskeyError("expected a JSON object");
-  return value as Record<string, unknown>;
 }
 
 function sessionView(
@@ -193,7 +178,10 @@ export function createAuthRoutes(args: {
     url: URL,
     principal: Principal,
   ): Promise<Response> {
-    const body = req.method === "POST" ? await readJson(req) : {};
+    const body =
+      req.method === "POST"
+        ? await readJsonObject(req, MAX_BODY_BYTES, PasskeyError)
+        : {};
     // The target is in the query string, where HTTP_POLICY checks it.
     const connectionId = url.searchParams.get("connection_id");
     const workspaceId = url.searchParams.get("workspace_id");
@@ -317,7 +305,7 @@ export function createAuthRoutes(args: {
             return json(await args.passkeys.loginOptions(origin));
           const user = await args.passkeys.loginVerify(
             origin,
-            await readJson(req),
+            await readJsonObject(req, MAX_BODY_BYTES, PasskeyError),
           );
           logger.info("passkey login", { user: user.name });
           return Response.json(
@@ -329,7 +317,7 @@ export function createAuthRoutes(args: {
           const blocked = limited(access);
           if (blocked) return blocked;
           const origin = originOrError(access);
-          const body = await readJson(req);
+          const body = await readJsonObject(req, MAX_BODY_BYTES, PasskeyError);
           if (url.pathname.endsWith("/options")) {
             const secret = typeof body.secret === "string" ? body.secret : "";
             let user: User | null = null;
@@ -498,7 +486,7 @@ export function createAuthRoutes(args: {
           });
         }
         case "auth.sessions.revoke": {
-          const body = await readJson(req);
+          const body = await readJsonObject(req, MAX_BODY_BYTES, PasskeyError);
           if (typeof body.id !== "string") return error("id required", 400);
           const revoked = args.store.revokeSession(body.id, {
             ...(isInstanceAdmin(principal) || principal.kind !== "user"
@@ -525,7 +513,7 @@ export function createAuthRoutes(args: {
                 : [],
           });
         case "auth.passkeys.remove": {
-          const body = await readJson(req);
+          const body = await readJsonObject(req, MAX_BODY_BYTES, PasskeyError);
           if (principal.kind !== "user" || typeof body.id !== "string")
             return error("id required", 400);
           if (

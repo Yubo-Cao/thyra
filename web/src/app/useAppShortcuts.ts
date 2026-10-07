@@ -1,3 +1,4 @@
+import { isEditableElement as isEditableTarget } from "../utils";
 import { workspaceCan } from "../capabilities";
 import { useEffect } from "react";
 import { CONFIG_MENU_ID } from "../components/ConfigMenu";
@@ -21,10 +22,9 @@ import type { WorkspaceInspector } from "./useWorkspaceInspector";
 // The prompt editor stands in for the terminal's input, so workspace, tab
 // and pane shortcuts work from it as they do from the terminal.
 function isEditableElement(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.closest(".xterm, .prompt-editor")) return false;
-  if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return true;
-  return target.isContentEditable;
+  if (target instanceof HTMLElement && target.closest(".xterm, .prompt-editor"))
+    return false;
+  return isEditableTarget(target);
 }
 
 function tabShortcutIndex(e: KeyboardEvent) {

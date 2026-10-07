@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { parseCookie } from "../utils/request";
 import { type Logger, silentLogger } from "../utils/logger";
 import { resolveClientAddress, type TrustedProxies } from "./client-address";
 import { chooseMergeTarget } from "./device-merge";
@@ -105,15 +106,6 @@ type Session = {
 };
 
 type ParticipantEntry = { identity: ResolvedIdentity; expiresAt: number };
-
-function parseCookie(header: string | null, name: string): string | null {
-  if (!header) return null;
-  for (const part of header.split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-    if (key === name) return rest.join("=");
-  }
-  return null;
-}
 
 function cleanName(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

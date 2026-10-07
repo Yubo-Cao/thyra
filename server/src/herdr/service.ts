@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { powershellSingleQuotedString } from "../utils/powershell";
 import {
   existsSync,
   mkdirSync,
@@ -172,10 +173,6 @@ ${programArguments}
 </dict>
 </plist>
 `;
-}
-
-function powershellSingleQuotedString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
 }
 
 export function renderHerdrWindowsTask(

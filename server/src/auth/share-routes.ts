@@ -5,6 +5,7 @@ import {
   type ShareLinkStore,
   shareLinkPath,
 } from "../accounts/share-links";
+import { RequestError, readJsonObject } from "../utils/request";
 import type { AccountStore } from "../accounts/store";
 import { type AuthzDeps, workspaceOfScopedId } from "../authz/authorize";
 import type { HttpRouteId } from "../authz/http-policy";
@@ -28,42 +29,12 @@ import type { Authenticator, Principal } from "./principal";
 const MAX_BODY_BYTES = 8 * 1024;
 const NO_STORE = { "cache-control": "no-store" };
 
-class RequestError extends Error {
-  constructor(
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message);
-  }
-}
-
 function json(
   body: unknown,
   status = 200,
   headers: Record<string, string> = {},
 ): Response {
   return Response.json(body, { status, headers: { ...NO_STORE, ...headers } });
-}
-
-async function readJson(req: Request): Promise<Record<string, unknown>> {
-  if (
-    req.headers.get("content-type")?.split(";")[0]?.trim() !==
-    "application/json"
-  )
-    throw new RequestError("expected a JSON request", 415);
-  const text = await req.text();
-  if (text.length > MAX_BODY_BYTES)
-    throw new RequestError("request too large", 413);
-  if (!text) return {};
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new RequestError("invalid JSON");
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new RequestError("expected a JSON object");
-  return value as Record<string, unknown>;
 }
 
 function actorOf(principal: Principal | null): string | null {
@@ -149,7 +120,7 @@ export function createShareRoutes(args: {
     const client = access.clientAddress ?? "unknown";
     const retry = args.limiter.retryAfterSeconds(client);
     if (retry) return tooManyAttemptsResponse(retry);
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const id = typeof body.id === "string" ? body.id : "";
     const secret = typeof body.secret === "string" ? body.secret : "";
     // A signed-in browser keeps its account (and its grants): it becomes a
@@ -219,7 +190,7 @@ export function createShareRoutes(args: {
     principal: Principal,
   ) {
     const { connectionId, workspaceId } = target(url);
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const paneId =
       typeof body.pane_id === "string" && body.pane_id ? body.pane_id : null;
     if (paneId) {
@@ -263,7 +234,7 @@ export function createShareRoutes(args: {
 
   async function revoke(req: Request, url: URL, principal: Principal) {
     const scope = target(url);
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     if (!isShareLinkId(body.id)) throw new RequestError("id required");
     const revoked = shares.revokeLink(body.id, {
       actor: actorOf(principal),

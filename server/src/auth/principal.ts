@@ -1,4 +1,5 @@
 import { avatarUrl } from "../accounts/avatars";
+import { parseCookie } from "../utils/request";
 import { principalCapabilities } from "../authz/capabilities";
 import type { RequestAccess } from "../http/request-access";
 import {
@@ -144,20 +145,6 @@ export {
   parseTailnetAuthMode,
   type TailnetAuthMode,
 } from "../http/tailnet-auth";
-
-function parseCookie(header: string | null, name: string): string | null {
-  if (!header) return null;
-  for (const part of header.split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-    if (key !== name) continue;
-    try {
-      return decodeURIComponent(rest.join("="));
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
 
 export type AuthResult = {
   principal: Principal | null;

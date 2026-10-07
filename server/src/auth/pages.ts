@@ -6,6 +6,7 @@
  * data block.
  */
 
+import { escapeHtml } from "../utils/html";
 import type { TailnetSsoLogin } from "./tailnet-sso";
 
 export const AUTH_SCRIPT_PATH = "/auth/passkey.js";
@@ -692,14 +693,6 @@ export function renderShareEndedPage(locale: PageLocale): string {
   </section>`,
     null,
   );
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export type LoginProviders = {

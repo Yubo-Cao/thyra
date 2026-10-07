@@ -1,4 +1,5 @@
 import type { AccountStore, User } from "../accounts/store";
+import { RequestError, parseCookie, readJsonObject } from "../utils/request";
 import { hashSecret, randomToken } from "../accounts/store";
 import type { HttpRouteId } from "../authz/http-policy";
 import {
@@ -63,54 +64,10 @@ const MAX_BODY_BYTES = 8 * 1024;
 const NO_STORE = { "cache-control": "no-store" };
 const FLOW_COOKIE = "thyra_oauth";
 
-class RequestError extends Error {
-  constructor(
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message);
-  }
-}
-
-async function readJson(req: Request): Promise<Record<string, unknown>> {
-  if (
-    req.headers.get("content-type")?.split(";")[0]?.trim() !==
-    "application/json"
-  )
-    throw new RequestError("expected a JSON request", 415);
-  const text = await req.text();
-  if (text.length > MAX_BODY_BYTES)
-    throw new RequestError("request too large", 413);
-  if (!text) return {};
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new RequestError("invalid JSON");
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new RequestError("expected a JSON object");
-  return value as Record<string, unknown>;
-}
-
 function json(body: unknown, status = 200, cookies: string[] = []): Response {
   const headers = new Headers(NO_STORE);
   for (const cookie of cookies) headers.append("set-cookie", cookie);
   return Response.json(body, { status, headers });
-}
-
-function parseCookie(header: string | null, name: string): string | null {
-  for (const part of (header ?? "").split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-    if (key === name) {
-      try {
-        return decodeURIComponent(rest.join("="));
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
 }
 
 /** An origin OAuth may return to: HTTPS, or plain HTTP on loopback. */
@@ -238,7 +195,7 @@ export function createSignInRoutes(args: {
   // Email ------------------------------------------------------------------
 
   async function emailStart(req: Request, access: RequestAccess) {
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const email = normalizeEmail(body.email);
     if (!email) throw new RequestError("enter a valid email address");
     const retry = sendLimiter.take(clientOf(access));
@@ -268,7 +225,7 @@ export function createSignInRoutes(args: {
   async function emailVerify(req: Request, access: RequestAccess) {
     const retry = limiter.retryAfterSeconds(clientOf(access));
     if (retry) return tooManyAttemptsResponse(retry);
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const result = args.codes.verify({
       id: typeof body.flow === "string" ? body.flow : "",
       ...(typeof body.code === "string" ? { code: body.code } : {}),
@@ -326,7 +283,7 @@ export function createSignInRoutes(args: {
     if (!provider) return json({ error: "not configured" }, 404);
     if (!oauthCapableOrigin(access.ownOrigin))
       throw new RequestError("sign-in with this provider needs HTTPS");
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const intent = body.intent === "link" ? "link" : "login";
     if (intent === "link" && principal?.kind !== "user")
       throw new RequestError("log in first", 401);
@@ -497,7 +454,7 @@ export function createSignInRoutes(args: {
   }
 
   async function oauthConfirm(req: Request) {
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const flow = args.flows.takeConfirm(
       typeof body.flow === "string" ? body.flow : "",
       typeof body.confirm === "string" ? body.confirm : "",
@@ -531,7 +488,7 @@ export function createSignInRoutes(args: {
   }
 
   async function oauthPoll(req: Request, access: RequestAccess) {
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const flow = args.flows.poll(
       typeof body.flow === "string" ? body.flow : "",
       typeof body.poll === "string" ? body.poll : "",
@@ -570,7 +527,7 @@ export function createSignInRoutes(args: {
   async function inviteCheck(req: Request, access: RequestAccess) {
     const retry = limiter.retryAfterSeconds(clientOf(access));
     if (retry) return tooManyAttemptsResponse(retry);
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const invite = args.invites.peek(body.token);
     if (!invite) {
       limiter.failure(clientOf(access));
@@ -586,7 +543,7 @@ export function createSignInRoutes(args: {
   async function inviteAccept(req: Request, access: RequestAccess) {
     const retry = limiter.retryAfterSeconds(clientOf(access));
     if (retry) return tooManyAttemptsResponse(retry);
-    const body = await readJson(req);
+    const body = await readJsonObject(req, MAX_BODY_BYTES);
     const invite = args.invites.consume(body.token);
     if (!invite) {
       limiter.failure(clientOf(access));
