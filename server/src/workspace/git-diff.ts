@@ -18,15 +18,6 @@ import type {
 // Read-only Git views behind the Changes inspector and the MCP Git tools.
 // Every listing uses `-z`, so paths arrive unquoted and NUL-separated.
 
-const GIT_ATTRIBUTE_BATCH_SIZE = 100;
-const KINDS: GitDiffKind[] = [
-  "staged",
-  "unstaged",
-  "untracked",
-  "conflicted",
-  "branch",
-];
-
 type GitContext = {
   root: string;
   host?: string;
@@ -203,38 +194,6 @@ export function parseNumstat(output: string): Stats {
   return stats;
 }
 
-export function parseGeneratedAttributes(output: string) {
-  const generatedPaths = new Set<string>();
-  const fields = output.split("\0");
-  for (let index = 0; index + 2 < fields.length; index += 3) {
-    const value = (fields[index + 2] ?? "").toLowerCase();
-    if (
-      fields[index] &&
-      fields[index + 1] === "linguist-generated" &&
-      (value === "set" || value === "true")
-    ) {
-      generatedPaths.add(fields[index]!);
-    }
-  }
-  return generatedPaths;
-}
-
-async function collectGeneratedPaths(context: GitContext, paths: string[]) {
-  const generated = new Set<string>();
-  for (let index = 0; index < paths.length; index += GIT_ATTRIBUTE_BATCH_SIZE) {
-    const batch = paths.slice(index, index + GIT_ATTRIBUTE_BATCH_SIZE);
-    const result = await runGit(
-      context,
-      `check-attr -z linguist-generated -- ${batch.map(context.shQuote).join(" ")}`,
-    );
-    if (result.code !== 0) continue;
-    for (const path of parseGeneratedAttributes(result.stdout)) {
-      generated.add(path);
-    }
-  }
-  return generated;
-}
-
 async function numstat(context: GitContext, command: string) {
   const result = await runGit(context, `diff --numstat -z ${command}`);
   return result.code === 0 || result.code === 1
@@ -348,30 +307,17 @@ export async function readDiffSummary({
   const entries = base
     ? parseBranchSummary(result.stdout)
     : parseStatusSummary(result.stdout);
-  const [stats, generated] = await Promise.all([
-    collectStats(context, entries, base),
-    collectGeneratedPaths(context, [
-      ...new Set(entries.map((entry) => entry.path)),
-    ]),
-  ]);
-  const withStats = entries.map((entry) => ({
-    ...entry,
-    ...stats.get(`${entry.kind}:${entry.path}`),
-    ...(generated.has(entry.path) ? { generated: true } : {}),
-  }));
+  const stats = await collectStats(context, entries, base);
   return {
     workspace_id: workspaceId,
     repo_name: workspace?.worktree?.repo_name ?? workspace?.label ?? "",
     root: context.root,
     mode,
     base,
-    entries: withStats,
-    counts: Object.fromEntries(
-      KINDS.map((kind) => [
-        kind,
-        withStats.filter((entry) => entry.kind === kind).length,
-      ]),
-    ) as Record<GitDiffKind, number>,
+    entries: entries.map((entry) => ({
+      ...entry,
+      ...stats.get(`${entry.kind}:${entry.path}`),
+    })),
   };
 }
 

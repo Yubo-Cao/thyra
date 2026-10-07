@@ -15,13 +15,6 @@ function summary(workspaceId: string): GitDiffSummary {
     workspace_id: workspaceId,
     root: "/repo",
     entries: [],
-    counts: {
-      staged: 0,
-      unstaged: 0,
-      untracked: 0,
-      conflicted: 0,
-      branch: 0,
-    },
   };
 }
 

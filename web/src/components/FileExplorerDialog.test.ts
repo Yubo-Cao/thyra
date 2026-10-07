@@ -90,13 +90,6 @@ describe("file explorer git status", () => {
       workspace_id: "workspace",
       root: "/repo",
       entries: [staged, unstaged],
-      counts: {
-        staged: 1,
-        unstaged: 1,
-        untracked: 0,
-        conflicted: 0,
-        branch: 0,
-      },
     };
 
     const status = buildGitStatusMaps(summary, "/repo").fileStatuses.get(
@@ -118,13 +111,6 @@ describe("file explorer git status", () => {
         { path: "src/new.ts", kind: "untracked", status: "untracked" },
         { path: "src/app.ts", kind: "staged", status: "added" },
       ],
-      counts: {
-        staged: 1,
-        unstaged: 1,
-        untracked: 1,
-        conflicted: 0,
-        branch: 0,
-      },
     };
 
     const maps = buildGitStatusMaps(summary, "/repo");

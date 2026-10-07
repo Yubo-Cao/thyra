@@ -199,7 +199,6 @@ export interface GitDiffEntry {
   status: string;
   additions?: number;
   deletions?: number;
-  generated?: boolean;
 }
 
 export interface GitDiffSummary {
@@ -209,7 +208,6 @@ export interface GitDiffSummary {
   mode?: "working" | "branch-main";
   base?: string;
   entries: GitDiffEntry[];
-  counts: Record<GitDiffKind, number>;
 }
 
 export interface GitDiffFile {

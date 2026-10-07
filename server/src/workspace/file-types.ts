@@ -96,7 +96,6 @@ export type GitDiffEntry = {
   status: string;
   additions?: number;
   deletions?: number;
-  generated?: boolean;
 };
 
 export type RunProcessWithCodeTimeout = (
