@@ -10,14 +10,8 @@ import {
   normalizeLauncherSettingsMap,
 } from "../launcher/folders";
 
-export type GuiRepoSettings = {
-  worktree_hooks_enabled?: boolean;
-  custom?: Record<string, unknown>;
-};
-
 export type GuiSettings = {
   version: 1;
-  repositories: Record<string, GuiRepoSettings>;
   terminal_transport?: Record<string, { surface_codecs: boolean }>;
   /** Project launcher pins, commands, and history per connection ID. */
   launcher?: Record<string, LauncherSettings>;
@@ -35,7 +29,6 @@ export function guiSettingsPath(): string {
 function defaultGuiSettings(): GuiSettings {
   return {
     version: 1,
-    repositories: {},
     terminal_transport: {},
     launcher: {},
     custom: {},
@@ -44,28 +37,8 @@ function defaultGuiSettings(): GuiSettings {
 
 function normalizeGuiSettings(raw: unknown): GuiSettings {
   const obj = raw && typeof raw === "object" ? (raw as any) : {};
-  const repositories =
-    obj.repositories && typeof obj.repositories === "object"
-      ? obj.repositories
-      : {};
-  const normalizedRepos: Record<string, GuiRepoSettings> = {};
-  for (const [key, value] of Object.entries(repositories)) {
-    if (!value || typeof value !== "object") continue;
-    const repo = value as any;
-    normalizedRepos[key] = {
-      worktree_hooks_enabled:
-        typeof repo.worktree_hooks_enabled === "boolean"
-          ? repo.worktree_hooks_enabled
-          : undefined,
-      custom:
-        repo.custom && typeof repo.custom === "object"
-          ? (repo.custom as Record<string, unknown>)
-          : undefined,
-    };
-  }
   return {
     version: 1,
-    repositories: normalizedRepos,
     terminal_transport: Object.fromEntries(
       Object.entries(obj.terminal_transport ?? {}).flatMap(([key, value]) =>
         value &&
@@ -193,12 +166,4 @@ export function workspaceRepoSettingsKey(
       workspace.worktree.repo_root) ||
     workspaceSourceCheckoutPath(workspace);
   return raw ? repoSettingsKey(raw, host, connectionId) : null;
-}
-
-export async function repoWorktreeHooksEnabled(
-  repoKey?: string | null,
-): Promise<boolean> {
-  if (!repoKey) return true;
-  const settings = await readGuiSettings();
-  return settings.repositories[repoKey]?.worktree_hooks_enabled !== false;
 }

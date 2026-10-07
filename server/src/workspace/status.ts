@@ -1,9 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { sshCommandArgv } from "../bridge/ssh-command";
-import {
-  readGuiSettings,
-  workspaceRepoSettingsKey,
-} from "../config/gui-settings";
+import { workspaceRepoSettingsKey } from "../config/gui-settings";
 
 type RunProcessWithCodeTimeout = (
   argv: string[],
@@ -297,13 +294,10 @@ printf '${marker}END ${index} %s\\n' "$code"
       return typeof checkoutPath === "string" && checkoutPath;
     });
     const host = args.sshHost();
-    const settings = await readGuiSettings();
     for (const workspace of worktreeWorkspaces) {
       const key = workspaceRepoSettingsKey(workspace, host, args.connectionId);
       if (!key) continue;
       workspace.worktree.gui_settings_key = key;
-      workspace.worktree.worktree_hooks_enabled =
-        settings.repositories[key]?.worktree_hooks_enabled !== false;
     }
 
     if (host) {

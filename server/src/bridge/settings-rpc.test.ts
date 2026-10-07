@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
 import type { GuiSettings } from "../config/gui-settings";
-import type { HerdrClient } from "./herdr-client";
 import { createSettingsRpcHandler } from "./settings-rpc";
 
 function deferred<T>() {
@@ -15,7 +14,6 @@ function deferred<T>() {
 test("terminal transport settings validate input, persist by connection, and reconnect only on change", async () => {
   let settings: GuiSettings = {
     version: 1,
-    repositories: {},
     custom: { keep: true },
     terminal_transport: { beta: { surface_codecs: false } },
   };
@@ -41,9 +39,6 @@ test("terminal transport settings validate input, persist by connection, and rec
       expect(settings.terminal_transport?.alpha.surface_codecs).toBe(value);
       changed.push(value);
     },
-    herdr: {} as HerdrClient,
-    sshHost: () => undefined,
-    readPaseoWorktreeHooks: async () => null,
     safeSend: (_ws, payload) => {
       messages.push(JSON.parse(payload));
       return true;
@@ -106,9 +101,6 @@ test("settings RPC errors carry their runtime connection identity", async () => 
   const handler = createSettingsRpcHandler({
     connectionId: "remote-dev",
     connectionGeneration: 6,
-    herdr: {} as HerdrClient,
-    sshHost: () => undefined,
-    readPaseoWorktreeHooks: async () => null,
     safeSend: (_ws, payload) => {
       messages.push(payload);
       return true;
@@ -133,58 +125,13 @@ test("settings RPC errors carry their runtime connection identity", async () => 
   ]);
 });
 
-test("settings RPC mutates only its connection namespace", async () => {
-  let settings: GuiSettings = {
-    version: 1 as const,
-    repositories: {
-      "connection:alpha:local:same": { worktree_hooks_enabled: true },
-      "connection:beta:local:same": { worktree_hooks_enabled: true },
-    },
-    custom: {},
-  };
-  const messages: any[] = [];
-  const handler = createSettingsRpcHandler({
-    connectionId: "alpha",
-    readSettings: async () => settings,
-    updateSettings: async (update) => {
-      settings = await update(settings);
-      return settings;
-    },
-    herdr: {} as HerdrClient,
-    sshHost: () => undefined,
-    readPaseoWorktreeHooks: async () => null,
-    safeSend: (_ws, payload) => {
-      messages.push(JSON.parse(payload));
-      return true;
-    },
-    markRpcError: () => undefined,
-  });
-  const ws = {} as ServerWebSocket<unknown>;
-
-  await handler(ws, "cross-repo", "settings.update_repo", {
-    key: "connection:beta:local:same",
-    settings: { worktree_hooks_enabled: false },
-  });
-
-  expect(
-    messages.find((message) => message.id === "cross-repo")?.error.message,
-  ).toContain("another connection");
-  expect(
-    settings.repositories["connection:beta:local:same"].worktree_hooks_enabled,
-  ).toBe(true);
-});
-
 test("settings RPC suppresses a delayed result after replacement", async () => {
-  const workspace = deferred<any>();
+  const settings = deferred<GuiSettings>();
   const messages: string[] = [];
   let current = true;
   const handler = createSettingsRpcHandler({
     connectionId: "remote-dev",
-    herdr: {
-      call: () => workspace.promise,
-    } as unknown as HerdrClient,
-    sshHost: () => undefined,
-    readPaseoWorktreeHooks: async () => null,
+    readSettings: () => settings.promise,
     safeSend: (_ws, payload) => {
       messages.push(payload);
       return true;
@@ -195,12 +142,12 @@ test("settings RPC suppresses a delayed result after replacement", async () => {
   const pending = handler(
     {} as ServerWebSocket<unknown>,
     "settings-delayed",
-    "settings.worktree_hooks.get",
-    { workspace_id: "same" },
+    "settings.terminal_transport.get",
+    {},
     () => current,
   );
   current = false;
-  workspace.resolve({ workspace: {} });
+  settings.resolve({ version: 1, custom: {} });
   await pending;
 
   expect(messages.map((message) => JSON.parse(message))).toEqual([
@@ -218,7 +165,6 @@ test("settings RPC cancels a queued mutation after replacement", async () => {
   let notifications = 0;
   let settings: GuiSettings = {
     version: 1,
-    repositories: {},
     terminal_transport: { alpha: { surface_codecs: true } },
     custom: {},
   };
@@ -232,9 +178,6 @@ test("settings RPC cancels a queued mutation after replacement", async () => {
       settings = await update(settings);
       return settings;
     },
-    herdr: {} as HerdrClient,
-    sshHost: () => undefined,
-    readPaseoWorktreeHooks: async () => null,
     onTerminalTransportSettingsChanged: () => {
       notifications += 1;
     },

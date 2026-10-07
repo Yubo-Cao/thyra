@@ -184,22 +184,13 @@ Open **Worktree Lifecycle** from a workspace menu or the command menu to:
   worktrees. The default branch is queried from the remote, not cached `origin/HEAD`;
   an unavailable remote or unresolved default branch stops creation.
 - Inspect paths, open/closed state, branch status, and uncommitted counts.
-- Focus, pull, or remove with confirmation, hooks,
-  process cleanup, and preservation of residual files when safe removal fails.
+- Focus, pull, or remove with confirmation, process cleanup, and preservation
+  of residual files when safe removal fails.
 
 Worktree creation fetches the advertised default commit by its object ID
 without rewriting remote-tracking refs or `FETCH_HEAD`. Stale tracking-ref
 names do not block creation, which uses the resolved commit rather than a ref
 that another fetch could change.
-
-### Paseo Worktree Hooks
-
-`paseo.json` supports `setup`, `opened`, `teardown`, and `removed` hooks.
-**Hooks are enabled by default and execute trusted, unsandboxed repository code**
-on the connected host. Review them or disable them under **Worktree hooks** /
-**Worktree Lifecycle** before acting. Failed teardown stops removal; other hook
-failures do not undo completed operations.
-See [configuration and variables](docs/DEPLOYMENT.md#worktree-hooks).
 
 ## File Explorer and Preview
 

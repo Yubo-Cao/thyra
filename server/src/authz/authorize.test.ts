@@ -84,8 +84,6 @@ const RPC_MATRIX: Record<string, string> = {
   "settings.get": "admin",
   "settings.terminal_transport.get": "admin",
   "settings.terminal_transport.update": "admin",
-  "settings.update_repo": "admin",
-  "settings.worktree_hooks.get": "admin",
   "tab.close": "admin owner editor",
   "tab.create": "admin owner editor",
   "tab.focus": "admin owner editor",

@@ -746,7 +746,7 @@ into the first real profile without overwriting values.
 thyra --ssh-host user@host
 ```
 
-CLI SSH forwards both sockets; file, image-paste, Git, and hooks run remotely.
+CLI SSH forwards both sockets; file, image-paste, and Git operations run remotely.
 Explicit socket flags/environment variables override automatic tunnel paths.
 See [isolation](./ARCHITECTURE.md#connection-isolation) and
 [SSH lifecycle](./ARCHITECTURE.md#ssh-transport).
@@ -771,46 +771,6 @@ The [project launcher](../FEATURES.md#project-launcher) stores its state in the 
 Edit it from the launcher's settings button or **Configuration > Connection** rather than by hand while Thyra runs.
 Pinned paths must be existing directories when added; `history` keeps the 60 most recent launch folders.
 Recent folders also use `zoxide query --list --score` when `zoxide` is on the bridge user's `PATH` (local) or the SSH login shell's `PATH` (remote).
-
-## Worktree hooks
-
-Configure [Paseo hooks](https://paseo.sh/docs/worktrees) in `paseo.json`:
-
-```json
-{
-  "worktree": {
-    "setup": "bun install",
-    "opened": "./scripts/worktree-opened.sh",
-    "teardown": "./scripts/worktree-teardown.sh",
-    "removed": "./scripts/worktree-removed.sh"
-  }
-}
-```
-
-| Hook | Timing / working directory |
-| --- | --- |
-| `setup` | After create/open; new worktree |
-| `opened` | After opening an existing worktree; opened worktree |
-| `teardown` | Before removal; target worktree |
-| `removed` | After removal; source checkout |
-
-For the first three, the target's config wins; only an absent file falls back to
-the source. `removed` normally uses source config because the target is gone.
-Commands run through `sh -c`, remotely for SSH connections.
-
-| Variable | Value |
-| --- | --- |
-| `PASEO_HOOK` | Hook name |
-| `PASEO_CHECKOUT_PATH` | Target path, including former path after removal |
-| `PASEO_SOURCE_CHECKOUT_PATH` | Source checkout when known |
-| `THYRA_HOOK_EVENT` | `worktree.created`, `worktree.opened`, `worktree.before_remove`, or `worktree.removed` |
-| `THYRA_HOOK_CHECKOUT_PATH` | Same target path |
-| `THYRA_HOOK_SOURCE_CHECKOUT_PATH` | Same source path |
-
-Notices show bounded diagnostics.
-**Failed teardown stops removal; other failures do not roll back completed actions.**
-Hooks default on; inspect/disable per repository under **Worktree hooks** or
-**Worktree Lifecycle**. They are trusted, unsandboxed code: review before acting.
 
 ## Run as a user service
 

@@ -102,9 +102,7 @@ is not a backup.** Cancel bulk actions if unsure.
 
 ### Separate parallel edits with worktrees
 
-1. Verify that `origin` is reachable and has a default branch. Review `paseo.json`;
-   disable **Worktree hooks** if you do not trust its commands. Hooks are enabled
-   by default and run host code.
+1. Verify that `origin` is reachable and has a default branch.
 2. Open **Worktree Lifecycle** from the workspace/command menu and create a worktree.
    It starts from `origin`'s freshly fetched default branch, without copying source
    dirty files.
@@ -112,7 +110,6 @@ is not a backup.** Cancel bulk actions if unsure.
 
 **You are done when:** parallel tasks have different checkout directories and branches.
 Before removal, save wanted results, end tasks, and review confirmation.
-[Failed teardown blocks removal](./DEPLOYMENT.md#worktree-hooks).
 
 ### Continue from your phone
 
@@ -253,7 +250,7 @@ Alternatively, on a free port:
 thyra --ssh-host workbox --host 127.0.0.1
 ```
 
-Files, Git, image uploads, and hooks run remotely. Explicit socket flags/environment
+Files, Git, and image uploads run remotely. Explicit socket flags/environment
 variables override tunnel paths and can select the wrong host. Profiles store no
 SSH secrets; see [connection configuration](./DEPLOYMENT.md#multiple-and-remote-herdr-connections).
 

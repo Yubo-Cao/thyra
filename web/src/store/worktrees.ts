@@ -1,10 +1,8 @@
-// Worktree lifecycle and per-repository automation settings, including the
-// notices that report worktree hook output and removal cleanup.
+// Worktree lifecycle actions and the notices that report removal cleanup.
 import { t } from "../i18n";
 import type { Workspace } from "../types";
 import { action, noticeFor } from "./actions";
 import {
-  DEFAULT_NOTICE_AUTO_DISMISS_MS,
   failWith,
   type Notice,
   setForConnection,
@@ -13,21 +11,6 @@ import {
 } from "./core";
 import { adoptBrowserTarget, browserSelectionIsCurrent } from "./navigation";
 import { refreshNow } from "./refresh";
-
-type WorktreeHookEvent =
-  | "worktree.created"
-  | "worktree.opened"
-  | "worktree.before_remove"
-  | "worktree.removed";
-
-type WorktreeHookRunResult = {
-  event: WorktreeHookEvent;
-  status: "skipped" | "succeeded" | "failed";
-  exit_code?: number;
-  stdout?: string;
-  stderr?: string;
-  error?: string;
-};
 
 type WorktreeRemovalCleanup = {
   terminated_processes?: number;
@@ -44,64 +27,11 @@ export interface WorktreeRemovedTarget {
   workspace: Workspace;
 }
 
-function hookEventLabel(event: WorktreeHookEvent): string {
-  switch (event) {
-    case "worktree.before_remove":
-      return t("Worktree teardown hook");
-    case "worktree.opened":
-      return t("Worktree opened hook");
-    case "worktree.removed":
-      return t("Worktree removed hook");
-    case "worktree.created":
-      return t("Worktree setup hook");
-  }
-}
-
-function hookOutput(
-  result: Pick<WorktreeHookRunResult, "stdout" | "stderr" | "error">,
-) {
-  return [result.stderr, result.stdout, result.error]
-    .filter(
-      (value): value is string =>
-        typeof value === "string" && value.trim().length > 0,
-    )
-    .join("\n")
-    .trim();
-}
-
-export function summarizeDirectHookResult(
-  result: WorktreeHookRunResult | undefined,
-): Notice | null {
-  if (!result || result.status === "skipped") return null;
-  const output = hookOutput(result);
-  return {
-    kind: result.status === "succeeded" ? "success" : "error",
-    message:
-      result.status === "succeeded"
-        ? t("{hook} completed", { hook: hookEventLabel(result.event) })
-        : typeof result.exit_code === "number"
-          ? t("{hook} failed (exit {code})", {
-              hook: hookEventLabel(result.event),
-              code: result.exit_code,
-            })
-          : t("{hook} failed", { hook: hookEventLabel(result.event) }),
-    detail: output ? output.slice(0, 1400) : undefined,
-    detailMode: output ? "output" : undefined,
-    detailTitle: output
-      ? t("{hook} output", { hook: hookEventLabel(result.event) })
-      : undefined,
-    ...(result.status === "succeeded"
-      ? { autoDismissMs: DEFAULT_NOTICE_AUTO_DISMISS_MS }
-      : {}),
-  };
-}
-
 export function worktreeRemovalCompletionNotice(
   cleanup: WorktreeRemovalCleanup | undefined,
-  removedHookNotice: Notice | null,
-): Notice | null {
+): Notice {
   if (!cleanup?.recovered_stale_checkout && !cleanup?.warning) {
-    return removedHookNotice;
+    return { kind: "success", message: t("Worktree removed") };
   }
 
   const stopped = Number(cleanup.terminated_processes ?? 0);
@@ -124,31 +54,6 @@ export function worktreeRemovalCompletionNotice(
         : "",
     cleanup.warning ?? "",
   ].filter(Boolean);
-
-  if (removedHookNotice) {
-    const cleanupWarning = Boolean(cleanup.warning);
-    return {
-      ...removedHookNotice,
-      kind: cleanupWarning ? "error" : removedHookNotice.kind,
-      message:
-        cleanupWarning && removedHookNotice.kind !== "error"
-          ? t("Worktree removed with cleanup warning")
-          : removedHookNotice.message,
-      detail: [
-        cleanupWarning && removedHookNotice.kind !== "error"
-          ? removedHookNotice.message
-          : "",
-        removedHookNotice.detail,
-        ...recoveryDetails,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      detailTitle:
-        removedHookNotice.detail || cleanupWarning
-          ? t("Worktree removal details")
-          : undefined,
-    };
-  }
 
   return {
     kind: cleanup.warning ? "error" : "success",
@@ -183,8 +88,6 @@ function openWorktree(
     });
     if (focus && browserSelectionIsCurrent(navigation))
       adoptBrowserTarget(lease, result);
-    const openedNotice = summarizeDirectHookResult(result?.opened_hook);
-    if (openedNotice) noticeFor(lease, openedNotice);
     return result;
   });
 }
@@ -228,27 +131,22 @@ export const worktreeActions = {
         });
         if (browserSelectionIsCurrent(navigation))
           adoptBrowserTarget(lease, result);
-        const setupNotice = summarizeDirectHookResult(result?.setup_hook);
-        if (setupNotice) {
-          noticeFor(lease, setupNotice);
-        } else {
-          const commit = String(result?.base_sync?.commit ?? "").slice(0, 12);
-          const base = String(
-            result?.base_sync?.base ?? t("origin's default branch"),
-          );
-          noticeFor(lease, {
-            kind: "success",
-            message: t("Worktree created"),
-            detail: commit
-              ? t("{branch} starts from {base} at {commit}.", {
-                  branch,
-                  base,
-                  commit,
-                })
-              : t("{branch} starts from the latest {base}.", { branch, base }),
-            autoDismissMs: 5000,
-          });
-        }
+        const commit = String(result?.base_sync?.commit ?? "").slice(0, 12);
+        const base = String(
+          result?.base_sync?.base ?? t("origin's default branch"),
+        );
+        noticeFor(lease, {
+          kind: "success",
+          message: t("Worktree created"),
+          detail: commit
+            ? t("{branch} starts from {base} at {commit}.", {
+                branch,
+                base,
+                commit,
+              })
+            : t("{branch} starts from the latest {base}.", { branch, base }),
+          autoDismissMs: 5000,
+        });
         return result;
       },
       { failureNotice: failWith(t("Failed to create worktree")) },
@@ -277,7 +175,6 @@ export const worktreeActions = {
         noticeFor(lease, {
           kind: "info",
           message: t("Removing worktree"),
-          detail: t("Running teardown hook if configured."),
           loading: true,
         });
         const result = await lease.client.call(
@@ -286,48 +183,20 @@ export const worktreeActions = {
             workspace_id: workspaceId,
             force,
           },
-          // Hooks are part of this RPC and can legitimately run longer than
-          // Herdr's own bounded remove call. Let disconnects end the browser
-          // wait instead of reporting a timeout while deletion continues.
+          // Deleting large checkouts can legitimately take minutes. Let
+          // disconnects end the browser wait instead of reporting a timeout
+          // while deletion continues.
           { timeoutMs: null },
         );
-        const beforeRemoveNotice = summarizeDirectHookResult(
-          result?.before_remove_hook,
-        );
-        if (beforeRemoveNotice) noticeFor(lease, beforeRemoveNotice);
-        if (result?.skipped_remove) {
-          if (!beforeRemoveNotice) noticeFor(lease, null);
-          return result;
-        }
-
         await refreshNow(lease);
         setForConnection(lease, {
           terminalAttachEpoch: state.terminalAttachEpoch + 1,
         });
         announceWorktreeRemoved(lease, removedWorkspace);
-        const completionNotice = worktreeRemovalCompletionNotice(
-          result?.cleanup,
-          summarizeDirectHookResult(result?.removed_hook),
-        );
-        if (completionNotice) {
-          noticeFor(lease, completionNotice);
-        } else if (!beforeRemoveNotice) {
-          noticeFor(lease, { kind: "success", message: t("Worktree removed") });
-        }
+        noticeFor(lease, worktreeRemovalCompletionNotice(result?.cleanup));
         return result;
       },
       { failureNotice: failWith(t("Failed to remove worktree")) },
     );
-  },
-
-  setRepoWorktreeHooksEnabled(key: string, enabled: boolean) {
-    return action(async (lease) => {
-      const result = await lease.client.call("settings.update_repo", {
-        key,
-        settings: { worktree_hooks_enabled: enabled },
-      });
-      await refreshNow(lease);
-      return result;
-    });
   },
 };

@@ -3,6 +3,7 @@ import { realpath, rename } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { sshCommandArgv } from "../bridge/ssh-command";
 import { serverLogger } from "../utils/logger";
+import { checkoutPath as workspaceCheckoutPath } from "../workspace/utils";
 
 type RunProcessWithCodeTimeout = (
   argv: string[],
@@ -199,6 +200,19 @@ async function finalizeSuccessfulRemoval({
         }
       : undefined;
   return { result, cleanup };
+}
+
+/** The checkout a linked-worktree workspace owns, for post-removal cleanup. */
+export async function linkedWorktreeCheckoutPath(
+  call: HerdrCall,
+  workspaceId: string,
+): Promise<string | undefined> {
+  if (!workspaceId) return undefined;
+  const { workspace } =
+    (await call("workspace.get", { workspace_id: workspaceId })) ?? {};
+  return workspace?.worktree?.is_linked_worktree
+    ? workspaceCheckoutPath(workspace)
+    : undefined;
 }
 
 export async function removeWorktreeWithRecovery({

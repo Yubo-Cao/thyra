@@ -10,7 +10,6 @@ export interface WorktreeInfo {
   // workspace. Herdr itself currently exposes repository identity only.
   parent_workspace_id?: string;
   gui_settings_key?: string;
-  worktree_hooks_enabled?: boolean;
   git_status?: GitStatusSummary;
 }
 

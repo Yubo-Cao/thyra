@@ -17,7 +17,6 @@ function settings(
 ): GuiSettings {
   return {
     version: 1,
-    repositories: {},
     custom: {
       worktree_parent_by_checkout: {
         [repoSettingsKey(path, undefined, connectionId)]: parentWorkspaceId,
@@ -88,7 +87,6 @@ describe("worktree parent metadata", () => {
     let current = true;
     let stored: GuiSettings = {
       version: 1,
-      repositories: {},
       custom: {},
     };
     const addGate = deferred();

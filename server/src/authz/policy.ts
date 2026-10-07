@@ -223,9 +223,6 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "settings.get": admin,
   "settings.terminal_transport.get": admin,
   "settings.terminal_transport.update": admin,
-  "settings.worktree_hooks.get": admin,
-  // Repository settings hold executable worktree hooks.
-  "settings.update_repo": dangerous,
 
   // The project launcher browses the filesystem and starts commands.
   "launcher.get": dangerous,
@@ -235,7 +232,7 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "launcher.pins.set": dangerous,
   "launcher.launch": dangerous,
 
-  // Worktrees: creation runs repository hooks and makes new workspaces.
+  // Worktrees: creation fetches and runs Git on the host and makes new workspaces.
   "worktree.list": herdr(read(r.workspaceOrHost)),
   "worktree.create": hostWrite,
   "worktree.open": hostWrite,

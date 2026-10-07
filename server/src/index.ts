@@ -192,6 +192,7 @@ import {
   voiceProvidersFromEnv,
 } from "./voice/transcription";
 import {
+  linkedWorktreeCheckoutPath,
   removeWorktreeWithRecovery,
   WORKTREE_REMOVE_TIMEOUT_MS,
 } from "./worktree/remove";
@@ -741,8 +742,6 @@ const IMPORTANT_RPC_METHODS = new Set([
   "git.pull",
   "git.repo_action",
   "launcher.launch",
-  "settings.update_repo",
-  "settings.worktree_hooks.get",
   "worktree.create",
   "worktree.open",
   "worktree.remove",
@@ -1660,14 +1659,6 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   } = connection.files;
   const { enrichWorkspacesWithGitStatus, invalidateGitStatus } =
     connection.status;
-  const {
-    runPaseoWorktreeHook,
-    worktreeRemoveHookContext,
-    runWorktreeRemovedHook,
-    runWorktreeOpenedHook,
-    sourceWorkspaceForWorktreeCreate,
-    runWorktreeSetupHook,
-  } = connection.worktreeHooks;
 
   if (
     (method === "tab.create" || method === "workspace.create") &&
@@ -1900,9 +1891,6 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   }
   if (method === "worktree.create") {
     try {
-      const sourceWorkspace = await sourceWorkspaceForWorktreeCreate(
-        params ?? {},
-      );
       const workspaceId = optionalString(params, "workspace_id") ?? "";
       const baseSync = await syncWorktreeBase({
         workspaceId,
@@ -1927,25 +1915,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
             error: sanitizeConnectionError(error),
           });
         });
-      const hookSourceWorkspace = sourceWorkspace
-        ? {
-            ...sourceWorkspace,
-            cwd:
-              sourceWorkspace?.worktree?.checkout_path ||
-              sourceWorkspace?.cwd ||
-              baseSync.root,
-          }
-        : { cwd: baseSync.root };
-      const setupHook = await runWorktreeSetupHook(result, hookSourceWorkspace);
       sendReply(
-        {
-          id,
-          result: {
-            ...result,
-            base_sync: baseSync,
-            setup_hook: setupHook,
-          },
-        },
+        { id, result: { ...result, base_sync: baseSync } },
         "worktree-create",
       );
     } catch (e) {
@@ -1956,9 +1927,6 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (method === "worktree.open") {
     try {
       const workspaceId = optionalString(params, "workspace_id") ?? "";
-      const sourceWorkspace = await sourceWorkspaceForWorktreeCreate(
-        params ?? {},
-      );
       const result = await herdr.call(method, params ?? {});
       await worktreeParents
         .rememberWorktreeParent(result, workspaceId, requestIsCurrent)
@@ -1969,14 +1937,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
             error: sanitizeConnectionError(error),
           });
         });
-      const openedHook = await runWorktreeOpenedHook(result, sourceWorkspace);
-      sendReply(
-        {
-          id,
-          result: { ...result, opened_hook: openedHook },
-        },
-        "worktree-open",
-      );
+      sendReply({ id, result }, "worktree-open");
     } catch (e) {
       sendError("worktree-open-error", e);
     }
@@ -1988,44 +1949,15 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       const result = await worktreeRemovalCoordinator.run(
         workspaceId,
         async () => {
-          const removeHookContext = await worktreeRemoveHookContext(
-            params ?? {},
+          const checkoutPath = await linkedWorktreeCheckoutPath(
+            (name, callParams) => herdr.call(name, callParams),
+            workspaceId,
           );
-          const checkoutState = removeHookContext
-            ? await worktreeRemovalRuntime
-                .inspectCheckout(removeHookContext.checkoutPath)
-                .catch(() => "unknown" as const)
-            : "unknown";
-          const beforeRemoveHook =
-            removeHookContext && checkoutState !== "missing"
-              ? await runPaseoWorktreeHook({
-                  hook: "teardown",
-                  checkoutPath: removeHookContext.checkoutPath,
-                  sourceCheckoutPath: removeHookContext.sourceCheckoutPath,
-                  repoSettingsKey: removeHookContext.repoSettingsKey,
-                })
-              : ({
-                  event: "worktree.before_remove",
-                  status: "skipped",
-                } as const);
-          if (beforeRemoveHook.status === "failed") {
-            markRpcError(
-              ws,
-              id,
-              beforeRemoveHook.error || "before-remove hook failed",
-            );
-            return {
-              ok: false,
-              skipped_remove: true,
-              before_remove_hook: beforeRemoveHook,
-            };
-          }
-
           const removal = await removeWorktreeWithRecovery({
             call: (name, callParams) =>
               herdr.call(name, callParams, WORKTREE_REMOVE_TIMEOUT_MS),
             params: params ?? {},
-            checkoutPath: removeHookContext?.checkoutPath,
+            checkoutPath,
             runtime: worktreeRemovalRuntime,
           });
           if (removal.cleanup?.preserved_path) {
@@ -2034,9 +1966,9 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
               path: removal.cleanup.preserved_path,
             });
           }
-          if (removeHookContext?.checkoutPath) {
+          if (checkoutPath) {
             await worktreeParents
-              .forgetWorktree(removeHookContext.checkoutPath, requestIsCurrent)
+              .forgetWorktree(checkoutPath, requestIsCurrent)
               .catch((error) => {
                 if (!requestIsCurrent()) return;
                 logger.warn("unable to remove worktree parent", {
@@ -2045,12 +1977,9 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
                 });
               });
           }
-          const removedHook = await runWorktreeRemovedHook(removeHookContext);
           return {
             ...removal.result,
             ...(removal.cleanup ? { cleanup: removal.cleanup } : {}),
-            before_remove_hook: beforeRemoveHook,
-            removed_hook: removedHook,
           };
         },
       );

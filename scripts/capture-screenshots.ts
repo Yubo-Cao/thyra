@@ -353,7 +353,6 @@ function writeTools(env: Environment) {
     join(env.hostHome, ".config/thyra/settings.json"),
     JSON.stringify({
       version: 1,
-      repositories: {},
       launcher: { local: launcher, workbox: launcher },
       custom: {},
     }),

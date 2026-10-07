@@ -158,14 +158,6 @@ export default {
   "Git action failed": "Git 操作失败",
 
   // Worktrees
-  "Worktree teardown hook": "工作树清理钩子",
-  "Worktree opened hook": "工作树打开钩子",
-  "Worktree removed hook": "工作树移除钩子",
-  "Worktree setup hook": "工作树设置钩子",
-  "{hook} completed": "{hook}已完成",
-  "{hook} failed (exit {code})": "{hook}失败（退出码 {code}）",
-  "{hook} failed": "{hook}失败",
-  "{hook} output": "{hook}输出",
   "Stopped 1 process still using the checkout.":
     "已停止 1 个仍在使用该检出目录的进程。",
   "Stopped {count} processes still using the checkout.":
@@ -174,7 +166,6 @@ export default {
   "The checkout was already absent; stale Herdr state was reconciled.":
     "检出目录已不存在，已清理 Herdr 中的残留状态。",
   "Worktree removed with cleanup warning": "工作树已移除，但清理时出现警告",
-  "Worktree removal details": "工作树移除详情",
   "Worktree removed": "工作树已移除",
   "Creating worktree": "正在创建工作树",
   "Updating origin's default branch before creating {branch}.":
@@ -188,7 +179,6 @@ export default {
     "{branch} 基于最新的 {base} 创建。",
   "Failed to create worktree": "创建工作树失败",
   "Removing worktree": "正在移除工作树",
-  "Running teardown hook if configured.": "正在运行清理钩子（如已配置）。",
   "Failed to remove worktree": "移除工作树失败",
   Connected: "已连接",
   Connecting: "正在连接",

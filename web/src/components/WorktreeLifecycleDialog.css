@@ -158,12 +158,6 @@
   font-size: 11px;
 }
 
-.lifecycle-policy {
-  margin-top: 10px;
-  padding: 9px 11px;
-  border-bottom: 1px solid var(--border-soft);
-}
-
 .lifecycle-list {
   display: grid;
   gap: 8px;
@@ -291,11 +285,6 @@
 
   .lifecycle-overview strong {
     font-size: 16px;
-  }
-
-  .lifecycle-policy {
-    padding-right: 5px;
-    padding-left: 5px;
   }
 
   .lifecycle-row {

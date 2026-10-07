@@ -58,7 +58,6 @@ import {
 } from "../utils/logger";
 import {
   runProcess,
-  runProcessWithCode,
   runProcessWithCodeTimeout,
   shQuote,
 } from "../utils/process-utils";
@@ -70,7 +69,6 @@ import {
 import { createLastStepTurnTracker } from "../workspace/last-step-turns";
 import { runBinaryProcessWithTimeout } from "../workspace/process";
 import { createStatusEnricher } from "../workspace/status";
-import { createWorktreeHookRunner } from "../worktree/worktree-hooks";
 import { createWorktreeParentStore } from "../worktree/parents";
 import {
   createWorktreeRemovalCoordinator,
@@ -311,14 +309,6 @@ export function createLegacyConnectionRuntime(args: {
     runProcessWithCodeTimeout,
     shQuote,
   });
-  const worktreeHooks = createWorktreeHookRunner({
-    connectionId: identity.id,
-    herdr,
-    sshHost,
-    runProcess,
-    runProcessWithCode,
-    shQuote,
-  });
   const worktreeRemovalCoordinator = createWorktreeRemovalCoordinator();
   const worktreeRemovalRuntime = createWorktreeRemovalRuntime({
     host: sshHost(),
@@ -352,9 +342,6 @@ export function createLegacyConnectionRuntime(args: {
   const handleSettingsRpc = createSettingsRpcHandler({
     connectionId: identity.id,
     connectionGeneration: args.connectionGeneration,
-    herdr,
-    sshHost,
-    readPaseoWorktreeHooks: worktreeHooks.readPaseoWorktreeHooks,
     onTerminalTransportSettingsChanged: (enabled) => {
       if (disposed) return;
       terminalBridge.refreshSurfaceCodecs();
@@ -757,7 +744,6 @@ export function createLegacyConnectionRuntime(args: {
     launcher,
     files,
     status,
-    worktreeHooks,
     worktreeRemovalCoordinator,
     worktreeRemovalRuntime,
     terminalBridge,

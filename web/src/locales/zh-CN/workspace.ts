@@ -95,7 +95,6 @@ export default {
   "Failed to copy checkout path": "复制检出路径失败",
   "Open worktree…": "打开工作树…",
   "Worktree lifecycle…": "工作树生命周期…",
-  "Configure worktree hooks…": "配置工作树钩子…",
   "New worktree…": "新建工作树…",
   "Pull from Git": "从 Git 拉取",
   "Remove worktree": "移除工作树",
@@ -122,25 +121,7 @@ export default {
   Optional: "可选",
   "Optional path": "可选路径",
   Cancel: "取消",
-
-  // Worktree hooks dialog
-  Setup: "初始化",
-  Opened: "打开后",
-  Teardown: "拆除",
-  Removed: "移除后",
-  "Unable to update worktree hook settings": "无法更新工作树钩子设置",
-  "Worktree hooks": "工作树钩子",
-  "Worktree Hooks": "工作树钩子",
-  "Hooks are loaded from the current repository's {file} {key} config.":
-    "钩子从当前仓库 {file} 中的 {key} 配置加载。",
-  "View docs": "查看文档",
-  "Loading worktree hooks...": "正在加载工作树钩子…",
-  Repo: "仓库",
-  "Store key": "存储键",
-  Checkout: "检出",
   "Saving...": "正在保存…",
-  "Enable worktree hooks for this repo": "为此仓库启用工作树钩子",
-  "Not configured": "未配置",
 
   // Worktree lifecycle
   "Detached HEAD": "分离的 HEAD",
@@ -155,12 +136,8 @@ export default {
   "{message}\nTemporary workspace cleanup failed: {cleanup}":
     "{message}\n临时工作区清理失败：{cleanup}",
   "Worktree removal did not complete.": "工作树移除未完成。",
-  "Repository hook failed": "仓库钩子失败",
-  "Removal was stopped before deleting the checkout.":
-    "移除在删除检出前已停止。",
   "{operation} failed": "{operation}失败",
   "Creating {branch}": "正在创建 {branch}",
-  "Updating hook policy": "正在更新钩子策略",
   "The repository root is unavailable.": "仓库根目录不可用。",
   "Herdr opened the checkout without returning a workspace ID.":
     "Herdr 打开了检出，但未返回工作区 ID。",
@@ -177,8 +154,7 @@ export default {
   "New worktree": "新建工作树",
   "Open an existing checkout": "打开现有检出",
   "Open existing": "打开现有",
-  "Hook details": "钩子详情",
-  "Waiting for Herdr and repository hooks.": "正在等待 Herdr 和仓库钩子。",
+  "Waiting for Herdr.": "正在等待 Herdr。",
   "Repository state refreshed.": "仓库状态已刷新。",
   "Operation failed.": "操作失败。",
   "Loading repository lifecycle...": "正在加载仓库生命周期…",
@@ -187,14 +163,8 @@ export default {
   "Repository summary": "仓库概要",
   Checkouts: "检出",
   "With changes": "有更改",
-  "Repository hooks": "仓库钩子",
-  "{count} configured in paseo.json": "paseo.json 中已配置 {count} 个",
-  "No paseo.json worktree hooks found": "未找到 paseo.json 工作树钩子",
-  "Enable worktree hooks for this repository": "为此仓库启用工作树钩子",
-  'Remove worktree "{name}"? The teardown hook will run before removal.':
-    "移除工作树“{name}”？移除前将运行拆除钩子。",
-  'Remove closed worktree "{name}"? It will be opened in the background so Herdr can run the teardown and removed hooks.':
-    "移除已关闭的工作树“{name}”？它将在后台打开，以便 Herdr 运行拆除钩子和移除后钩子。",
+  'Remove closed worktree "{name}"? It will be opened in the background so Herdr can remove it.':
+    "移除已关闭的工作树“{name}”？它将在后台打开，以便 Herdr 移除它。",
   "Remove this worktree?": "移除此工作树？",
   "Removing worktree": "正在移除工作树",
   Linked: "关联",
@@ -246,7 +216,6 @@ export default {
   "Focus workspace: {name}": "切换到工作区：{name}",
   "New worktree: {name}": "新建工作树：{name}",
   "Open worktree: {name}": "打开工作树：{name}",
-  "Worktree hooks: {name}": "工作树钩子：{name}",
   "Create tab: {name}": "创建标签页：{name}",
   "Rename tab": "重命名标签页",
   "Close active tab": "关闭当前标签页",

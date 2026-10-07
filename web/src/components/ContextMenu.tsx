@@ -10,7 +10,6 @@ import {
 } from "../terminalComposer";
 import { luckyWorktreeBranchName } from "../luckyName";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
-import { WorktreeHooksDialog } from "./WorktreeHooksDialog";
 import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
 import { worktreeCreationSource } from "../worktree";
 import { LazyWorktreeLifecycleDialog as WorktreeLifecycleDialog } from "./LazyWorktreeLifecycleDialog";
@@ -36,7 +35,6 @@ type Opened = {
     | "remove-worktree"
     | "close-workspace"
     | "open-worktree"
-    | "worktree-hooks"
     | "lifecycle"
     | "share";
   workspaceId: string;
@@ -84,8 +82,8 @@ export function ContextMenu({
       target)
     : null;
   const isLinked = !!w?.worktree?.is_linked_worktree;
-  // The bridge enforces roles; hide what this caller cannot do. Worktrees
-  // and branch auto-update run host-side hooks: instance admins only.
+  // The bridge enforces roles; hide what this caller cannot do. Worktree
+  // actions run Git on the host: instance admins only.
   const admin = useInstanceAdmin();
   const editor = workspaceCan(w, "edit");
   const owner = workspaceCan(w, "manage");
@@ -143,11 +141,6 @@ export function ContextMenu({
                   id: "lifecycle",
                   label: t("Worktree lifecycle…"),
                   onAction: () => open("lifecycle"),
-                },
-                {
-                  id: "worktree-hooks",
-                  label: t("Configure worktree hooks…"),
-                  onAction: () => open("worktree-hooks"),
                 },
               ]
             : []),
@@ -344,11 +337,6 @@ export function ContextMenu({
       <WorktreeOpenDialog
         open={opened?.kind === "open-worktree"}
         workspaceId={openedId("open-worktree")}
-        onClose={close}
-      />
-      <WorktreeHooksDialog
-        open={opened?.kind === "worktree-hooks"}
-        workspaceId={openedId("worktree-hooks") ?? undefined}
         onClose={close}
       />
       <WorktreeLifecycleDialog

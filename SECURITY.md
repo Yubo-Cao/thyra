@@ -75,7 +75,7 @@ See [public access](docs/DEPLOYMENT.md#public-access-through-cloudflare-tunnel).
 
 ### What each role may do
 
-Instance **admins** (and direct local use) may do everything, including host-wide file browsing (`scope: "filesystem"`), the project launcher, worktree creation and hooks, repository settings, connections and SSH profiles, Herdr setup, updates, plugins and integrations, and every workspace.
+Instance **admins** (and direct local use) may do everything, including host-wide file browsing (`scope: "filesystem"`), the project launcher, worktree creation, connections and SSH profiles, Herdr setup, updates, plugins and integrations, and every workspace.
 **Members** see only workspaces granted to them:
 
 | Workspace role | May |
@@ -116,7 +116,6 @@ Thyra's HTML pages send `Referrer-Policy: no-referrer` and `frame-ancestors 'non
 
 **Do not expose the primary listener to the public internet**; use the public listener behind Cloudflare Tunnel for a public address.
 For non-loopback listeners, use [native HTTPS](docs/DEPLOYMENT.md#native-https), an HTTPS proxy, or a trusted VPN, and restrict access with a firewall or reverse proxy.
-Treat worktree hooks as executable code.
 
 [Voice input](docs/DEPLOYMENT.md#voice-input) sends recorded speech segments to the configured providers; a cloud provider receives that audio, and a fallback provider receives it when the primary fails.
 Dictation cleanup sends the transcript text to the configured language model.

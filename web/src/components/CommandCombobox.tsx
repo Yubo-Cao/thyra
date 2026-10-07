@@ -38,7 +38,6 @@ import { basename, shortId } from "../utils";
 import { luckyWorktreeBranchName } from "../luckyName";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
-import { WorktreeHooksDialog } from "./WorktreeHooksDialog";
 import { WorktreeOpenDialog } from "./WorktreeOpenDialog";
 import { AgentIcon } from "./AgentIcon";
 import { CommandList, type CommandListItem } from "./ui/command";
@@ -79,7 +78,7 @@ type ActionGroupDefinition = {
  */
 const ACTION_CAPABILITIES: [RegExp, "host" | "manage" | "edit"][] = [
   [
-    /^(launch-agent|create-workspace|current-(new|open|remove)-worktree|current-worktree-|(new|open)-worktree-|worktree-hooks-)/,
+    /^(launch-agent|create-workspace|current-(new|open|remove)-worktree|current-worktree-|(new|open)-worktree-)/,
     "host",
   ],
   [/^(rename|close)-workspace/, "manage"],
@@ -280,9 +279,6 @@ export function CommandCombobox({
   const [search, setSearch] = useState("");
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
   const [openWorktreeWorkspaceId, setOpenWorktreeWorkspaceId] = useState<
-    string | null
-  >(null);
-  const [worktreeHooksWorkspaceId, setWorktreeHooksWorkspaceId] = useState<
     string | null
   >(null);
   const [lifecycleWorkspaceId, setLifecycleWorkspaceId] = useState<
@@ -496,7 +492,6 @@ export function CommandCombobox({
         "manage worktrees",
         "repository lifecycle",
         "git worktree status",
-        "hooks",
       ],
       run: () => setLifecycleWorkspaceId(focusedWorkspace.workspace_id),
     });
@@ -507,14 +502,6 @@ export function CommandCombobox({
       detail: workspaceName(focusedWorkspace),
       keywords: ["existing worktree", "open existing", "checkout", "branch"],
       run: () => setOpenWorktreeWorkspaceId(focusedWorkspace.workspace_id),
-    });
-    currentActions.push({
-      key: "current-worktree-hooks",
-      icon: <GitBranch size={15} />,
-      title: msg("Worktree hooks"),
-      detail: focusedWorkspace.worktree.repo_name,
-      keywords: ["hook config", "hooks config", "paseo", "setup teardown"],
-      run: () => setWorktreeHooksWorkspaceId(focusedWorkspace.workspace_id),
     });
     if (focusedWorkspace.worktree.is_linked_worktree) {
       currentActions.push({
@@ -710,24 +697,6 @@ export function CommandCombobox({
         workspace.worktree?.repo_name ?? "",
       ],
       run: () => setOpenWorktreeWorkspaceId(workspace.workspace_id),
-    });
-    worktreeActions.push({
-      key: `worktree-hooks-${workspace.workspace_id}`,
-      icon: <GitBranch size={15} />,
-      title:
-        workspace.workspace_id === focusedWorkspace?.workspace_id
-          ? msg("Worktree hooks")
-          : msg("Worktree hooks: {name}"),
-      titleValues: { name: workspaceName(workspace) },
-      detail: workspace.worktree?.repo_name,
-      keywords: [
-        "hook config",
-        "hooks config",
-        "paseo",
-        "setup teardown",
-        workspaceName(workspace),
-      ],
-      run: () => setWorktreeHooksWorkspaceId(workspace.workspace_id),
     });
   }
   const tabActions: ActionDefinition[] = [];
@@ -1057,11 +1026,6 @@ export function CommandCombobox({
         open={!!openWorktreeWorkspaceId}
         workspaceId={openWorktreeWorkspaceId}
         onClose={() => setOpenWorktreeWorkspaceId(null)}
-      />
-      <WorktreeHooksDialog
-        open={!!worktreeHooksWorkspaceId}
-        workspaceId={worktreeHooksWorkspaceId ?? undefined}
-        onClose={() => setWorktreeHooksWorkspaceId(null)}
       />
       <WorktreeLifecycleDialog
         open={!!lifecycleWorkspaceId}

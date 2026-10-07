@@ -25,7 +25,6 @@ function harness(
   );
   let settings: GuiSettings = {
     version: 1,
-    repositories: {},
     launcher: options.launcher ?? {},
     custom: {},
   };

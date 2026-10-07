@@ -12,25 +12,6 @@ export interface WorktreeLifecycleRow {
   gitStatus?: GitStatusSummary;
 }
 
-export type WorktreeHookName = "setup" | "opened" | "teardown" | "removed";
-
-export type WorktreeHookInfo = {
-  key: string | null;
-  enabled: boolean;
-  paseo_path?: string | null;
-  hooks?: Partial<Record<WorktreeHookName, string>>;
-  error?: string;
-};
-
-type LifecycleActionResult = {
-  skipped_remove?: boolean;
-  setup_hook?: { status?: string; error?: string; stderr?: string };
-  opened_hook?: { status?: string; error?: string; stderr?: string };
-  before_remove_hook?: { status?: string; error?: string; stderr?: string };
-  removed_hook?: { status?: string; error?: string; stderr?: string };
-  cleanup?: { warning?: string };
-};
-
 function normalizedCheckoutPath(path: string): string {
   if (path === "/") return path;
   return path.replace(/\/+$/, "");
@@ -69,15 +50,6 @@ export function lifecycleOpenedWorkspaceId(
     : undefined;
 }
 
-export function lifecycleRemovalSkipped(result: unknown): boolean {
-  return Boolean(
-    result &&
-      typeof result === "object" &&
-      "skipped_remove" in result &&
-      (result as { skipped_remove?: unknown }).skipped_remove,
-  );
-}
-
 export async function removeTemporaryWorkspaceSafely<T>({
   workspaceId,
   temporary,
@@ -114,37 +86,16 @@ export async function removeTemporaryWorkspaceSafely<T>({
     throw error;
   }
 
-  const incomplete = result === undefined;
-  if (temporary && (incomplete || lifecycleRemovalSkipped(result))) {
-    await close(workspaceId);
-  }
-  if (incomplete) {
+  if (result === undefined) {
+    if (temporary) await close(workspaceId);
     throw new Error(t("Worktree removal did not complete."));
   }
   return result;
 }
 
-export function lifecycleActionError(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const value = result as LifecycleActionResult;
-  const failedHook = [
-    value.setup_hook,
-    value.opened_hook,
-    value.before_remove_hook,
-    value.removed_hook,
-  ].find((hook) => hook?.status === "failed");
-  if (failedHook) {
-    return failedHook.error || failedHook.stderr || t("Repository hook failed");
-  }
-  if (value.skipped_remove) {
-    return t("Removal was stopped before deleting the checkout.");
-  }
-  return undefined;
-}
-
 export function lifecycleActionWarning(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
-  return (result as LifecycleActionResult).cleanup?.warning;
+  return (result as { cleanup?: { warning?: string } }).cleanup?.warning;
 }
 
 function workspaceForCheckout(

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { Workspace, WorktreeList } from "./types";
 import {
   buildWorktreeLifecycleRows,
-  lifecycleActionError,
   lifecycleActionWarning,
   lifecycleGitChangeCount,
   lifecycleOpenedWorkspaceId,
@@ -122,22 +121,15 @@ describe("worktree lifecycle rows", () => {
     ).toBe(6);
   });
 
-  test("separates lifecycle failures from successful cleanup warnings", () => {
-    expect(
-      lifecycleActionError({
-        skipped_remove: true,
-        before_remove_hook: { status: "failed", stderr: "teardown failed" },
-      }),
-    ).toBe("teardown failed");
+  test("reports successful cleanup warnings", () => {
     expect(
       lifecycleActionWarning({
         cleanup: { warning: "checkout still present" },
       }),
     ).toBe("checkout still present");
     expect(
-      lifecycleActionError({ cleanup: { warning: "checkout still present" } }),
+      lifecycleActionWarning({ type: "worktree_created" }),
     ).toBeUndefined();
-    expect(lifecycleActionError({ type: "worktree_created" })).toBeUndefined();
   });
 
   test("extracts the workspace created while opening a closed checkout", () => {
@@ -150,21 +142,6 @@ describe("worktree lifecycle rows", () => {
 });
 
 describe("temporary workspace removal", () => {
-  test("closes a temporary workspace when removal is refused", async () => {
-    const closed: string[] = [];
-    const result = await removeTemporaryWorkspaceSafely({
-      workspaceId: "temporary",
-      temporary: true,
-      remove: async () => ({ skipped_remove: true }),
-      close: async (workspaceId) => {
-        closed.push(workspaceId);
-      },
-    });
-
-    expect(result).toEqual({ skipped_remove: true });
-    expect(closed).toEqual(["temporary"]);
-  });
-
   test("closes a temporary workspace after a removal failure", async () => {
     const closed: string[] = [];
     await expect(
@@ -172,13 +149,13 @@ describe("temporary workspace removal", () => {
         workspaceId: "temporary",
         temporary: true,
         remove: async () => {
-          throw new Error("hook failed");
+          throw new Error("remove failed");
         },
         close: async (workspaceId) => {
           closed.push(workspaceId);
         },
       }),
-    ).rejects.toThrow("hook failed");
+    ).rejects.toThrow("remove failed");
     expect(closed).toEqual(["temporary"]);
   });
 
