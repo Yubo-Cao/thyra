@@ -193,8 +193,6 @@ export type TerminalPaneLayoutProps = {
   mobileSideShortcuts: MobileTerminalSideShortcuts;
   composerOpen: boolean;
   onComposerOpenChange: (open: boolean) => void;
-  agentHistoryOpen: boolean;
-  onAgentHistoryOpenChange: (open: boolean) => void;
   onOpenWorkspaceFile: (request: TerminalWorkspaceFileRequest) => void;
 };
 
@@ -410,7 +408,6 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
               onComposerOpenChange={
                 isActive ? props.onComposerOpenChange : undefined
               }
-              agentHistoryOpen={isActive && props.agentHistoryOpen}
             />
           </div>
         );

@@ -74,9 +74,8 @@ cancel. See [platform shortcuts](../FEATURES.md#keyboard-shortcuts); browsers
 can intercept bindings, so use menus or customize them rather than replacing
 all Cmd keys with Ctrl.
 
-**You are done when:** you know which pane receives input and can find the agent's
-explanation in **Agent History**. A `done` status is not proof that checks passed.
-For missing records, follow [session inspection guidance](../FEATURES.md#agent-awareness-and-session-inspection).
+**You are done when:** you know which pane receives input and can read the agent's
+explanation in its terminal. A `done` status is not proof that checks passed.
 
 ### Review the file and diff
 
@@ -337,7 +336,6 @@ Check in order (about 3 minutes):
 | No login page | Direct local use of a loopback listener and tailnet devices log in without one; otherwise use incognito to rule out an existing cookie. |
 | `421 misdirected request` | Add the URL you opened to `THYRA_PUBLIC_BASE_URL` and restart Thyra. |
 | Address already in use | Check for an existing plugin/user service; do not duplicate it. |
-| SSH history is empty | Check transcript readability and [session lookup limits](../FEATURES.md#agent-awareness-and-session-inspection). |
 | Clipboard/PWA restricted | Use trusted, warning-free HTTPS; check browser permissions/support. |
 
 See [Deployment](./DEPLOYMENT.md) for accounts, service restarts, and debug logs.

@@ -80,7 +80,6 @@ import {
 import { LazyBoundary, LazyPendingStatus, Latched } from "./LazyBoundary";
 import { directoryPreviewName } from "../filesystemPaths";
 import type { TerminalTouchSelection } from "../terminalTouchSelection";
-import { paneHasAgentHistory } from "./agentSession";
 import {
   TerminalVoiceButton,
   TerminalVoicePanel,
@@ -106,7 +105,7 @@ import {
   useTerminalInput,
   useTerminalRefs,
 } from "./terminal/terminalSession";
-import { bytesToB64, isEditableElement } from "../utils";
+import { bytesToB64 } from "../utils";
 import {
   useTerminalAppearance,
   useTerminalAttach,
@@ -179,8 +178,6 @@ export function TerminalView({
   mobileSideShortcuts = defaultMobileTerminalSideShortcuts(),
   composerOpen: controlledComposerOpen,
   onComposerOpenChange,
-  agentHistoryOpen: controlledAgentHistoryOpen,
-  onAgentHistoryOpenChange,
   onOpenWorkspaceFile,
 }: {
   paneId?: string;
@@ -192,8 +189,6 @@ export function TerminalView({
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
   composerOpen?: boolean;
   onComposerOpenChange?: (open: boolean) => void;
-  agentHistoryOpen?: boolean;
-  onAgentHistoryOpenChange?: (open: boolean) => void;
   onOpenWorkspaceFile?: (request: TerminalWorkspaceFileRequest) => void;
 }) {
   const s = useStoreSelector(
@@ -319,7 +314,6 @@ export function TerminalView({
   const activePaneId =
     selectedPaneInLayout ?? s.layout?.focused_pane_id ?? null;
   const isActivePane = !!pane && (!paneId || pane.pane_id === activePaneId);
-  const canShowAgentHistory = isActivePane && paneHasAgentHistory(pane);
   const canClosePane = !!pane && paneCanClose(s.panes, pane.pane_id);
   const paneTab = pane
     ? s.tabs.find((tab) => tab.tab_id === pane.tab_id)
@@ -622,10 +616,6 @@ export function TerminalView({
     refs,
     setPromptEditorOpen,
   ]);
-  const [agentHistoryOpen, setAgentHistoryOpen] = useOpenState(
-    controlledAgentHistoryOpen,
-    onAgentHistoryOpenChange,
-  );
   useLayoutEffect(() => {
     refs.onOpenWorkspaceFile.current = onOpenWorkspaceFile;
     refs.isActivePane.current = isActivePane;
@@ -660,35 +650,6 @@ export function TerminalView({
   useEffect(() => {
     if (isActivePane) focusTerminalSoon();
   }, [focusTerminalSoon, isActivePane]);
-  useEffect(() => {
-    if (!canShowAgentHistory && agentHistoryOpen) setAgentHistoryOpen(false);
-  }, [agentHistoryOpen, canShowAgentHistory, setAgentHistoryOpen]);
-  useEffect(() => {
-    if (!isActivePane || !canShowAgentHistory) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || keyboardOverlayOpen()) return;
-      const isHistoryShortcut = shortcutMatches(e, "terminal.history");
-      if (!isHistoryShortcut) return;
-      if (
-        isEditableElement(e.target) &&
-        !(e.target as HTMLElement).closest(".xterm, .prompt-editor")
-      ) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      setAgentHistoryOpen(!agentHistoryOpen);
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () =>
-      window.removeEventListener("keydown", onKey, { capture: true });
-  }, [
-    agentHistoryOpen,
-    canShowAgentHistory,
-    isActivePane,
-    setAgentHistoryOpen,
-  ]);
-
   const baseShortcuts = terminalShortcutActions(
     sessionBindings,
     modifiers,

@@ -80,7 +80,7 @@ Instance **admins** (and direct local use) may do everything, including host-wid
 
 | Workspace role | May |
 | --- | --- |
-| viewer | list and watch its terminals, browse their history, read its files, Git state and agent history |
+| viewer | list and watch its terminals, browse their history, read its files, Git state and agent status |
 | editor | also type (single writer, below), change layout, edit files, run Git actions, use voice input |
 | owner | also rename, close and share the workspace, and take control of a pane at any time |
 

@@ -18,7 +18,6 @@ const WorkspaceInspectorPanel = workspaceInspectorPanel.Component;
 export function WorkspaceStage({
   inspector,
   mobile,
-  mobileView,
   onMobileViewChange,
   resourceUiKey,
   connectionClient,
@@ -26,7 +25,6 @@ export function WorkspaceStage({
 }: {
   inspector: WorkspaceInspector;
   mobile: boolean;
-  mobileView: MobileView;
   onMobileViewChange: (view: MobileView) => void;
   resourceUiKey: string;
   connectionClient: ConnectionClient;
@@ -153,7 +151,6 @@ export function WorkspaceStage({
               key={`${resourceUiKey}:${resourceOwnerKey(state.scope)}`}
               inspector={inspector}
               state={state}
-              visible={!mobile || mobileView === state.view}
               mobile={mobile}
               onMobileViewChange={onMobileViewChange}
               connectionClient={connectionClient}

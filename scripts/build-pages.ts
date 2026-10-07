@@ -12,7 +12,6 @@ const assetDirectory = join(outputDirectory, "assets");
 const assets = [
   "thyra-desktop-changes.png",
   "thyra-desktop-files.png",
-  "thyra-desktop-history.png",
   "thyra-mobile-changes.png",
   "thyra-mobile-launcher.png",
   "thyra-mobile-terminal.png",

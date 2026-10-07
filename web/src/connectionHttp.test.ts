@@ -21,12 +21,6 @@ describe("connection-scoped HTTP paths", () => {
     expect(connectionHttpPath("beta", "/file/download")).toBe(
       "/api/connections/beta/file/download",
     );
-    expect(connectionHttpPath("beta", "/agent-session/download")).toBe(
-      "/api/connections/beta/agent-session/download",
-    );
-    expect(connectionHttpPath("beta", "/agent-session/atif")).toBe(
-      "/api/connections/beta/agent-session/atif",
-    );
     expect(connectionHttpPath("beta", "/herdr-info")).toBe(
       "/api/connections/beta/herdr-info",
     );

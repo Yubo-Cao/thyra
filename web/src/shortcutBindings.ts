@@ -43,7 +43,6 @@ const base = {
   "workspaces.open": ["Ctrl+Alt+O"],
   "files.toggle": ["Ctrl+Alt+E"],
   "diff.toggle": ["Ctrl+Alt+G"],
-  "terminal.history": ["Ctrl+Alt+H"],
   "terminal.pageUp": ["PageUp"],
   "terminal.pageDown": ["PageDown"],
   "terminal.halfPageUp": ["Alt+PageUp"],
@@ -124,7 +123,6 @@ export function defaultShortcutBindings(
       "workspaces.open": ["Ctrl+Shift+W"],
       "files.toggle": ["Meta+Shift+E"],
       "diff.toggle": ["Ctrl+Shift+G"],
-      "terminal.history": ["Meta+Shift+H"],
       "terminal.lineStart": ["Meta+ArrowLeft", "Meta+ArrowUp"],
       "terminal.lineEnd": ["Meta+ArrowRight", "Meta+ArrowDown"],
       "terminal.deleteToStart": ["Meta+Backspace"],
@@ -279,7 +277,6 @@ export function formatShortcut(
 
 export function shortcutScope(id: ShortcutId): string {
   if (id.startsWith("command.") && id !== "command.menu") return "command";
-  if (id === "terminal.history") return "global";
   if (/^(terminal|preview|composer)\./.test(id)) return id.split(".")[0];
   return "global";
 }

@@ -318,7 +318,7 @@ function writeTools(env: Environment) {
     );
   }
   // Finishing while unfocused leaves the docs agent "done" (unseen). A
-  // session report would reset that to idle, and no shot opens its history.
+  // session report would reset that to idle.
   const agents = {
     "claude-api": [CLAUDE_API_SESSION_ID, "working"],
     "codex-web": [CODEX_WEB_SESSION_ID, "blocked"],
@@ -795,7 +795,7 @@ interface Shot {
   avif?: Record<number, string>;
 }
 
-async function openInspector(ui: Ui, tab: "Files" | "Changes" | "History") {
+async function openInspector(ui: Ui, tab: "Files" | "Changes") {
   await ui.click("Inspector", { exact: false });
   await ui.tab(tab);
 }
@@ -815,12 +815,6 @@ async function desktopFiles(ui: Ui) {
   await ui.text("src");
   await ui.text("README.md");
   await ui.settle(2500);
-}
-
-async function desktopHistory(ui: Ui) {
-  await paintTerminals(ui);
-  await openInspector(ui, "History");
-  await ui.settle(1500);
 }
 
 async function mobileTerminal(ui: Ui) {
@@ -879,17 +873,6 @@ const SHOTS: Record<string, Shot> = {
     theme: "light",
     run: desktopFiles,
   },
-  "desktop-history": {
-    out: "docs/images/thyra-desktop-history.png",
-    device: "desktop",
-    run: desktopHistory,
-  },
-  "desktop-history-zh": {
-    out: "docs/images/thyra-desktop-history-zh.png",
-    device: "desktop",
-    locale: "zh-CN",
-    run: desktopHistory,
-  },
   "desktop-settings": {
     out: "docs/images/thyra-desktop-settings.png",
     device: "desktop",
@@ -901,32 +884,6 @@ const SHOTS: Record<string, Shot> = {
       return ui.box(
         ui.page.getByRole("dialog", { name: ui.t("Configuration") }),
       );
-    },
-  },
-  "history-tool-filter": {
-    out: "docs/screenshots/history-tool-filter.png",
-    device: "desktop",
-    async run(ui) {
-      await openInspector(ui, "History");
-      for (const filter of ["User", "Agent", "Tool"]) {
-        await ui.click(filter, { exact: false });
-      }
-      // Tool details load on demand.
-      const load = ui.page.getByRole("button", { name: /^Load / });
-      for (let count = await load.count(); count > 0; count -= 1) {
-        await load.first().click();
-        await ui.settle(400);
-      }
-      await ui.page.evaluate(() => {
-        for (const element of document.querySelectorAll(
-          "aside.workspace-inspector *",
-        )) {
-          if (element.scrollHeight > element.clientHeight)
-            element.scrollTop = 0;
-        }
-      });
-      await ui.settle(1200);
-      return ui.box("aside.workspace-inspector");
     },
   },
   "multi-connection-selector": {

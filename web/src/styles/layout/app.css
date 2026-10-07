@@ -851,7 +851,7 @@
     display: none;
   }
 
-  .body:is(.mobile-view-files, .mobile-view-changes, .mobile-view-history) {
+  .body:is(.mobile-view-files, .mobile-view-changes) {
     .workspace-terminal-surface {
       display: none;
     }

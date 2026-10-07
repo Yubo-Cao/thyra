@@ -2,7 +2,6 @@ import {
   FileDiff,
   FolderTree,
   GitFork,
-  History,
   Maximize2,
   Minimize2,
   PanelBottom,
@@ -31,7 +30,7 @@ import { t } from "../i18n";
 import { lazyWithReload } from "../lazyWithReload";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
 import { store } from "../store";
-import type { GitDiffEntry, Pane, Workspace } from "../types";
+import type { GitDiffEntry, Workspace } from "../types";
 import {
   DEFAULT_INSPECTOR_NAVIGATION_RATIO,
   inspectorNavigationRatioAtPosition,
@@ -45,8 +44,7 @@ import {
   type InspectorView,
   type WorkspaceInspectorState,
 } from "../workspaceResource";
-import { AgentHistoryDrawer, SplitResizer } from "./AgentHistoryDrawer";
-import { paneHasAgentHistory } from "./agentSession";
+import { SplitResizer } from "./SplitResizer";
 import {
   type ActiveDiffSelection,
   DiffViewerPanel,
@@ -93,9 +91,7 @@ const INSPECTOR_RESOURCE_HORIZONTAL_PADDING = 16;
 export function WorkspaceInspectorHost({
   state,
   onReady,
-  visible,
   workspace,
-  historyPane,
   fileSelection,
   previewRequestRef,
   diffSelection,
@@ -113,9 +109,7 @@ export function WorkspaceInspectorHost({
 }: {
   state: WorkspaceInspectorState;
   onReady?: () => void;
-  visible: boolean;
   workspace?: Workspace;
-  historyPane?: Pane;
   fileSelection: ActiveFilePreviewSelection;
   previewRequestRef: React.MutableRefObject<number>;
   diffSelection: ActiveDiffSelection;
@@ -149,7 +143,6 @@ export function WorkspaceInspectorHost({
   >(() => ({
     files: state.view === "files" && !!fileSelection.entry,
     changes: false,
-    history: false,
   }));
   const resourceKey = resourceOwnerKey(state.scope);
   const contentResourceKey = resourceStateKey(state.scope);
@@ -227,13 +220,8 @@ export function WorkspaceInspectorHost({
       "--workspace-inspector-navigation-width": `${navigationRatios[view] * 100}%`,
     }) as CSSProperties;
   const changeCount = changedCount(workspace);
-  const historyAvailable = paneHasAgentHistory(historyPane);
   const detailAvailable =
-    state.view === "files"
-      ? !!fileSelection.entry
-      : state.view === "changes"
-        ? !!diffSelection.entry
-        : false;
+    state.view === "files" ? !!fileSelection.entry : !!diffSelection.entry;
   const hasDetail = detailAvailable && drillInByView[state.view];
   const fileChangesEntries = fileSelection.entry
     ? fileDiffEntries.filter(
@@ -329,9 +317,7 @@ export function WorkspaceInspectorHost({
           <Tabs
             aria-label={t("Inspector view")}
             value={state.view}
-            onChange={(view) => {
-              if (view !== "history" || historyAvailable) onViewChange(view);
-            }}
+            onChange={onViewChange}
             items={[
               {
                 id: "files",
@@ -349,22 +335,6 @@ export function WorkspaceInspectorHost({
                     ) : null}
                   </>
                 ),
-              },
-              {
-                id: "history",
-                icon: <History size={14} />,
-                label: (
-                  <span
-                    title={
-                      historyAvailable
-                        ? t("Agent history")
-                        : t("Select an active agent pane to view history")
-                    }
-                  >
-                    {t("History")}
-                  </span>
-                ),
-                disabled: !historyAvailable && state.view !== "history",
               },
             ]}
           />
@@ -638,28 +608,6 @@ export function WorkspaceInspectorHost({
               ) : null}
             </div>
           </div>
-          <div
-            className={`workspace-inspector-resource inspector-history-resource ${
-              state.view === "history" ? "" : "is-hidden"
-            }`}
-          >
-            {historyAvailable && historyPane ? (
-              <AgentHistoryDrawer
-                pane={historyPane}
-                open={visible && state.open && state.view === "history"}
-                embedded
-                wide={!compact}
-                onOpenChange={(open) => {
-                  if (!open) onClose();
-                }}
-              />
-            ) : (
-              <div className="workspace-inspector-unavailable">
-                <strong>{t("No active agent session")}</strong>
-                <span>{t("Select an agent pane to inspect its history.")}</span>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </aside>
@@ -673,14 +621,12 @@ export function WorkspaceInspectorHost({
 export function WorkspaceInspectorPanel({
   inspector,
   state,
-  visible,
   mobile,
   onMobileViewChange,
   connectionClient,
 }: {
   inspector: WorkspaceInspector;
   state: WorkspaceInspectorState;
-  visible: boolean;
   mobile: boolean;
   onMobileViewChange: (view: InspectorView) => void;
   connectionClient: ConnectionClient;
@@ -689,7 +635,6 @@ export function WorkspaceInspectorPanel({
     stateRef,
     commitAndSave,
     workspace,
-    historyPane,
     activeFilePreview,
     openFileExplorerFile,
     setActiveFilePreview,
@@ -718,9 +663,7 @@ export function WorkspaceInspectorPanel({
     <WorkspaceInspectorHost
       state={state}
       onReady={inspector.finishFocus}
-      visible={visible}
       workspace={workspace}
-      historyPane={historyPane}
       fileSelection={activeFilePreview}
       previewRequestRef={inspector.previewRequestRef}
       diffSelection={inspector.activeDiff}
@@ -752,14 +695,7 @@ export function WorkspaceInspectorPanel({
       onViewChange={(view) => {
         const current = stateRef.current;
         if (!current) return;
-        if (view === "history" && !paneHasAgentHistory(historyPane)) return;
-        commitAndSave({
-          ...current,
-          open: true,
-          view,
-          originPaneId:
-            view === "history" ? historyPane?.pane_id : current.originPaneId,
-        });
+        commitAndSave({ ...current, open: true, view });
         if (mobile) onMobileViewChange(view);
       }}
       onDockChange={(dock) => {

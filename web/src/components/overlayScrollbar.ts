@@ -3,8 +3,6 @@ export const OVERLAY_SCROLLBAR_EXCLUDED_SELECTOR = [
   ".config-dropdown",
   ".context-menu",
   ".pane-jump-popover",
-  ".agent-session-export-menu",
-  ".agent-history-minimap",
   ".terminal-mobile-keys-panel",
   ".terminal-composer-shortcuts",
   "[role=dialog]",

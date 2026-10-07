@@ -77,8 +77,6 @@ export default {
   "Browse files at agent CWD": "浏览 Agent 工作目录中的文件",
   "Review workspace changes": "查看工作区更改",
   Session: "会话",
-  "View agent history": "查看 Agent 历史",
-  "Export session": "导出会话",
   Pane: "窗格",
   "Close pane": "关闭窗格",
   Inspect: "检查",

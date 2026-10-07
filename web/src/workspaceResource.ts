@@ -3,7 +3,7 @@ import { matchesShortcut, type ShortcutBindings } from "./shortcutBindings";
 import type { Workspace } from "./types";
 import { connectionStorageKey } from "./connectionStorage";
 
-export type InspectorView = "files" | "changes" | "history";
+export type InspectorView = "files" | "changes";
 export const WORKSPACE_INSPECTOR_REQUEST_EVENT =
   "thyra:workspace-inspector-request";
 
@@ -259,10 +259,7 @@ export function readInspectorPreferences(
     if (!raw) return fallback;
     const value = JSON.parse(raw) as Partial<InspectorPreferences>;
     return {
-      view:
-        value.view === "changes" || value.view === "history"
-          ? value.view
-          : "files",
+      view: value.view === "changes" ? "changes" : "files",
       dock: value.dock === "bottom" ? "bottom" : "right",
       expanded: value.expanded === true,
       expandedNavigationRatios: Object.fromEntries(

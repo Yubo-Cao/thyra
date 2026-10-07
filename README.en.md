@@ -9,8 +9,8 @@
   </picture>
 </p>
 
-A **browser client** for [Herdr](https://herdr.dev). Control terminals, inspect
-agent sessions, and review files and diffs on desktop or mobile.
+A **browser client** for [Herdr](https://herdr.dev). Control terminals, watch
+agent status, and review files and diffs on desktop or mobile.
 Watch an agent on a tablet and type from your phone without resizing it.
 **Requires a Herdr server;** the installer sets one up.
 
@@ -27,17 +27,13 @@ Agents and their status in the workspace tree, a live terminal, and the working-
 <table width="100%">
   <thead>
     <tr>
-      <th width="50%" align="center">File preview (light theme)</th>
-      <th width="50%" align="center">Agent history</th>
+      <th width="100%" align="center">File preview (light theme)</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td width="50%" align="center" valign="top">
+      <td width="100%" align="center" valign="top">
         <a href="./docs/images/thyra-desktop-files.png"><img src="./docs/images/thyra-desktop-files.png" alt="Expanded file explorer rendering a README with a Mermaid diagram and a table, in the light theme" width="100%" /></a>
-      </td>
-      <td width="50%" align="center" valign="top">
-        <a href="./docs/images/thyra-desktop-history.png"><img src="./docs/images/thyra-desktop-history.png" alt="Inspector History tab listing a Claude Code session's prompt and replies" width="100%" /></a>
       </td>
     </tr>
   </tbody>

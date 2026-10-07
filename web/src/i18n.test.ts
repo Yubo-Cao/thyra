@@ -5,7 +5,6 @@ import { installCatalog, msg, resolveLocale, t } from "./i18n";
 import zhCN from "./locales/zh-CN";
 import { agentStatusText } from "./agentOrder";
 import { formatUiRelativeTime } from "./uiLocale";
-import { formatOptionalCompact } from "./components/agentSession";
 
 const SOURCE_ROOT = import.meta.dir;
 
@@ -63,7 +62,6 @@ describe("interface translation", () => {
         expect(agentStatusText(status.toLowerCase())).toBe(label);
       }
       expect(formatUiRelativeTime(-5, "minute")).toBe("5分钟前");
-      expect(formatOptionalCompact(50_000)).toBe("5万");
       expect(t("Pane {index} / {count}", { index: 1, count: 2 })).toBe(
         "窗格 1 / 2",
       );

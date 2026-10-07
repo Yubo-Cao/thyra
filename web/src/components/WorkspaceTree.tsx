@@ -72,11 +72,7 @@ import {
   type AgentMenuState,
   AgentRow,
 } from "./WorkspaceAgentRows";
-import {
-  exportSessionForConnection,
-  groupAgentPanesByWorkspace,
-  paneHasAgentHistory,
-} from "./agentSession";
+import { groupAgentPanesByWorkspace, paneHasAgent } from "./agentSession";
 import {
   focusTreeItem,
   keyboardContextMenuPoint,
@@ -220,7 +216,6 @@ export function WorkspaceTree({
   onSelectAgent,
   onBrowseFilesForAgent,
   onReviewChangesForAgent,
-  onViewAgentHistory,
 }: {
   agentsFirst?: boolean;
   onSelect?: (workspace: Workspace) => void;
@@ -229,7 +224,6 @@ export function WorkspaceTree({
   onSelectAgent?: (pane: Pane) => void;
   onBrowseFilesForAgent?: (pane: Pane) => void;
   onReviewChangesForAgent?: (pane: Pane) => void;
-  onViewAgentHistory?: (pane: Pane) => void;
 }) {
   const s = useStoreSelector(
     useShallow((state) => ({
@@ -334,7 +328,7 @@ export function WorkspaceTree({
         workspace.number,
       ]),
     );
-    return s.panes.filter(paneHasAgentHistory).sort((left, right) => {
+    return s.panes.filter(paneHasAgent).sort((left, right) => {
       const workspaceOrder =
         (workspaceNumbers.get(left.workspace_id) ?? 0) -
         (workspaceNumbers.get(right.workspace_id) ?? 0);
@@ -847,10 +841,6 @@ export function WorkspaceTree({
         }}
         onBrowseFiles={onBrowseFilesForAgent}
         onReviewChanges={onReviewChangesForAgent}
-        onViewHistory={onViewAgentHistory}
-        onExportSession={(pane) =>
-          exportSessionForConnection(pane, connectionClient)
-        }
         onClosePane={setPendingClosePane}
       />
       <Latched open={!!pendingClosePane}>

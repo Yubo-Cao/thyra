@@ -37,7 +37,7 @@ const AGENT_STATUS_TONES: Record<AgentStateKind, TokenTone> = {
 };
 
 /** Token tone for an agent status label (rows, the history header). */
-export function agentStatusTone(status?: string): TokenTone {
+function agentStatusTone(status?: string): TokenTone {
   return AGENT_STATUS_TONES[agentStateKind(status)];
 }
 
@@ -253,8 +253,6 @@ export function AgentContextMenu({
   onFocus,
   onBrowseFiles,
   onReviewChanges,
-  onViewHistory,
-  onExportSession,
   onClosePane,
 }: {
   state: AgentMenuState | null;
@@ -262,8 +260,6 @@ export function AgentContextMenu({
   onFocus: (pane: Pane) => void;
   onBrowseFiles?: (pane: Pane) => void;
   onReviewChanges?: (pane: Pane) => void;
-  onViewHistory?: (pane: Pane) => void;
-  onExportSession: (pane: Pane) => void;
   onClosePane: (pane: Pane) => void;
 }) {
   // The last pane keeps the menu's content while it animates closed.
@@ -309,21 +305,6 @@ export function AgentContextMenu({
               id: "review-changes",
               label: t("Review workspace changes"),
               onAction: () => onReviewChanges?.(pane),
-            },
-          ],
-        },
-        {
-          title: t("Session"),
-          items: [
-            {
-              id: "view-history",
-              label: t("View agent history"),
-              onAction: () => onViewHistory?.(pane),
-            },
-            {
-              id: "export-session",
-              label: t("Export session"),
-              onAction: () => onExportSession(pane),
             },
           ],
         },

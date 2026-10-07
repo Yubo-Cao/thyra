@@ -430,8 +430,7 @@ worker; language-service workers are excluded and nothing loads from a CDN.
 parsing transcripts. Checks have bounded concurrency and a 1.5-second budget;
 missing metadata never removes agents. Remote IDs needing local directory search
 stay unresolved. Idle ordering uses mtime, then Herdr state-change sequence,
-without browser activity history. [History synchronization](./HISTORY.md) owns
-projection, caching, and incremental transcript contracts.
+without browser activity history.
 
 ## Agent integrations
 
@@ -452,7 +451,7 @@ metadata unknown without failing the list. There is no remote-to-local fallback.
 It uses the official `@modelcontextprotocol/server` SDK in stateless mode, so every HTTP request is served by a fresh server instance, 2025-era and 2026-07-28 clients both work, and no session state is kept.
 The stdio subcommand serves the same tool definitions locally and forwards each `tools/call` to a running Thyra's `/mcp`, so authentication, scope, redaction, rate limiting, and audit always happen in the server.
 
-Tools: `list_workspaces`, `get_pane_output`, `list_agent_sessions`, `get_agent_session`, `search_sessions`, `get_git_status`, `get_git_diff`, `read_file`, `list_files`, and `get_activity`.
+Tools: `list_workspaces`, `get_pane_output`, `list_agent_sessions`, `get_git_status`, `get_git_diff`, `read_file`, `list_files`, and `get_activity`.
 They reach Herdr and the workspace only through `gateway.ts`, which maps each tool need to one fixed read operation with an explicit parameter set (for example, file reads never carry `scope: "filesystem"`).
 `assertMcpReadOperation` gates every call: the operation must be in the MCP read list and classified `read`, deferring to the RPC policy table's class for methods it lists.
 No tool can send input, resize, focus, claim panes, run commands, or write files.

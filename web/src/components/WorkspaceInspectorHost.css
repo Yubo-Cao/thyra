@@ -152,15 +152,6 @@
   display: none;
 }
 
-.workspace-inspector-resource.inspector-history-resource {
-  display: flex;
-  padding: 0;
-}
-
-.workspace-inspector-resource.inspector-history-resource.is-hidden {
-  display: none;
-}
-
 .workspace-inspector-navigation,
 .workspace-inspector-detail {
   min-width: 0;
@@ -220,11 +211,6 @@
 
 .workspace-inspector.is-compact .workspace-inspector-resource.is-hidden {
   display: none;
-}
-
-.workspace-inspector.is-compact
-  .workspace-inspector-resource.inspector-history-resource {
-  padding: 0;
 }
 
 .workspace-inspector.is-compact .workspace-inspector-navigation,

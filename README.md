@@ -10,7 +10,7 @@
 </p>
 
 [Herdr](https://herdr.dev) 的**浏览器客户端**。
-在电脑或手机上操作终端、查看 Agent 会话、审阅文件和 diff。
+在电脑或手机上操作终端、查看 Agent 状态、审阅文件和 diff。
 可以在平板上看着 Agent，用手机输入，而不改变终端尺寸。
 **需要 Herdr 服务端；** 安装脚本会一并装好。
 
@@ -27,17 +27,13 @@
 <table width="100%">
   <thead>
     <tr>
-      <th width="50%" align="center">文件预览（浅色主题）</th>
-      <th width="50%" align="center">Agent 历史记录</th>
+      <th width="100%" align="center">文件预览（浅色主题）</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td width="50%" align="center" valign="top">
+      <td width="100%" align="center" valign="top">
         <a href="./docs/images/thyra-desktop-files-zh.png"><img src="./docs/images/thyra-desktop-files-zh.png" alt="展开的文件浏览器以浅色主题渲染 README，包含 Mermaid 图和表格" width="100%" /></a>
-      </td>
-      <td width="50%" align="center" valign="top">
-        <a href="./docs/images/thyra-desktop-history-zh.png"><img src="./docs/images/thyra-desktop-history-zh.png" alt="检查器的历史记录页列出 Claude Code 会话中的提问和回复" width="100%" /></a>
       </td>
     </tr>
   </tbody>

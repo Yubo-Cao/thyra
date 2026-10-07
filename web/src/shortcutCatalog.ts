@@ -60,7 +60,6 @@ const descriptions: Description[] = [
       { number },
     ],
   ),
-  ["terminal.history", msg("Toggle agent message history"), msg("Terminal")],
   [
     "terminal.pageUp",
     msg("Page up in the application or shell history"),

@@ -477,9 +477,9 @@ describe("workspace resource scope", () => {
       0.56,
     );
 
-    writeInspectorPreferences(storage, { ...state, view: "history" });
+    writeInspectorPreferences(storage, { ...state, view: "changes" });
     expect(readInspectorPreferences(storage, scope)).toMatchObject({
-      view: "history",
+      view: "changes",
       filesNavigationRatio: 0.56,
       changesNavigationRatio: 0.4,
     });

@@ -121,7 +121,6 @@ export default function App() {
     resourceUiKey,
     mobile,
     setMobileView,
-    activePane,
     startupReady,
   });
   const { activateTerminalSurface, stateRef: inspectorStateRef } = inspector;
@@ -183,9 +182,7 @@ export default function App() {
       ) : null}
       <MobileViewNav
         mobileView={mobileView}
-        onShowHistory={() => setMobileView("history")}
         collapsed={mobileControls.collapsed}
-        activePane={activePane}
         inspector={inspector}
       />
       {projectLauncherOpen ? (
@@ -248,9 +245,6 @@ export default function App() {
               }
               onBrowseFilesForAgent={inspector.browseFilesForPane}
               onReviewChangesForAgent={inspector.reviewChangesForPane}
-              onViewAgentHistory={(pane) =>
-                inspector.setAgentHistoryOpen(true, pane)
-              }
             />
           </div>
         </div>
@@ -270,7 +264,6 @@ export default function App() {
             <WorkspaceStage
               inspector={inspector}
               mobile={mobile}
-              mobileView={mobileView}
               onMobileViewChange={setMobileView}
               resourceUiKey={resourceUiKey}
               connectionClient={connectionClient}
@@ -283,8 +276,6 @@ export default function App() {
                 mobileSideShortcuts={configuration.mobileTerminalSideShortcuts}
                 composerOpen={mobileControls.composerOpen}
                 onComposerOpenChange={mobileControls.setComposerOpen}
-                agentHistoryOpen={inspector.agentHistoryOpen}
-                onAgentHistoryOpenChange={inspector.setAgentHistoryOpen}
                 onOpenWorkspaceFile={inspector.openTerminalWorkspaceFile}
               />
             </WorkspaceStage>

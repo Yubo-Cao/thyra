@@ -2,7 +2,6 @@ import {
   FileDiff,
   FolderOpen,
   FolderTree,
-  History,
   MoreHorizontal,
   PanelTop,
   SquarePen,
@@ -12,7 +11,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useHostCapable, workspaceCan } from "../capabilities";
-import { paneHasAgentHistory } from "../components/agentSession";
 import { IconButton } from "../components/ui/IconButton";
 import { t } from "../i18n";
 import { shortcutTitle } from "../shortcutPreferences";
@@ -115,30 +113,19 @@ function useComposerHasDraft(draftKey: string | null) {
   return hasDraft;
 }
 
-/** Session / Files / Changes / History switcher of the mobile layout. */
+/** Session / Files / Changes switcher of the mobile layout. */
 export function MobileViewNav({
   mobileView,
-  onShowHistory,
   collapsed,
-  activePane,
   inspector,
 }: {
   mobileView: MobileView;
-  onShowHistory: () => void;
   collapsed: boolean;
-  activePane: Pane | undefined;
   inspector: Pick<
     WorkspaceInspector,
-    | "agentHistoryOpen"
-    | "historyOpen"
-    | "activateTerminalSurface"
-    | "openFileExplorer"
-    | "openDiffViewer"
-    | "setAgentHistoryOpen"
+    "activateTerminalSurface" | "openFileExplorer" | "openDiffViewer"
   >;
 }) {
-  const { historyOpen } = inspector;
-  const activePaneHasAgent = paneHasAgentHistory(activePane);
   const tabIndex = collapsed ? -1 : 0;
   return (
     <nav
@@ -147,11 +134,7 @@ export function MobileViewNav({
       aria-hidden={collapsed}
     >
       <IconButton
-        className={
-          mobileView === "session" && !inspector.agentHistoryOpen
-            ? "active"
-            : ""
-        }
+        className={mobileView === "session" ? "active" : ""}
         title={t("Session")}
         label={t("Show terminal session")}
         icon={<SquareTerminal size={16} aria-hidden="true" />}
@@ -173,26 +156,6 @@ export function MobileViewNav({
         icon={<FileDiff size={16} aria-hidden="true" />}
         tabIndex={tabIndex}
         onClick={() => inspector.openDiffViewer()}
-      />
-      <IconButton
-        className={mobileView === "history" ? "active" : ""}
-        title={
-          activePaneHasAgent || historyOpen
-            ? t("History")
-            : t("Select an agent pane to view History")
-        }
-        label={t("Show agent message history")}
-        icon={<History size={16} aria-hidden="true" />}
-        aria-pressed={historyOpen}
-        tabIndex={tabIndex}
-        disabled={!activePaneHasAgent && !historyOpen}
-        onClick={() => {
-          if (historyOpen && mobileView !== "history") {
-            onShowHistory();
-          } else {
-            inspector.setAgentHistoryOpen(!historyOpen);
-          }
-        }}
       />
     </nav>
   );

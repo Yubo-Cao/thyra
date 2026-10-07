@@ -131,7 +131,7 @@ The editor appears only at an available shell prompt while you hold input contro
 
 ## Workspace Inspector
 
-Open **Files**, **Changes**, or **Agent History** from the Inspector button,
+Open **Files** or **Changes** from the Inspector button,
 keyboard shortcuts, or workspace/agent menus.
 
 - Dock right/bottom, resize, or expand without unmounting terminals. Narrow
@@ -149,7 +149,7 @@ until **Edit** opens the file editor;
 [resource ownership](docs/ARCHITECTURE.md#workspace-resource-ownership) prevents
 cross-worktree state mixing.
 
-## Agent Awareness and Session Inspection
+## Agent Awareness
 
 - See recognized agents and working/blocked/done/idle status; focus their panes
   from the tree, switcher, command menu, Agent panel, or notifications.
@@ -163,10 +163,6 @@ cross-worktree state mixing.
   in ungrouped manual mode. Idle recency uses session-file activity, falling
   back to Herdr state changes. Preferences are browser-local; manual order is
   per connection.
-- **Agent History** has User/Agent/Tool filters, loaded-text search, a minimap,
-  and on-demand tool details. Its recent window is 200 conversation entries plus associated tools;
-  exports stay complete. **Session Inspector** adds metadata, Timeline,
-  searchable ATIF/raw transcripts, and original/normalized export.
 - **Menu > Configuration > Integrations** installs, updates, or uninstalls
   Herdr's bundled integrations with confirmation, not agent applications.
   Changes affect the connected server user across sessions, including SSH.
@@ -174,21 +170,10 @@ cross-worktree state mixing.
   Herdr's API with a same-host CLI fallback; “available” means bundled, not an
   online release. See [integration version lookup](docs/ARCHITECTURE.md#agent-integrations).
 
-Session inspection supports **Codex, Claude, Kimi, Grok Build, Pi, Muse Code,
-and Antigravity CLI** with readable records. Missing metadata shows integration
-guidance where an integration is available. Muse uses the newest retained session
-matching the foreground working directory under
-`$XDG_DATA_HOME/muse/sessions` (default `~/.local/share/muse/sessions`), or a
-Herdr-reported session ID/path. Start Muse without `--no-session-log` to retain
-transcripts; sessions in the same directory require an explicit ID/path to
-distinguish them reliably. SSH reads Herdr-reported paths and Pi ID lookups
-remotely; Muse requires a reported path over SSH and never searches local files
-for a remote pane. Other ID/directory fallbacks remain local and require
-accessible transcripts. Muse token totals use per-run provider routing; when a
-cached-token convention is unknown, totals show `-` rather than an estimate.
-See [History synchronization](docs/HISTORY.md).
-
-![Inspector History tab showing a Claude Code session beside the agent's terminal](docs/images/thyra-desktop-history.png)
+Idle recency reads only session-file modification times, never transcript
+contents, for **Codex, Claude, Kimi, Grok Build, Pi, Muse Code, and Antigravity
+CLI**. SSH connections use Herdr-reported paths and Pi ID lookups remotely and
+never search local files for a remote pane.
 
 ## Git Worktree Lifecycle
 
@@ -419,7 +404,6 @@ Common defaults (Linux/Android exceptions follow):
 | Workspaces | `Ctrl+Shift+W` | `Ctrl+Alt+O` |
 | File Explorer | `Cmd+Shift+E` | `Ctrl+Alt+E` |
 | Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
-| Agent history | `Cmd+Shift+H` | `Ctrl+Alt+H` |
 | Search raw preview / diff | `Cmd+F` | `Ctrl+F` |
 | Send composer or prompt editor | `Cmd+Enter` | `Ctrl+Enter` |
 | Show / hide the prompt editor; focus terminal or editor | `Ctrl+Option+P` / `Ctrl+Option+I` | `Ctrl+Alt+P` / `Ctrl+Alt+I` |

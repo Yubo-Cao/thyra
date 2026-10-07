@@ -7,14 +7,12 @@ import {
 } from "react";
 import type { ConnectionClient } from "../api";
 import { thyraLocalStorage } from "../browserStorage";
-import { paneHasAgentHistory } from "../components/agentSession";
 import { focusIfUnchanged } from "../components/dialogFocus";
 import { clearDiffContentResourceState } from "../components/diffContentState";
 import type { ActiveDiffSelection } from "../components/diffViewerResources";
 import type { ActiveFilePreviewSelection } from "../components/FilePreviewContent";
 import type { TerminalWorkspaceFileRequest } from "../components/TerminalView";
 import { t } from "../i18n";
-import { activePaneIdForSnapshot } from "../paneJump";
 import {
   type State,
   store,
@@ -89,27 +87,8 @@ function focusedWorkspaceScope(connectionId: string) {
     : null;
 }
 
-/** The pane History follows in a workspace: the routed pane, else any agent. */
-function historyPaneIn(
-  snapshot: Pick<State, "layout" | "panes" | "selectedPaneId">,
-  workspaceId: string,
-  preferred?: Pane,
-) {
-  const activePaneId = activePaneIdForSnapshot(snapshot);
-  const panes = snapshot.panes.filter(
-    (pane) => pane.workspace_id === workspaceId,
-  );
-  const routedPane =
-    preferred ??
-    panes.find((pane) => pane.pane_id === activePaneId) ??
-    panes.find((pane) => pane.focused);
-  return paneHasAgentHistory(routedPane)
-    ? routedPane
-    : panes.find(paneHasAgentHistory);
-}
-
 /**
- * The Workspace Inspector (Files, Changes, History): which workspace and view
+ * The Workspace Inspector (Files, Changes): which workspace and view
  * it shows, where it docks, its file/diff selections, and how it follows
  * workspace, tab, and connection changes.
  */
@@ -119,7 +98,6 @@ export function useWorkspaceInspector({
   resourceUiKey,
   mobile,
   setMobileView,
-  activePane,
   startupReady,
 }: {
   s: Pick<
@@ -136,7 +114,6 @@ export function useWorkspaceInspector({
   resourceUiKey: string;
   mobile: boolean;
   setMobileView: (view: MobileView) => void;
-  activePane: Pane | undefined;
   startupReady: boolean;
 }) {
   const [state, setState] = useState<WorkspaceInspectorState | null>(null);
@@ -267,9 +244,7 @@ export function useWorkspaceInspector({
           message:
             view === "files"
               ? t("Cannot open Files")
-              : view === "changes"
-                ? t("Cannot open Changes")
-                : t("Cannot open History"),
+              : t("Cannot open Changes"),
           detail: t("The target workspace is no longer open."),
         });
         return;
@@ -413,37 +388,6 @@ export function useWorkspaceInspector({
       restoreControlFocus();
     }
   }, [commit, setMobileView]);
-  const setAgentHistoryOpen = useCallback(
-    (openHistory: boolean, pane?: Pane) => {
-      const current = stateRef.current;
-      if (!openHistory) {
-        if (current?.open && current.view === "history") close();
-        return;
-      }
-      const snapshot = store.get();
-      const paneId = pane?.pane_id ?? activePaneIdForSnapshot(snapshot);
-      const targetPane = paneId
-        ? snapshot.panes.find((candidate) => candidate.pane_id === paneId)
-        : undefined;
-      if (
-        !paneHasAgentHistory(targetPane) ||
-        !snapshot.workspaces.some(
-          (workspace) => workspace.workspace_id === targetPane.workspace_id,
-        )
-      ) {
-        store.notify({
-          kind: "error",
-          message: t("Cannot open History"),
-          detail: t("Select an active agent pane first."),
-        });
-        return;
-      }
-      open("history", targetPane.workspace_id, {
-        originPaneId: targetPane.pane_id,
-      });
-    },
-    [close, open],
-  );
   const toggle = useCallback(() => {
     const current = stateRef.current;
     if (current?.open) {
@@ -453,29 +397,11 @@ export function useWorkspaceInspector({
     const focused = focusedWorkspaceScope(connectionClient.connectionId);
     if (!focused) return;
     const { workspace, scope } = focused;
-    const snapshot = store.get();
     const sameOwner = !!current && sameResourceOwner(current.scope, scope);
     const view = sameOwner
       ? current.view
       : readInspectorPreferences(thyraLocalStorage, scope).view;
-    const historyPaneId =
-      sameOwner && current.originPaneId
-        ? current.originPaneId
-        : activePaneIdForSnapshot(snapshot);
-    const historyPane = historyPaneId
-      ? snapshot.panes.find((pane) => pane.pane_id === historyPaneId)
-      : undefined;
-    if (
-      view === "history" &&
-      (!paneHasAgentHistory(historyPane) ||
-        historyPane?.workspace_id !== workspace.workspace_id)
-    ) {
-      open("files", workspace.workspace_id);
-      return;
-    }
-    open(view, workspace.workspace_id, {
-      originPaneId: view === "history" ? historyPane?.pane_id : undefined,
-    });
+    open(view, workspace.workspace_id);
   }, [close, connectionClient.connectionId, open]);
   /** Toggle Files or Changes for the focused workspace, without focusing it. */
   const toggleView = useCallback(
@@ -519,14 +445,9 @@ export function useWorkspaceInspector({
             (candidate) => candidate.pane_id === originPane.pane_id,
           )
         : undefined;
-      const historyPane = historyPaneIn(snapshot, workspaceId, explicitPane);
-      const view =
-        current.view === "history" && !historyPane ? "files" : current.view;
-      open(view, workspaceId, {
+      open(current.view, workspaceId, {
         focusInspector: false,
-        originPaneId:
-          explicitPane?.pane_id ??
-          (view === "history" ? historyPane?.pane_id : undefined),
+        originPaneId: explicitPane?.pane_id,
       });
     },
     [activateTerminalSurface, open],
@@ -693,33 +614,6 @@ export function useWorkspaceInspector({
     s.pendingFocusWorkspaceId,
     s.workspaces,
   ]);
-  // Follow tab switches while History is open: the view pins its session to
-  // originPaneId, which tab changes never update on their own. Pane focus
-  // changes within the same tab keep the current pin.
-  const historyTabRef = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const current = stateRef.current;
-    const workspace =
-      current?.open && current.view === "history"
-        ? resolveWorkspaceForScope(current.scope, s.workspaces)
-        : undefined;
-    const activeTabId = workspace?.active_tab_id ?? null;
-    const previousTabId = historyTabRef.current;
-    historyTabRef.current = activeTabId;
-    if (!current?.open || current.view !== "history" || !workspace) return;
-    if (s.pendingFocusWorkspaceId) return;
-    const originMissing =
-      !!current.originPaneId &&
-      !s.panes.some((pane) => pane.pane_id === current.originPaneId);
-    const tabSwitched =
-      previousTabId !== null &&
-      activeTabId !== null &&
-      previousTabId !== activeTabId;
-    if (!originMissing && !tabSwitched) return;
-    const historyPane = historyPaneIn(s, workspace.workspace_id);
-    if (!historyPane || historyPane.pane_id === current.originPaneId) return;
-    commit({ ...current, originPaneId: historyPane.pane_id });
-  }, [commit, s]);
   useLayoutEffect(() => {
     const current = stateRef.current;
     if (!current) return;
@@ -785,31 +679,15 @@ export function useWorkspaceInspector({
     }
   }, [connectionClient, focusedWorkspace, state, startupReady]);
 
-  const historyOpen = state?.open === true && state.view === "history";
-  const originPane = state?.originPaneId
-    ? s.panes.find((pane) => pane.pane_id === state.originPaneId)
-    : undefined;
-  const historyPaneCandidate =
-    originPane ??
-    (state?.view === "history" && state.originPaneId ? undefined : activePane);
   const workspace = state
     ? resolveWorkspaceForScope(state.scope, s.workspaces)
     : undefined;
-  const historyPane =
-    historyPaneCandidate?.workspace_id === workspace?.workspace_id
-      ? historyPaneCandidate
-      : undefined;
 
   return {
     state,
     stateRef,
     stageRef,
     workspace,
-    historyPane,
-    historyOpen,
-    agentHistoryOpen:
-      historyOpen &&
-      (!state.originPaneId || state.originPaneId === activePane?.pane_id),
     activeDiff,
     activeFilePreview,
     previewRequestRef,
@@ -824,7 +702,6 @@ export function useWorkspaceInspector({
     toggle,
     toggleView,
     setExpanded,
-    setAgentHistoryOpen,
     keepForWorkspace,
     browseFilesForPane,
     reviewChangesForPane,

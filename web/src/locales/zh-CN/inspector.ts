@@ -26,9 +26,6 @@ export default {
   Worktree: "工作树",
   Files: "文件",
   Changes: "更改",
-  "Agent history": "Agent 历史",
-  "Select an active agent pane to view history":
-    "选择一个活动的 Agent 窗格以查看历史",
   History: "历史记录",
   "Dock at bottom": "停靠在底部",
   "Dock at right": "停靠在右侧",
@@ -44,9 +41,6 @@ export default {
   "Loading diff viewer": "正在加载更改查看器",
   "Loading Diff Viewer": "正在加载更改查看器",
   "Changed files": "已更改的文件",
-  "No active agent session": "没有活动的 Agent 会话",
-  "Select an agent pane to inspect its history.":
-    "选择一个 Agent 窗格以查看其历史。",
   "File Explorer": "文件浏览器",
   "Download directory": "下载文件夹",
   "Download file": "下载文件",

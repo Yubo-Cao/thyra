@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#080b12" />
     <meta
       name="description"
-      content="Thyra is an open-source browser client for Herdr. Control terminals, inspect agent sessions, review files and diffs, and manage worktrees from desktop or mobile."
+      content="Thyra is an open-source browser client for Herdr. Control terminals, watch agent status, review files and diffs, and manage worktrees from desktop or mobile."
     />
     <meta property="og:type" content="website" />
     <meta
@@ -15,7 +15,7 @@
     />
     <meta
       property="og:description"
-      content="Thyra is a browser client for Herdr. Access terminals and review agent sessions from desktop or mobile."
+      content="Thyra is a browser client for Herdr. Access terminals and watch agents from desktop or mobile."
     />
     <meta
       property="og:url"
@@ -246,7 +246,7 @@
             <h2>See the work. Steer the work.</h2>
           </div>
           <p>
-            Move from a waiting agent to the exact file, diff, or transcript
+            Move from a waiting agent to the exact file, diff, or terminal
             without reconstructing context across terminal windows.
           </p>
         </div>
@@ -259,10 +259,10 @@
               <p>
                 Spot Pi, Codex, Kimi, and other recognized agents by their
                 icons. See who is working or waiting for you, then jump
-                straight into their terminal or conversation.
+                straight into their terminal.
               </p>
               <a
-                href="https://github.com/Yubo-Cao/thyra/blob/main/FEATURES.md#agent-awareness-and-session-inspection"
+                href="https://github.com/Yubo-Cao/thyra/blob/main/FEATURES.md#agent-awareness"
               >
                 Explore agent awareness <span aria-hidden="true">&rarr;</span>
               </a>
@@ -399,7 +399,7 @@
               <h2 id="showcase-title">Context is one click away.</h2>
             </div>
             <p>
-              Files, changes, terminals, and session history share the same
+              Files, changes, and terminals share the same
               active workspace, so every view starts in the right place.
             </p>
           </div>
@@ -441,22 +441,6 @@
                 data-copy="Preview source, Markdown, Mermaid, and images; search loaded files; upload, download, copy paths, and manage files locally or over SSH."
               >
                 <span>02</span> Files
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="tab-history"
-                aria-controls="showcase-panel"
-                aria-selected="false"
-                tabindex="-1"
-                data-showcase-tab
-                data-image="./assets/thyra-desktop-history.png"
-                data-alt="Thyra History inspector listing a Claude Code session's prompt and replies"
-                data-label="Agent history"
-                data-title="Read what the agent said and ran."
-                data-copy="Filter a session by user, agent, and tool entries, search loaded text, and open the full transcript for Codex, Claude, and other supported agents."
-              >
-                <span>03</span> History
               </button>
             </div>
 
@@ -540,8 +524,7 @@
             <h3>Thyra connects locally or over SSH</h3>
             <p>
               Run one standalone binary beside Herdr. It bridges the local
-              socket API, terminal stream, files, Git operations, and session
-              records.
+              socket API, terminal stream, files, and Git operations.
             </p>
           </li>
           <li class="workflow-step reveal reveal-delay-two">
@@ -580,7 +563,7 @@
                 Alt, and Shift
               </li>
               <li>
-                <span></span>Responsive file, diff, pane, and session views
+                <span></span>Responsive file, diff, and pane views
               </li>
               <li>
                 <span></span>Install Thyra as a PWA on desktop or mobile
@@ -652,10 +635,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3" />
             </svg>
-            <h3>Session intelligence</h3>
+            <h3>Live agent status</h3>
             <p>
-              Messages, metadata, search, raw transcripts, and ATIF export for
-              supported agents.
+              Working, blocked, done, and idle states for recognized agents,
+              with attention-first ordering.
             </p>
           </article>
           <article class="detail-card reveal reveal-delay">
