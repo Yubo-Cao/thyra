@@ -434,7 +434,13 @@ Letter/number bindings use physical keys. Browsers/OSes can intercept shortcuts;
 choose alternatives in the editor or use menus.
 
 Copy needs a selection; plain `Ctrl+C` remains terminal input. Page/half-page
-navigation and modified Enter are configurable. Native editing/IME/app keys
+navigation and modified Enter are configurable. Every other key reaches the pane
+as a native terminal sends it, in the encoding the application asked for (Kitty
+keyboard protocol included). On macOS, unbound `Cmd` chords reach the pane as
+Super, and the left `Option` key acts as Alt (choose left, right, both or off in
+the shortcut editor). In Chromium, **Capture keyboard** in the shortcut editor
+goes full screen and hands browser chords such as `Ctrl/Cmd+W/T/N` to the
+terminal; hold Escape to leave. Native editing/IME/app keys
 remain available; remapped paste requires the Clipboard API. Touch shortcuts
 have a separate editor. Esc dismisses transient UI; Tab/arrows navigate controls,
 except in the pane switcher's search, which keeps typing in its field;

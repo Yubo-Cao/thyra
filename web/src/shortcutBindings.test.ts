@@ -22,7 +22,8 @@ import {
 } from "./shortcutPreferences";
 import { tabShortcutAction } from "./tabShortcuts";
 import { paneShortcutAction } from "./paneShortcuts";
-import { terminalShortcutSequence } from "./terminalKeys";
+import { terminalShortcutKey } from "./terminalKeys";
+import { KEY_CTRL, KEY_SHIFT } from "../../shared/terminalKey";
 
 const event = (overrides: Partial<ShortcutEvent> = {}): ShortcutEvent => ({
   key: "k",
@@ -239,10 +240,14 @@ describe("shortcut matching and validation", () => {
     ).toBeNull();
   });
   test.each([
-    ["terminal.multiline", "\x1b[13;2u", { shiftKey: true }],
-    ["terminal.ctrlEnter", "\x1b[13;5u", { ctrlKey: true }],
+    [
+      "terminal.multiline",
+      { key: "Enter", mods: KEY_SHIFT },
+      { shiftKey: true },
+    ],
+    ["terminal.ctrlEnter", { key: "Enter", mods: KEY_CTRL }, { ctrlKey: true }],
   ] as const)(
-    "%s remapping preserves bytes and ignores keyup and composition",
+    "%s remapping preserves the key and ignores keyup and composition",
     (id, sequence, modifiers) => {
       const bindings = linux();
       bindings[id] = ["Ctrl+Alt+Enter"];
@@ -257,24 +262,24 @@ describe("shortcut matching and validation", () => {
         metaKey: false,
         isComposing: false,
       };
-      expect(terminalShortcutSequence(key, bindings)).toBe(sequence);
+      expect(terminalShortcutKey(key, bindings)).toEqual(sequence);
       expect(
-        terminalShortcutSequence(
+        terminalShortcutKey(
           { ...key, ctrlKey: false, altKey: false, ...modifiers },
           bindings,
         ),
       ).toBeNull();
       expect(
-        terminalShortcutSequence({ ...key, type: "keyup" }, bindings),
+        terminalShortcutKey({ ...key, type: "keyup" }, bindings),
       ).toBeNull();
       expect(
-        terminalShortcutSequence({ ...key, isComposing: true }, bindings),
+        terminalShortcutKey({ ...key, isComposing: true }, bindings),
       ).toBeNull();
       expect(
-        terminalShortcutSequence({ ...key, keyCode: 229 }, bindings),
+        terminalShortcutKey({ ...key, keyCode: 229 }, bindings),
       ).toBeNull();
       bindings[id] = [];
-      expect(terminalShortcutSequence(key, bindings)).toBeNull();
+      expect(terminalShortcutKey(key, bindings)).toBeNull();
     },
   );
 });

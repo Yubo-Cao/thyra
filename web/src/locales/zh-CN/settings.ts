@@ -447,4 +447,14 @@ export default {
   "Send code": "发送验证码",
   "Sign out everywhere else": "退出其他所有设备",
   "This device": "此设备",
+  "Terminal keyboard": "终端键盘",
+  "Option key acts as Alt": "Option 键用作 Alt",
+  "Left Option": "左 Option",
+  "Right Option": "右 Option",
+  "Both Option keys": "两个 Option 键",
+  "Off (Option types characters)": "关闭（Option 输入特殊字符）",
+  "Send browser shortcuts such as {keys} to the terminal (full screen; hold Escape to leave)":
+    "将 {keys} 等浏览器快捷键发送到终端（全屏；按住 Esc 退出）",
+  "Capture keyboard": "接管键盘",
+  "Release keyboard": "释放键盘",
 } satisfies Record<string, string>;

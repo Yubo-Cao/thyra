@@ -201,6 +201,7 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // devices other than a pane's display owner (see terminal.display).
   "terminal.focus": write(r.terminal, { writer: "control" }),
   "terminal.input": write(r.terminal, { writer: "input" }),
+  "terminal.key": write(r.terminal, { writer: "input" }),
   "terminal.resize": write(r.terminal, { writer: "control" }),
   "terminal.relay_resize": write(
     (p) => (id(p.pane_id) ? { pane: id(p.pane_id) } : { host: true }),

@@ -154,6 +154,21 @@ Input waits for readiness and revalidates attachment/session/runtime leases;
 it is never replayed into a replacement terminal. Disconnect rejects pending
 requests and invalidates clipboard ownership.
 
+- Hardware keys are taken in the capture phase on the terminal host, before the
+  engine encodes them, and sent with `terminal.key` as semantic keys: the
+  physical key's unshifted layout character, the shifted character, the text it
+  types, Shift/Ctrl/Alt/Super, and press/repeat/release. The bridge forwards
+  them as `ClientShellPaneInput` key events and Herdr encodes each one for the
+  pane's keyboard protocol (legacy, modifyOtherKeys, Kitty flags), so Ctrl+/ is
+  `0x1f` in a shell and `CSI 47;5u` in a Kitty-keyboard app, as from Ghostty.
+  IME composition, dead keys, paste and on-screen keyboards keep the
+  `terminal.input` byte path; both share one ordered queue per terminal.
+  Direct attaches (popups, `THYRA_DISABLE_ENDPOINT`) encode keys as xterm legacy
+  bytes in the bridge. On macOS, Cmd belongs to Thyra's bindings and native
+  copy/paste; other Cmd chords reach the pane with Super, except the browser's
+  reload/address/tab/window/zoom/find/select-all chords, which the opt-in exclusive keyboard
+  (fullscreen plus Keyboard Lock, Chromium only) hands to the pane too. The
+  Option-as-Alt setting (left by default) sends Option+f as Alt+f.
 - Full PageUp/PageDown sends semantic input for Herdr to route by PTY mode;
   explicit half-page history uses `pane.scroll`, even in mouse-aware apps.
   Legacy attachments retain PageKey/Wheel routing.
@@ -718,7 +733,7 @@ Web Push subscriptions record their account and receive only notifications for w
 Routine host-level calls a member's page makes (`terminal.host_theme`, `terminal.watch_popup`) get a fixed harmless answer instead of an error.
 
 **Single writer.** The bridge mirrors each connection's pane claims from every collaboration snapshot and from the results of the claim, release and leave calls it makes.
-`writer` entries (`terminal.input`, `pane.send_*`, `pane.paste`, `terminal.focus`, `terminal.resize`, `terminal.relay_resize`, `terminal.display`) are refused while another principal's participant holds the pane; input to an unclaimed pane first claims it for the caller with 15 seconds of protection.
+`writer` entries (`terminal.input`, `terminal.key`, `pane.send_*`, `pane.paste`, `terminal.focus`, `terminal.resize`, `terminal.relay_resize`, `terminal.display`) are refused while another principal's participant holds the pane; input to an unclaimed pane first claims it for the caller with 15 seconds of protection.
 `collaboration.claim` needs the editor role, protection is capped at 15 seconds, and a workspace owner's or admin's takeover first releases a protected claim.
 `terminal.scroll` from a caller who may not write stays in Herdr's history.
 The [display owner](#display-owner-and-input-owner) rules compose with these checks inside the terminal bridge: only a person who may control a pane can take or pin its display, and that person's own devices may split display and input between them.

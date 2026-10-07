@@ -17,6 +17,7 @@ import {
   shortcutWarning,
   validateShortcutKeys,
   type ShortcutId,
+  type ShortcutPlatform,
 } from "../shortcutBindings";
 import {
   deleteShortcutPreset,
@@ -27,7 +28,84 @@ import {
   updateShortcut,
   useShortcutPreferences,
 } from "../shortcutPreferences";
+import {
+  enterExclusiveKeyboard,
+  exclusiveKeyboardSupported,
+  exitExclusiveKeyboard,
+  type OptionAsAlt,
+  setOptionAsAlt,
+  useExclusiveKeyboard,
+  useOptionAsAlt,
+} from "../terminalKeyPreferences";
 import "./ShortcutLookupDialog.css";
+
+/** How the terminal treats Option and the browser's own shortcuts. */
+function TerminalKeyboardSettings({
+  platform,
+}: {
+  platform: ShortcutPlatform;
+}) {
+  const optionAsAlt = useOptionAsAlt();
+  const exclusive = useExclusiveKeyboard();
+  const [error, setError] = useState("");
+  if (platform !== "mac" && !exclusiveKeyboardSupported()) return null;
+  return (
+    <section className="shortcut-section">
+      <h3>{t("Terminal keyboard")}</h3>
+      <dl>
+        {platform === "mac" ? (
+          <div className="shortcut-row">
+            <dt>{t("Option key acts as Alt")}</dt>
+            <dd>
+              <Select<OptionAsAlt>
+                aria-label={t("Option key acts as Alt")}
+                fullWidth
+                value={optionAsAlt}
+                options={[
+                  { value: "left", label: t("Left Option") },
+                  { value: "right", label: t("Right Option") },
+                  { value: "both", label: t("Both Option keys") },
+                  { value: "off", label: t("Off (Option types characters)") },
+                ]}
+                onChange={setOptionAsAlt}
+              />
+            </dd>
+          </div>
+        ) : null}
+        {exclusiveKeyboardSupported() ? (
+          <div className="shortcut-row">
+            <dt>
+              {t(
+                "Send browser shortcuts such as {keys} to the terminal (full screen; hold Escape to leave)",
+                { keys: platform === "mac" ? "Cmd+W/T/N" : "Ctrl+W/T/N" },
+              )}
+            </dt>
+            <dd>
+              <Button
+                fullWidth
+                aria-pressed={exclusive}
+                onClick={() => {
+                  setError("");
+                  (exclusive
+                    ? exitExclusiveKeyboard()
+                    : enterExclusiveKeyboard()
+                  ).catch((err: Error) => setError(err.message));
+                }}
+              >
+                {exclusive ? t("Release keyboard") : t("Capture keyboard")}
+              </Button>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {error ? (
+        <p className="keybinding-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 export function ShortcutLookupDialog({
   open,
@@ -425,6 +503,7 @@ export function ShortcutLookupDialog({
         {visible.length === 0 ? (
           <p className="muted">{t("No matching shortcuts.")}</p>
         ) : null}
+        {!search ? <TerminalKeyboardSettings platform={platform} /> : null}
         {!search ? (
           <section className="shortcut-section keybinding-reference">
             <h3>{t("Navigation & native controls")}</h3>

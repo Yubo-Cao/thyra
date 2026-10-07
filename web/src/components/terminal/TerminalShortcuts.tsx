@@ -16,18 +16,23 @@ import {
 } from "../../mobileTerminalShortcuts";
 import { store } from "../../store";
 import {
-  applyTerminalModifiers,
   consumeTerminalModifiers,
   NO_TERMINAL_MODIFIERS,
+  type TerminalModifiedInput,
   type TerminalModifier,
   type TerminalModifierState,
   tapTerminalModifier,
+  terminalKeyFromData,
+  terminalModifierBits,
   terminalModifiersActive,
+  withTerminalModifiers,
 } from "../../terminalModifiers";
+import type { TerminalKey } from "../../../../shared/terminalKey";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import {
   sendTerminalBytes,
+  sendTerminalKeys,
   shouldAvoidVirtualKeyboard,
   type TerminalSessionBindings,
 } from "./terminalSession";
@@ -43,20 +48,37 @@ export function useTerminalModifiers() {
     modifiersRef.current = next;
     setModifiers(next);
   }, []);
-  const applyModifiers = useCallback(
-    (data: string) => {
-      const state = modifiersRef.current;
-      if (!terminalModifiersActive(state)) return data;
-      const applied = applyTerminalModifiers(data, {
-        ctrl: state.ctrl !== "off",
-        alt: state.alt !== "off",
-        shift: state.shift !== "off",
-      });
-      if (applied === null) return data;
-      updateModifiers(consumeTerminalModifiers(state));
-      return applied;
-    },
+  const latched = useCallback(() => {
+    const state = modifiersRef.current;
+    if (!terminalModifiersActive(state)) return 0;
+    return terminalModifierBits({
+      ctrl: state.ctrl !== "off",
+      alt: state.alt !== "off",
+      shift: state.shift !== "off",
+    });
+  }, []);
+  const consume = useCallback(
+    () => updateModifiers(consumeTerminalModifiers(modifiersRef.current)),
     [updateModifiers],
+  );
+  const applyModifiers = useCallback(
+    (data: string): TerminalModifiedInput => {
+      const mods = latched();
+      const key = mods ? terminalKeyFromData(data) : null;
+      if (!key) return { bytes: data };
+      consume();
+      return { key: withTerminalModifiers(key, mods) };
+    },
+    [consume, latched],
+  );
+  const applyKeyModifiers = useCallback(
+    (key: TerminalKey): TerminalKey => {
+      const mods = latched();
+      if (!mods || key.kind === "release") return key;
+      consume();
+      return withTerminalModifiers(key, mods);
+    },
+    [consume, latched],
   );
   const tapModifier = (modifier: TerminalModifier) => {
     const now = performance.now();
@@ -65,12 +87,18 @@ export function useTerminalModifiers() {
     modifierTapAtRef.current[modifier] = now;
     updateModifiers(tapTerminalModifier(modifiersRef.current, modifier, since));
   };
-  return { modifiers, applyModifiers, tapModifier };
+  return { modifiers, applyModifiers, applyKeyModifiers, tapModifier };
 }
 
 /** Mobile shortcut keys: control sequences, page scrolls and modifiers. */
 export function terminalShortcutActions(
-  { client, refs, applyModifiers, scrollPage }: TerminalSessionBindings,
+  {
+    client,
+    refs,
+    applyModifiers,
+    applyKeyModifiers,
+    scrollPage,
+  }: TerminalSessionBindings,
   { modifiers, tapModifier }: ReturnType<typeof useTerminalModifiers>,
   terminalId: string | undefined,
   viewOnly: boolean,
@@ -89,8 +117,19 @@ export function terminalShortcutActions(
       blurTerminalInput();
       const target = refs.desiredTerminal.current ?? terminalId;
       if (!target) return;
-      const data = applyModifiers(String.fromCharCode(...execution.bytes));
-      sendTerminalBytes(client, new TextEncoder().encode(data), target);
+      const data = String.fromCharCode(...execution.bytes);
+      // Shortcut buttons are keys too: Herdr encodes them for the pane.
+      const key = terminalKeyFromData(data);
+      const input = key
+        ? { key: applyKeyModifiers(key) }
+        : applyModifiers(data);
+      if ("key" in input) sendTerminalKeys(client, [input.key], target);
+      else
+        sendTerminalBytes(
+          client,
+          new TextEncoder().encode(input.bytes),
+          target,
+        );
     }
   };
   const disabledReason = (shortcut: MobileTerminalShortcut) =>

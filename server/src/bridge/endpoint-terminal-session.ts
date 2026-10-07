@@ -11,7 +11,12 @@ import type { FrameData } from "./thin-client";
 import type { OwnShellClients } from "./own-shell-clients";
 import type { Logger } from "../utils/logger";
 import { silentLogger } from "../utils/logger";
-import { MOUSE_KIND, VtInputClassifier } from "./vt-input-classifier";
+import {
+  MOUSE_KIND,
+  paneKeyEvent,
+  VtInputClassifier,
+} from "./vt-input-classifier";
+import type { TerminalKey } from "../../../shared/terminalKey";
 
 const ESC_FLUSH_MS = 25;
 /**
@@ -623,6 +628,21 @@ export class EndpointTerminalSession extends EventEmitter {
       const flushed = this.classifier.flush();
       this.client.sendPaneInput(this.paneId, flushed, claimsGeometry);
     }, ESC_FLUSH_MS);
+  }
+
+  /** Browser key events, which Herdr encodes for the pane's protocol. */
+  keys(keys: TerminalKey[], claimsGeometry = true) {
+    this.linkFrame = null;
+    if (!this.paneId || this.closed) return;
+    this.scrollTarget = null;
+    this.scrollDispatched = null;
+    // A lone Escape still held for the byte path precedes this key.
+    if (this.escFlushTimer) {
+      clearTimeout(this.escFlushTimer);
+      this.escFlushTimer = null;
+    }
+    const events = [...this.classifier.flush(), ...keys.map(paneKeyEvent)];
+    this.client.sendPaneInput(this.paneId, events, claimsGeometry);
   }
 
   scroll(

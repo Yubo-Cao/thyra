@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { terminalShortcutSequence } from "./terminalKeys";
+import { terminalShortcutKey } from "./terminalKeys";
+import {
+  KEY_ALT,
+  KEY_CTRL,
+  KEY_SHIFT,
+  type TerminalKey,
+} from "../../shared/terminalKey";
 import { defaultShortcutBindings } from "./shortcutBindings";
-type KeyEvent = Parameters<typeof terminalShortcutSequence>[0];
+type KeyEvent = Parameters<typeof terminalShortcutKey>[0];
 const modifiedEnterSequence = (event: KeyEvent) =>
-  terminalShortcutSequence(event, defaultShortcutBindings("linux"));
+  terminalShortcutKey(event, defaultShortcutBindings("linux"));
 const macCommandEditingSequence = (event: KeyEvent, isMac: boolean) =>
-  isMac
-    ? terminalShortcutSequence(event, defaultShortcutBindings("mac"))
-    : null;
+  isMac ? terminalShortcutKey(event, defaultShortcutBindings("mac")) : null;
 
 function keyEvent(
   overrides: Partial<Parameters<typeof modifiedEnterSequence>[0]> = {},
@@ -28,20 +32,22 @@ function keyEvent(
 
 describe("terminal modified Enter keys", () => {
   test("keeps Shift+Enter, Alt+Enter and Ctrl+Enter distinct", () => {
-    expect(modifiedEnterSequence(keyEvent({ shiftKey: true }))).toBe(
-      "\x1b[13;2u",
-    );
-    expect(modifiedEnterSequence(keyEvent({ altKey: true }))).toBe(
-      "\x1b[13;3u",
-    );
+    expect(modifiedEnterSequence(keyEvent({ shiftKey: true }))).toEqual({
+      key: "Enter",
+      mods: KEY_SHIFT,
+    });
+    expect(modifiedEnterSequence(keyEvent({ altKey: true }))).toEqual({
+      key: "Enter",
+      mods: KEY_ALT,
+    });
     for (const platform of ["mac", "windows", "linux"] as const) {
       for (const code of ["Enter", "NumpadEnter"]) {
         expect(
-          terminalShortcutSequence(
+          terminalShortcutKey(
             keyEvent({ code, ctrlKey: true }),
             defaultShortcutBindings(platform),
           ),
-        ).toBe("\x1b[13;5u");
+        ).toEqual({ key: "Enter", mods: KEY_CTRL });
       }
     }
   });
@@ -56,15 +62,15 @@ describe("terminal modified Enter keys", () => {
           metaKey: (modifiers & 8) !== 0,
         }),
       );
-      const expected =
+      const expected: TerminalKey | null =
         modifiers === 1
-          ? "\x1b[13;2u"
+          ? { key: "Enter", mods: KEY_SHIFT }
           : modifiers === 2
-            ? "\x1b[13;3u"
+            ? { key: "Enter", mods: KEY_ALT }
             : modifiers === 4
-              ? "\x1b[13;5u"
+              ? { key: "Enter", mods: KEY_CTRL }
               : null;
-      expect(sequence).toBe(expected);
+      expect(sequence).toEqual(expected);
     }
   });
 
@@ -73,7 +79,7 @@ describe("terminal modified Enter keys", () => {
       modifiedEnterSequence(
         keyEvent({ key: "", code: "NumpadEnter", altKey: true }),
       ),
-    ).toBe("\x1b[13;3u");
+    ).toEqual({ key: "Enter", mods: KEY_ALT });
   });
 
   test("leaves unrelated and combined modifiers to xterm", () => {
@@ -106,19 +112,19 @@ describe("terminal macOS Command editing keys", () => {
         keyEvent({ key: "ArrowLeft", code: "ArrowLeft", metaKey: true }),
         true,
       ),
-    ).toBe("\x01");
+    ).toEqual({ key: "Char", char: "a", mods: KEY_CTRL });
     expect(
       macCommandEditingSequence(
         keyEvent({ key: "ArrowDown", code: "ArrowDown", metaKey: true }),
         true,
       ),
-    ).toBe("\x05");
+    ).toEqual({ key: "Char", char: "e", mods: KEY_CTRL });
     expect(
       macCommandEditingSequence(
         keyEvent({ key: "Backspace", code: "Backspace", metaKey: true }),
         true,
       ),
-    ).toBe("\x15");
+    ).toEqual({ key: "Char", char: "u", mods: KEY_CTRL });
   });
 
   test("does not downgrade additional modifiers to pure Command", () => {

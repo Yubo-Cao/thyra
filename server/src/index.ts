@@ -844,6 +844,7 @@ function shouldLogRpc(
   if (method === "bridge.ping" || method === "bridge.status") return false;
   if (
     method === "terminal.input" ||
+    method === "terminal.key" ||
     method === "terminal.scroll" ||
     method === "terminal.frame_ack"
   )

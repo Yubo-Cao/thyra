@@ -39,7 +39,12 @@ import {
 import { TerminalEndpointPresentation } from "../../terminalEndpointPresentation";
 import { TerminalFrameDecoder } from "../../terminalFrameDecoder";
 import { TerminalHistorySelection } from "../../terminalHistorySelection";
-import { TerminalInputBatcher } from "../../terminalInputBatcher";
+import {
+  type TerminalInput,
+  TerminalInputBatcher,
+} from "../../terminalInputBatcher";
+import type { TerminalKey } from "../../../../shared/terminalKey";
+import type { TerminalModifiedInput } from "../../terminalModifiers";
 import {
   registerTerminalLinkProvider,
   type TerminalResolvedLink,
@@ -100,9 +105,9 @@ export function detachTerminal(client: ConnectionClient, terminalId: string) {
 
 const inputBatchers = new Map<string, TerminalInputBatcher>();
 
-export function sendTerminalBytes(
+function sendTerminalInput(
   client: ConnectionClient,
-  bytes: Uint8Array,
+  input: TerminalInput,
   terminalId: string,
 ) {
   // Keyed by connection generation and terminal, not client object: wrapper
@@ -112,15 +117,37 @@ export function sendTerminalBytes(
   if (!batcher) {
     batcher = new TerminalInputBatcher(
       (batch) =>
-        client.call("terminal.input", {
-          terminal_id: terminalId,
-          data: bytesToB64(batch),
-        }),
+        Array.isArray(batch)
+          ? client.call("terminal.key", {
+              terminal_id: terminalId,
+              keys: batch,
+            })
+          : client.call("terminal.input", {
+              terminal_id: terminalId,
+              data: bytesToB64(batch),
+            }),
       () => inputBatchers.delete(key),
     );
     inputBatchers.set(key, batcher);
   }
-  batcher.send(bytes);
+  batcher.send(input);
+}
+
+export function sendTerminalBytes(
+  client: ConnectionClient,
+  bytes: Uint8Array,
+  terminalId: string,
+) {
+  sendTerminalInput(client, bytes, terminalId);
+}
+
+/** Sends keys for Herdr to encode in the pane's keyboard protocol. */
+export function sendTerminalKeys(
+  client: ConnectionClient,
+  keys: TerminalKey[],
+  terminalId: string,
+) {
+  sendTerminalInput(client, keys, terminalId);
 }
 
 /** True only once `pending` has held continuously for `delayMs`. */
@@ -430,7 +457,9 @@ export type TerminalViewInputs = {
   refs: TerminalRefs;
   ui: TerminalViewSetters;
   /** Applies (and consumes) latched mobile modifiers to outgoing input. */
-  applyModifiers: (data: string) => string;
+  applyModifiers: (data: string) => TerminalModifiedInput;
+  /** Applies (and consumes) latched mobile modifiers to a hardware key. */
+  applyKeyModifiers: (key: TerminalKey) => TerminalKey;
   assertInputAllowed: () => void;
   closeTerminalInput: (blurInput?: boolean) => void;
   openTerminalInput: (term: Terminal, disableStdin: boolean) => void;

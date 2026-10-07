@@ -1,3 +1,12 @@
+import {
+  KEY_ALT,
+  KEY_CTRL,
+  KEY_SHIFT,
+  KEY_SUPER,
+  type TerminalKey,
+  type TerminalKeyName,
+} from "../../shared/terminalKey";
+
 // Latching Ctrl/Alt/Shift for touch keyboards, which have no modifier keys.
 // A tap arms a modifier for the next key, a double tap locks it until tapped
 // again. Armed modifiers apply to the next key typed on the device keyboard
@@ -51,31 +60,136 @@ export function terminalModifiersActive(state: TerminalModifierState) {
   return state.ctrl !== "off" || state.alt !== "off" || state.shift !== "off";
 }
 
-// Control bytes for the non-letter keys xterm maps under Ctrl.
-const CTRL_SYMBOLS: Record<string, number> = {
-  " ": 0x00,
-  "@": 0x00,
-  "2": 0x00,
-  "[": 0x1b,
-  "3": 0x1b,
-  "\\": 0x1c,
-  "4": 0x1c,
-  "]": 0x1d,
-  "5": 0x1d,
-  "^": 0x1e,
-  "6": 0x1e,
-  _: 0x1f,
-  "-": 0x1f,
-  "7": 0x1f,
-  "/": 0x1f,
-  "?": 0x7f,
-  "8": 0x7f,
+/** Outgoing input after latched modifiers: plain bytes or one modified key. */
+export type TerminalModifiedInput = { bytes: string } | { key: TerminalKey };
+
+const CTRL_BYTE_CHARS = " abcdefghijklmnopqrstuvwxyz[\\]^_";
+const CSI_FINAL_KEYS: Record<string, TerminalKeyName> = {
+  A: "Up",
+  B: "Down",
+  C: "Right",
+  D: "Left",
+  H: "Home",
+  F: "End",
+};
+const TILDE_KEYS: Record<string, TerminalKeyName> = {
+  "1": "Home",
+  "2": "Insert",
+  "3": "Delete",
+  "4": "End",
+  "5": "PageUp",
+  "6": "PageDown",
+  "7": "Home",
+  "8": "End",
+};
+const TILDE_FN: Record<string, number> = {
+  "11": 1,
+  "12": 2,
+  "13": 3,
+  "14": 4,
+  "15": 5,
+  "17": 6,
+  "18": 7,
+  "19": 8,
+  "20": 9,
+  "21": 10,
+  "23": 11,
+  "24": 12,
 };
 
-// CSI final bytes whose modified form is ESC [ 1 ; m <final>.
-const CSI_LETTER = /^\x1b(?:\[|O)([ABCDHFPQRS])$/;
-// CSI tilde keys (Insert/Delete/PageUp/PageDown/F5+): ESC [ n ; m ~.
-const CSI_TILDE = /^\x1b\[(\d+)~$/;
+/** xterm modifier parameter (1 + shift + 2*alt + 4*ctrl + 8*super). */
+function xtermMods(param: string | undefined): number {
+  const bits = Math.max(0, Number(param ?? 1) - 1);
+  return (
+    (bits & 1 ? KEY_SHIFT : 0) |
+    (bits & 2 ? KEY_ALT : 0) |
+    (bits & 4 ? KEY_CTRL : 0) |
+    (bits & 8 ? KEY_SUPER : 0)
+  );
+}
+
+/** The one key that legacy bytes (a shortcut button, an engine) encode. */
+export function terminalKeyFromData(data: string): TerminalKey | null {
+  if (data === "\r") return { key: "Enter", mods: 0 };
+  if (data === "\t") return { key: "Tab", mods: 0 };
+  if (data === "\x7f") return { key: "Backspace", mods: 0 };
+  if (data === "\x1b") return { key: "Esc", mods: 0 };
+  if (data === "\x1b[Z") return { key: "Tab", mods: KEY_SHIFT };
+  const csi = /^\x1b(?:\[(?:1;(\d+))?|O)([ABCDHFPQRS])$/.exec(data);
+  if (csi) {
+    const mods = xtermMods(csi[1]);
+    const fn = "PQRS".indexOf(csi[2]) + 1;
+    return fn > 0
+      ? { key: "F", fn, mods }
+      : { key: CSI_FINAL_KEYS[csi[2]], mods };
+  }
+  const tilde = /^\x1b\[(\d+)(?:;(\d+))?~$/.exec(data);
+  if (tilde) {
+    const mods = xtermMods(tilde[2]);
+    if (tilde[1] in TILDE_KEYS) return { key: TILDE_KEYS[tilde[1]], mods };
+    if (tilde[1] in TILDE_FN) return { key: "F", fn: TILDE_FN[tilde[1]], mods };
+    return null;
+  }
+  const enter = /^\x1b\[13;(\d+)u$/.exec(data);
+  if (enter) return { key: "Enter", mods: xtermMods(enter[1]) };
+  const alt = data.startsWith("\x1b") && data.length > 1;
+  const rest = alt ? data.slice(1) : data;
+  const chars = Array.from(rest);
+  if (chars.length !== 1) return null;
+  const code = rest.codePointAt(0)!;
+  let key: TerminalKey;
+  if (code === 0x08) key = { key: "Char", char: "h", mods: KEY_CTRL };
+  else if (code === 0x7f) key = { key: "Backspace", mods: 0 };
+  else if (code === 0x0d) key = { key: "Enter", mods: 0 };
+  else if (code === 0x09) key = { key: "Tab", mods: 0 };
+  else if (code < 0x20)
+    key = { key: "Char", char: CTRL_BYTE_CHARS[code], mods: KEY_CTRL };
+  else key = { key: "Char", char: rest, text: rest, mods: 0 };
+  return alt ? withTerminalModifiers(key, KEY_ALT) : key;
+}
+
+/** Adds modifier bits to a key, keeping its character and text consistent. */
+export function withTerminalModifiers(
+  key: TerminalKey,
+  mods: number,
+): TerminalKey {
+  const merged = key.mods | mods;
+  if (key.key !== "Char" || !key.char) return { ...key, mods: merged };
+  const typed = key.text ?? key.char;
+  const lower = typed.toLowerCase();
+  const char = lower.toUpperCase() !== lower ? lower : key.char;
+  const shifted =
+    merged & KEY_SHIFT
+      ? (key.shifted ??
+        (char.toUpperCase() !== char ? char.toUpperCase() : undefined))
+      : undefined;
+  const chord = (merged & (KEY_CTRL | KEY_ALT | KEY_SUPER)) !== 0;
+  const text = chord
+    ? undefined
+    : merged & KEY_SHIFT
+      ? (shifted ?? typed)
+      : typed;
+  return {
+    key: "Char",
+    char,
+    ...(shifted ? { shifted } : {}),
+    ...(text ? { text } : {}),
+    mods: merged,
+    ...(key.kind ? { kind: key.kind } : {}),
+  };
+}
+
+export function terminalModifierBits(modifiers: {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+}): number {
+  return (
+    (modifiers.ctrl ? KEY_CTRL : 0) |
+    (modifiers.alt ? KEY_ALT : 0) |
+    (modifiers.shift ? KEY_SHIFT : 0)
+  );
+}
 
 /**
  * Applies armed modifiers to one key's input. Returns null when the input is
@@ -85,39 +199,7 @@ const CSI_TILDE = /^\x1b\[(\d+)~$/;
 export function applyTerminalModifiers(
   data: string,
   modifiers: { ctrl: boolean; alt: boolean; shift: boolean },
-): string | null {
-  const { ctrl, alt, shift } = modifiers;
-  if (!ctrl && !alt && !shift) return data;
-  // xterm's modifier parameter: 1 + shift + 2*alt + 4*ctrl.
-  const param = 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0);
-  const letter = CSI_LETTER.exec(data);
-  if (letter) return `\x1b[1;${param}${letter[1]}`;
-  const tilde = CSI_TILDE.exec(data);
-  if (tilde) return `\x1b[${tilde[1]};${param}~`;
-  if (data === "\t") {
-    if (shift && !ctrl) return alt ? "\x1b\x1b[Z" : "\x1b[Z";
-    return alt ? "\x1b\t" : "\t";
-  }
-  if (data === "\r") {
-    // Kitty-style CSI u, as the fixed Shift+Enter and Alt+Enter keys send.
-    return param === 1 ? "\r" : `\x1b[13;${param}u`;
-  }
-  if (data === "\x7f") {
-    const erased = ctrl ? "\x08" : "\x7f";
-    return alt ? `\x1b${erased}` : erased;
-  }
-  if (data === "\x1b") return data;
-  const chars = Array.from(data);
-  if (chars.length !== 1) return null;
-  let key = chars[0];
-  if (shift) key = key.toUpperCase();
-  if (ctrl) {
-    const lower = key.toLowerCase();
-    if (lower >= "a" && lower <= "z") {
-      key = String.fromCharCode(lower.charCodeAt(0) - 0x60);
-    } else if (key in CTRL_SYMBOLS) {
-      key = String.fromCharCode(CTRL_SYMBOLS[key]);
-    }
-  }
-  return alt ? `\x1b${key}` : key;
+): TerminalKey | null {
+  const key = terminalKeyFromData(data);
+  return key && withTerminalModifiers(key, terminalModifierBits(modifiers));
 }

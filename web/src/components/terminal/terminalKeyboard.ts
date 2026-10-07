@@ -17,7 +17,10 @@ import {
   terminalImeFallbackText,
   terminalImeTextareaDelta,
 } from "../../terminalIme";
-import { terminalShortcutSequence } from "../../terminalKeys";
+import { terminalShortcutKey } from "../../terminalKeys";
+import type { TerminalKey } from "../../../../shared/terminalKey";
+import type { TerminalModifiedInput } from "../../terminalModifiers";
+import { installTerminalKeyEvents } from "./terminalKeyEvents";
 import {
   createTerminalPasteRunner,
   type TerminalPasteTextareaSnapshot,
@@ -27,6 +30,7 @@ import {
 import {
   cancelEvent,
   sendTerminalBytes,
+  sendTerminalKeys,
   shouldAvoidVirtualKeyboard,
   swallowEvent,
   type TerminalSession,
@@ -54,7 +58,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   const { client, refs, ui, container, term } = session;
   const { desiredTerminal } = refs;
   const { signal, applePlatform, presentation, history } = session;
-  const { acceptsInput, applyModifiers } = session;
+  const { acceptsInput, applyModifiers, applyKeyModifiers } = session;
   const imeFallback = new TerminalImeFallbackTracker();
   const imeKeyEvent = new TerminalImeKeyEventTracker();
   const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
@@ -107,16 +111,34 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     const terminalId = desiredTerminal.current;
     if (!terminalId) return;
     imeKeyEvent.recordXtermData(unsuppressedData);
-    const bytes = new TextEncoder().encode(applyModifiers(unsuppressedData));
-    sendTerminalBytes(client, bytes, terminalId);
+    sendInput(applyModifiers(unsuppressedData), terminalId);
   });
 
+  const sendInput = (input: TerminalModifiedInput, terminalId: string) => {
+    if ("key" in input) sendTerminalKeys(client, [input.key], terminalId);
+    else
+      sendTerminalBytes(
+        client,
+        new TextEncoder().encode(input.bytes),
+        terminalId,
+      );
+  };
   const sendText = (text: string) => {
     if (!acceptsInput()) return;
     const terminalId = desiredTerminal.current;
     if (!terminalId) return;
-    const bytes = new TextEncoder().encode(applyModifiers(text));
-    sendTerminalBytes(client, bytes, terminalId);
+    sendInput(applyModifiers(text), terminalId);
+  };
+  const sendKey = (key: TerminalKey) => {
+    const terminalId = desiredTerminal.current;
+    if (!terminalId || session.replayingSelection) return;
+    session.invalidateLinks();
+    if (key.kind !== "release" && history.active) {
+      history.reset();
+      term.clearSelection();
+      presentation.cancelSelection();
+    }
+    sendTerminalKeys(client, [applyKeyModifiers(key)], terminalId);
   };
   const pasteText = async (
     text: string,
@@ -271,33 +293,19 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     (e.key.toLowerCase() === key || e.code === `Key${key.toUpperCase()}`) &&
     (applePlatform ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
 
-  term.attachCustomKeyEventHandler((e) => {
-    if (!acceptsInput()) {
+  // Thyra's own terminal shortcuts. True when the key was handled here; the
+  // native copy and paste chords keep their default action.
+  const handleShortcut = (e: KeyboardEvent): boolean => {
+    const key = terminalShortcutKey(e, getShortcutSnapshot().preset.bindings);
+    if (key) {
       cancelEvent(e);
-      return false;
-    }
-    // xterm's capture listener runs before our textarea keydown listener.
-    // Its custom handler is the boundary before any synchronous onData.
-    if (e.type === "keydown") {
-      imeCommitGuard.beginIndependentInput();
-      if (applePlatform) imeKeyEvent.begin();
-    }
-    if (e.type === "keydown" && e.keyCode !== 229) {
-      imeTextareaFallback.cancelPending();
-    }
-    const sequence = terminalShortcutSequence(
-      e,
-      getShortcutSnapshot().preset.bindings,
-    );
-    if (sequence) {
-      cancelEvent(e);
-      sendText(sequence);
-      return false;
+      sendKey(key);
+      return true;
     }
     if (e.type === "keydown" && shortcutMatches(e, "terminal.copy")) {
       // Keep native copy on the terminal textarea so Safari's IME focus is
       // not interrupted by the clipboard fallback's temporary readonly input.
-      if (isNativeChord(e, "c")) return false;
+      if (isNativeChord(e, "c")) return true;
       cancelEvent(e);
       const copied = terminalSelectionContent(
         history.text ?? term.getSelection(),
@@ -313,19 +321,19 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
           },
         );
       }
-      return false;
+      return true;
     }
     if (e.type === "keydown" && shortcutMatches(e, "terminal.paste")) {
       // Native paste events carry clipboard payloads even on insecure LAN URLs.
       // Keep the platform's native gesture; custom combinations use the API.
-      if (isNativeChord(e, "v")) return false;
+      if (isNativeChord(e, "v")) return true;
       cancelEvent(e);
       pasteFromBrowserClipboard().catch((err) => {
         ui.setUploadError(
           t("Paste failed: {error}", { error: (err as Error).message }),
         );
       });
-      return false;
+      return true;
     }
     if (e.type === "keydown") {
       for (const [id, direction, amount] of [
@@ -337,11 +345,39 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
         if (!shortcutMatches(e, id)) continue;
         cancelEvent(e);
         session.scrollPage(direction, amount);
-        return false;
+        return true;
       }
     }
+    return false;
+  };
+  // Any key starts a new input cycle for the IME duplicate guards.
+  const noteKeyDown = (e: KeyboardEvent) => {
+    if (e.type !== "keydown") return;
+    imeCommitGuard.beginIndependentInput();
+    if (e.keyCode !== 229) imeTextareaFallback.cancelPending();
+  };
 
-    return true;
+  // Hardware keys go to Herdr as semantic keys before the engine sees them.
+  installTerminalKeyEvents(container, {
+    apple: applePlatform,
+    signal,
+    accepts: acceptsInput,
+    keydown: noteKeyDown,
+    shortcut: handleShortcut,
+    send: sendKey,
+  });
+
+  // What the engine still receives: IME, dead keys and on-screen keyboards.
+  term.attachCustomKeyEventHandler((e) => {
+    if (!acceptsInput()) {
+      cancelEvent(e);
+      return false;
+    }
+    // xterm's capture listener runs before our textarea keydown listener.
+    // Its custom handler is the boundary before any synchronous onData.
+    noteKeyDown(e);
+    if (e.type === "keydown" && applePlatform) imeKeyEvent.begin();
+    return !handleShortcut(e);
   });
 
   const flushTextareaImeFallback = (

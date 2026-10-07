@@ -4,7 +4,9 @@ import {
   consumeTerminalModifiers,
   NO_TERMINAL_MODIFIERS,
   tapTerminalModifier,
+  terminalKeyFromData,
 } from "./terminalModifiers";
+import { KEY_ALT, KEY_CTRL, KEY_SHIFT } from "../../shared/terminalKey";
 
 const mods = (ctrl = false, alt = false, shift = false) => ({
   ctrl,
@@ -30,39 +32,94 @@ describe("latching terminal modifiers", () => {
 });
 
 describe("applyTerminalModifiers", () => {
-  test("control letters and symbols", () => {
-    expect(applyTerminalModifiers("c", mods(true))).toBe("\x03");
-    expect(applyTerminalModifiers("C", mods(true))).toBe("\x03");
-    expect(applyTerminalModifiers("z", mods(true))).toBe("\x1a");
-    expect(applyTerminalModifiers("[", mods(true))).toBe("\x1b");
-    expect(applyTerminalModifiers(" ", mods(true))).toBe("\x00");
+  test("control letters and symbols become Ctrl keys", () => {
+    expect(applyTerminalModifiers("c", mods(true))).toEqual({
+      key: "Char",
+      char: "c",
+      mods: KEY_CTRL,
+    });
+    expect(applyTerminalModifiers("C", mods(true))).toEqual({
+      key: "Char",
+      char: "c",
+      mods: KEY_CTRL,
+    });
+    expect(applyTerminalModifiers("/", mods(true))).toEqual({
+      key: "Char",
+      char: "/",
+      mods: KEY_CTRL,
+    });
+    expect(applyTerminalModifiers(" ", mods(true))?.mods).toBe(KEY_CTRL);
   });
 
-  test("alt prefixes escape and shift uppercases", () => {
-    expect(applyTerminalModifiers("b", mods(false, true))).toBe("\x1bb");
-    expect(applyTerminalModifiers("a", mods(false, false, true))).toBe("A");
-    expect(applyTerminalModifiers("x", mods(true, true))).toBe("\x1b\x18");
+  test("alt and shift keep the character and its text", () => {
+    expect(applyTerminalModifiers("b", mods(false, true))).toEqual({
+      key: "Char",
+      char: "b",
+      mods: KEY_ALT,
+    });
+    expect(applyTerminalModifiers("a", mods(false, false, true))).toEqual({
+      key: "Char",
+      char: "a",
+      shifted: "A",
+      text: "A",
+      mods: KEY_SHIFT,
+    });
+    // Ctrl+X from a shortcut button with Alt latched.
+    expect(applyTerminalModifiers("\x18", mods(false, true))).toEqual({
+      key: "Char",
+      char: "x",
+      mods: KEY_CTRL | KEY_ALT,
+    });
   });
 
-  test("navigation keys gain xterm modifier parameters", () => {
-    expect(applyTerminalModifiers("\x1b[A", mods(true))).toBe("\x1b[1;5A");
-    expect(applyTerminalModifiers("\x1bOD", mods(false, true))).toBe(
-      "\x1b[1;3D",
+  test("navigation and editing keys gain the modifiers", () => {
+    expect(applyTerminalModifiers("\x1b[A", mods(true))).toEqual({
+      key: "Up",
+      mods: KEY_CTRL,
+    });
+    expect(applyTerminalModifiers("\x1bOD", mods(false, true))).toEqual({
+      key: "Left",
+      mods: KEY_ALT,
+    });
+    expect(applyTerminalModifiers("\x1b[5~", mods(false, false, true))).toEqual(
+      { key: "PageUp", mods: KEY_SHIFT },
     );
-    expect(applyTerminalModifiers("\x1b[5~", mods(false, false, true))).toBe(
-      "\x1b[5;2~",
-    );
-    expect(applyTerminalModifiers("\t", mods(false, false, true))).toBe(
-      "\x1b[Z",
-    );
-    expect(applyTerminalModifiers("\r", mods(false, false, true))).toBe(
-      "\x1b[13;2u",
-    );
-    expect(applyTerminalModifiers("\x7f", mods(true))).toBe("\x08");
+    expect(applyTerminalModifiers("\t", mods(false, false, true))).toEqual({
+      key: "Tab",
+      mods: KEY_SHIFT,
+    });
+    expect(applyTerminalModifiers("\r", mods(false, false, true))).toEqual({
+      key: "Enter",
+      mods: KEY_SHIFT,
+    });
+    expect(applyTerminalModifiers("\x7f", mods(true))).toEqual({
+      key: "Backspace",
+      mods: KEY_CTRL,
+    });
   });
 
   test("multi-character input leaves modifiers armed", () => {
     expect(applyTerminalModifiers("hello", mods(true))).toBeNull();
-    expect(applyTerminalModifiers("hello", mods())).toBe("hello");
+  });
+});
+
+describe("terminalKeyFromData", () => {
+  test("decodes the shortcut bar's legacy bytes", () => {
+    expect(terminalKeyFromData("\x03")).toEqual({
+      key: "Char",
+      char: "c",
+      mods: KEY_CTRL,
+    });
+    expect(terminalKeyFromData("\x1b[13;2u")).toEqual({
+      key: "Enter",
+      mods: KEY_SHIFT,
+    });
+    expect(terminalKeyFromData("\x1b[1;3A")).toEqual({
+      key: "Up",
+      mods: KEY_ALT,
+    });
+    expect(terminalKeyFromData("\x1b[3~")).toEqual({ key: "Delete", mods: 0 });
+    expect(terminalKeyFromData("\x1b")).toEqual({ key: "Esc", mods: 0 });
+    expect(terminalKeyFromData("ab")).toBeNull();
   });
 });

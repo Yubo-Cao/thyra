@@ -1,19 +1,23 @@
 import { BinWriter } from "./bincode";
+import {
+  KEY_ALT,
+  KEY_CTRL,
+  KEY_SHIFT,
+  KEY_SUPER,
+  type TerminalKey,
+} from "../../../shared/terminalKey";
 
-// Classifies browser VT input bytes (what xterm.js emits from key events)
-// into Herdr's stable semantic pane-input events, and encodes them as
-// ClientShellPaneInput frames for the endpoint path.
-//
-// ponytail: covers the common key space — printable text, Enter/Backspace/
-// Tab, arrows, Home/End/Insert/Delete/PageUp/PageDown, F1-F12, Ctrl+letter,
-// Alt+char, modified CSI keys, bracketed paste and SGR cell mouse reports.
-// Kitty keyboard protocol and pixel mouse are not supported.
+// Encodes semantic pane input as ClientShellPaneInput frames for the
+// endpoint path. Hardware keys arrive already semantic (`terminal.key`);
+// the classifier below handles the byte path that remains: text and IME
+// commits, bracketed paste, SGR cell mouse reports, and the legacy key bytes
+// that soft keyboards and wheel replays still produce through the engine.
 
 // crossterm KeyModifiers bits used on the wire.
-export const MOD_SHIFT = 0x1;
-export const MOD_CONTROL = 0x2;
-export const MOD_ALT = 0x4;
-export const MOD_SUPER = 0x8;
+export const MOD_SHIFT = KEY_SHIFT;
+export const MOD_CONTROL = KEY_CTRL;
+export const MOD_ALT = KEY_ALT;
+export const MOD_SUPER = KEY_SUPER;
 
 // ClientKeyCode variant indices (frozen wire order).
 export const KEY = {
@@ -68,6 +72,10 @@ export type PaneInputEvent =
       fn?: number; // number for KEY.F
       modifiers: number;
       generatedText?: string;
+      kind?: TerminalKey["kind"];
+      shifted?: number;
+      /** A browser key whose release follows (Kitty event reporting). */
+      tracksRelease?: boolean;
     }
   | { type: "text"; text: string }
   | { type: "paste"; text: string };
@@ -88,16 +96,11 @@ export function encodePaneInput(
       if (e.code === KEY.Char) w.varint(e.char ?? 0);
       if (e.code === KEY.F) w.varint(e.fn ?? 1);
       w.u8(e.modifiers);
-      w.variant(0); // ClientKeyKind::Press
+      w.variant(KEY_KINDS.indexOf(e.kind ?? "press")); // ClientKeyKind
       w.varint(1); // repeat_count
-      w.bool(false); // shifted_codepoint: None
-      if (e.generatedText !== undefined) {
-        w.bool(true);
-        w.string(e.generatedText);
-      } else {
-        w.bool(false);
-      }
-      w.bool(false); // tracks_release
+      w.option(e.shifted, (codepoint) => w.varint(codepoint));
+      w.option(e.generatedText, (text) => w.string(text));
+      w.bool(e.tracksRelease === true);
       w.bool(false); // physical_key_id: None
       w.bool(false); // windows_record: None
     } else if (e.type === "mouse") {
@@ -119,6 +122,23 @@ export function encodePaneInput(
     }
   }
   return w.toBuffer();
+}
+
+const KEY_KINDS = ["press", "repeat", "release"] as const;
+
+/** A browser key event as Herdr's semantic pane key. */
+export function paneKeyEvent(input: TerminalKey): PaneInputEvent {
+  return {
+    type: "key",
+    code: KEY[input.key],
+    char: input.char?.codePointAt(0),
+    fn: input.fn,
+    modifiers: input.mods,
+    generatedText: input.text,
+    kind: input.kind ?? "press",
+    shifted: input.shifted?.codePointAt(0),
+    tracksRelease: true,
+  };
 }
 
 function key(
@@ -389,25 +409,6 @@ export class VtInputClassifier {
           ],
           next,
         };
-      }
-      // TerminalView emits CSI-u for the modified Enter variants that xterm's
-      // legacy byte stream cannot otherwise distinguish from plain Enter.
-      if (final === "u" && params[0] === 13 && params.length <= 2) {
-        const modifierParam = params[1] ?? 1;
-        if (
-          Number.isSafeInteger(modifierParam) &&
-          modifierParam >= 1 &&
-          modifierParam <= 16
-        ) {
-          return {
-            events: [
-              key(KEY.Enter, {
-                modifiers: xtermModifiers(modifierParam),
-              }),
-            ],
-            next,
-          };
-        }
       }
       return { events: [], next }; // unknown CSI: swallow
     }

@@ -9,7 +9,9 @@ import {
   type PaneInputEvent,
   VtInputClassifier,
   encodePaneInput,
+  paneKeyEvent,
 } from "./vt-input-classifier";
+import { legacyKeyBytes } from "./legacy-key-bytes";
 
 function feed(input: string | number[]): PaneInputEvent[] {
   const c = new VtInputClassifier();
@@ -68,7 +70,7 @@ describe("VtInputClassifier", () => {
     ]);
   });
 
-  test("preserves Ctrl+J and modified Enter variants", () => {
+  test("preserves Ctrl+J", () => {
     expect(feed("\n")).toEqual([
       {
         type: "key",
@@ -76,26 +78,6 @@ describe("VtInputClassifier", () => {
         char: 0x6a,
         fn: undefined,
         modifiers: MOD_CONTROL,
-        generatedText: undefined,
-      },
-    ]);
-    expect(feed("\x1b[13;2u")).toEqual([
-      {
-        type: "key",
-        code: KEY.Enter,
-        char: undefined,
-        fn: undefined,
-        modifiers: MOD_SHIFT,
-        generatedText: undefined,
-      },
-    ]);
-    expect(feed("\x1b[13;3u")).toEqual([
-      {
-        type: "key",
-        code: KEY.Enter,
-        char: undefined,
-        fn: undefined,
-        modifiers: MOD_ALT,
         generatedText: undefined,
       },
     ]);
@@ -426,5 +408,54 @@ describe("encodePaneInput", () => {
     expect(r.variant()).toBe(KEY.F);
     expect(r.varint()).toBe(5);
     expect(r.u8()).toBe(MOD_SHIFT);
+  });
+
+  test("encodes browser keys with kind, shifted key, text and release tracking", () => {
+    const r = new BinReader(
+      encodePaneInput("w1:p1", [
+        paneKeyEvent({
+          key: "Char",
+          char: "a",
+          shifted: "A",
+          text: "A",
+          mods: MOD_SHIFT,
+          kind: "release",
+        }),
+      ]),
+    );
+    expect(r.variant()).toBe(13);
+    expect(r.string()).toBe("w1:p1");
+    expect(r.varint()).toBe(1);
+    expect(r.variant()).toBe(0); // Key
+    expect(r.variant()).toBe(KEY.Char);
+    expect(r.varint()).toBe(0x61);
+    expect(r.u8()).toBe(MOD_SHIFT);
+    expect(r.variant()).toBe(2); // Release
+    expect(r.varint()).toBe(1);
+    expect(r.option(() => r.varint())).toBe(0x41);
+    expect(r.option(() => r.string())).toBe("A");
+    expect(r.bool()).toBe(true); // tracks_release
+    expect(r.bool()).toBe(false);
+    expect(r.bool()).toBe(false);
+    expect(r.remaining).toBe(0);
+  });
+});
+
+describe("legacyKeyBytes", () => {
+  test("encodes direct-attach keys like xterm", () => {
+    const enc = (...keys: Parameters<typeof legacyKeyBytes>[0]) =>
+      legacyKeyBytes(keys).toString("latin1");
+    expect(enc({ key: "Char", char: "/", mods: MOD_CONTROL })).toBe("\x1f");
+    expect(enc({ key: "Char", char: "a", shifted: "A", mods: 3 })).toBe("\x01");
+    expect(enc({ key: "Char", char: "f", shifted: "F", mods: 5 })).toBe(
+      "\x1bF",
+    );
+    expect(enc({ key: "Char", char: "f", mods: MOD_ALT })).toBe("\x1bf");
+    expect(enc({ key: "Char", char: "a", text: "a", mods: 0 })).toBe("a");
+    expect(enc({ key: "Enter", mods: MOD_CONTROL })).toBe("\r");
+    expect(enc({ key: "Up", mods: MOD_CONTROL })).toBe("\x1b[1;5A");
+    expect(enc({ key: "Tab", mods: MOD_SHIFT })).toBe("\x1b[Z");
+    expect(enc({ key: "F", fn: 5, mods: 0 })).toBe("\x1b[15~");
+    expect(enc({ key: "Char", char: "a", mods: 0, kind: "release" })).toBe("");
   });
 });

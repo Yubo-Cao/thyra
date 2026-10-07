@@ -49,7 +49,8 @@ import { isEditableElement } from "../../utils";
 export function useTerminalBindings(
   view: TerminalViewInputs,
 ): TerminalSessionBindings {
-  const { container, client, identity, refs, ui, applyModifiers } = view;
+  const { container, client, identity, refs, ui } = view;
+  const { applyModifiers, applyKeyModifiers } = view;
   const { assertInputAllowed, closeTerminalInput, openTerminalInput } = view;
   const focusTerminalSoon = useCallback(() => {
     // Touch devices keep the terminal's input shut until a tap there; with a
@@ -215,6 +216,7 @@ export function useTerminalBindings(
       refs,
       ui,
       applyModifiers,
+      applyKeyModifiers,
       assertInputAllowed,
       closeTerminalInput,
       openTerminalInput,
@@ -225,6 +227,7 @@ export function useTerminalBindings(
       scrollPage,
     }),
     [
+      applyKeyModifiers,
       applyModifiers,
       assertInputAllowed,
       closeTerminalInput,

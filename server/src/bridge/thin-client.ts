@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events";
 import * as net from "node:net";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
+import { legacyKeyBytes } from "./legacy-key-bytes";
+import type { TerminalKey } from "../../../shared/terminalKey";
 import {
   assertSupportedHerdrProtocol,
   isTerminalHelloProtocol,
@@ -382,6 +384,12 @@ export class ThinClient extends EventEmitter {
     w.option(row, (v) => w.varint(v));
     w.u8(0); // crossterm KeyModifiers bits
     this.write(w.toBuffer());
+  }
+
+  /** Direct attaches write bytes to the PTY: encode keys as xterm does. */
+  keys(keys: TerminalKey[]) {
+    const bytes = legacyKeyBytes(keys);
+    if (bytes.length > 0) this.input(bytes);
   }
 
   input(data: Uint8Array) {

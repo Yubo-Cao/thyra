@@ -412,6 +412,7 @@ export function TerminalView({
     refs,
     ui,
     applyModifiers: modifiers.applyModifiers,
+    applyKeyModifiers: modifiers.applyKeyModifiers,
     assertInputAllowed,
     closeTerminalInput,
     openTerminalInput,

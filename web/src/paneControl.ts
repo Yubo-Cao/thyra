@@ -151,6 +151,7 @@ export function paneControlClient(
       if (
         access.viewOnly &&
         (method === "terminal.input" ||
+          method === "terminal.key" ||
           method === "shell.submit" ||
           method === "shell.complete" ||
           method === "shell.history" ||

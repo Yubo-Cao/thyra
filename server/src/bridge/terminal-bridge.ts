@@ -33,6 +33,10 @@ import {
 } from "./display-ownership";
 import { isTerminalClipboardPayload } from "./terminal-clipboard";
 import { optionalNumber, optionalString } from "../utils/rpc-params";
+import {
+  parseTerminalKeys,
+  type TerminalKey,
+} from "../../../shared/terminalKey";
 
 type TerminalSession = {
   terminalId: string | null;
@@ -2035,16 +2039,23 @@ export function createTerminalBridge(args: {
         });
         return reply({ ok: true, ...stream.settings });
       }
-      if (method === "terminal.input") {
+      if (method === "terminal.input" || method === "terminal.key") {
         if (!thin || thin.isClosed || !shared || !requestedTerminalId) {
           return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         }
-        const b64 = optionalString(params, "data") ?? "";
-        if (!b64 || !STANDARD_BASE64_RE.test(b64)) {
-          return fail("invalid terminal input");
+        let input: Buffer | null = null;
+        let keys: TerminalKey[] | null = null;
+        if (method === "terminal.key") {
+          keys = parseTerminalKeys(params.keys);
+          if (!keys) return fail("invalid terminal keys");
+        } else {
+          const b64 = optionalString(params, "data") ?? "";
+          if (!b64 || !STANDARD_BASE64_RE.test(b64)) {
+            return fail("invalid terminal input");
+          }
+          input = Buffer.from(b64, "base64");
+          if (input.length === 0) return fail("terminal input required");
         }
-        const input = Buffer.from(b64, "base64");
-        if (input.length === 0) return fail("terminal input required");
         // Typing from a device that does not display the pane must not make
         // Herdr size the tab for this bridge (Herdr with input_geometry).
         const claimsGeometry = await maySize(ws, requestedTerminalId);
@@ -2064,9 +2075,11 @@ export function createTerminalBridge(args: {
         };
         const inputPane = knownPanes.get(requestedTerminalId);
         if (inputPane) args.onPaneInput?.(inputPane);
-        if (thin instanceof EndpointTerminalSession)
-          thin.input(input, claimsGeometry);
-        else thin.input(input);
+        if (thin instanceof EndpointTerminalSession) {
+          if (keys) thin.keys(keys, claimsGeometry);
+          else thin.input(input!, claimsGeometry);
+        } else if (keys) thin.keys(keys);
+        else thin.input(input!);
         return reply({ ok: true });
       }
       if (method === "terminal.resize") {

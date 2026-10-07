@@ -106,6 +106,7 @@ const RPC_MATRIX: Record<string, string> = {
   "terminal.history": "admin owner editor viewer guest guest-pane",
   "terminal.host_theme": "admin",
   "terminal.input": "admin owner editor",
+  "terminal.key": "admin owner editor",
   "terminal.link.resolve": "admin owner editor viewer guest guest-pane",
   "terminal.preview_text": "admin owner editor viewer guest guest-pane",
   "terminal.relay_resize": "admin owner editor",
