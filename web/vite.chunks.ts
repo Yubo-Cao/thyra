@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { Plugin, Rollup } from "vite";
 
@@ -139,6 +145,8 @@ export function assetManifestPlugin(
   bootModule = "/src/components/TerminalView.tsx",
 ): Plugin {
   let outDir = "";
+  let publicDir: string | false = false;
+  let emitted = new Set<string>();
   let boot: string[] = [];
   let shell: string[] = [];
   const bootName = bootModule.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
@@ -147,8 +155,10 @@ export function assetManifestPlugin(
     apply: "build",
     configResolved(config) {
       outDir = resolve(config.root, config.build.outDir);
+      publicDir = config.publicDir;
     },
     generateBundle(_options, bundle) {
+      emitted = new Set(Object.keys(bundle));
       // The terminal view may share its chunk with other modules, so it is
       // found by chunk name as well as by facade module.
       const terminal = findChunk(
@@ -173,6 +183,14 @@ export function assetManifestPlugin(
       ];
     },
     closeBundle() {
+      // Another build into the same directory can leave its fingerprinted
+      // chunks behind; they would be listed here and embedded in the binary.
+      for (const path of listFiles(outDir, join(outDir, "assets"))) {
+        const name = path.slice(1);
+        if (emitted.has(name)) continue;
+        if (publicDir && existsSync(join(publicDir, name))) continue;
+        rmSync(join(outDir, name), { force: true });
+      }
       const assets = listFiles(outDir, join(outDir, "assets")).sort();
       const listed = new Set(assets);
       const fonts = assets.filter((path) =>

@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { coreFontFiles, packageName, vendorChunk } from "./vite.chunks";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  assetManifestPlugin,
+  coreFontFiles,
+  packageName,
+  vendorChunk,
+} from "./vite.chunks";
 
 const store = "/repo/node_modules/.bun";
 
@@ -66,4 +74,25 @@ test("precaching takes the upright regular and bold core font slices", () => {
         face("d", "normal", 300),
     ),
   ).toEqual(["/assets/fonts/m/a.woff2", "/assets/fonts/m/b.woff2"]);
+});
+
+test("the asset manifest drops stale chunks left by another build", () => {
+  const root = mkdtempSync(join(tmpdir(), "thyra-assets-"));
+  const out = join(root, "out");
+  const pub = join(root, "public");
+  mkdirSync(join(out, "assets"), { recursive: true });
+  mkdirSync(join(pub, "assets"), { recursive: true });
+  for (const file of ["new-A.js", "old-B.js", "static.txt"])
+    writeFileSync(join(out, "assets", file), "x");
+  writeFileSync(join(pub, "assets", "static.txt"), "x");
+  const plugin = assetManifestPlugin() as unknown as Record<
+    string,
+    (...args: unknown[]) => void
+  >;
+  plugin.configResolved({ root, build: { outDir: "out" }, publicDir: pub });
+  plugin.generateBundle({}, { "assets/new-A.js": {} });
+  plugin.closeBundle();
+  expect(existsSync(join(out, "assets", "new-A.js"))).toBe(true);
+  expect(existsSync(join(out, "assets", "static.txt"))).toBe(true);
+  expect(existsSync(join(out, "assets", "old-B.js"))).toBe(false);
 });
