@@ -88,6 +88,8 @@ for (const [shell, debug] of [
             XDG_STATE_HOME: join(home, "state"),
             HISTFILE: join(home, "history"),
             TERM: "xterm-256color",
+            // The test PTY answers no terminal queries; fish 4 would stall.
+            fish_features: "no-query-term",
           },
           terminal: {
             cols: 160,
@@ -147,7 +149,11 @@ for (const [shell, debug] of [
           send(
             `precmd() { print -r -- "CHAIN:$?"; }; PS1='PROMPT>'; HISTSIZE=100; source '${script}'; source '${script}'`,
           );
-        else send(`source '${script}'; source '${script}'`);
+        // --no-config sets fish_history to "", which disables history.
+        else
+          send(
+            `set -g fish_history thyra_test; source '${script}'; source '${script}'`,
+          );
         let initial = await waitState((state) => state.state === "prompt");
         expect(initial.cwd).toBe(cwd);
         send(" echo thyra-private-leading-space");

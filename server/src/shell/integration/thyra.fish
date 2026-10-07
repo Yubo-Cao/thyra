@@ -5,7 +5,7 @@ test -n "$HERDR_PANE_ID"; or return
 set -q __thyra_loaded; and return
 set -g __thyra_loaded 1
 # Seed from the clock so seq keeps rising across `exec fish` (same pid).
-set -g __thyra_seq (math (date +%s) \* 1000)
+set -g __thyra_seq (date +%s)000
 set -g __thyra_recorded 0
 set -l runtime /tmp/thyra-(id -u)
 set -q XDG_RUNTIME_DIR; and set runtime $XDG_RUNTIME_DIR
@@ -32,7 +32,8 @@ function __thyra_json
         set -l escaped (printf '\\\\u%04x' $i)
         set value (string replace -a -- "$c" "$escaped" "$value" | string collect)
     end
-    printf '"%s"' (string replace -r 'x$' '' -- "$value" | string collect -a)
+    # No newlines remain, and `string collect -a` would turn "" into two args.
+    printf '"%s"' (string replace -r 'x$' '' -- "$value")
 end
 function __thyra_write
     set -l phase $argv[1]
@@ -44,18 +45,19 @@ function __thyra_write
     set -q fish_history; and set hist (path dirname $hist)/{$fish_history}_history
     set -l old_umask (umask)
     umask 077
-    printf '{"v":1,"pane":%s,"pid":%s,"shell":"fish","shell_version":%s,"seq":%s,"state":"%s","cwd":%s,"exit":%s,"histfile":%s,"path":%s,"bracketed_paste":true,"ts":%s,"command":%s}\n' (__thyra_json "$HERDR_PANE_ID") $fish_pid (__thyra_json "$version") $__thyra_seq $phase (__thyra_json "$PWD") $code (__thyra_json "$hist") (__thyra_json (string join : $PATH)) $now (__thyra_json "$cmd") > $__thyra_file.tmp-$fish_pid
-    and command mv -f -- $__thyra_file.tmp-$fish_pid $__thyra_file
+    # Spool first, so a reader that sees the new state also sees its history.
     if test $phase = running; and test $__thyra_recorded = 1
         printf '{"pane":%s,"pid":%s,"seq":%s,"shell":"fish","cwd":%s,"command":%s,"start_ts":%s}\n' (__thyra_json "$HERDR_PANE_ID") $fish_pid $__thyra_seq (__thyra_json "$PWD") (__thyra_json "$cmd") $now >> $__thyra_spool
     else if test $phase = prompt; and test $__thyra_recorded = 1
-        printf '{"pid":%s,"seq":%s,"exit":%s,"end_ts":%s}\n' $fish_pid (math $__thyra_seq - 1) $code $now >> $__thyra_spool
+        printf '{"pid":%s,"seq":%s,"exit":%s,"end_ts":%s}\n' $fish_pid (math --scale=0 $__thyra_seq - 1) $code $now >> $__thyra_spool
     end
+    printf '{"v":1,"pane":%s,"pid":%s,"shell":"fish","shell_version":%s,"seq":%s,"state":"%s","cwd":%s,"exit":%s,"histfile":%s,"path":%s,"bracketed_paste":true,"ts":%s,"command":%s}\n' (__thyra_json "$HERDR_PANE_ID") $fish_pid (__thyra_json "$version") $__thyra_seq $phase (__thyra_json "$PWD") $code (__thyra_json "$hist") (__thyra_json (string join : $PATH)) $now (__thyra_json "$cmd") > $__thyra_file.tmp-$fish_pid
+    and command mv -f -- $__thyra_file.tmp-$fish_pid $__thyra_file
     umask $old_umask
 end
 function __thyra_prompt --on-event fish_prompt
     set -l code $status
-    set -g __thyra_seq (math $__thyra_seq + 1)
+    set -g __thyra_seq (math --scale=0 $__thyra_seq + 1)
     __thyra_write prompt $code '' 2>/dev/null
     set -g __thyra_recorded 0
     return $code
