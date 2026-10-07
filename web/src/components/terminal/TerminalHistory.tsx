@@ -48,7 +48,6 @@ export function TerminalHistory({
       ...live.options,
       scrollback: HISTORY_LINES + live.rows,
       disableStdin: true,
-      cursorBlink: false,
     });
     term.resize(live.cols, live.rows);
     applyTerminalFollowScale(term, element, follow);

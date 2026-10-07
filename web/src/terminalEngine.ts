@@ -55,7 +55,6 @@ export type TerminalEngineOptions = {
   disableStdin: boolean;
   /** Lines kept above the screen; Herdr owns live history, so 0 there. */
   scrollback: number;
-  cursorBlink: boolean;
 };
 
 type Cell = { row: number; col: number };
@@ -401,7 +400,6 @@ export class TerminalEngine {
       theme: {},
       disableStdin: false,
       scrollback: 0,
-      cursorBlink: true,
       ...options,
     };
     const doc = parent.ownerDocument;
