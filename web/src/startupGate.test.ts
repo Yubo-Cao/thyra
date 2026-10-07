@@ -1,11 +1,15 @@
 import { afterEach, expect, test } from "bun:test";
 import {
   afterStartup,
+  afterTerminalFrame,
+  holdStartup,
+  noteTerminalFrame,
   noteTerminalAttached,
   noteTerminalOutput,
   resetStartupGateForTests,
   STARTUP_CEILING_MS,
   STARTUP_FALLBACK_MS,
+  STARTUP_HOLD_MS,
   startupSettled,
 } from "./startupGate";
 
@@ -82,4 +86,44 @@ test("cancelled work never runs", () => {
   cancel();
   noteTerminalOutput();
   expect(ran).toEqual([]);
+});
+
+test("the fallbacks wait for a loading engine, up to the hold limit", async () => {
+  const clock = fakeTimers();
+  const ran: string[] = [];
+  let loaded!: () => void;
+  holdStartup(new Promise<void>((resolve) => (loaded = resolve)), clock.timers);
+  afterStartup(() => ran.push("warmup"), clock.timers);
+  noteTerminalAttached(clock.timers);
+  clock.fire(STARTUP_FALLBACK_MS);
+  await Promise.resolve();
+  expect(ran).toEqual([]);
+  loaded();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(ran).toEqual(["warmup"]);
+
+  resetStartupGateForTests();
+  holdStartup(new Promise(() => {}), clock.timers);
+  afterStartup(() => ran.push("capped"), clock.timers);
+  clock.fire(STARTUP_CEILING_MS);
+  await Promise.resolve();
+  expect(ran).toEqual(["warmup"]);
+  clock.fire(STARTUP_HOLD_MS);
+  expect(ran).toEqual(["warmup", "capped"]);
+});
+
+test("frame work runs at the first frame or once startup settles", () => {
+  const clock = fakeTimers();
+  const ran: string[] = [];
+  afterTerminalFrame(() => ran.push("frame"), clock.timers);
+  afterStartup(() => ran.push("startup"), clock.timers);
+  noteTerminalFrame();
+  expect(ran).toEqual(["frame"]);
+  noteTerminalOutput();
+  expect(ran).toEqual(["frame", "startup"]);
+
+  resetStartupGateForTests();
+  afterTerminalFrame(() => ran.push("settled"), clock.timers);
+  noteTerminalOutput();
+  expect(ran).toEqual(["frame", "startup", "settled"]);
 });

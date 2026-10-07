@@ -1,4 +1,4 @@
-import { afterStartup } from "./startupGate";
+import { afterStartup, afterTerminalFrame } from "./startupGate";
 import { NOTIFICATION_WORKER } from "./taskNotifications";
 
 export const PRIME_CACHE_MESSAGE = "thyra:prime-cache";
@@ -85,8 +85,10 @@ export function registerAppServiceWorker(): void {
             urls: loadedAssetUrls(entries, window.location.origin),
             precache,
           });
-        // The first message also has the worker precache the app shell.
-        prime(performance.getEntriesByType("resource"), true);
+        prime(performance.getEntriesByType("resource"));
+        // The app shell (terminal engine included) once startup settles:
+        // the page itself is still downloading the engine until then.
+        afterStartup(() => prime([], true));
         // Downloads started before the worker took control (the terminal
         // font, the WebGL renderer) finish outside it; prime those too.
         new PerformanceObserver((list) => prime(list.getEntries())).observe({
@@ -97,7 +99,9 @@ export function registerAppServiceWorker(): void {
         // Caching is an optimization; the app works without a worker.
       });
   };
-  const afterLoad = () => afterStartup(start);
+  // Taking control early caches what the page loads next (the terminal
+  // engine, fonts) as it arrives, so a reload never refetches it.
+  const afterLoad = () => afterTerminalFrame(start);
   if (document.readyState === "complete") afterLoad();
   else window.addEventListener("load", afterLoad, { once: true });
 }

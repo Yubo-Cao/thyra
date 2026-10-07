@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { assetManifestPlugin, vendorChunk } from "./vite.chunks";
+import { resttyWasmPlugin } from "./vite.restty";
 
 // Monaco's package exports append `.js` to every subpath, which cannot reach
 // its CSS or worker sources; alias its ESM tree directly instead.
@@ -15,7 +16,7 @@ const monacoEsmRoot = realpathSync(
 // In dev, the web app talks to the bridge through Vite's proxy so the
 // frontend can use a relative /ws URL (same origin, no hardcoded port).
 export default defineConfig({
-  plugins: [react(), tailwindcss(), assetManifestPlugin()],
+  plugins: [react(), tailwindcss(), resttyWasmPlugin(), assetManifestPlugin()],
   resolve: {
     alias: [
       {

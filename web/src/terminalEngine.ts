@@ -1,12 +1,15 @@
 import type { PtyTransport } from "restty";
 import type { ResttyRuntime } from "restty/internal/runtime";
 import { TERMINAL_FONT_FAMILY } from "./appearance";
+import { afterStartup, holdStartup } from "./startupGate";
 import {
   addTerminalFontStylesheets,
   sortTerminalFontChunks,
   type TerminalFontChunk,
   type TerminalFontData,
   terminalFontChunksFor,
+  terminalCoreCovers,
+  terminalCoreFontManifest,
   terminalFontData,
   terminalFontManifest,
 } from "./terminalFonts";
@@ -284,49 +287,123 @@ export class TerminalTextScreen {
   }
 }
 
-let resttyModule: Promise<typeof import("restty/internal/runtime")> | null =
-  null;
-/** Starts fetching the engine; safe to call early (an idle prefetch). */
-export function loadTerminalEngine() {
-  resttyModule ??= import("restty/internal/runtime");
-  return resttyModule;
+type ResttyModule = typeof import("restty/internal/runtime");
+type EngineModules = {
+  createRuntime: ResttyModule["createResttyRuntime"];
+  session: ReturnType<ResttyModule["createResttyRuntimeSession"]>;
+};
+let engineModules: Promise<EngineModules> | null = null;
+
+/** The WASM core, compiled while it streams in (vite.restty.ts ships it). */
+async function compileTerminalCore(): Promise<WebAssembly.Module> {
+  const { default: url } = await import("virtual:restty-wasm");
+  try {
+    return await WebAssembly.compileStreaming(fetch(url));
+  } catch {
+    // A proxy that rewrites the MIME type still serves the bytes.
+    return WebAssembly.compile(await (await fetch(url)).arrayBuffer());
+  }
+}
+
+/** Starts fetching the engine, its WASM core in parallel; safe to call early. */
+export function loadTerminalEngine(): Promise<EngineModules> {
+  engineModules ??= (async () => {
+    const core = compileTerminalCore();
+    core.catch(() => {});
+    const restty = await import("restty/internal/runtime");
+    const createSession = restty.createResttyRuntimeSession as (options: {
+      wasmModule: () => Promise<WebAssembly.Module>;
+    }) => EngineModules["session"];
+    return {
+      createRuntime: restty.createResttyRuntime,
+      session: createSession({ wasmModule: () => core }),
+    };
+  })();
+  return engineModules;
 }
 
 /** Bundled chunks the screen has needed so far, shared by every terminal. */
 const neededChunks = new Set<TerminalFontChunk>();
 const seenCodePoints = new Set<number>();
+// Characters outside the core slices, waiting for the full manifest.
+let unresolved = "";
 const fontListeners = new Set<() => void>();
-let lateChunksQueued = false;
+let lateFonts: Promise<void> | null = null;
 
-function noteScreenText(text: string) {
-  void terminalFontManifest().then((chunks) => {
-    const before = neededChunks.size;
-    for (const chunk of terminalFontChunksFor(chunks, text, seenCodePoints))
+function notifyFonts() {
+  for (const listener of fontListeners) listener();
+}
+
+/** Resolves characters outside the core slices to their font chunks. */
+function resolveLateFonts(): Promise<void> {
+  if (!unresolved) return Promise.resolve();
+  const text = unresolved;
+  unresolved = "";
+  return terminalFontManifest().then((chunks) => {
+    for (const chunk of terminalFontChunksFor(chunks, text, new Set()))
       neededChunks.add(chunk);
-    if (!lateChunksQueued) {
-      lateChunksQueued = true;
-      // Bold and italic Latin faces follow the first screen.
-      const add = () => {
-        for (const chunk of chunks)
-          if (chunk.core && !chunk.label) neededChunks.add(chunk);
-        for (const listener of fontListeners) listener();
-      };
-      if ("requestIdleCallback" in window)
-        requestIdleCallback(add, { timeout: 3000 });
-      else setTimeout(add, 1000);
-    }
-    if (neededChunks.size !== before)
-      for (const listener of fontListeners) listener();
+    notifyFonts();
   });
 }
 
-async function engineFonts(family: string) {
-  const chunks = await terminalFontManifest();
+function noteScreenText(text: string) {
+  if (!/[^\x00-\x7f]/.test(text)) return;
+  let fresh = "";
+  for (const char of text) {
+    const codePoint = char.codePointAt(0)!;
+    if (codePoint < 0x80 || seenCodePoints.has(codePoint)) continue;
+    seenCodePoints.add(codePoint);
+    fresh += char;
+  }
+  if (!fresh) return;
+  void terminalCoreFontManifest().then((core) => {
+    for (const char of fresh) {
+      if (terminalCoreCovers(core, char)) continue;
+      unresolved += char;
+    }
+    // Before the engine has drawn, the slices wait so the first frame needs
+    // only the core; afterwards they load as they appear.
+    if (lateFonts) void resolveLateFonts();
+  });
+}
+
+/**
+ * After the first frame: bold and italic faces, slices for what is on screen,
+ * and (when idle) the full stylesheet for DOM text over the terminal.
+ */
+function startLateFonts(): Promise<void> {
+  lateFonts ??= terminalCoreFontManifest().then(async (core) => {
+    await resolveLateFonts();
+    // Bold, italic and the full stylesheet wait for startup to settle (the
+    // first frame is in) and an idle moment.
+    afterStartup(() => {
+      const load = () => {
+        for (const chunk of core) if (chunk.core) neededChunks.add(chunk);
+        notifyFonts();
+        void terminalFontManifest();
+      };
+      if ("requestIdleCallback" in window)
+        requestIdleCallback(load, { timeout: 5000 });
+      else setTimeout(load, 1000);
+    });
+  });
+  return lateFonts;
+}
+
+/**
+ * The font list. The first frame waits for every face in it, so it takes only
+ * the regular Latin faces and slices already known; the rest, and the
+ * coverage fonts (emoji, system fallback), join once it has drawn.
+ */
+async function engineFonts(family: string, coverage: boolean) {
+  const chunks = await terminalCoreFontManifest();
   const regularCore = chunks.filter(
     (chunk) => chunk.core && chunk.weight < 700 && !chunk.italic,
   );
   const wanted = sortTerminalFontChunks(
-    new Set([...regularCore, ...neededChunks]),
+    [...new Set([...regularCore, ...neededChunks])].filter(
+      (chunk) => coverage || !chunk.label,
+    ),
   );
   const data = (await Promise.all(wanted.map(terminalFontData))).filter(
     (font): font is TerminalFontData => font !== null,
@@ -357,6 +434,7 @@ export class TerminalEngine {
   private transportCallbacks: { onData?: (data: string) => void } | null = null;
   private disposed = false;
   private abort = new AbortController();
+  private preEngineInput = new AbortController();
   private fixedSize: { cols: number; rows: number } | null = null;
   private selectionKey = "";
   private scrollOffset = 0;
@@ -432,9 +510,12 @@ export class TerminalEngine {
     this.stylePreview();
     ({ cols: this.cols, rows: this.rows } = this.proposeSize());
     this.bindEvents();
+    this.bindPreEngineInput();
     fontListeners.add(this.reloadFonts);
     this.ready = this.start();
     this.ready.catch(() => {});
+    // Startup warmups wait for the engine, which needs the bandwidth more.
+    holdStartup(this.ready);
   }
 
   get options(): Readonly<TerminalEngineOptions> {
@@ -459,9 +540,9 @@ export class TerminalEngine {
   }
 
   private async start() {
-    const [{ createResttyRuntime }, fonts] = await Promise.all([
+    const [{ createRuntime, session }, fonts] = await Promise.all([
       loadTerminalEngine(),
-      engineFonts(this.opts.fontFamily),
+      engineFonts(this.opts.fontFamily, false),
     ]);
     if (this.disposed) return;
     const transport: PtyTransport = {
@@ -479,8 +560,8 @@ export class TerminalEngine {
       resize: () => true,
       isConnected: () => this.transportCallbacks !== null,
     };
-    const runtime = createResttyRuntime({
-      mount: { canvas: this.screen, imeInput: this.textarea },
+    const runtime = createRuntime({
+      mount: { canvas: this.screen, imeInput: this.textarea, session },
       terminal: {
         renderer: "auto",
         fontSize: this.opts.fontSize,
@@ -517,6 +598,8 @@ export class TerminalEngine {
     });
     await runtime.lifecycle.init();
     if (this.disposed) return;
+    // The engine reads the input from here on.
+    this.preEngineInput.abort();
     runtime.io.connectPty("");
     this.transportCallbacks?.onData?.(GRAPHEME_CLUSTERING);
     if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
@@ -526,16 +609,100 @@ export class TerminalEngine {
     if (pending) this.transportCallbacks?.onData?.(pending);
     this.writeEmitter.fire();
     await rendered;
+    // Characters beyond the core slices keep the text preview up until
+    // their fonts are in; plain screens swap at once.
+    const lateSlices = unresolved
+      ? startLateFonts().then(this.reloadFonts)
+      : null;
+    void startLateFonts();
+    await lateSlices;
     this.preview?.remove();
     this.preview = null;
   }
 
-  private reloadFonts = () => {
-    const runtime = this.runtime;
-    if (!runtime || this.disposed) return;
-    void engineFonts(this.opts.fontFamily).then((fonts) => {
-      if (!this.disposed) void runtime.terminal.setFonts(fonts);
-    });
+  /**
+   * Until the engine runs, typing still reaches the pane: hardware keys go
+   * through terminalKeyEvents and paste through Thyra's own handler; this
+   * sends what on-screen keyboards and IME commit into the input.
+   */
+  private bindPreEngineInput() {
+    const { signal } = this.preEngineInput;
+    // A click focuses the canvas; text has to land in the input.
+    this.screen.addEventListener(
+      "focus",
+      () => this.textarea.focus({ preventScroll: true }),
+      { signal },
+    );
+    const send = (text: string) => {
+      if (text && !this.disposed) this.dataEmitter.fire(text);
+    };
+    const keys: Record<string, string> = {
+      Enter: "\r",
+      Backspace: "\x7f",
+      Tab: "\t",
+      Escape: "\x1b",
+      ArrowUp: "\x1b[A",
+      ArrowDown: "\x1b[B",
+      ArrowRight: "\x1b[C",
+      ArrowLeft: "\x1b[D",
+    };
+    this.textarea.addEventListener(
+      "keydown",
+      (event) => {
+        const key = keys[event.key];
+        if (!key || event.isComposing || event.defaultPrevented) return;
+        event.preventDefault();
+        send(key);
+      },
+      { signal },
+    );
+    this.textarea.addEventListener(
+      "input",
+      (event) => {
+        const input = event as InputEvent;
+        if (input.isComposing) return;
+        if (input.inputType === "insertLineBreak") send("\r");
+        else if (input.inputType === "deleteContentBackward") send("\x7f");
+        else if (input.inputType.startsWith("insert") && input.data)
+          send(input.data);
+        this.textarea.value = "";
+      },
+      { signal },
+    );
+    this.textarea.addEventListener(
+      "compositionend",
+      (event) => {
+        send(event.data);
+        this.textarea.value = "";
+      },
+      { signal },
+    );
+  }
+
+  private fontReload: Promise<void> | null = null;
+  private fontsDirty = false;
+
+  /** Loads the current font list, once more if it changed meanwhile. */
+  private reloadFonts = (): Promise<void> => {
+    if (!this.runtime || this.disposed) return Promise.resolve();
+    if (this.fontReload) {
+      this.fontsDirty = true;
+      return this.fontReload;
+    }
+    const run = async () => {
+      do {
+        this.fontsDirty = false;
+        const fonts = await engineFonts(this.opts.fontFamily, true);
+        if (this.disposed || !this.runtime) return;
+        await this.runtime.terminal.setFonts(fonts);
+      } while (this.fontsDirty);
+    };
+    this.fontReload = run()
+      .catch(() => {})
+      .finally(() => {
+        this.fontReload = null;
+      });
+    return this.fontReload;
   };
 
   private rendered() {
@@ -1001,6 +1168,7 @@ export class TerminalEngine {
     this.disposed = true;
     fontListeners.delete(this.reloadFonts);
     this.abort.abort();
+    this.preEngineInput.abort();
     this.leaveLink();
     this.linkProviders.clear();
     this.runtime?.lifecycle.destroy();

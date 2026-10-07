@@ -8,7 +8,7 @@ import {
  * scripts/build-terminal-font.ts) is sliced into small woff2 chunks with
  * unicode-range rules. The GPU terminal shapes text itself, so it takes the
  * chunks as font data: the regular Latin chunks first, then the bold and
- * italic ones, then any chunk whose characters appear on screen. Two coverage
+ * italic ones, then any chunk whose characters appear on screen. Coverage
  * fonts come last (scripts/build-terminal-emoji-font.py): their empty glyphs
  * make the engine draw emoji, and symbols or scripts Maple Mono lacks, with
  * the browser's own fonts.
@@ -54,6 +54,15 @@ const COVERAGE_FONTS: TerminalFontChunk[] = [
       [0x1f780, 0x1f8ff],
       [0x1fb00, 0x1fbff],
     ],
+    weight: 400,
+    italic: false,
+    core: false,
+  },
+  {
+    url: "/assets/fonts/emoji/explicit-emoji-1ea275eacc.woff2",
+    // Text-default emoji, picked only with U+FE0F (patches/restty@*.patch).
+    label: "Apple Color Emoji (Thyra explicit emoji)",
+    ranges: [[0xfe0f, 0xfe0f]],
     weight: 400,
     italic: false,
     core: false,
@@ -110,22 +119,56 @@ export function terminalFontChunksFor(
   return [...found];
 }
 
-let manifest: Promise<TerminalFontChunk[]> | null = null;
-
-/** Every chunk: the core stylesheet's first, regular faces leading. */
-export function terminalFontManifest(): Promise<TerminalFontChunk[]> {
-  manifest ??= Promise.all(
-    [TERMINAL_FONT_CORE_STYLESHEET, TERMINAL_FONT_STYLESHEET].map((href) =>
-      fetch(href).then((response) => (response.ok ? response.text() : "")),
-    ),
-  )
-    .then(([core = "", rest = ""]) => [
-      ...parseTerminalFontChunks(core, true),
-      ...parseTerminalFontChunks(rest, false),
-      ...COVERAGE_FONTS,
-    ])
+const stylesheetChunks = (href: string, core: boolean) =>
+  fetch(href)
+    .then((response) => (response.ok ? response.text() : ""))
+    .then((css) => parseTerminalFontChunks(css, core))
     .catch(() => []);
-  return manifest;
+
+let coreManifest: Promise<TerminalFontChunk[]> | null = null;
+let fullManifest: Promise<TerminalFontChunk[]> | null = null;
+
+/**
+ * The Latin, Latin-1 and Powerline slices (a 1 KB stylesheet) and the
+ * coverage fonts: all a first screen of a shell or TUI needs.
+ */
+export function terminalCoreFontManifest(): Promise<TerminalFontChunk[]> {
+  coreManifest ??= stylesheetChunks(TERMINAL_FONT_CORE_STYLESHEET, true).then(
+    (core) => [...core, ...COVERAGE_FONTS],
+  );
+  return coreManifest;
+}
+
+/**
+ * Every slice. The full stylesheet (CJK, icons, ...) is large, so it loads
+ * only once characters outside the core appear; the page's own CSS faces
+ * then take it from the HTTP cache.
+ */
+export function terminalFontManifest(): Promise<TerminalFontChunk[]> {
+  fullManifest ??= Promise.all([
+    terminalCoreFontManifest(),
+    stylesheetChunks(TERMINAL_FONT_STYLESHEET, false),
+  ]).then(([core, rest]) => {
+    addStylesheet(TERMINAL_FONT_STYLESHEET);
+    return [...core, ...rest];
+  });
+  return fullManifest;
+}
+
+/** Whether every character of `text` is in a core slice. */
+export function terminalCoreCovers(
+  chunks: readonly TerminalFontChunk[],
+  text: string,
+): boolean {
+  for (const char of text) {
+    const codePoint = char.codePointAt(0)!;
+    if (
+      codePoint >= 0x80 &&
+      !chunks.some((chunk) => chunk.core && covers(chunk, codePoint))
+    )
+      return false;
+  }
+  return true;
 }
 
 // One ArrayBuffer per chunk, so the engine's parsed-font cache keys on it.
@@ -174,20 +217,19 @@ export function sortTerminalFontChunks(
   return [...chunks].sort((a, b) => rank(a) - rank(b));
 }
 
-let stylesheets = false;
+const stylesheets = new Set<string>();
+
+function addStylesheet(href: string) {
+  if (stylesheets.has(href) || typeof document === "undefined") return;
+  stylesheets.add(href);
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  link.dataset.terminalFont = "";
+  document.head.append(link);
+}
 
 /** DOM text that mirrors the terminal (editors, previews) uses the CSS faces. */
 export function addTerminalFontStylesheets() {
-  if (stylesheets || typeof document === "undefined") return;
-  stylesheets = true;
-  for (const href of [
-    TERMINAL_FONT_CORE_STYLESHEET,
-    TERMINAL_FONT_STYLESHEET,
-  ]) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = href;
-    link.dataset.terminalFont = "";
-    document.head.append(link);
-  }
+  addStylesheet(TERMINAL_FONT_CORE_STYLESHEET);
 }

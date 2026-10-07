@@ -26,6 +26,7 @@
  *   fcp       first contentful paint
  *   switcher  the second workspace's label is visible (agent list usable)
  *   terminal  the pre-printed marker line has reached the mounted terminal
+ *   GPU       the GPU terminal engine has replaced the text preview
  *   wire      bytes through the proxy (down/up) until the terminal showed
  *             output, and after the network went idle
  */
@@ -519,7 +520,9 @@ export const INSTRUMENTATION = `(() => {
     // The text shown before the GPU engine has loaded.
     const rows = document.querySelector(".terminal-engine-preview");
     if (rows && rows.textContent.includes(${JSON.stringify(MARKER)})) mark("terminalDomText");
-    if (!(marks.switcher && marks.terminal)) {
+    // The GPU engine has replaced the text preview.
+    if (marks.terminal !== undefined && screen && !rows) mark("gpu");
+    if (!(marks.switcher && marks.terminal && marks.gpu)) {
       if (document.visibilityState === "visible") requestAnimationFrame(tick);
       else setTimeout(tick, 50);
     }
@@ -550,6 +553,7 @@ interface RunResult {
   switcher: number | null;
   terminal: number | null;
   terminalDomText: number | null;
+  gpu: number | null;
   wireAtTerminal: { down: number; up: number };
   wireSettled: { down: number; up: number };
   resources: Record<string, ResourceStat>;
@@ -646,6 +650,7 @@ async function measureRun(
     switcher: null,
     terminal: null,
     terminalDomText: null,
+    gpu: null,
     wireAtTerminal: { down: 0, up: 0 },
     wireSettled: { down: 0, up: 0 },
     resources,
@@ -699,6 +704,8 @@ async function measureRun(
     result.switcher = marks.switcher ?? null;
     result.terminal = marks.terminal ?? null;
     result.terminalDomText = marks.terminalDomText ?? null;
+    marks = await evaluate(page, () => (window as any).__perf ?? {}, marks);
+    result.gpu = marks.gpu ?? null;
     result.serviceWorker = await evaluate(
       page,
       async () =>
@@ -804,6 +811,7 @@ function report(results: RunResult[]) {
     "FCP",
     "switcher",
     "terminal",
+    "GPU",
     "down@term",
     "down total",
     "up total",
@@ -816,6 +824,7 @@ function report(results: RunResult[]) {
     formatSeconds(r.fcp),
     formatSeconds(r.switcher),
     formatSeconds(r.terminal),
+    formatSeconds(r.gpu),
     formatKiB(r.wireAtTerminal.down),
     formatKiB(r.wireSettled.down),
     formatKiB(r.wireSettled.up),

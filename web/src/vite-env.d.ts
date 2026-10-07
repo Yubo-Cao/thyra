@@ -11,3 +11,9 @@ declare module "monaco-esm/languages/definitions/*" {
   export const language: languages.IMonarchLanguage;
 }
 declare module "monaco-esm/features/*";
+
+// restty's WASM core, shipped as its own asset (vite.restty.ts).
+declare module "virtual:restty-wasm" {
+  const url: string;
+  export default url;
+}

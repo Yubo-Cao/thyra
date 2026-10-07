@@ -18,7 +18,7 @@ import { t } from "../../i18n";
 import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../../layoutPreferences";
 import { detectShortcutPlatform } from "../../shortcutBindings";
 import { terminalLinkModifierMatches } from "../../shortcutPreferences";
-import { noteTerminalOutput } from "../../startupGate";
+import { noteTerminalFrame, noteTerminalOutput } from "../../startupGate";
 import { store } from "../../store";
 import {
   copyTextFromUserGesture,
@@ -584,8 +584,11 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       });
     },
   });
-  // Startup warmups elsewhere wait for the first output the engine draws.
-  term.ready.then(noteTerminalOutput, () => {});
+  // Startup warmups elsewhere wait for the engine and the first frame, so
+  // neither shares the link with them.
+  let firstFrame: () => void = () => {};
+  const framed = new Promise<void>((resolve) => (firstFrame = resolve));
+  void Promise.all([term.ready, framed]).then(noteTerminalOutput, () => {});
   const applePlatform = isApplePlatform();
   refs.term.current = term;
   ui.setTermInstance(term);
@@ -804,6 +807,8 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     session.latestLinkFrame = frame.link_frame;
     // An explicitly chosen path is a stable action target, even as a TUI repaints.
     attachWatchdog.markFrame();
+    firstFrame();
+    noteTerminalFrame();
     attachTimeouts.current = 0;
     ui.setTerminalLoading(false);
     ui.setTerminalAttachError("");

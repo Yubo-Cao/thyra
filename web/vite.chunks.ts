@@ -169,9 +169,14 @@ export function assetManifestPlugin(
       const engine = findChunk(bundle, (chunk) =>
         chunk.moduleIds.some((id) => /[/\\]restty[/\\]/.test(id)),
       );
+      // The engine's WASM core is an asset the engine fetches itself.
+      const core = Object.values(bundle).find(
+        (file) => file.type === "asset" && file.fileName.endsWith(".wasm"),
+      );
       boot = [
         ...(terminal ? chunkClosure(bundle, terminal.fileName) : []),
         ...(engine ? chunkClosure(bundle, engine.fileName) : []),
+        ...(core ? [`/${core.fileName}`] : []),
       ];
       shell = [
         ...Object.values(bundle).flatMap((chunk) =>

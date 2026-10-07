@@ -149,9 +149,11 @@ keeping cell measurements, IME, selection, and mouse input in viewport CSS pixel
 Popover positioning likewise cancels zoom and reapplies it to content.
 
 Terminals render with restty (libghostty-vt in WASM, drawn with WebGPU or WebGL2, text shaped with ligatures) behind `web/src/terminalEngine.ts`; `patches/restty@*.patch` exposes the internals Thyra uses and disables terminal clipboard reads and replies.
-The engine (about 0.55 MiB Brotli, its WASM inlined) loads in parallel with the first attach; until it draws, the latest screen shows as plain text in the bundled font.
-It shapes text from font files: the regular Latin slices of the bundled font first, bold and italic after the first screen, and further slices as their characters appear (`terminalFonts.ts`).
-Two coverage fonts follow (`scripts/build-terminal-emoji-font.py`): emoji and symbols or scripts the bundled font lacks draw with the browser's own fonts, emoji in color, the rest in the cell's color.
+The engine loads in parallel with the first attach: its JavaScript (about 0.24 MiB Brotli) and its WASM core, which the build ships as a fingerprinted `.wasm` asset (`web/vite.restty.ts`, about 0.26 MiB Brotli) that compiles while it streams; the service worker precaches both.
+Until it draws, the latest screen shows as plain text in the bundled font and already takes input: hardware keys go through the semantic key path, paste through Thyra's handler, and on-screen keyboard or IME text through the byte path.
+Startup warmups and the service worker's precache wait for the engine and the first frame (up to three minutes), so they never share a slow link with either; the worker itself takes control at the first frame, so the engine and fonts the page loads next are cached as they arrive.
+It shapes text from font files: only the regular Latin slices gate the first frame; slices for other characters on screen follow it (the text preview stays up until they arrive), and bold, italic and the full stylesheet wait for startup to settle (`terminalFonts.ts`).
+Coverage fonts follow, loaded as their characters appear (`scripts/build-terminal-emoji-font.py`): emoji and symbols or scripts the bundled font lacks draw with the browser's own fonts, emoji in color, the rest in the cell's color; a text-default symbol draws in color only with U+FE0F ("❤️").
 The grid before the engine loads uses the bundled font's nominal metrics, which match the engine's, so loading never changes `cols`/`rows`.
 
 Input waits for readiness and revalidates attachment/session/runtime leases;
@@ -614,19 +616,19 @@ Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip with `
 At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure, the terminal engine and font stylesheets) before the first request.
 
 The first screen downloads only the entry and the terminal view's closure; the page opens its WebSocket before rendering, so the socket does not queue behind those chunks for a browser's six HTTP/1.1 connections.
-Everything else waits for the first terminal output (`startupGate.ts`): the WebGL renderer, the terminal font (a small ASCII/Latin-1/Powerline stylesheet, then the CJK and icon chunks when idle), warmups, prefetches and the service worker.
+Everything else waits for the terminal engine and the first terminal output (`startupGate.ts`): bold and italic font slices, the full font stylesheet (CJK and icon chunks) when idle, warmups, prefetches and the service worker's precache.
 The gate's fallback for output that never comes starts only once a terminal attach has completed, so it cannot expire while the terminal code is still downloading.
 Zstandard and compression dictionaries are not offered: WebKit supports neither, and quality-11 Brotli is smaller than zstd for these bundles.
 
 The build splits long-lived vendor code into `vendor-react`, the lazy `vendor-terminal` (the terminal engine), `vendor-xterm` (the popup terminal), `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
 Chunks that import from the entry still change with it.
-It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the terminal engine, and the core font stylesheet with its regular and bold slices.
+It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the terminal engine and its WASM core, and the core font stylesheet with its regular and bold slices.
 
 ### Service worker
 
-Production pages that are not yet controlled register one service worker, `/task-notifications-sw.js` at scope `/`, after the `load` event and the first terminal output (`startupGate.ts`); it also handles Web Push, so there is never a second worker.
+Production pages that are not yet controlled register one service worker, `/task-notifications-sw.js` at scope `/`, after the `load` event and the first terminal frame (`startupGate.ts`); it also handles Web Push, so there is never a second worker.
 The worker holds no build-specific code, so a deploy does not replace it; it follows builds through `/thyra-assets.json`.
-Once active it claims open pages; the page then asks it to copy the assets it loaded before control from the HTTP cache (`only-if-cached`, falling back to `force-cache` because WebKit can miss a file it has just loaded), after which the worker downloads the rest of the build's `precache` list one file at a time (through the HTTP cache).
+Once active it claims open pages; the page then asks it to copy the assets it loaded before control from the HTTP cache (`only-if-cached`, falling back to `force-cache` because WebKit can miss a file it has just loaded); once startup settles the worker downloads the rest of the build's `precache` list one file at a time (through the HTTP cache).
 - `/assets/*` GETs without a query or `Range` are cache-first in `thyra-assets-v1`; misses are cached on first use, and a page request joins a precache download of the same file.
   Only `200` same-origin, non-redirected, non-HTML responses marked `immutable` are stored.
 - Navigations to `/` or `/index.html` without a query are network-first: the network response (including login redirects and errors) is returned unchanged, and the cached shell in `thyra-shell-v1` answers only when the network fails or has not answered within 4 seconds.
