@@ -1095,11 +1095,13 @@ describe("terminal bridge sharing", () => {
 
     expect(bridge.statusTerminals()).toEqual([]);
     expect(bridge.viewedTerminals(browser)).toEqual([]);
+    // Which layer reports the close depends on whether the client had already
+    // finished its handshake or sent its surface request when dispose closed it; both mean dispose won.
     expect(
       messages
         .map((message) => JSON.parse(message))
         .find((message) => message.id === "concurrent-attach")?.error.message,
-    ).toBe("endpoint connection closed before first surface");
+    ).toMatch(/^endpoint (client|connection) closed/);
   });
 
   test("suppresses terminal replies after the request lease is invalidated", async () => {
