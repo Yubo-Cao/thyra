@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHostTools, runHostScript } from "./file-host";
 import {
+  MAX_RUNNING_JOBS,
   archiveCapabilities,
   archiveFormat,
   archiveStem,
@@ -51,6 +52,18 @@ async function runJob(
 
 const leftovers = async () =>
   (await readdir(root)).filter((name) => name.startsWith(".thyra-"));
+
+test("at most a few archive jobs run at once", () => {
+  const jobs = createArchiveJobs(
+    () => new Promise(() => {}) as ReturnType<typeof runHostScript>,
+  );
+  for (let index = 0; index < MAX_RUNNING_JOBS; index += 1) {
+    jobs.start(undefined, "w1", "extract", "sleep 60");
+  }
+  expect(() => jobs.start(undefined, "w1", "extract", "sleep 60")).toThrow(
+    "already running",
+  );
+});
 
 test("formats, stems and tool choice follow the host", () => {
   expect(archiveFormat("/x/Photos.TAR.GZ")).toBe("tar.gz");
@@ -238,6 +251,39 @@ describe("hostile archives", () => {
       }),
     );
     expect(job.state).toBe("done");
+    expect(await leftovers()).toEqual([]);
+  });
+
+  test("never writes through a symlink the archive itself planted", async () => {
+    if (!has("python3")) return;
+    const outside = join(root, "outside");
+    await mkdir(outside);
+    const plant = (kind: "tar" | "zip", name: string) =>
+      sh(
+        "python3",
+        "-c",
+        kind === "tar"
+          ? `import tarfile, io; t = tarfile.open('${name}', 'w'); l = tarfile.TarInfo('a'); l.type = tarfile.SYMTYPE; l.linkname = '${outside}'; t.addfile(l); f = tarfile.TarInfo('a/pwned.txt'); d = b'x'; f.size = len(d); t.addfile(f, io.BytesIO(d)); t.close()`
+          : `import zipfile; z = zipfile.ZipFile('${name}', 'w'); i = zipfile.ZipInfo('a'); i.create_system = 3; i.external_attr = 0o120777 << 16; z.writestr(i, '${outside}'); z.writestr('a/pwned.txt', 'x'); z.close()`,
+      );
+    for (const [kind, tool] of [
+      ["tar", "tar"],
+      ["zip", "unzip"],
+    ] as const) {
+      if (!has(tool)) continue;
+      const name = `plant.${kind}`;
+      await plant(kind, name);
+      const job = await runJob(
+        extractScript({
+          archive: join(root, name),
+          parent: root,
+          folder: `plant-${kind}`,
+          tool,
+        }),
+      );
+      expect(job.state).toBe("failed");
+      expect(await readdir(outside)).toEqual([]);
+    }
     expect(await leftovers()).toEqual([]);
   });
 

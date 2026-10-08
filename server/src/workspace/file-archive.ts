@@ -39,6 +39,8 @@ export type CompressFormat = "zip" | "tar.gz";
 export const EXTRACT_MAX_ENTRIES = 100_000;
 export const EXTRACT_MAX_BYTES = 8 * 1024 * 1024 * 1024;
 const JOB_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+/** Running jobs per connection; more wait for one to finish. */
+export const MAX_RUNNING_JOBS = 4;
 const FINISHED_JOB_TTL_MS = 10 * 60 * 1000;
 
 const SUFFIXES: Array<[string, ArchiveFormat]> = [
@@ -385,6 +387,14 @@ export function createArchiveJobs(run: RunHostScript = runHostScript) {
     script: string,
   ) {
     sweep();
+    const running = [...jobs.values()].filter(
+      (job) => job.state === "running",
+    ).length;
+    if (running >= MAX_RUNNING_JOBS) {
+      throw new Error(
+        `${MAX_RUNNING_JOBS} archive jobs are already running; wait for one to finish`,
+      );
+    }
     const job: JobRecord = {
       id: randomBytes(9).toString("base64url"),
       kind,

@@ -413,7 +413,8 @@ its `job_id`; `file.job` reports `state` (`running`, `done`, `failed`,
 `canceled`), `files`, `bytes`, `total_bytes` (when the format lists sizes) and
 the new path as `result`, and `file.job_cancel` stops it. Jobs belong to the
 connection runtime and are found only with the workspace that started them;
-finished jobs are kept for ten minutes. `file.tools` reports, per archive
+at most four run at once per connection, and finished jobs are kept for ten
+minutes. `file.tools` reports, per archive
 format, `true` or the tool to install, and which thumbnail kinds the host can
 make. Extraction (`file-archive.ts`) lists the entry names first and refuses
 any absolute, drive-letter or `..` name and more than 100,000 entries (and,
