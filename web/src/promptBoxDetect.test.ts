@@ -198,9 +198,28 @@ describe("editor frame", () => {
     });
   });
 
-  test("growth stops at 40% of the pane", () => {
-    expect(promptEditorFrame(claudeBox, 30, 50)?.rows).toBe(12);
-    expect(promptEditorFrame(claudeBox, 30, 50)?.top).toBe(17);
+  test("growth stops at 30% of a short pane", () => {
+    expect(promptEditorFrame(claudeBox, 30, 50)?.rows).toBe(9);
+    expect(promptEditorFrame(claudeBox, 30, 50)?.top).toBe(20);
+  });
+
+  test("growth stops at eight lines in a tall pane", () => {
+    const tall = {
+      mode: "overlay" as const,
+      region: { top: 76, bottom: 78, inputTop: 77, inputBottom: 77 },
+    };
+    expect(promptEditorFrame(tall, 80, 50)).toEqual({
+      top: 69,
+      rows: 10,
+      padTop: 1,
+      padBottom: 1,
+    });
+  });
+
+  test("image thumbnails add rows without taking the text's line", () => {
+    expect(promptEditorFrame(claudeBox, 30, 1, 4)?.rows).toBe(7);
+    expect(promptEditorFrame(claudeBox, 30, 50, 4)?.rows).toBe(9);
+    expect(promptEditorFrame(claudeBox, 12, 1, 4)?.rows).toBe(7);
   });
 
   test("a box without padding rows still gets a hint row", () => {

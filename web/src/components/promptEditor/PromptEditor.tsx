@@ -73,6 +73,8 @@ const SCAN_INTERVAL_MS = 100;
 // a send (whose paste passes through the box) holds that off for a while.
 const AGENT_TEXT_SETTLE_MS = 250;
 const SEND_GRACE_MS = 1500;
+// The thumbnail strip of attached images (ComposerImages.css).
+const IMAGE_STRIP_HEIGHT = 72;
 // The agent's own prompt glyph in the gutter, where it drew it.
 const PROMPT_MARKERS: Partial<Record<AgentKind, string>> = {
   claude: "❯",
@@ -333,12 +335,8 @@ export function PromptEditor({
     promptEditorFrame(
       placement,
       metrics.rows,
-      Math.max(
-        1,
-        Math.ceil(
-          (contentHeight + (images.length ? 72 : 0)) / metrics.rowHeight - 0.01,
-        ),
-      ),
+      Math.max(1, Math.ceil(contentHeight / metrics.rowHeight - 0.01)),
+      images.length ? Math.ceil(IMAGE_STRIP_HEIGHT / metrics.rowHeight) : 0,
     );
 
   // A menu took the agent's box: hand its keys to the terminal, and take

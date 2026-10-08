@@ -246,18 +246,22 @@ export type PromptEditorFrame = {
   padBottom: number;
 };
 
-/** The share of the pane the editor may grow to before it scrolls. */
-export const PROMPT_EDITOR_MAX_SHARE = 0.4;
+// The editor grows with its draft to this many text lines, and never past
+// this share of the pane, whichever is smaller; then it scrolls inside.
+export const PROMPT_EDITOR_MAX_LINES = 8;
+export const PROMPT_EDITOR_MAX_SHARE = 0.3;
 const DOCK_ROWS = 3;
 
 /**
- * Rows the editor covers for a placement and `textRows` of text: the agent's
- * box at least, taller as the text grows, up to 40% of the pane.
+ * Rows the editor covers for a placement, `textRows` of text and
+ * `attachmentRows` of image thumbnails: the agent's box (one text line)
+ * when short, growing upward with the draft up to the cap.
  */
 export function promptEditorFrame(
   placement: PromptEditorPlacement,
   screenRows: number,
   textRows: number,
+  attachmentRows = 0,
 ): PromptEditorFrame | null {
   if (placement.mode === "hidden" || screenRows <= 0) return null;
   const region =
@@ -270,13 +274,16 @@ export function promptEditorFrame(
   const regionRows = region.bottom - region.top + 1;
   const padTop = regionRows >= 3 ? 1 : 0;
   const padBottom = 1;
-  const maxRows = Math.max(
-    regionRows,
-    Math.floor(screenRows * PROMPT_EDITOR_MAX_SHARE),
+  const chrome = padTop + padBottom + attachmentRows;
+  const maxText = Math.max(
+    1,
+    Math.min(
+      PROMPT_EDITOR_MAX_LINES,
+      Math.floor(screenRows * PROMPT_EDITOR_MAX_SHARE) - chrome,
+    ),
   );
   const rows = Math.min(
-    maxRows,
-    Math.max(regionRows, Math.max(1, textRows) + padTop + padBottom),
+    Math.max(regionRows, Math.min(Math.max(1, textRows), maxText) + chrome),
     region.bottom + 1,
   );
   return { top: region.bottom + 1 - rows, rows, padTop, padBottom };
