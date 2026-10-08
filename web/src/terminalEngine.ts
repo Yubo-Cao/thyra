@@ -1,6 +1,7 @@
 import type { PtyTransport } from "restty";
 import type { ResttyRuntime } from "restty/internal/runtime";
 import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_OPTIONS } from "./appearance";
+import { TerminalLinkHover } from "./terminalLinkHover";
 import { afterStartup, holdStartup } from "./startupGate";
 import { redirectScreenFocus } from "./terminalFocus";
 import {
@@ -464,10 +465,7 @@ export class TerminalEngine {
   private stateGeneration = 0;
   private stateCache: { generation: number; state: RenderState | null } | null =
     null;
-  private linkProviders = new Set<TerminalLinkProvider>();
-  private hoveredLink: TerminalLink | null = null;
-  private linkGeneration = 0;
-  private pointer: PointerEvent | null = null;
+  private links: TerminalLinkHover;
   private pointerDown: { x: number; y: number } | null = null;
   private linkUnderline: HTMLDivElement;
   private readonly dataEmitter = new Emitter<string>();
@@ -526,6 +524,14 @@ export class TerminalEngine {
     this.linkUnderline = doc.createElement("div");
     this.linkUnderline.className = "terminal-engine-link";
     this.linkUnderline.hidden = true;
+    this.links = new TerminalLinkHover({
+      cell: (event) => this.linkCell(event),
+      show: (link) => this.underline(link),
+      hide: () => {
+        this.linkUnderline.hidden = true;
+        this.screen.style.cursor = "";
+      },
+    });
     this.element.append(
       this.screen,
       this.preview,
@@ -558,6 +564,11 @@ export class TerminalEngine {
       (option) => option.value === this.opts.fontPreset,
     )?.fontFamily;
     return family ? `${family}, ${TERMINAL_FONT_FAMILY}` : TERMINAL_FONT_FAMILY;
+  }
+
+  /** The active renderer ("webgpu" or "webgl2"), once the engine runs. */
+  get renderer(): string {
+    return this.runtime?.render.getBackend() ?? "";
   }
 
   /** The modes the screen's application set. */
@@ -944,6 +955,7 @@ export class TerminalEngine {
 
   private setSize(cols: number, rows: number) {
     this.stateGeneration++;
+    this.links?.refresh();
     if (cols === this.cols && rows === this.rows) return;
     this.cols = cols;
     this.rows = rows;
@@ -960,11 +972,14 @@ export class TerminalEngine {
     this.textarea.blur();
   }
 
-  /** Repaints and rereads links. */
+  /**
+   * Repaints and drops the hovered link; as in xterm, links are looked up
+   * again on the next pointer move, never per repaint (each lookup may cost
+   * Herdr a `terminal.link.resolve`).
+   */
   refresh() {
-    this.linkGeneration++;
     this.host?.requestRender();
-    if (this.pointer) this.hoverAt(this.pointer);
+    this.links.refresh();
   }
 
   /** Like xterm's: sends text as a paste, bracketed when the app asked. */
@@ -1021,6 +1036,7 @@ export class TerminalEngine {
   scrollLines(lines: number) {
     this.host?.scrollViewport(lines);
     this.stateGeneration++;
+    this.links.refresh();
   }
 
   scrollToTop() {
@@ -1090,48 +1106,20 @@ export class TerminalEngine {
   // Links: xterm's provider contract on top of the canvas.
 
   registerLinkProvider(provider: TerminalLinkProvider): Disposable {
-    this.linkProviders.add(provider);
-    return {
-      dispose: () => {
-        this.linkProviders.delete(provider);
-        if (this.hoveredLink) this.leaveLink();
-      },
-    };
+    return this.links.register(provider);
   }
 
-  private hoverAt(event: PointerEvent) {
+  /** The 1-based buffer cell under a pointer, or null off the grid. */
+  private linkCell(event: MouseEvent) {
     const host = this.host;
-    if (!host || !this.linkProviders.size) return;
+    if (!host) return null;
     const cell = host.positionToCell(event);
-    if (cell.row < 0 || cell.row >= this.rows) return this.leaveLink(event);
-    const y = this.buffer.active.viewportY + cell.row + 1;
-    const x = cell.col + 1;
-    const contains = (link: TerminalLink) =>
-      link.range.start.y <= y &&
-      link.range.end.y >= y &&
-      (link.range.start.y < y || link.range.start.x <= x) &&
-      (link.range.end.y > y || link.range.end.x >= x);
-    if (this.hoveredLink && contains(this.hoveredLink)) return;
-    this.leaveLink(event);
-    const generation = this.linkGeneration;
-    for (const provider of this.linkProviders) {
-      provider.provideLinks(y, (links) => {
-        if (
-          this.disposed ||
-          generation !== this.linkGeneration ||
-          this.pointer !== event ||
-          this.hoveredLink
-        )
-          return;
-        const link = links?.find(contains);
-        if (link) this.enterLink(link, event);
-      });
-    }
+    if (cell.row < 0 || cell.row >= this.rows) return null;
+    return { x: cell.col + 1, y: this.buffer.active.viewportY + cell.row + 1 };
   }
 
-  private enterLink(link: TerminalLink, event: PointerEvent) {
-    this.hoveredLink = link;
-    link.hover?.(event, link.text);
+  /** One underline under the hovered row's part of the link. */
+  private underline(link: TerminalLink) {
     const bounds = this.screenBounds();
     const rect = this.element.getBoundingClientRect();
     const scale = rect.width / (this.element.offsetWidth || rect.width || 1);
@@ -1139,7 +1127,6 @@ export class TerminalEngine {
     const cellH = bounds.height / this.rows / scale;
     const top = this.buffer.active.viewportY;
     const style = this.linkUnderline.style;
-    // One underline under the hovered row's part of the link.
     const row = link.range.start.y - 1 - top;
     const endRow = link.range.end.y - 1 - top;
     const startX = link.range.start.x - 1;
@@ -1149,15 +1136,6 @@ export class TerminalEngine {
     style.width = `${(endX - startX) * cellW}px`;
     this.linkUnderline.hidden = false;
     this.screen.style.cursor = "pointer";
-  }
-
-  private leaveLink(event?: PointerEvent) {
-    const link = this.hoveredLink;
-    this.hoveredLink = null;
-    this.linkUnderline.hidden = true;
-    if (!link) return;
-    this.screen.style.cursor = "";
-    if (event) link.leave?.(event, link.text);
   }
 
   private bindEvents() {
@@ -1174,18 +1152,14 @@ export class TerminalEngine {
       "pointermove",
       (event) => {
         if (event.pointerType === "touch") return;
-        this.pointer = event;
-        if (event.buttons === 0) this.hoverAt(event);
-        else if (this.hoveredLink) this.leaveLink(event);
+        if (event.buttons === 0) this.links.move(event);
+        else this.links.leave(event);
       },
       { signal },
     );
     this.screen.addEventListener(
       "pointerleave",
-      (event) => {
-        this.pointer = null;
-        this.leaveLink(event);
-      },
+      (event) => this.links.leave(event),
       { signal },
     );
     this.screen.addEventListener(
@@ -1200,7 +1174,7 @@ export class TerminalEngine {
       (event) => {
         const down = this.pointerDown;
         this.pointerDown = null;
-        const link = this.hoveredLink;
+        const link = this.links.hovered;
         if (
           !link ||
           event.button !== 0 ||
@@ -1221,8 +1195,7 @@ export class TerminalEngine {
     fontListeners.delete(this.reloadFonts);
     this.abort.abort();
     this.preEngineInput.abort();
-    this.leaveLink();
-    this.linkProviders.clear();
+    this.links.dispose();
     this.runtime?.lifecycle.destroy();
     this.runtime = null;
     this.host = null;

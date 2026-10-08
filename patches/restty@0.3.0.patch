@@ -1,6 +1,9 @@
 diff --git a/node_modules/restty/.bun-tag-1da53985077d5c64 b/.bun-tag-1da53985077d5c64
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-68ce9866d42b44f0 b/.bun-tag-68ce9866d42b44f0
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-83939f1551abd0e1 b/.bun-tag-83939f1551abd0e1
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
@@ -40,7 +43,7 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..f90e084d9faaeb9ba0c494cb65fb49598eb7b86a 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc66699343e843 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
 @@ -34366,7 +34366,7 @@ function createResttyFontResourceStore(options = {}) {
@@ -182,17 +185,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..f90e084d9faaeb9ba0c494cb65fb4959
      if (firstIndex >= 0) {
        setBoundedMap(fontState.fontPickCache, cacheKey, firstIndex, fontPickCacheLimit);
        return firstIndex;
-@@ -55249,7 +55256,8 @@ function createResttyRuntime2(options) {
-   inputHandler = createInputHandler2({
-     getCursorPosition: resolveCursorForCpr,
-     sendReply: (data) => {
--      ptyTransport.sendInput(data);
-+      if (forwardTerminalReplies)
-+        ptyTransport.sendInput(data);
-     },
-     positionToCell,
-     positionToPixel,
-@@ -55278,14 +55286,8 @@ function createResttyRuntime2(options) {
+@@ -55278,14 +55285,8 @@ function createResttyRuntime2(options) {
        const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
        return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
      },
@@ -209,7 +202,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..f90e084d9faaeb9ba0c494cb65fb4959
      getKittyKeyboardFlags: () => {
        if (!wasm || !wasmHandle)
          return 0;
-@@ -55332,9 +55334,11 @@ function createResttyRuntime2(options) {
+@@ -55332,9 +55333,11 @@ function createResttyRuntime2(options) {
        getLastKeydownSeq: () => lastKeydownSeq,
        getLastKeydownSeqAt: () => lastKeydownSeqAt,
        keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
@@ -222,7 +215,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..f90e084d9faaeb9ba0c494cb65fb4959
    bindCanvasEvents();
    const fontState = {
      font: null,
-@@ -55828,6 +55832,8 @@ function createResttyRuntime2(options) {
+@@ -55828,6 +55831,8 @@ function createResttyRuntime2(options) {
      },
      set lastRenderState(value) {
        lastRenderState = value;
@@ -231,7 +224,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..f90e084d9faaeb9ba0c494cb65fb4959
      }
    });
    const readRuntimeControllerState = () => ({
-@@ -55923,7 +55929,7 @@ function createResttyRuntime2(options) {
+@@ -55923,7 +55928,7 @@ function createResttyRuntime2(options) {
        maxScrollback: terminal.maxScrollback
      }
    });
@@ -240,7 +233,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..f90e084d9faaeb9ba0c494cb65fb4959
      terminal: {
        setFontSize: applyFontSize,
        setLigatures,
-@@ -55950,6 +55956,62 @@ function createResttyRuntime2(options) {
+@@ -55950,6 +55955,62 @@ function createResttyRuntime2(options) {
        getShaderStages
      }
    });
