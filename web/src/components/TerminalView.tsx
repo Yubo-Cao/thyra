@@ -417,7 +417,7 @@ export function TerminalView({
     setFileLinkMenu(null);
     setWorkspaceDirectory(null);
     if (desiredTerminal.current !== (pane?.terminal_id ?? null))
-      refs.presentation.current?.reset(true);
+      refs.presentation.current?.reset();
     refs.touchSelection.current?.reset();
     closeTerminalInput();
   }, [

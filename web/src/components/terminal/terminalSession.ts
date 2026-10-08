@@ -801,8 +801,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     if (!frame.link_frame || frame.link_frame !== session.latestLinkFrame)
       invalidateLinks();
     refs.linkReady.current = true;
-    session.latestEndpointText =
-      typeof frame.mouse_reporting === "boolean" ? text : undefined;
+    session.latestEndpointText = text;
     session.latestLinkFrame = frame.link_frame;
     // An explicitly chosen path is a stable action target, even as a TUI repaints.
     attachWatchdog.markFrame();
@@ -821,33 +820,18 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       term.resize(frame.width, frame.height);
       applyTerminalFollowScale(term, container, true, refs.followPan.current);
     }
-    if (typeof frame.mouse_reporting === "boolean") {
-      presentation.update(
-        text,
-        frame.mouse_reporting,
-        {
-          cols: frame.width,
-          rows: frame.height,
-        },
-        frame.history,
-        frame.link_frame,
-        parts,
-        graphicsStore.update(frame.graphics),
-      );
-    } else {
-      presentation.updateIncremental(text, () => {
-        touch.reset();
-        history.reset();
-        term.clearSelection();
-        presentation.cancelSelection();
-        store.notify({
-          kind: "info",
-          message: t(
-            "Selection display resumed: pending output reached the 1 MiB limit.",
-          ),
-        });
-      });
-    }
+    presentation.update(
+      text,
+      frame.mouse_reporting === true,
+      {
+        cols: frame.width,
+        rows: frame.height,
+      },
+      frame.history,
+      frame.link_frame,
+      parts,
+      graphicsStore.update(frame.graphics),
+    );
     bindings.focusTerminalSoon();
   });
   const offClipboard = bridge.onTerminalClipboard((clipboard) => {

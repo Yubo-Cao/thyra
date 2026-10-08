@@ -57,9 +57,6 @@ function findScrollableElement(target: EventTarget | null) {
   if (element && overlayScrollbarExcludedElement(element)) return null;
   while (element && element !== document.documentElement) {
     if (hasScrollableOverflow(element)) return element;
-    const xterm = element.closest(".xterm");
-    const viewport = xterm?.querySelector<HTMLElement>(".xterm-viewport");
-    if (viewport && hasScrollableOverflow(viewport)) return viewport;
     element = element.parentElement;
   }
   return null;

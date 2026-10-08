@@ -17,8 +17,6 @@ export default {
   "{error}. Use Copy to approve this clipboard write.":
     "{error}。请点击“复制”以允许此次剪贴板写入。",
   Copy: "复制",
-  "Selection display resumed: pending output reached the 1 MiB limit.":
-    "已恢复选区显示：待处理输出已达到 1 MiB 上限。",
   "Terminal stream was taken over by another Thyra client":
     "终端流已被另一个 Thyra 客户端接管",
   "Terminal stream closed by the server": "服务器关闭了终端流",

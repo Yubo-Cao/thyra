@@ -257,11 +257,8 @@ export function useTerminalAttach(
     if (!client.isCurrent()) return;
     const { desiredTerminal, attachedTerminal, attachingTerminal } = refs;
     const { attachWatchdog, attachTimeouts, renderedTerminal } = refs;
-    if (desiredTerminal.current !== paneTerminalId || status !== "connected") {
-      refs.presentation.current?.reset(
-        desiredTerminal.current !== paneTerminalId,
-      );
-    }
+    if (desiredTerminal.current !== paneTerminalId || status !== "connected")
+      refs.presentation.current?.reset();
     if (terminalAttachEpoch.current !== attachEpoch) {
       refs.presentation.current?.reset();
       terminalAttachEpoch.current = attachEpoch;

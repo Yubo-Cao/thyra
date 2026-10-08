@@ -28,7 +28,6 @@ export function terminalMouseUsesSelection(
 /**
  * Endpoint frames are self-contained repaints, not an incremental PTY stream.
  * Retain just the newest while selecting so copied text stays the visible text.
- * Legacy chunks use a separate ordered buffer and never replace one another.
  */
 export class TerminalEndpointPresentation {
   mouseReporting: boolean | undefined;
@@ -41,7 +40,6 @@ export class TerminalEndpointPresentation {
   private displayedViewport: string | null = null;
   private writing = false;
   private changingLinks = false;
-  private incremental = "";
   private disposed = false;
   private generation = 0;
   private deferredSelection: (() => void) | null = null;
@@ -71,19 +69,6 @@ export class TerminalEndpointPresentation {
 
   get linkWritePending(): boolean {
     return this.writing && this.changingLinks;
-  }
-
-  /** Legacy chunks are ordered, never coalesced as endpoint repaints. */
-  updateIncremental(text: string, overflow: () => void): void {
-    if (this.disposed || !text) return;
-    // ponytail: 1 MiB UTF-16 payload budget; release selection instead of dropping output.
-    if (
-      (this.selectionDrag || this.hasSelection()) &&
-      (this.incremental.length + text.length) * 2 > 1024 * 1024
-    )
-      overflow();
-    this.incremental += text;
-    this.flush();
   }
 
   /** Reserve selection immediately; replay native initiation only after parsing. */
@@ -126,7 +111,7 @@ export class TerminalEndpointPresentation {
         ))
     )
       return;
-    const frame = this.incremental ? null : this.pendingFrame;
+    const frame = this.pendingFrame;
     if (frame) this.pendingFrame = null;
     const viewport = this.viewportSize?.();
     // A resize can overtake a frame on the wire or while selection holds it.
@@ -150,12 +135,10 @@ export class TerminalEndpointPresentation {
         : "\x1b[?1002l\x1b[?1006l";
       this.appliedMouseReporting = this.mouseReporting;
     }
-    const incremental = this.incremental;
-    this.incremental = "";
     let text = frame?.text ?? "";
     let linksChanged = true;
     const displayed = this.displayedFrame;
-    if (frame && displayed && !prefix && !incremental) {
+    if (frame && displayed && !prefix) {
       if (text === displayed.text) {
         // Metadata may advance without changing the physical xterm buffer.
         this.displayedFrame = frame;
@@ -181,7 +164,6 @@ export class TerminalEndpointPresentation {
       frame?.parts &&
       displayed?.parts &&
       !prefix &&
-      !incremental &&
       viewportKey !== null &&
       viewportKey === this.displayedViewport &&
       frame.size?.cols === displayed.size?.cols &&
@@ -192,12 +174,12 @@ export class TerminalEndpointPresentation {
       const update = terminalFrameRowUpdate(displayed.parts, frame.parts);
       if (update !== null) text = update;
     }
-    if (prefix || frame !== null || incremental) {
+    if (prefix || frame !== null) {
       this.writing = true;
       this.changingLinks = linksChanged;
       const generation = this.generation;
       this.write(
-        prefix + text + incremental,
+        prefix + text,
         () => {
           // reset() cannot cancel the physical xterm write. Its completion must
           // still release the gate for current intent, never restore old state.
@@ -206,7 +188,6 @@ export class TerminalEndpointPresentation {
             this.displayedViewport = viewportKey;
             this.selectionHistory?.presented(frame);
           }
-          if (incremental) this.displayedViewport = null;
           this.writing = false;
           if (this.disposed) return;
           const replay = this.deferredSelection;
@@ -224,14 +205,13 @@ export class TerminalEndpointPresentation {
     this.displayedViewport = null;
   }
 
-  reset(discardIncremental = false): void {
+  reset(): void {
     // Invalidate presentation/replay, not the outstanding parser operation.
     this.generation++;
     this.deferredSelection = null;
     this.mouseReporting = undefined;
     this.appliedMouseReporting = undefined;
     this.pendingFrame = null;
-    if (discardIncremental) this.incremental = "";
     this.displayedFrame = null;
     this.displayedViewport = null;
     this.selectionHistory?.reset();
@@ -239,7 +219,7 @@ export class TerminalEndpointPresentation {
   }
 
   dispose(): void {
-    this.reset(true);
+    this.reset();
     this.disposed = true;
   }
 }

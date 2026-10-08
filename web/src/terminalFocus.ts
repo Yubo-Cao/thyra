@@ -1,6 +1,6 @@
 /**
  * Guards the terminal's frame-driven refocusing. Terminal frames refocus the
- * xterm textarea so keyboard input keeps working, but doing so while an
+ * terminal input so keyboard input keeps working, but doing so while an
  * overlay owns focus dismisses it: a non-modal popover closes when focus
  * leaves it. The
  * Workspace Inspector likewise owns keyboard focus while browsing resources,

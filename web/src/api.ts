@@ -217,7 +217,7 @@ export interface TerminalPush {
   width: number;
   height: number;
   full: boolean;
-  /** Present only for endpoint full pane repaints; absent on legacy streams. */
+  /** Whether the pane application reports mouse input; set on every frame. */
   mouse_reporting?: boolean;
   /** Opaque identity from this terminal socket's advertised read-only resolver. */
   link_frame?: string;

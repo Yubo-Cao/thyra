@@ -275,8 +275,7 @@ export function installTerminalGestures(
         cancelEvent(e);
         return;
       }
-      // Let the engine produce pane-local SGR coordinates and modifiers only
-      // on endpoint streams. Legacy AttachScroll routing stays unchanged.
+      // Let the engine produce pane-local SGR coordinates and modifiers.
       if (
         presentation.mouseReporting &&
         term.modes.mouseTrackingMode !== "none"
