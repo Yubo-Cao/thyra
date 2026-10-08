@@ -614,7 +614,9 @@ export function PromptEditor({
         </span>
         {coarsePointer ? (
           // The on-screen keyboard has no send shortcut: its Return breaks
-          // the line, so touch gets a button.
+          // the line, so touch gets a button. The buttons keep focus in the
+          // editor (and the keyboard up) on mousedown, not pointerdown:
+          // WebKit drops a tap's click when its pointerdown is cancelled.
           <IconButton
             className="prompt-editor-action"
             label={shortcutTitle(
@@ -624,7 +626,7 @@ export function PromptEditor({
             tooltip={false}
             icon={<CornerDownLeft size={12} />}
             disabled={busy || !text.trim()}
-            onPointerDown={(event) => event.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => void send()}
           />
         ) : null}
@@ -637,7 +639,7 @@ export function PromptEditor({
           tooltip={false}
           aria-pressed={preview}
           icon={preview ? <PenLine size={12} /> : <Eye size={12} />}
-          onPointerDown={(event) => event.preventDefault()}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={togglePreview}
         />
         <IconButton
@@ -645,7 +647,7 @@ export function PromptEditor({
           label={shortcutTitle(t("Hide prompt editor"), "promptEditor.toggle")}
           tooltip={false}
           icon={<X size={12} />}
-          onPointerDown={(event) => event.preventDefault()}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={onClose}
         />
       </div>
