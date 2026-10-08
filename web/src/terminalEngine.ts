@@ -442,6 +442,15 @@ async function engineFonts(preset: string, coverage: boolean) {
   return [...faces, ...data];
 }
 
+/** `localStorage["thyra:glyphRaster"] = "system"` rasterizes with Canvas2D. */
+function systemGlyphRaster() {
+  try {
+    return localStorage.getItem("thyra:glyphRaster") === "system";
+  } catch {
+    return false;
+  }
+}
+
 export class TerminalEngine {
   readonly element: HTMLDivElement;
   /** The canvas; `screenBounds()` is the part the cell grid covers. */
@@ -622,6 +631,10 @@ export class TerminalEngine {
         // scroller would also keep the canvas on a sticky, will-change layer
         // that it shifts by fractional pixels, which blurs the text.
         nativeScrollbar: false,
+        // Opt-in: glyphs from the browser's own text renderer, as xterm's
+        // were (restty still shapes and lays out). Equal on Linux Chrome; left
+        // for comparing on other systems.
+        systemGlyphRaster: systemGlyphRaster(),
         // Blend glyph edges in sRGB like browser text on both backends.
         alphaBlending: "native",
         touchSelectionMode: "off",
@@ -978,30 +991,7 @@ export class TerminalEngine {
     const cell = this.cellSize();
     this.screen.style.width = `${cols * cell.width}px`;
     this.screen.style.height = `${rows * cell.height}px`;
-    this.alignScreen();
   }
-
-  /**
-   * Nudges the canvas onto whole device pixels: at fractional pixel ratios
-   * (125% Windows scaling) a layout offset like 294 CSS px lands at 367.5
-   * device px, and the compositor would resample the whole canvas. A scaled
-   * (followed) grid is resampled anyway and stays where it is.
-   */
-  private alignScreen = () => {
-    if (this.disposed) return;
-    const style = this.screen.style;
-    style.removeProperty("translate");
-    const rect = this.screen.getBoundingClientRect();
-    const width = this.screen.offsetWidth;
-    if (!width || Math.abs(rect.width / width - 1) > 1e-3) return;
-    const dpr = window.devicePixelRatio || 1;
-    const snap = (value: number) =>
-      (Math.round(value * dpr) - value * dpr) / dpr;
-    const dx = snap(rect.left);
-    const dy = snap(rect.top);
-    if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4)
-      style.translate = `${dx}px ${dy}px`;
-  };
 
   /** Refits when the pixel ratio changes (another display, page zoom). */
   private watchPixelRatio() {
@@ -1224,22 +1214,6 @@ export class TerminalEngine {
       if (this.keyHandler && this.keyHandler(event) === false)
         event.stopPropagation();
     };
-    // Layout moves the canvas off the device-pixel grid; move it back.
-    let alignQueued = false;
-    const queueAlign = () => {
-      if (alignQueued) return;
-      alignQueued = true;
-      requestAnimationFrame(() => {
-        alignQueued = false;
-        this.alignScreen();
-      });
-    };
-    if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(queueAlign);
-      observer.observe(this.element);
-      signal.addEventListener("abort", () => observer.disconnect());
-    }
-    window.addEventListener("resize", queueAlign, { signal });
     this.element.addEventListener("keydown", onKey, capture);
     this.element.addEventListener("keyup", onKey, capture);
     this.screen.addEventListener(

@@ -10,8 +10,10 @@
  *
  * Crisp text: at pixel ratios 1.25 (125% Windows scaling), 1.5 and 2 (and a 110% interface scale) every
  * terminal canvas's backing store is exactly its CSS size times the pixel
- * ratio, starts on a whole device pixel and sits on no extra scroll layer, so the compositor shows it 1:1
- * instead of resampling it; after a pixel ratio change it follows.
+ * ratio, and it has no transform and no extra scroll layer: the compositor
+ * snaps an untransformed layer to device pixels, while a transform (even a
+ * sub-pixel translate meant to snap it) makes it filter the whole canvas.
+ * After a pixel ratio change it follows.
  * Scrolling: 30 wheel notches over a pane with Herdr scrollback send 30
  * `terminal.scroll` requests and Herdr answers with frames, without a link
  * lookup per repaint. Exits non-zero on a failure.
@@ -77,17 +79,14 @@ function blurryCanvases(page: any): Promise<string[]> {
         const width = rect.width * dpr;
         const height = rect.height * dpr;
         const layered = canvas.closest(".restty-native-scroll-root");
-        const left = rect.left * dpr;
-        const top = rect.top * dpr;
-        const offGrid =
-          Math.abs(left - Math.round(left)) > 0.05 ||
-          Math.abs(top - Math.round(top)) > 0.05;
+        const style = getComputedStyle(canvas);
+        const moved = style.translate !== "none" || style.transform !== "none";
         return Math.abs(width - canvas.width) > 0.05 ||
           Math.abs(height - canvas.height) > 0.05 ||
           layered ||
-          offGrid
+          moved
           ? [
-              `${width}x${height} device px at ${left},${top} shows ${canvas.width}x${canvas.height}${layered ? " on a scroll layer" : ""}`,
+              `${width}x${height} device px shows ${canvas.width}x${canvas.height}${layered ? " on a scroll layer" : ""}${moved ? ` moved by ${style.translate} ${style.transform}` : ""}`,
             ]
           : [];
       });

@@ -1,6 +1,9 @@
 diff --git a/node_modules/restty/.bun-tag-1da53985077d5c64 b/.bun-tag-1da53985077d5c64
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-5a2d109e5dde7691 b/.bun-tag-5a2d109e5dde7691
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-687b841979c3ee82 b/.bun-tag-687b841979c3ee82
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
@@ -49,7 +52,7 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d689ade7e1a 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059e7e7eead 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
 @@ -1428,7 +1428,7 @@ function createInputHandler2(options = {}) {
@@ -61,7 +64,17 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      positionToCell,
      positionToPixel: positionToPixel ?? undefined,
      getWheelCellMetrics: options.getWheelCellMetrics
-@@ -34366,7 +34366,7 @@ function createResttyFontResourceStore(options = {}) {
+@@ -34342,7 +34342,8 @@ function createResttyFontResourceStore(options = {}) {
+         const parsedFace = parsedFaces[faceIndex];
+         faces.push({
+           font: parsedFace.font,
+-          label: resolveFaceLabel(baseLabel, parsedFace)
++          label: resolveFaceLabel(baseLabel, parsedFace),
++          buffer: parsedFaces.length === 1 ? buffer : null
+         });
+       }
+     }
+@@ -34366,7 +34367,7 @@ function createResttyFontResourceStore(options = {}) {
  }
  
  // src/runtime/core/session.ts
@@ -70,7 +83,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
    let wasmPromise = null;
    let webgpuCorePromise = null;
    const wasmLogListeners = new Set;
-@@ -34379,7 +34379,7 @@ function createResttyRuntimeSession2() {
+@@ -34379,7 +34380,7 @@ function createResttyRuntimeSession2() {
    return {
      getWasm: () => {
        if (!wasmPromise) {
@@ -79,7 +92,212 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        }
        return wasmPromise;
      },
-@@ -45775,7 +45775,7 @@ function buildFontAtlasIfNeeded(params) {
+@@ -45620,6 +45621,182 @@ function getBuiltinTheme2(name) {
+   parsedThemeCache.set(name, parsed);
+   return parsed;
+ }
++// thyra: system (Canvas2D) glyph rasterizer
++var SYSTEM_RASTER_CLUSTER_BASE = 2097152;
++var SYSTEM_RASTER_CLUSTER_LIMIT = 8192;
++var systemRasterFamilies = new WeakMap;
++var systemRasterFamilyCount = 0;
++var systemRasterContext = null;
++async function registerSystemRasterFace(entry, buffer) {
++  entry.rasterFamily = null;
++  if (!buffer || typeof document === "undefined" || typeof FontFace === "undefined" || !document.fonts)
++    return;
++  const key = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
++  let pending = key ? systemRasterFamilies.get(key) : null;
++  if (!pending) {
++    const family = `restty-raster-${++systemRasterFamilyCount}`;
++    const face = new FontFace(family, buffer);
++    pending = face.load().then(() => {
++      document.fonts.add(face);
++      return family;
++    }, () => null);
++    if (key)
++      systemRasterFamilies.set(key, pending);
++  }
++  const family = await pending;
++  if (!family)
++    return;
++  entry.rasterFamily = family;
++  entry.rasterTexts = new Map;
++  entry.rasterClusters = new Map;
++  entry.rasterCache = new Map;
++}
++function noteSystemRasterText(entry, text, shaped) {
++  if (!entry.rasterTexts || !text || !shaped.glyphs.length)
++    return shaped;
++  if (shaped.glyphs.length === 1) {
++    const glyphId = shaped.glyphs[0].glyphId;
++    if (glyphId && !entry.rasterTexts.has(glyphId))
++      entry.rasterTexts.set(glyphId, text);
++    return shaped;
++  }
++  // Several glyphs (a ligature run, combining marks): the system shaper
++  // draws the whole cluster, as xterm's joined cells did.
++  let cluster = entry.rasterClusters.get(text);
++  if (!cluster) {
++    if (entry.rasterClusters.size >= SYSTEM_RASTER_CLUSTER_LIMIT)
++      return shaped;
++    const glyphId = SYSTEM_RASTER_CLUSTER_BASE + entry.rasterClusters.size;
++    cluster = {
++      glyphs: [{ glyphId, xOffset: 0, yOffset: 0, xAdvance: shaped.advance, yAdvance: 0 }],
++      advance: shaped.advance
++    };
++    entry.rasterClusters.set(text, cluster);
++    entry.rasterTexts.set(glyphId, text);
++  }
++  return cluster;
++}
++function systemRasterCanvas(width, height) {
++  if (!systemRasterContext) {
++    const canvas = document.createElement("canvas");
++    systemRasterContext = canvas.getContext("2d", { willReadFrequently: true });
++    if (!systemRasterContext)
++      return null;
++  }
++  const canvas = systemRasterContext.canvas;
++  if (canvas.width < width || canvas.height < height) {
++    canvas.width = Math.max(canvas.width, width);
++    canvas.height = Math.max(canvas.height, height);
++  }
++  return systemRasterContext;
++}
++function rasterizeTextWithSystem(family, text, fontPx) {
++  const probe = systemRasterCanvas(1, 1);
++  if (!probe)
++    return null;
++  const font = `${fontPx}px "${family}"`;
++  probe.font = font;
++  const metrics = probe.measureText(text);
++  const left = Math.ceil(Math.max(0, metrics.actualBoundingBoxLeft ?? 0)) + 2;
++  const ascent = Math.ceil(Math.max(0, metrics.actualBoundingBoxAscent ?? fontPx)) + 2;
++  const width = left + Math.ceil(Math.max(metrics.actualBoundingBoxRight ?? 0, metrics.width ?? 0)) + 2;
++  const height = ascent + Math.ceil(Math.max(0, metrics.actualBoundingBoxDescent ?? 0)) + 2;
++  const ctx = systemRasterCanvas(width, height);
++  if (!ctx)
++    return null;
++  ctx.clearRect(0, 0, width, height);
++  ctx.font = font;
++  ctx.textBaseline = "alphabetic";
++  ctx.textAlign = "left";
++  ctx.fillStyle = "#000";
++  // The pen sits on whole device pixels, like a glyph origin on screen.
++  ctx.fillText(text, left, ascent);
++  const data = ctx.getImageData(0, 0, width, height).data;
++  let x0 = width, y0 = height, x1 = -1, y1 = -1;
++  for (let y = 0;y < height; y += 1) {
++    for (let x = 0;x < width; x += 1) {
++      if (data[(y * width + x) * 4 + 3] === 0)
++        continue;
++      if (x < x0) x0 = x;
++      if (x > x1) x1 = x;
++      if (y < y0) y0 = y;
++      if (y > y1) y1 = y;
++    }
++  }
++  if (x1 < 0)
++    return { bitmap: null, bearingX: 0, bearingY: 0 };
++  const w = x1 - x0 + 1;
++  const h = y1 - y0 + 1;
++  const buffer = new Uint8Array(w * h);
++  for (let y = 0;y < h; y += 1) {
++    for (let x = 0;x < w; x += 1)
++      buffer[y * w + x] = data[((y + y0) * width + x + x0) * 4 + 3];
++  }
++  return {
++    bitmap: { width: w, rows: h, pitch: w, buffer, pixelMode: 1, numGrays: 256 },
++    bearingX: x0 - left,
++    bearingY: ascent - y0
++  };
++}
++function buildSystemTextAtlas(options) {
++  const { entry, glyphIds, fontSize, sizeMode, padding, maxWidth, maxHeight, pixelMode, hinting, hintTarget, rasterizeGlyph } = options;
++  const font = entry.font;
++  const scale = resolveFontScaleForAtlas(font, fontSize, sizeMode);
++  const fontPx = scale * (font.unitsPerEm || 1000);
++  const glyphData = [];
++  for (const glyphId of glyphIds) {
++    const text = entry.rasterTexts.get(glyphId);
++    const key = `${glyphId}@${fontPx}`;
++    let raster = entry.rasterCache.get(key);
++    if (!raster) {
++      raster = text ? rasterizeTextWithSystem(entry.rasterFamily, text, fontPx) : null;
++      if (!raster && glyphId < SYSTEM_RASTER_CLUSTER_BASE && rasterizeGlyph) {
++        const own = rasterizeGlyph(font, glyphId, fontSize, { padding: 0, pixelMode, sizeMode, hinting, hintTarget });
++        raster = own ? { bitmap: own.bitmap ? cloneBitmap(own.bitmap) : null, bearingX: own.bearingX, bearingY: own.bearingY } : null;
++      }
++      if (!raster)
++        continue;
++      entry.rasterCache.set(key, raster);
++    }
++    if (!raster.bitmap?.width || !raster.bitmap?.rows)
++      continue;
++    glyphData.push({
++      glyphId,
++      bitmap: raster.bitmap,
++      bearingX: raster.bearingX,
++      bearingY: raster.bearingY,
++      advance: glyphId < SYSTEM_RASTER_CLUSTER_BASE ? font.advanceWidth(glyphId) * scale : 0
++    });
++  }
++  if (!glyphData.length)
++    return null;
++  glyphData.sort((a, b) => b.bitmap.rows - a.bitmap.rows);
++  const { width, height, placements } = packGlyphs(glyphData.map((glyph) => ({
++    width: glyph.bitmap.width + padding * 2,
++    height: glyph.bitmap.rows + padding * 2
++  })), maxWidth, maxHeight);
++  const bitmap = createAtlasBitmap(width, height, pixelMode);
++  const glyphs = new Map;
++  for (let i = 0;i < glyphData.length; i += 1) {
++    const glyph = glyphData[i];
++    const placement = placements[i];
++    if (!placement?.placed)
++      continue;
++    copyBitmapToAtlas(glyph.bitmap, bitmap, placement.x + padding, placement.y + padding);
++    glyphs.set(glyph.glyphId, {
++      glyphId: glyph.glyphId,
++      atlasX: placement.x + padding,
++      atlasY: placement.y + padding,
++      width: glyph.bitmap.width,
++      height: glyph.bitmap.rows,
++      bearingX: glyph.bearingX,
++      bearingY: glyph.bearingY,
++      advance: glyph.advance
++    });
++  }
++  return { bitmap, glyphs, glyphsByWidth: new Map, fontSize };
++}
++
+ // src/runtime/fonts/atlas-builder.ts
+ function buildFontAtlasIfNeeded(params) {
+   const {
+@@ -45760,6 +45937,21 @@ function buildFontAtlasIfNeeded(params) {
+     });
+     atlas = result?.atlas ?? null;
+   }
++  if (!atlas && !isSymbol && !colorGlyphAtlas && entry.rasterFamily && glyphPixelMode === 1) {
++    atlas = buildSystemTextAtlas({
++      entry,
++      glyphIds: [...union],
++      fontSize: effectiveFontSizePx,
++      sizeMode,
++      padding: atlasPadding,
++      pixelMode: glyphPixelMode,
++      hinting: useHinting,
++      hintTarget: resolvedHintTarget,
++      maxWidth: atlasMaxSize,
++      maxHeight: atlasMaxSize,
++      rasterizeGlyph
++    });
++  }
+   if (!atlas) {
+     atlas = buildAtlas(entry.font, [...union], {
+       fontSize: effectiveFontSizePx,
+@@ -45775,7 +45967,7 @@ function buildFontAtlasIfNeeded(params) {
    if (!atlas || !atlas.bitmap?.width || !atlas.bitmap?.rows) {
      return { rebuilt: false, atlas: null, rgba: null, preferNearest: false };
    }
@@ -88,7 +306,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
    atlas.colorGlyphs = colorGlyphs;
    let rgba = atlasBitmapToRGBA(atlas);
    if (!rgba) {
-@@ -47447,6 +47447,7 @@ function createShaderStageRuntime(options) {
+@@ -47447,6 +47639,7 @@ function createShaderStageRuntime(options) {
  }
  
  // src/runtime/create-runtime/font-runtime/color-glyph-atlas.ts
@@ -96,7 +314,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
  var COLOR_EMOJI_FONT_STACK = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","EmojiOne Color","Twemoji Mozilla",sans-serif';
  function createColorGlyphAtlasHelpers(options) {
    const { pixelModeRgba, atlasToRGBA } = options;
-@@ -47463,6 +47464,8 @@ function createColorGlyphAtlasHelpers(options) {
+@@ -47463,6 +47656,8 @@ function createColorGlyphAtlasHelpers(options) {
      return colorGlyphCtx;
    }
    function resolveColorGlyphFontCss(entry, fontSize) {
@@ -105,7 +323,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      const label = String(entry.label ?? "").split("(")[0].trim().replace(/"/g, "\\\"");
      const families = [];
      if (label && !/openmoji/i.test(label)) {
-@@ -47588,7 +47591,7 @@ function createColorGlyphAtlasHelpers(options) {
+@@ -47588,7 +47783,7 @@ function createColorGlyphAtlasHelpers(options) {
          glyphs: glyphMetrics,
          glyphsByWidth: new Map,
          fontSize,
@@ -114,7 +332,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        },
        constrainedGlyphWidths: null
      };
-@@ -48059,7 +48062,7 @@ function createPointerAuxHandlers(options) {
+@@ -48059,7 +48254,7 @@ function createPointerAuxHandlers(options) {
      }
    };
    const onWheel = (event) => {
@@ -123,7 +341,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        if (inputHandler.sendMouseEvent("wheel", event)) {
          event.preventDefault();
          return;
-@@ -48071,7 +48074,7 @@ function createPointerAuxHandlers(options) {
+@@ -48071,7 +48266,7 @@ function createPointerAuxHandlers(options) {
      event.preventDefault();
    };
    const onContextMenu = (event) => {
@@ -132,7 +350,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        event.preventDefault();
    };
    const onPointerLeave = () => {
-@@ -48181,7 +48184,7 @@ function createPointerUpHandler(options) {
+@@ -48181,7 +48376,7 @@ function createPointerUpHandler(options) {
          markNeedsRender();
        }
      } else {
@@ -141,7 +359,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
          event.preventDefault();
          return;
        }
-@@ -48205,7 +48208,7 @@ function createPointerUpHandler(options) {
+@@ -48205,7 +48400,7 @@ function createPointerUpHandler(options) {
        }
      }
      if (!selectionState.active && event.button === 0 && linkState.hoverUri) {
@@ -150,7 +368,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      }
    };
  }
-@@ -48305,7 +48308,7 @@ function bindPointerEvents(options) {
+@@ -48305,7 +48500,7 @@ function bindPointerEvents(options) {
    };
    canvas.style.touchAction = touchSelectionMode === "long-press" || touchSelectionMode === "drag" ? "none" : "pan-y pinch-zoom";
    const onPointerDown = (event) => {
@@ -159,7 +377,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        clearPendingDesktopSelection();
        event.preventDefault();
        canvas.setPointerCapture?.(event.pointerId);
-@@ -48408,7 +48411,7 @@ function bindPointerEvents(options) {
+@@ -48408,7 +48603,7 @@ function bindPointerEvents(options) {
        markNeedsRender();
        return;
      }
@@ -168,7 +386,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        event.preventDefault();
        return;
      }
-@@ -48836,7 +48839,7 @@ function createScrollbarRuntime(options) {
+@@ -48836,7 +49031,7 @@ function createScrollbarRuntime(options) {
    let pendingPrecisionScrollPx = 0;
    const hasCoarsePointer = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(any-pointer: coarse)").matches;
    const hasTouchPoints = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
@@ -177,7 +395,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      canvas: getCanvas(),
      getGridState,
      noteScrollActivity: () => {
-@@ -49075,6 +49078,7 @@ function createRuntimeInteraction(options) {
+@@ -49075,6 +49270,7 @@ function createRuntimeInteraction(options) {
      return true;
    };
    const scrollbarRuntime = createScrollbarRuntime({
@@ -185,7 +403,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      scrollbarState,
      selectionState,
      linkState,
-@@ -50397,11 +50401,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
+@@ -50397,11 +50593,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
    const factor = primaryMetric / primary.unitsPerEm / (fallbackMetric / fallback.unitsPerEm);
    return Number.isFinite(factor) && factor > 0 ? factor : 1;
  }
@@ -202,7 +420,51 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
    if (fallback.icWidth > 0) {
      return normalizedMetricFactor(icWidth(primary), primary, fallback.icWidth, fallback);
    }
-@@ -53444,7 +53453,7 @@ function createFontRuntimeGridHelpers(options) {
+@@ -51310,8 +51511,7 @@ function populateWebGLOverlays(ctx) {
+     });
+     const visiblePreeditText = fittedPreedit.text;
+     if (!visiblePreeditText) {} else {
+-      const shaped = shapeClusterWithFont(preeditEntry, visiblePreeditText);
+-      noteColorGlyphText(preeditEntry, visiblePreeditText, shaped);
++      const shaped = noteColorGlyphText(preeditEntry, visiblePreeditText, shapeClusterWithFont(preeditEntry, visiblePreeditText));
+       const glyphSet = getGlyphSet(preeditFontIndex);
+       for (const glyph of shaped.glyphs)
+         glyphSet.add(glyph.glyphId);
+@@ -51878,10 +52078,9 @@ function populateWebGLSceneData(ctx) {
+       }
+       const fontIndex = pickFontIndexForText(text, baseSpan, stylePreferenceFromFlags(bold, italic));
+       const fontEntry = fontState.fonts[fontIndex] ?? fontState.fonts[0];
+-      const shaped = shapeClusterWithFont(fontEntry, text);
++      const shaped = noteColorGlyphText(fontEntry, text, shapeClusterWithFont(fontEntry, text));
+       if (!shaped.glyphs.length)
+         continue;
+-      noteColorGlyphText(fontEntry, text, shaped);
+       const glyphSet = getGlyphSet(fontIndex);
+       for (const glyph of shaped.glyphs)
+         glyphSet.add(glyph.glyphId);
+@@ -52406,10 +52605,9 @@ function collectWebGPUCellPass(params) {
+       }
+       const fontIndex = pickFontIndexForText(text, baseSpan, stylePreferenceFromFlags(bold, italic));
+       const fontEntry = fontState.fonts[fontIndex] ?? fontState.fonts[0];
+-      const shaped = shapeClusterWithFont(fontEntry, text);
++      const shaped = noteColorGlyphText(fontEntry, text, shapeClusterWithFont(fontEntry, text));
+       if (!shaped.glyphs.length)
+         continue;
+-      noteColorGlyphText(fontEntry, text, shaped);
+       const glyphSet = getGlyphSet(fontIndex);
+       for (const glyph of shaped.glyphs)
+         glyphSet.add(glyph.glyphId);
+@@ -53091,8 +53289,7 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+     });
+     const visiblePreeditText = fittedPreedit.text;
+     if (visiblePreeditText) {
+-      const shaped = shapeClusterWithFont(preeditEntry, visiblePreeditText);
+-      noteColorGlyphText(preeditEntry, visiblePreeditText, shaped);
++      const shaped = noteColorGlyphText(preeditEntry, visiblePreeditText, shapeClusterWithFont(preeditEntry, visiblePreeditText));
+       const glyphSet = frame.getGlyphSet(preeditFontIndex);
+       for (const glyph of shaped.glyphs)
+         glyphSet.add(glyph.glyphId);
+@@ -53444,7 +53641,7 @@ function createFontRuntimeGridHelpers(options) {
      const advanceUnits = glyphId !== undefined && glyphId !== null ? primary.font.advanceWidth(glyphId) : shapeClusterWithFont(primary, "M").advance;
      const cellW = Math.max(1, Math.round(advanceUnits * scale));
      const lineHeight = fontHeightUnits2(primary.font) * scale;
@@ -211,7 +473,28 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      const baselineOffset = primary.font.ascender * scale;
      const yPad = Math.max(0, (cellH - lineHeight) * 0.5);
      return { cellW, cellH, fontSizePx, scale, lineHeight, baselineOffset, yPad };
-@@ -53668,8 +53677,12 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53565,14 +53762,17 @@ function createFontRuntimeTextHelpers(options) {
+     return shaped;
+   }
+   function noteColorGlyphText(entry, text, shaped) {
+-    if (!isColorEmojiFont(entry) || shaped.glyphs.length !== 1)
+-      return;
++    if (!isColorEmojiFont(entry))
++      return isSymbolFont2(entry) ? shaped : noteSystemRasterText(entry, text, shaped);
++    if (shaped.glyphs.length !== 1)
++      return shaped;
+     const glyphId = shaped.glyphs[0]?.glyphId;
+     if (!glyphId)
+-      return;
++      return shaped;
+     if (!entry.colorGlyphTexts)
+       entry.colorGlyphTexts = new Map;
+     entry.colorGlyphTexts.set(glyphId, text);
++    return shaped;
+   }
+   function fontHasGlyph(entry, ch, probeCoverage) {
+     const glyphId = entry.font.glyphIdForChar(ch);
+@@ -53668,8 +53868,12 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -225,7 +508,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        const result = tryIndex(emojiIndex);
        if (result !== null)
          return result;
-@@ -53679,7 +53692,7 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53679,7 +53883,7 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -234,7 +517,15 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      if (firstIndex >= 0) {
        setBoundedMap(fontState.fontPickCache, cacheKey, firstIndex, fontPickCacheLimit);
        return firstIndex;
-@@ -55175,6 +55188,7 @@ function createResttyRuntime2(options) {
+@@ -54994,6 +55198,7 @@ function createResttyRuntime2(options) {
+   const autoResize = terminal.autoResize ?? true;
+   const showResizeOverlay = terminal.showResizeOverlay ?? true;
+   const forwardTerminalReplies = terminal.forwardTerminalReplies ?? true;
++  const systemGlyphRaster = terminal.systemGlyphRaster ?? false;
+   const touchSelectionMode = normalizeTouchSelectionMode(terminal.touchSelectionMode);
+   const touchSelectionLongPressMs = clampFiniteNumber(terminal.touchSelectionLongPressMs, 450, 120, 2000, true);
+   const touchSelectionMoveThresholdPx = clampFiniteNumber(terminal.touchSelectionMoveThresholdPx, 10, 1, 64);
+@@ -55175,6 +55380,7 @@ function createResttyRuntime2(options) {
    let lastRenderState = null;
    const runtimeInteraction = createRuntimeInteraction({
      attachCanvasEvents,
@@ -242,7 +533,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      touchSelectionMode,
      touchSelectionLongPressMs,
      touchSelectionMoveThresholdPx,
-@@ -55249,6 +55263,10 @@ function createResttyRuntime2(options) {
+@@ -55249,6 +55455,10 @@ function createResttyRuntime2(options) {
    inputHandler = createInputHandler2({
      getCursorPosition: resolveCursorForCpr,
      sendReply: (data) => {
@@ -253,7 +544,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
        ptyTransport.sendInput(data);
      },
      positionToCell,
-@@ -55278,14 +55296,8 @@ function createResttyRuntime2(options) {
+@@ -55278,14 +55488,8 @@ function createResttyRuntime2(options) {
        const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
        return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
      },
@@ -270,7 +561,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      getKittyKeyboardFlags: () => {
        if (!wasm || !wasmHandle)
          return 0;
-@@ -55332,9 +55344,11 @@ function createResttyRuntime2(options) {
+@@ -55332,9 +55536,11 @@ function createResttyRuntime2(options) {
        getLastKeydownSeq: () => lastKeydownSeq,
        getLastKeydownSeqAt: () => lastKeydownSeqAt,
        keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
@@ -283,7 +574,16 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
    bindCanvasEvents();
    const fontState = {
      font: null,
-@@ -55828,6 +55842,8 @@ function createResttyRuntime2(options) {
+@@ -55628,6 +55834,8 @@ function createResttyRuntime2(options) {
+           const face = fontLease.faces[i];
+           entries.push(createFontEntry2(face.font, face.label));
+         }
++        if (systemGlyphRaster)
++          await Promise.all(entries.map((entry, index) => registerSystemRasterFace(entry, fontLease.faces[index].buffer)));
+         if (!entries.length) {
+           throw new Error("Unable to parse any loaded font source.");
+         }
+@@ -55828,6 +56036,8 @@ function createResttyRuntime2(options) {
      },
      set lastRenderState(value) {
        lastRenderState = value;
@@ -292,7 +592,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      }
    });
    const readRuntimeControllerState = () => ({
-@@ -55923,7 +55939,7 @@ function createResttyRuntime2(options) {
+@@ -55923,7 +56133,7 @@ function createResttyRuntime2(options) {
        maxScrollback: terminal.maxScrollback
      }
    });
@@ -301,7 +601,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
      terminal: {
        setFontSize: applyFontSize,
        setLigatures,
-@@ -55950,6 +55966,62 @@ function createResttyRuntime2(options) {
+@@ -55950,6 +56160,62 @@ function createResttyRuntime2(options) {
        getShaderStages
      }
    });
@@ -365,13 +665,19 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d68
  
  export { createInputHandler2, isSymbolFont2, isNerdSymbolFont2, fontMaxCellSpan2, fontScaleOverride2, fontRasterScale2, fontHeightUnits2, computeCellMetrics2, createGridState2, updateGridState2, clamp2, createFontEntry2, resetFontEntry2, createFontManagerState2, fontHasGlyph2, fontAdvanceUnits2, glyphWidthUnits2, NERD_SYMBOL_RANGES2, isNerdSymbolCodepoint2, pickFontIndexForText2, tryFetchFontBuffer2, tryLocalFontBuffer2, loadPrimaryFontBuffer2, loadFallbackFontBuffers2, NERD_CONSTRAINTS2, getNerdConstraint2, createPtyConnection2, connectPty2, disconnectPty2, sendPtyInput2, sendPtyResize2, isPtyConnected2, createWebSocketPtyTransport2, BOX_STYLE_NONE2, BOX_STYLE_LIGHT2, BOX_STYLE_HEAVY2, BOX_STYLE_DOUBLE2, isPrivateUse2, isSpaceCp2, isBoxDrawing2, isBlockElement2, isLegacyComputing2, isPowerline2, isBraille2, isGraphicsElement2, isSymbolCp2, applyAlpha2, pushRect2, pushRectSnapped2, pushRectBox2, drawBlockElement2, BOX_LINE_MAP2, drawBoxDrawing2, drawBraille2, drawPowerline2, constrainGlyphBox2, RECT_SHADER2, GLYPH_SHADER2, initWebGPUCore2, initWebGPU2, initWebGL2, ensureInstanceBuffer2, configureContext2, ensureGLInstanceBuffer2, createResizeState2, createScrollbarState2, createImeState2, setPreedit2, clearPreedit2, startComposition2, updateComposition2, endComposition2, syncImeSelection2, updateImePosition2, PREEDIT_BG2, PREEDIT_ACTIVE_BG2, PREEDIT_FG2, PREEDIT_UL2, PREEDIT_CARET2, createSelectionState2, clearSelection2, startSelection2, updateSelection2, endSelection2, selectionForRow2, normalizeSelectionCell2, positionToCell2, getSelectionText2, copyToClipboard2, pasteFromClipboard2, createResttyRuntimeSession2, getDefaultResttyRuntimeSession2, cloneShaderStages, normalizeShaderStage, normalizeShaderStages, sortShaderStages, parseGhosttyColor2, colorToFloats2, colorToRgbU322, parseGhosttyTheme2, listBuiltinThemeNames2, isBuiltinThemeName2, getBuiltinThemeSource2, getBuiltinTheme2, createResttyRuntime2 };
 diff --git a/dist/runtime/core/config.d.ts b/dist/runtime/core/config.d.ts
-index 139fc00ee1ddb8a041d654f2d7f7a572402d0e36..ea5638b4acf2de8e87c8ec3373fd5bb30c2242d8 100644
+index 139fc00ee1ddb8a041d654f2d7f7a572402d0e36..7360c32bc9b16f83bb51dc7a07e112f620ee5205 100644
 --- a/dist/runtime/core/config.d.ts
 +++ b/dist/runtime/core/config.d.ts
-@@ -86,6 +86,11 @@ export type ResttyTerminalConfig = {
+@@ -86,6 +86,17 @@ export type ResttyTerminalConfig = {
       * Set false when a backend/headless terminal is authoritative for replies.
       */
      forwardTerminalReplies?: boolean;
++    /**
++     * Rasterize text glyphs with the browser's own text renderer (Canvas2D
++     * fillText on the same font data): system hinting and antialiasing.
++     * Shaping and layout stay in restty. Default false.
++     */
++    systemGlyphRaster?: boolean;
 +    /**
 +     * Wrap the canvas in a native overflow scroller for local scrollback
 +     * (desktop pointers only). Set false when the host owns scrolling.
