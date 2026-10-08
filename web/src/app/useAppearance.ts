@@ -24,6 +24,7 @@ import {
   serializeMobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
 import {
+  isTerminalThemeBackground,
   parseTerminalThemeSelection,
   resolveTerminalTheme,
   serializeTerminalThemeSelection,
@@ -150,8 +151,14 @@ export function useAppearance(
       void connectionClient
         .call("session.appearance")
         .then((result) => {
+          if (cancelled) return;
           const appearance = result?.appearance;
-          if (!cancelled && (appearance === "light" || appearance === "dark"))
+          // Herdr reports its foreground client's colors. When those are a
+          // Thyra theme, they are this page's own report or another
+          // device's, not the session's terminal: follow the system then.
+          if (isTerminalThemeBackground(result?.background))
+            setSessionTheme(systemTheme);
+          else if (appearance === "light" || appearance === "dark")
             setSessionTheme(appearance);
         })
         .catch(() => {

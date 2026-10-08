@@ -496,6 +496,12 @@ async function startEndpointServer(
           options.tracker?.events.push("input");
           if (options.clipboardData)
             socket.write(clipboardFrame(options.clipboardData));
+        } else if (variant === 17 && reader.variant() === 2) {
+          options.tracker?.events.push(
+            reader.variant() === 1 ? "theme:light" : "theme:dark",
+          );
+        } else if (variant === 18) {
+          options.tracker?.events.push(reader.bool() ? "focus" : "blur");
         }
       }
     });
@@ -531,6 +537,96 @@ async function waitForCondition(
 }
 
 describe("terminal bridge sharing", () => {
+  test("a stream reports the colors of the browser that last drove it", async () => {
+    const tracker: ServerTracker = { events: [] };
+    const socketPath = await startEndpointServer({ tracker });
+    const desktop = {} as ServerWebSocket<unknown>;
+    const phone = {} as ServerWebSocket<unknown>;
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      lookupPaneId: async () => "p1",
+      safeSend: () => true,
+      clientLabel: () => "test",
+      markRpcError: () => undefined,
+    });
+    const theme = (appearance: "light" | "dark") => ({
+      appearance,
+      foreground: appearance === "light" ? "#1f2328" : "#d4d8df",
+      background: appearance === "light" ? "#ffffff" : "#0e1014",
+      palette: [],
+    });
+    const events = async (count: number) => {
+      for (let i = 0; i < 100 && tracker.events.length < count; i++)
+        await Bun.sleep(10);
+      const seen = tracker.events.filter((event) => event !== "resize");
+      tracker.events.length = 0;
+      return seen;
+    };
+    try {
+      await bridge.handleTerminalRpc(
+        desktop,
+        "theme",
+        "terminal.host_theme",
+        theme("light"),
+      );
+      await bridge.handleTerminalRpc(desktop, "attach", "terminal.attach", {
+        terminal_id: "t1",
+        cols: 100,
+        rows: 30,
+      });
+      expect(await events(2)).toEqual(["hello", "theme:light"]);
+
+      // Another device opening the pane in dark mode does not repaint it.
+      await bridge.handleTerminalRpc(
+        phone,
+        "theme",
+        "terminal.host_theme",
+        theme("dark"),
+      );
+      await bridge.handleTerminalRpc(phone, "attach", "terminal.attach", {
+        terminal_id: "t1",
+        cols: 100,
+        rows: 30,
+        preserve_size: true,
+      });
+      await Bun.sleep(50);
+      expect(await events(0)).toEqual([]);
+
+      // Typing there hands the stream that device's colors, then back.
+      const input = { terminal_id: "t1", data: btoa("x") };
+      await bridge.handleTerminalRpc(phone, "input", "terminal.input", input);
+      expect(await events(4)).toEqual(["theme:dark", "blur", "focus", "input"]);
+      await bridge.handleTerminalRpc(desktop, "input", "terminal.input", input);
+      expect(await events(4)).toEqual([
+        "theme:light",
+        "blur",
+        "focus",
+        "input",
+      ]);
+
+      // The driving device's own switch applies; it leaving hands over.
+      await bridge.handleTerminalRpc(
+        desktop,
+        "theme",
+        "terminal.host_theme",
+        theme("dark"),
+      );
+      expect(await events(3)).toEqual(["theme:dark", "blur", "focus"]);
+      await bridge.handleTerminalRpc(
+        phone,
+        "theme",
+        "terminal.host_theme",
+        theme("light"),
+      );
+      await Bun.sleep(50);
+      expect(await events(0)).toEqual([]);
+      bridge.cleanupWs(desktop);
+      expect(await events(3)).toEqual(["theme:light", "blur", "focus"]);
+    } finally {
+      bridge.dispose();
+    }
+  });
+
   test("refreshes a reused terminal for a newly attached browser", async () => {
     const socketPath = await startEndpointServer();
     const firstBrowser = {} as ServerWebSocket<unknown>;

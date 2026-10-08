@@ -122,13 +122,19 @@ A viewer may thin only its own stream: `min_frame_interval_ms` (0–10000, on `t
 Full repaints (attach, resize, resync) are never held back, and other viewers of the same terminal keep their rate.
 The browser writes only changed rows into the terminal while its viewport is unchanged.
 
-The browser reports its terminal colors with `terminal.host_theme`
-(`appearance`, `foreground`, `background`, 16-color `palette`). Every endpoint
-client of that connection forwards them as Herdr `ClientShellHostTheme`
+Each browser reports its terminal colors with `terminal.host_theme`
+(`appearance`, `foreground`, `background`, 16-color `palette`). A terminal's
+endpoint client forwards the colors of the browser that last drove it (the
+first viewer, then whoever types or focuses it) as Herdr `ClientShellHostTheme`
 updates (default colors, palette, then appearance), including right after each
 welcome, so a Thyra client promoted to foreground never resets panes to an
-empty host theme. A light/dark change also blurs and refocuses the focused pane
-once so apps that re-probe colors on focus pick it up.
+empty host theme and another device's mode never repaints panes that this one
+is using. Herdr answers OSC 10/11/4 and `?996n` and sends `?997` reports from
+its foreground client's theme. A light/dark change also blurs and refocuses the
+pane once so apps that re-probe colors on focus pick it up. The **Session**
+appearance follows `session.appearance` only when Herdr's background is not a
+built-in Thyra terminal theme (a Herdr TUI's outer terminal); otherwise it
+follows the system.
 
 Messages of at least 128 bytes use negotiated WebSocket compression with
 per-connection context for WebKit compatibility, so repeated rows and poll

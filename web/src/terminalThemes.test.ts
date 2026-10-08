@@ -3,6 +3,7 @@ import { parseTerminalColor, resttyTheme } from "./terminalEngine";
 import {
   TERMINAL_THEME_PRESETS,
   defaultTerminalThemeId,
+  isTerminalThemeBackground,
   normalizeTerminalThemeSelection,
   parseTerminalThemeSelection,
   resolveTerminalTheme,
@@ -132,4 +133,12 @@ test("host theme reports follow the terminal background, not the page", () => {
       foreground: "#fff",
     }),
   ).toBeNull();
+});
+
+test("Thyra's own theme backgrounds are recognized in Herdr's appearance", () => {
+  expect(isTerminalThemeBackground("#FFFFFF")).toBe(true);
+  expect(isTerminalThemeBackground("#002b36")).toBe(true);
+  expect(isTerminalThemeBackground("#123456")).toBe(false);
+  expect(isTerminalThemeBackground("unknown")).toBe(false);
+  expect(isTerminalThemeBackground(null)).toBe(false);
 });

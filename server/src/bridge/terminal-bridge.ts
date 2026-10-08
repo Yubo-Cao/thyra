@@ -51,6 +51,9 @@ type SharedTerminalSession = {
   lastError: string | null;
   /** Viewers were already told this terminal is replaced or gone. */
   retired: boolean;
+  /** The viewer whose terminal colors this stream reports to Herdr. */
+  themeViewer: ServerWebSocket<unknown> | null;
+  hostTheme: EndpointHostTheme | null;
 };
 
 /** A pane's terminal as Herdr lists it now. */
@@ -213,8 +216,10 @@ export function createTerminalBridge(args: {
   // Terminals Herdr no longer has (live handoff, closed pane), so viewers that
   // still ask for them learn the replacement instead of retrying forever.
   const retiredTerminals = new Map<string, RetiredTerminal>();
-  // The browser's terminal colors, reported to Herdr as the host theme.
-  let hostTheme: EndpointHostTheme | null = null;
+  // Each browser's terminal colors. Herdr answers color queries from one host
+  // theme, so a stream reports the colors of the browser that last drove it:
+  // a phone in dark mode must not repaint the panes a light desktop types in.
+  const hostThemes = new Map<ServerWebSocket<unknown>, EndpointHostTheme>();
   // Viewers that attached with `frame_delta` get endpoint frames as row updates.
   const frameStreams = new Map<
     ServerWebSocket<unknown>,
@@ -603,6 +608,27 @@ export function createTerminalBridge(args: {
     args.safeSend(target, payload, "terminal-clipboard");
   }
 
+  /**
+   * Report `ws`'s colors on this stream from now on. When the appearance
+   * flips, one blur/refocus lets apps that only re-read colors on focus
+   * (Codex) follow; Claude Code and others get Herdr's ?997 report.
+   */
+  function reportViewerTheme(
+    shared: SharedTerminalSession,
+    ws: ServerWebSocket<unknown>,
+    nudge = true,
+  ): boolean {
+    shared.themeViewer = ws;
+    const theme = hostThemes.get(ws);
+    if (!theme || theme === shared.hostTheme) return false;
+    const appearanceChanged = shared.hostTheme?.appearance !== theme.appearance;
+    shared.hostTheme = theme;
+    shared.thin.setHostTheme(theme);
+    if (!appearanceChanged || !nudge || shared.thin.isClosed) return false;
+    shared.thin.nudgeFocus();
+    return true;
+  }
+
   function detachTerminalViewer(
     ws: ServerWebSocket<unknown>,
     terminalId?: string | null,
@@ -632,6 +658,12 @@ export function createTerminalBridge(args: {
         if (shared.viewers.size === 0) {
           shared.thin.close();
           if (sharedTerminals.get(id) === shared) sharedTerminals.delete(id);
+        } else if (shared.themeViewer === ws) {
+          const next = Array.from(shared.viewers).find((viewer) =>
+            hostThemes.has(viewer),
+          );
+          if (next) reportViewerTheme(shared, next);
+          else shared.themeViewer = null;
         }
       }
       viewed?.delete(id);
@@ -695,7 +727,6 @@ export function createTerminalBridge(args: {
       surfaceCodecsEnabled,
       args.ownShellClients,
     );
-    thin.setHostTheme(hostTheme);
     const shared: SharedTerminalSession = {
       thin,
       connecting: null,
@@ -709,6 +740,8 @@ export function createTerminalBridge(args: {
       lastFrameLogAt: 0,
       lastError: null,
       retired: false,
+      themeViewer: null,
+      hostTheme: null,
     };
     sharedTerminals.set(terminalId, shared);
     logger.debug("terminal stream connecting", {
@@ -1245,7 +1278,13 @@ export function createTerminalBridge(args: {
             attemptIsCurrent,
             surfaceSize,
           );
-          if (attemptIsCurrent()) shared.viewers.add(ws);
+          if (attemptIsCurrent()) {
+            shared.viewers.add(ws);
+            // Before the welcome when the stream is new, so Herdr never
+            // promotes this client without colors.
+            if (!shared.themeViewer || !shared.viewers.has(shared.themeViewer))
+              reportViewerTheme(shared, ws, false);
+          }
           await shared.connecting;
           const validate = () => {
             if (!isCurrent(operationRevision))
@@ -1372,6 +1411,7 @@ export function createTerminalBridge(args: {
         // Focus would make this device Herdr's size owner for the tab.
         if (!(await maySize(ws, requestedTerminalId)))
           return reply({ ok: true, skipped: true });
+        reportViewerTheme(shared, ws);
         const intent = {};
         const token = attachmentTokens.get(ws)?.get(requestedTerminalId);
         focusIntents.set(ws, intent);
@@ -1440,17 +1480,13 @@ export function createTerminalBridge(args: {
       if (method === "terminal.host_theme") {
         const theme = parseHostTheme(params);
         if (!theme) return fail("valid host theme colors required");
-        const appearanceChanged = hostTheme?.appearance !== theme.appearance;
-        hostTheme = theme;
+        hostThemes.set(ws, theme);
         let nudged = false;
         for (const shared of sharedTerminals.values()) {
-          shared.thin.setHostTheme(theme);
-          // Codex reads colors at startup and on focus; one blur/refocus of
-          // the focused pane lets it pick up the switch without a restart.
-          if (appearanceChanged && !nudged && !shared.thin.isClosed) {
-            shared.thin.nudgeFocus();
-            nudged = true;
-          }
+          if (!shared.viewers.has(ws)) continue;
+          const driver = shared.themeViewer;
+          if (driver && driver !== ws && hostThemes.has(driver)) continue;
+          nudged = reportViewerTheme(shared, ws, !nudged) || nudged;
         }
         return reply({ ok: true });
       }
@@ -1522,6 +1558,8 @@ export function createTerminalBridge(args: {
         };
         const inputPane = knownPanes.get(requestedTerminalId);
         if (inputPane) args.onPaneInput?.(inputPane);
+        // The typing device's colors answer the app's next color query.
+        reportViewerTheme(shared, ws);
         if (keys) thin.keys(keys, claimsGeometry);
         else thin.input(input!, claimsGeometry);
         return reply({ ok: true });
@@ -1623,6 +1661,7 @@ export function createTerminalBridge(args: {
   function cleanupWs(ws: ServerWebSocket<unknown>) {
     focusIntents.delete(ws);
     focusChains.delete(ws);
+    hostThemes.delete(ws);
     detachTerminalViewer(ws);
   }
 

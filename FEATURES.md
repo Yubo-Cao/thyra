@@ -67,8 +67,11 @@ The browser only chooses an agent, never the command text.
 - Viewers and share-link guests browse a read-only copy of the last 1000 lines instead, so their scrolling never moves anyone else's view; scrolling back to the bottom, Escape, or **Back to live** returns to live output.
 - Pane apps see the browser's terminal colors: OSC 10/11/4 queries and
   color-scheme reports (`?996n`, mode 2031) follow the page's terminal theme,
-  so Codex and Claude Code (`/theme` auto) render for a light page. Codex
-  re-reads on focus; restart it if it keeps the old scheme.
+  so Codex and Claude Code (`/theme` auto) render for a light page and follow
+  live light/dark switches, including the OS's under **System** or **Session**.
+  With several devices open, panes use the colors of the device that last typed
+  into or focused them. Codex re-reads on focus; restart it if it keeps the old
+  scheme.
 - Terminals render on the GPU (WebGPU, or WebGL2) with Ghostty's terminal core
   (restty), pixel-exact box drawing and Powerline glyphs, and the bundled Maple
   Mono NF CN's own programming ligatures (Nerd Font icons, CJK at exactly two

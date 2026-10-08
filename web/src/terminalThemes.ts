@@ -459,6 +459,18 @@ function normalizedHex(value: string | undefined): string | null {
   return `#${hex.toLowerCase()}`;
 }
 
+const presetBackgrounds = new Set(
+  TERMINAL_THEME_PRESETS.map((preset) =>
+    normalizedHex(preset.theme.background),
+  ),
+);
+
+/** Whether a color is a built-in theme's background, as Thyra reports them. */
+export function isTerminalThemeBackground(value: unknown): boolean {
+  const hex = typeof value === "string" ? normalizedHex(value) : null;
+  return hex !== null && presetBackgrounds.has(hex);
+}
+
 /**
  * The `terminal.host_theme` payload for a terminal theme: default colors, the
  * 16 ANSI colors, and whether the background reads as light or dark.
