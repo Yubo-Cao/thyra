@@ -19,5 +19,6 @@ server/public
 server/src/public-files.gen.ts
 server/thyra
 server/thyra.exe
+server/thyra.map
 server/thyra-*
 server/*.bun-build
