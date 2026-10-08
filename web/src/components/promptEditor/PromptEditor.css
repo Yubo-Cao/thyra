@@ -2,6 +2,16 @@
    colours: its box is whole rows, its text starts two cells in like the
    agent's, and a lighter tone of the terminal background sets it apart. */
 .prompt-editor {
+  --prompt-editor-dim: color-mix(
+    in srgb,
+    var(--prompt-editor-fg) 45%,
+    transparent
+  );
+  --prompt-editor-panel: color-mix(
+    in srgb,
+    var(--prompt-editor-fg) 12%,
+    var(--prompt-editor-bg)
+  );
   position: absolute;
   z-index: 3;
   box-sizing: border-box;
@@ -77,36 +87,16 @@
 
 .prompt-editor-textarea::placeholder,
 .prompt-editor-hint {
-  color: color-mix(in srgb, var(--prompt-editor-fg) 45%, transparent);
+  color: var(--prompt-editor-dim);
 }
 
 .prompt-editor-textarea::selection {
   background: var(--prompt-editor-selection);
 }
 
-.prompt-editor-monaco {
+.prompt-editor-rich {
   width: 100%;
   height: 100%;
-}
-
-/* Monaco draws its own caret. iOS Safari still paints the native caret of
-   Monaco's hidden input textarea, a second caret off Monaco's position. */
-.prompt-editor .monaco-editor textarea {
-  caret-color: transparent;
-}
-
-/* Monaco draws on the editor's tone in the terminal's caret colour. */
-.prompt-editor .monaco-editor {
-  --vscode-editor-background: transparent;
-  --vscode-editorGutter-background: transparent;
-  --vscode-focusBorder: transparent;
-  --vscode-editorCursor-foreground: var(--prompt-editor-caret);
-  --vscode-editor-selectionBackground: var(--prompt-editor-selection);
-  --vscode-editor-placeholder-foreground: color-mix(
-    in srgb,
-    var(--prompt-editor-fg) 45%,
-    transparent
-  );
 }
 
 .prompt-editor-preview {

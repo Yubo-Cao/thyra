@@ -46,7 +46,6 @@ import {
   writeTerminalComposerSelection,
 } from "../../terminalComposer";
 import { useTerminalComposerDraft } from "../../useTerminalComposerDraft";
-import { useDocumentTheme } from "../documentTheme";
 import { LazyBoundary } from "../LazyBoundary";
 import { IconButton } from "../ui/IconButton";
 import { PromptTextarea } from "./PromptTextarea";
@@ -58,13 +57,13 @@ import type {
 import "./PromptEditor.css";
 import { ComposerImages, useComposerImages } from "../ComposerImages";
 
-const promptMonacoPanel = lazyPanel("prompt-editor-monaco", () =>
-  import("./PromptMonaco").then((module) => module.PromptMonaco),
+const promptRichPanel = lazyPanel("prompt-editor-rich", () =>
+  import("./PromptCodeMirror").then((module) => module.PromptCodeMirror),
 );
 const markdownPreviewPanel = lazyPanel("prompt-editor-preview", () =>
   import("../markdown").then((module) => module.MarkdownPreview),
 );
-const PromptMonaco = promptMonacoPanel.Component;
+const PromptCodeMirror = promptRichPanel.Component;
 const MarkdownPreview = markdownPreviewPanel.Component;
 
 // Frames can arrive at display rate; the agent's box moves far less often.
@@ -165,20 +164,21 @@ function sameMetrics(a: TerminalMetrics | null, b: TerminalMetrics | null) {
 }
 
 /**
- * Loads Monaco: at idle after startup on a fast 4G link, otherwise once the
- * editor is first used (`used`), and never under Data Saver or on 2G.
+ * Loads the live-preview editor: at idle after startup on a fast 4G link,
+ * otherwise once the editor is first used (`used`), and never under Data
+ * Saver or on 2G.
  */
 function useRichSurface(used: boolean) {
   const settled = useStartupSettled();
-  const [ready, setReady] = useState(() => promptMonacoPanel.isLoaded());
+  const [ready, setReady] = useState(() => promptRichPanel.isLoaded());
   useEffect(() => {
     if (!settled || ready) return;
     const policy = richEditorLoadPolicy();
     if (policy === "never" || (policy === "on-demand" && !used)) return;
     let cancelled = false;
     const load = () =>
-      void promptMonacoPanel.preload().then(() => {
-        if (!cancelled && promptMonacoPanel.isLoaded()) setReady(true);
+      void promptRichPanel.preload().then(() => {
+        if (!cancelled && promptRichPanel.isLoaded()) setReady(true);
       });
     if (policy === "on-demand") {
       load();
@@ -237,7 +237,6 @@ export function PromptEditor({
   const { text, submissionPending, uploadCount } =
     useTerminalComposerDraft(draftKey);
   const images = useComposerImages(draftKey);
-  const theme = useDocumentTheme();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<PromptEditorSurface | null>(null);
   const [placement, setPlacement] = useState<PromptEditorPlacement>({
@@ -410,7 +409,8 @@ export function PromptEditor({
     );
   }, [draftKey, text]);
 
-  // Swap the textarea for Monaco when it arrives, never mid-composition.
+  // Swap the textarea for the rich editor when it arrives, never
+  // mid-composition.
   const [used, setUsed] = useState(false);
   const richReady = useRichSurface(used);
   const [rich, setRich] = useState(richReady);
@@ -536,6 +536,11 @@ export function PromptEditor({
           "--prompt-editor-fg": terminalTheme.foreground,
           "--prompt-editor-caret": terminalTheme.cursor,
           "--prompt-editor-selection": terminalTheme.selectionBackground,
+          ...Object.fromEntries(
+            (
+              ["red", "green", "yellow", "blue", "magenta", "cyan"] as const
+            ).map((name) => [`--prompt-editor-${name}`, terminalTheme[name]]),
+          ),
           fontFamily: font.family,
         } as CSSProperties)
       : undefined;
@@ -585,7 +590,7 @@ export function PromptEditor({
       <div className="prompt-editor-body" hidden={preview}>
         {rich ? (
           <LazyBoundary>
-            <PromptMonaco {...surfaceProps} theme={theme} />
+            <PromptCodeMirror {...surfaceProps} />
           </LazyBoundary>
         ) : (
           <PromptTextarea {...surfaceProps} />

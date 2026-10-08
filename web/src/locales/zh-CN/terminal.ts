@@ -297,4 +297,12 @@ export default {
   "Another collaborator controls this pane. Try again when its protection ends.":
     "另一位协作者正在控制此窗格。请在其保护期结束后重试。",
   "Reset terminal zoom, currently {zoom}%": "重置终端缩放，当前为 {zoom}%",
+  // Find and replace in the prompt editor.
+  Replace: "替换",
+  "All matches": "全部匹配项",
+  "Match case": "区分大小写",
+  "Regular expression": "正则表达式",
+  "Whole word": "全字匹配",
+  "Replace match": "替换",
+  "Replace all": "全部替换",
 } satisfies Record<string, string>;
