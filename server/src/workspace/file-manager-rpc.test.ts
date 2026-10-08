@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HerdrClient } from "../bridge/herdr-client";
@@ -55,6 +63,43 @@ const traversals = [
   "..",
   "a/../..",
 ];
+
+test("workspace-scope file-manager calls cannot leave the checkout", async () => {
+  const { fileRpc } = handlers();
+  const call = (method: string, params: Record<string, unknown>) =>
+    fileRpc[method]!({ workspace_id: "w1", ...params });
+  for (const path of traversals) {
+    for (const [method, params] of [
+      ["file.rename", { path, name: "x" }],
+      ["file.transfer", { paths: [path], destination: "src", mode: "copy" }],
+      [
+        "file.transfer",
+        { paths: ["src/a.txt"], destination: path, mode: "move" },
+      ],
+    ] as const) {
+      await expect(call(method, params)).rejects.toThrow(
+        "invalid file explorer path",
+      );
+    }
+  }
+  // Leading slashes stay checkout-relative in workspace scope.
+  const copied = (await call("file.transfer", {
+    paths: ["/src/a.txt"],
+    destination: "/",
+    mode: "copy",
+  })) as { items: Array<{ path: string }> };
+  expect(copied.items[0]?.path).toBe("a.txt");
+  expect(await readFile(join(workspace, "a.txt"), "utf8")).toBe("a");
+  // The checkout root itself is never renamed, moved or trashed.
+  await expect(call("file.rename", { path: "", name: "x" })).rejects.toThrow();
+  await expect(
+    call("file.transfer", { paths: [""], destination: "src", mode: "move" }),
+  ).rejects.toThrow();
+  await expect(
+    call("file.rename", { path: "src/a.txt", name: "../../escape" }),
+  ).rejects.toThrow("invalid file name");
+  expect(await readdir(outside)).toEqual(["secret.txt"]);
+});
 
 test("thumbnail paths cannot leave the checkout", async () => {
   const { thumbnailWorkspaceFile } = handlers();

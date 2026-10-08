@@ -1704,6 +1704,22 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     }
     return;
   }
+  const fileRpc = Object.hasOwn(connection.files.fileRpc, method)
+    ? connection.files.fileRpc[method]
+    : undefined;
+  if (fileRpc) {
+    try {
+      const result = (await fileRpc(params ?? {})) as {
+        scope?: string;
+        checkout_path: string;
+      };
+      if (!result.scope) invalidateGitStatus(result.checkout_path);
+      sendReply({ id, result }, method);
+    } catch (e) {
+      sendError(`${method}-error`, e);
+    }
+    return;
+  }
   if (method === "git.diff_summary") {
     try {
       const result = await readGitDiffSummary(params ?? {});

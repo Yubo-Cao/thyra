@@ -155,3 +155,36 @@ test("material icon lookup follows names, extensions and folders", () => {
   expect(iconUrl(lookup, "nodejs", false)).toBe("/icons/nodejs.svg");
   expect(iconUrl(lookup, "typescript", true)).toBe("/icons/typescript.svg");
 });
+
+test("clipboard paths convert between scopes of one connection", async () => {
+  const { clipboardPathsFor } = await import("./fileClipboard");
+  const base = {
+    mode: "copy" as const,
+    connectionId: "c1",
+    workspaceId: "w1",
+    root: "/repo",
+  };
+  const target = { connectionId: "c1", workspaceId: "w2", root: "/repo" };
+  const workspace = { ...base, filesystem: false, paths: ["src/a.ts"] };
+  expect(clipboardPathsFor(workspace, { ...target, filesystem: true })).toEqual(
+    ["/repo/src/a.ts"],
+  );
+  expect(
+    clipboardPathsFor(workspace, { ...target, filesystem: false }),
+  ).toEqual(["src/a.ts"]);
+  const host = { ...base, filesystem: true, paths: ["/repo/b", "/etc/x"] };
+  expect(clipboardPathsFor(host, { ...target, filesystem: false })).toBeNull();
+  expect(
+    clipboardPathsFor(
+      { ...host, paths: ["/repo/b"] },
+      { ...target, filesystem: false },
+    ),
+  ).toEqual(["b"]);
+  expect(
+    clipboardPathsFor(workspace, {
+      ...target,
+      connectionId: "c2",
+      filesystem: true,
+    }),
+  ).toBeNull();
+});

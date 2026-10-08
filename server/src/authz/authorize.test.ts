@@ -40,6 +40,8 @@ const RPC_MATRIX: Record<string, string> = {
   "connections.update": "admin",
   "file.list": "admin owner editor viewer guest",
   "file.mkdir": "admin owner editor",
+  "file.rename": "admin owner editor",
+  "file.transfer": "admin owner editor",
   "file.read": "admin owner editor viewer guest",
   "file.resolve": "admin owner editor viewer guest",
   "file.write": "admin owner editor",
@@ -245,7 +247,13 @@ const request = (
 
 describe("authorize", () => {
   test("host-wide file scopes need an admin", async () => {
-    for (const method of ["file.read", "file.list", "file.write"]) {
+    for (const method of [
+      "file.read",
+      "file.list",
+      "file.write",
+      "file.rename",
+      "file.transfer",
+    ]) {
       const params = { workspace_id: "w1", scope: "filesystem", path: "/" };
       expect((await request("owner", method, params)).allowed).toBe(false);
       expect((await request("admin", method, params)).allowed).toBe(true);

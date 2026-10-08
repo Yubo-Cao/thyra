@@ -52,6 +52,11 @@ import { HtmlPreviewError, readHtmlPreviewFile } from "./html-preview-files";
 import { HTML_PREVIEW_CSP, renderHtmlPreview } from "./html-preview";
 import { optionalString } from "../utils/rpc-params";
 import {
+  type ConflictPolicy,
+  TRANSFER_MAX_PATHS,
+  createFileOperations,
+} from "./file-manager";
+import {
   sharedThumbnailService,
   snapThumbnailSize,
   thumbnailKind,
@@ -75,6 +80,7 @@ export function createFileHandlers({
   thumbnails?: ThumbnailService;
 }) {
   const remoteHomes = new Map<string, Promise<string>>();
+  const operations = createFileOperations();
 
   /** Home of the runtime user on the host that owns the files. */
   async function hostHome(host: string | undefined) {
@@ -257,6 +263,65 @@ export function createFileHandlers({
           status: 204,
           headers: { "cache-control": "private, max-age=600" },
         });
+  }
+
+  type FileScope = Awaited<ReturnType<typeof fileScope>>;
+
+  function scopeReply(scope: FileScope, result: Record<string, unknown>) {
+    return {
+      workspace_id: scope.workspaceId,
+      checkout_path: scope.checkoutPath,
+      ...(scope.filesystem ? { scope: "filesystem" as const } : {}),
+      ...result,
+    };
+  }
+
+  async function scopePaths(scope: FileScope, value: unknown) {
+    if (!Array.isArray(value) || !value.length) {
+      throw new Error("paths must be a non-empty array");
+    }
+    if (value.length > TRANSFER_MAX_PATHS) {
+      throw new Error(`at most ${TRANSFER_MAX_PATHS} files per operation`);
+    }
+    const paths = await Promise.all(value.map((path) => scope.toHost(path)));
+    return Array.from(new Set(paths));
+  }
+
+  async function renameEntry(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.rename");
+    const path = await scope.toHost(params.path);
+    if (scope.protectedPaths.has(path)) {
+      throw new Error("refusing to rename a root directory");
+    }
+    const renamed = await operations.rename(scope.host, path, params.name);
+    return scopeReply(scope, { path: scope.toScope(renamed) });
+  }
+
+  async function transferEntries(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.transfer");
+    const mode =
+      params.mode === "copy" || params.mode === "move"
+        ? params.mode
+        : (() => {
+            throw new Error('file.transfer mode must be "move" or "copy"');
+          })();
+    const conflict: ConflictPolicy =
+      params.conflict === "rename" || params.conflict === "replace"
+        ? params.conflict
+        : "fail";
+    const items = await operations.transfer(scope.host, {
+      paths: await scopePaths(scope, params.paths),
+      destination: await scope.toHost(params.destination, true),
+      mode,
+      conflict,
+      protectedPaths: scope.protectedPaths,
+    });
+    return scopeReply(scope, {
+      items: items.map((item) => ({
+        from: scope.toScope(item.from),
+        path: scope.toScope(item.path),
+      })),
+    });
   }
 
   function joinFilesystemPath(root: string, name: string) {
@@ -714,6 +779,11 @@ export function createFileHandlers({
     readWorkspaceFile: readFile,
     downloadWorkspaceFile: downloadFile,
     thumbnailWorkspaceFile: thumbnailFile,
+    /** File-manager RPC methods, dispatched by name from index.ts. */
+    fileRpc: {
+      "file.rename": renameEntry,
+      "file.transfer": transferEntries,
+    } as Record<string, (params: Record<string, unknown>) => Promise<unknown>>,
 
     uploadWorkspaceFile: uploadFile,
     deleteWorkspaceFile: deleteFile,

@@ -293,3 +293,21 @@
 .file-thumbnail[data-state="loading"] > img:not(.file-icon-image) {
   opacity: 0;
 }
+
+.file-row.is-cut,
+.file-tile.is-cut {
+  opacity: 0.5;
+}
+.file-name-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.file-tile .file-name-field {
+  width: 100%;
+}
+.file-name-field .input.file-name-input {
+  height: var(--ui-token-height);
+  min-height: var(--ui-token-height);
+  padding-inline: 4px;
+  font-size: inherit;
+}

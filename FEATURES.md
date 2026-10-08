@@ -227,9 +227,19 @@ that another fetch could change.
   Home, `/`). Each explorer remembers its mode and directory until the page
   reloads; opening an agent's files at a cwd outside the checkout starts in
   Filesystem mode there.
-- Both modes create files and folders, upload (button or drop), and delete with
-  confirmation. Files outside the checkout preview and download like workspace
-  files.
+- Select with click, Ctrl/Cmd-click and Shift-click, Shift+arrows (Ctrl/Cmd+arrows
+  move without selecting, Ctrl/Cmd+Space toggles) and Ctrl/Cmd+A. **New file**
+  and **New folder** open a name field in place (`a/b/c.txt` creates the
+  folders on the way); F2 renames in place. Cut, copy and paste
+  (Ctrl/Cmd+X/C/V) work across folders and between explorers of one
+  connection; pasting beside the original makes `name copy.ext`, and moving
+  onto an existing name asks to **Replace** or **Keep both**. **Duplicate**,
+  **Copy path** and **Copy relative path** work on the whole selection, and
+  **Reveal active file** shows the previewed file in the tree. Every action is
+  also in the context menu (right-click, long-press, the row's `...` button, or
+  the folder's empty space). Viewers and share-link guests browse, preview and
+  download only. Files outside the checkout preview and download like
+  workspace files.
 - Text previews provide highlighting, line numbers, search, and refresh.
   Markdown has a Preview/Source switch with the active mode highlighted;
   Mermaid fences and `.mmd`/`.mermaid` files

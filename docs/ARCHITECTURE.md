@@ -387,6 +387,15 @@ run one bash script on the host owning the files (`file-host.ts`): the bridge
 host for local connections, the SSH destination otherwise. Tools are detected
 per host with `command -v` and cached for five minutes.
 
+`file.rename` (`path`, `name`: one path component) and `file.transfer`
+(`paths`, `destination` folder, `mode: "move" | "copy"`, `conflict: "fail" |
+"rename" | "replace"`) answer the new paths in the request's form. Moving into
+the source folder is a no-op, a folder never moves or copies into itself, the
+checkout root, a filesystem root and the host home never move, symlinks are
+copied as links, and `rename` makes `name copy.ext` (copies) or `name (2).ext`
+(moves). Local hosts use `node:fs` (a cross-device move copies, then removes);
+SSH hosts run one script per request with `mv`/`cp -RPp`.
+
 `GET .../file/thumbnail` (`workspace_id`, `path`, `scope`, `size`, `mtime`,
 `bytes`) returns a WebP of at most 64, 128 or 256 px, or `204` when the file
 has none. Raster images (PNG, JPEG, WebP, GIF, BMP) decode in the bridge with

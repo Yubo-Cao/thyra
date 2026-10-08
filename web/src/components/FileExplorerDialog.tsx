@@ -147,9 +147,10 @@ function FileExplorerContent({
     "working",
     cacheResourceKey,
   );
-  const rootPath = initialWorkspacePath(workspace);
-  // Git paths map onto the checkout's real path, which the first listing reports.
+  // Git paths map onto the checkout's real path, which the first listing
+  // reports; workspaces without a checkout path learn their root from it too.
   const [realRoot, setRealRoot] = useState<string | null>(null);
+  const rootPath = initialWorkspacePath(workspace) || realRoot || "";
   const gitStatus = useMemo(
     () => buildGitStatusMaps(gitSummary.summary, realRoot ?? rootPath),
     [gitSummary.summary, realRoot, rootPath],
@@ -224,35 +225,45 @@ function FileExplorerContent({
     }
   };
 
-  const onChanged = ({ paths, removed }: FileManagerChange) => {
+  const onChanged = ({ paths, removed, moved }: FileManagerChange) => {
     if (!cacheWorkspaceId) return;
     const selection = activePath ?? previewPath;
-    let selectionChanged = false;
+    let affected = false;
     for (const path of paths) {
       invalidateFilePreviewCache(client, cacheWorkspaceId, path, true);
       if (selection === path || selection?.startsWith(`${path}/`)) {
-        selectionChanged = true;
+        affected = true;
       }
     }
     if (!filesystem) refreshGit();
-    if (!selectionChanged || !selection) return;
-    if (removed) {
+    if (!affected || !selection) return;
+    // A renamed or moved preview follows its file to the new path.
+    const move = moved?.find(
+      (item) =>
+        selection === item.from || selection.startsWith(`${item.from}/`),
+    );
+    const next = move
+      ? `${move.path}${selection.slice(move.from.length)}`
+      : removed
+        ? null
+        : selection;
+    if (!next) {
       sequence.current += 1;
       setPreviewPath(null);
       onPreviewChange?.(
         { entry: null, preview: null, loading: false, error: null },
         { userInitiated: true },
       );
-    } else {
-      void loadPreview({
-        name: selection.split("/").pop() ?? selection,
-        path: selection,
-        type: "file",
-        size: 0,
-        mtime_ms: 0,
-        hidden: false,
-      });
+      return;
     }
+    void loadPreview({
+      name: next.split("/").pop() ?? next,
+      path: next,
+      type: "file",
+      size: 0,
+      mtime_ms: 0,
+      hidden: false,
+    });
   };
 
   if (!workspace) {

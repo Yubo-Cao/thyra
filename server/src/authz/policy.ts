@@ -165,6 +165,10 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "file.read": read(r.files),
   "file.write": write(r.files),
   "file.mkdir": write(r.files),
+  // File manager: workspace scope confines every path to the checkout; the
+  // filesystem scope needs an instance admin, as for the methods above.
+  "file.rename": write(r.files),
+  "file.transfer": write(r.files),
   "git.diff_summary": read(r.workspace),
   "git.diff_file": read(r.workspace),
   "git.pull": write(r.workspace),
