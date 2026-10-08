@@ -154,6 +154,8 @@ Startup warmups and the service worker's precache wait for the engine and the fi
 It shapes text from font files: only the regular Latin slices gate the first frame; slices for other characters on screen follow it (the text preview stays up until they arrive), and bold, italic and the full stylesheet wait for startup to settle (`terminalFonts.ts`).
 Coverage fonts follow, loaded as their characters appear (`scripts/build-terminal-emoji-font.py`): emoji and symbols or scripts the bundled font lacks draw with the browser's own fonts, emoji in color, the rest in the cell's color; a text-default symbol draws in color only with U+FE0F ("❤️").
 The grid before the engine loads uses the bundled font's nominal metrics, which match the engine's, so loading never changes `cols`/`rows`.
+A font preset (`appearance.ts`) is self-hosted under `/assets/fonts/presets/` (`scripts/build-terminal-font-presets.py`) and leads the engine's font list, with the bundled font behind it for what it lacks; there is no Local Font Access path.
+Its faces download only after startup settles, or at once when the user picks it, so the first frame draws in the bundled font unless the preset is already in the page or the service worker's cache; when it arrives the grid refits to its metrics and the new size goes to Herdr (`onMetricsChange`).
 
 Input waits for readiness and revalidates attachment/session/runtime leases;
 it is never replayed into a replacement terminal. Disconnect rejects pending

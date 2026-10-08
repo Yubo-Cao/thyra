@@ -333,7 +333,7 @@ export function ConfigurationDialog({
       <PreferenceRow
         icon={<TypeIcon size={15} />}
         title={t("Terminal font")}
-        description={t("Uses locally installed fonts")}
+        description={t("Downloaded when first chosen")}
       >
         <Select
           aria-label={t("Terminal font")}

@@ -171,31 +171,46 @@ export function terminalCoreCovers(
   return true;
 }
 
-// One ArrayBuffer per chunk, so the engine's parsed-font cache keys on it.
-const buffers = new Map<string, Promise<TerminalFontData | null>>();
+// One ArrayBuffer per file, so the engine's parsed-font cache keys on it.
+export const fontBuffers = new Map<string, Promise<TerminalFontData | null>>();
+
+export type FontFile = { url: string; weight: number; italic: boolean };
+
+export function fontData(
+  file: FontFile,
+  name: string,
+  response: Promise<Response | undefined>,
+): Promise<TerminalFontData | null> {
+  return response
+    .then((found) => (found?.ok ? found.arrayBuffer() : null))
+    .then((data) =>
+      data
+        ? {
+            data,
+            name,
+            weight: file.weight,
+            style: file.italic ? ("italic" as const) : ("normal" as const),
+          }
+        : null,
+    )
+    .catch(() => null);
+}
+
+// The engine picks bold and italic faces by these words in the name.
+export const styleWords = (file: FontFile) =>
+  `${file.weight >= 700 ? "Bold" : "Regular"}${file.italic ? " Italic" : ""}`;
 
 export function terminalFontData(
   chunk: TerminalFontChunk,
 ): Promise<TerminalFontData | null> {
-  let loaded = buffers.get(chunk.url);
+  let loaded = fontBuffers.get(chunk.url);
   if (!loaded) {
-    loaded = fetch(chunk.url)
-      .then((response) => (response.ok ? response.arrayBuffer() : null))
-      .then((data) =>
-        data
-          ? {
-              data,
-              // The engine picks bold and italic faces by these words.
-              name:
-                chunk.label ??
-                `Thyra Mono ${chunk.weight >= 700 ? "Bold" : "Regular"}${chunk.italic ? " Italic" : ""} ${chunk.url}`,
-              weight: chunk.weight,
-              style: chunk.italic ? ("italic" as const) : ("normal" as const),
-            }
-          : null,
-      )
-      .catch(() => null);
-    buffers.set(chunk.url, loaded);
+    loaded = fontData(
+      chunk,
+      chunk.label ?? `Thyra Mono ${styleWords(chunk)} ${chunk.url}`,
+      fetch(chunk.url),
+    );
+    fontBuffers.set(chunk.url, loaded);
   }
   return loaded;
 }

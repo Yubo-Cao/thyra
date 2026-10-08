@@ -1,10 +1,19 @@
 import { expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { TERMINAL_FONT_OPTIONS } from "./appearance";
 import { TerminalTextScreen } from "./terminalEngine";
 import {
   parseTerminalFontChunks,
   sortTerminalFontChunks,
   terminalFontChunksFor,
 } from "./terminalFonts";
+import {
+  terminalFontPreset,
+  terminalPresetFontData,
+} from "./terminalFontPresets";
+
+const publicDir = join(import.meta.dir, "../public");
 
 const face = (file: string, style: string, weight: number, range: string) =>
   `@font-face{font-family:"Thyra Mono";src:url("/f/${file}.woff2")format("woff2");font-style:${style};font-display:swap;font-weight:${weight};unicode-range:${range};}`;
@@ -65,4 +74,25 @@ test("the text preview follows full repaints, row updates and plain streams", ()
   expect(screen.text).toBe("one\nTWO");
   screen.write("\r\nthree\r\n");
   expect(screen.text).toBe("one\nTWO\nthree\n");
+});
+
+test("every font preset ships its files, regular first", () => {
+  for (const { value, fontFamily } of TERMINAL_FONT_OPTIONS) {
+    const preset = terminalFontPreset(value);
+    if (!value) {
+      expect(preset).toBeNull();
+      continue;
+    }
+    // DOM text names the same family (TerminalEngine.cssFontFamily).
+    expect(`"${preset?.family}"`).toBe(fontFamily);
+    expect(preset?.faces[0]).toMatchObject({ weight: 400, italic: false });
+    for (const face of preset!.faces)
+      expect(existsSync(join(publicDir, face.url))).toBe(true);
+  }
+  expect(terminalFontPreset("constructor")).toBeNull();
+});
+
+test("a preset's faces wait for the network unless already loaded", async () => {
+  expect(await terminalPresetFontData("fira-code", false)).toEqual([]);
+  expect(await terminalPresetFontData("", true)).toEqual([]);
 });

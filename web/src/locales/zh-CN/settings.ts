@@ -34,7 +34,7 @@ export default {
   "Reset text size, currently {scale}%": "重置文字大小，当前为 {scale}%",
   "Increase text size": "增大文字大小",
   "Terminal font": "终端字体",
-  "Uses locally installed fonts": "使用本地已安装的字体",
+  "Downloaded when first chosen": "首次选用时下载",
   Language: "语言",
   "Reloads the page to apply.": "将重新加载页面以应用。",
   "Terminal theme": "终端主题",

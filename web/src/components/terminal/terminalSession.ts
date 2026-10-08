@@ -13,7 +13,10 @@ import {
   type TerminalConnectionIdentity,
   terminalPushMatches,
 } from "../../terminalConnection";
-import { terminalFontLocalFamily, terminalFontOptions } from "../../appearance";
+import {
+  normalizeTerminalFontFamily,
+  terminalFontOptions,
+} from "../../appearance";
 import { t } from "../../i18n";
 import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../../layoutPreferences";
 import { detectShortcutPlatform } from "../../shortcutBindings";
@@ -445,7 +448,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       refs.composerOpen.current ||
       refs.viewOnly.current ||
       shouldAvoidVirtualKeyboard(),
-    fontFamily: terminalFontLocalFamily(refs.fontFamily.current),
+    fontPreset: normalizeTerminalFontFamily(refs.fontFamily.current),
     ...terminalDensity(refs.uiScale.current),
     theme: refs.terminalTheme.current,
   });
@@ -939,6 +942,12 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   window.addEventListener(LAYOUT_CHANGE_EVENT, applyDensity, {
     signal: abort.signal,
   });
+  // A font preset with other cell metrics arrived: send the refit size.
+  const metrics = term.onMetricsChange(() => {
+    const size = fitVisibleTerminal();
+    if (size) resizeSync.sendNow(size);
+  });
+  abort.signal.addEventListener("abort", () => metrics.dispose());
 
   let selectionBounds = container.getBoundingClientRect();
   const ro = new ResizeObserver(() => {

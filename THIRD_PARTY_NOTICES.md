@@ -29,6 +29,25 @@ with [cn-font-split](https://github.com/KonghaYao/cn-font-split). Copyright 2022
 The Maple Mono Project Authors, licensed under the SIL Open Font License 1.1;
 see [`LICENSES/MAPLE-MONO.txt`](./LICENSES/MAPLE-MONO.txt).
 
+## Terminal font presets
+
+The terminal font presets under `web/public/assets/fonts/presets/` are built
+by `scripts/build-terminal-font-presets.py` from pinned upstream releases. All
+are licensed under the SIL Open Font License 1.1. Fonts without a Reserved
+Font Name are subset (Latin, Greek, Cyrillic, symbols, box drawing, braille,
+Powerline; ligature features kept, hinting removed); fonts with one are only
+compressed to woff2, with their font data otherwise unchanged.
+
+| Preset | Upstream | Copyright | License |
+| --- | --- | --- | --- |
+| JetBrains Mono 2.304 | [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono) | 2020 The JetBrains Mono Project Authors | [`LICENSES/JETBRAINS-MONO.txt`](./LICENSES/JETBRAINS-MONO.txt) |
+| Fira Code 6.2 | [tonsky/FiraCode](https://github.com/tonsky/FiraCode) | 2014 The Fira Code Project Authors | [`LICENSES/FIRA-CODE.txt`](./LICENSES/FIRA-CODE.txt) |
+| Cascadia Mono 2407.24 | [microsoft/cascadia-code](https://github.com/microsoft/cascadia-code) | 2019 Microsoft Corporation, Reserved Font Name Cascadia Code | [`LICENSES/CASCADIA.txt`](./LICENSES/CASCADIA.txt) |
+| Iosevka Term 34.9.0 | [be5invis/Iosevka](https://github.com/be5invis/Iosevka) | 2015-2026 Renzhi Li (Belleve Invis) | [`LICENSES/IOSEVKA.txt`](./LICENSES/IOSEVKA.txt) |
+| Source Code Pro 2.042 | [adobe-fonts/source-code-pro](https://github.com/adobe-fonts/source-code-pro) | 2023 Adobe, Reserved Font Name Source | [`LICENSES/SOURCE-CODE-PRO.txt`](./LICENSES/SOURCE-CODE-PRO.txt) |
+| IBM Plex Mono 2.5.0 | [IBM/plex](https://github.com/IBM/plex) | 2017 IBM Corp., Reserved Font Name Plex | [`LICENSES/IBM-PLEX.txt`](./LICENSES/IBM-PLEX.txt) |
+| Noto Sans Mono 2.014 | [notofonts/latin-greek-cyrillic](https://github.com/notofonts/latin-greek-cyrillic) | 2022 The Noto Project Authors | [`LICENSES/NOTO-SANS-MONO.txt`](./LICENSES/NOTO-SANS-MONO.txt) |
+
 ## Lobe Icons
 
 Agent brand icons imported from `@lobehub/icons-static-svg` are provided by

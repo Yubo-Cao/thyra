@@ -76,6 +76,11 @@ The browser only chooses an agent, never the command text.
   chunks for characters it shows; emoji and symbols the font lacks use the
   system's fonts. Output appears as plain text first; the GPU terminal follows
   without resizing it.
+- Settings > Appearance offers JetBrains Mono, Fira Code (both with their
+  ligatures), Cascadia Mono, Iosevka, Source Code Pro, IBM Plex Mono and Noto
+  Sans Mono as terminal fonts in every browser. Thyra serves them itself and
+  downloads only the chosen one, after the terminal first draws; Maple Mono
+  still draws CJK, icons and anything else the preset lacks.
 - Mouse-aware apps receive pane-local clicks/drags/wheels. Select browser text
   with Option-drag (macOS) or Shift-drag (elsewhere); ordinary output needs no
   modifier. Releasing a selection copies it, as in Herdr, with HTML styles and

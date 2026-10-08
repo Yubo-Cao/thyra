@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { terminalFontLocalFamily } from "../../appearance";
+import { normalizeTerminalFontFamily } from "../../appearance";
 import { t } from "../../i18n";
 import { keyboardKindNow } from "../../hardwareKeyboard";
 import { activePaneIdForSnapshot } from "../../paneJump";
@@ -524,9 +524,9 @@ export function useTerminalAppearance(
 
   useEffect(() => {
     if (!term) return;
-    const family = terminalFontLocalFamily(fontFamily);
-    if (term.options.fontFamily === family) return;
-    term.setOptions({ fontFamily: family });
+    const preset = normalizeTerminalFontFamily(fontFamily);
+    if (term.options.fontPreset === preset) return;
+    term.setOptions({ fontPreset: preset });
     const size = fitVisibleTerminal();
     if (size) refs.resizeSync.current?.sendNow(size);
   }, [fontFamily, term, fitVisibleTerminal, refs]);

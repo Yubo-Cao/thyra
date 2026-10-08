@@ -1,6 +1,6 @@
 import type { PtyTransport } from "restty";
 import type { ResttyRuntime } from "restty/internal/runtime";
-import { TERMINAL_FONT_FAMILY } from "./appearance";
+import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_OPTIONS } from "./appearance";
 import { afterStartup, holdStartup } from "./startupGate";
 import { redirectScreenFocus } from "./terminalFocus";
 import {
@@ -53,8 +53,8 @@ export type TerminalTheme = {
 export type TerminalEngineOptions = {
   fontSize: number;
   lineHeight: number;
-  /** A local family to prefer over the bundled font; "" for the bundled one. */
-  fontFamily: string;
+  /** A self-hosted font preset (appearance.ts); "" for the bundled font. */
+  fontPreset: string;
   theme: TerminalTheme;
   disableStdin: boolean;
   /** Lines kept above the screen; Herdr owns live history, so 0 there. */
@@ -330,6 +330,8 @@ const seenCodePoints = new Set<number>();
 let unresolved = "";
 const fontListeners = new Set<() => void>();
 let lateFonts: Promise<void> | null = null;
+// Whether startup has settled, so preset faces may use the network.
+let presetDownloads = false;
 
 function notifyFonts() {
   for (const listener of fontListeners) listener();
@@ -380,6 +382,7 @@ function startLateFonts(): Promise<void> {
     afterStartup(() => {
       const load = () => {
         for (const chunk of core) if (chunk.core) neededChunks.add(chunk);
+        presetDownloads = true;
         notifyFonts();
         void terminalFontManifest();
       };
@@ -395,24 +398,41 @@ function startLateFonts(): Promise<void> {
  * The font list. The first frame waits for every face in it, so it takes only
  * the regular Latin faces and slices already known; the rest, and the
  * coverage fonts (emoji, system fallback), join once it has drawn.
+ *
+ * A selected preset leads the list. Its faces download only once startup has
+ * settled; until then the bundled font draws, unless the preset is already in
+ * this page or the service worker's cache.
  */
-async function engineFonts(family: string, coverage: boolean) {
-  const chunks = await terminalCoreFontManifest();
+async function engineFonts(preset: string, coverage: boolean) {
+  const [chunks, presetFaces] = await Promise.all([
+    terminalCoreFontManifest(),
+    preset
+      ? import("./terminalFontPresets").then((presets) =>
+          presets.terminalPresetFontData(preset, presetDownloads),
+        )
+      : [],
+  ]);
+  // Without the preset's regular face the bundled font sets the grid.
+  const faces =
+    presetFaces[0]?.weight === 400 && presetFaces[0].style === "normal"
+      ? coverage
+        ? presetFaces
+        : presetFaces.slice(0, 1)
+      : [];
+  // Italic text stays upright in a preset that has no italic face.
+  const italic = !faces.length || faces.some((face) => face.style === "italic");
   const regularCore = chunks.filter(
     (chunk) => chunk.core && chunk.weight < 700 && !chunk.italic,
   );
   const wanted = sortTerminalFontChunks(
     [...new Set([...regularCore, ...neededChunks])].filter(
-      (chunk) => coverage || !chunk.label,
+      (chunk) => (coverage || !chunk.label) && (italic || !chunk.italic),
     ),
   );
   const data = (await Promise.all(wanted.map(terminalFontData))).filter(
     (font): font is TerminalFontData => font !== null,
   );
-  return [
-    ...(family ? [{ family, local: "prefer" as const, name: family }] : []),
-    ...data,
-  ];
+  return [...faces, ...data];
 }
 
 export class TerminalEngine {
@@ -459,6 +479,8 @@ export class TerminalEngine {
   }>();
   private readonly scrollEmitter = new Emitter<number>();
   private readonly selectionEmitter = new Emitter<void>();
+  private readonly metricsEmitter = new Emitter<void>();
+  private metrics = "";
   /** Bytes the terminal sends: keys, IME text, paste, mouse reports. */
   readonly onData = this.dataEmitter.event;
   readonly onRender = this.renderEmitter.event;
@@ -466,6 +488,11 @@ export class TerminalEngine {
   readonly onResize = this.resizeEmitter.event;
   readonly onScroll = this.scrollEmitter.event;
   readonly onSelectionChange = this.selectionEmitter.event;
+  /**
+   * The cell size changed with the font (a preset loaded or was switched):
+   * the grid has refit, and the session sends the new size.
+   */
+  readonly onMetricsChange = this.metricsEmitter.event;
   /** Handles a clicked OSC 8 hyperlink; restty opens it otherwise. */
   linkHandler: ((uri: string, event: PointerEvent) => void) | null = null;
   /** Resolves once restty draws, or rejects when it cannot start. */
@@ -475,7 +502,7 @@ export class TerminalEngine {
     this.opts = {
       fontSize: 13,
       lineHeight: 1,
-      fontFamily: "",
+      fontPreset: "",
       theme: {},
       disableStdin: false,
       scrollback: 0,
@@ -510,6 +537,8 @@ export class TerminalEngine {
     this.applyThemeColors();
     this.stylePreview();
     ({ cols: this.cols, rows: this.rows } = this.proposeSize());
+    const estimate = this.cellSize();
+    this.metrics = `${estimate.width}x${estimate.height}`;
     this.bindEvents();
     this.bindPreEngineInput();
     fontListeners.add(this.reloadFonts);
@@ -525,10 +554,10 @@ export class TerminalEngine {
 
   /** The CSS font stack for DOM text drawn over or instead of the grid. */
   get cssFontFamily() {
-    const family = this.opts.fontFamily;
-    return family
-      ? `"${family}", ${TERMINAL_FONT_FAMILY}`
-      : TERMINAL_FONT_FAMILY;
+    const family = TERMINAL_FONT_OPTIONS.find(
+      (option) => option.value === this.opts.fontPreset,
+    )?.fontFamily;
+    return family ? `${family}, ${TERMINAL_FONT_FAMILY}` : TERMINAL_FONT_FAMILY;
   }
 
   /** The modes the screen's application set. */
@@ -543,7 +572,7 @@ export class TerminalEngine {
   private async start() {
     const [{ createRuntime, session }, fonts] = await Promise.all([
       loadTerminalEngine(),
-      engineFonts(this.opts.fontFamily, false),
+      engineFonts(this.opts.fontPreset, false),
     ]);
     if (this.disposed) return;
     const transport: PtyTransport = {
@@ -605,6 +634,7 @@ export class TerminalEngine {
     this.transportCallbacks?.onData?.(GRAPHEME_CLUSTERING);
     if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
     else this.fit();
+    this.checkMetrics();
     const pending = this.pending;
     this.pending = "";
     if (pending) this.transportCallbacks?.onData?.(pending);
@@ -694,9 +724,15 @@ export class TerminalEngine {
     const run = async () => {
       do {
         this.fontsDirty = false;
-        const fonts = await engineFonts(this.opts.fontFamily, true);
+        const preset = this.opts.fontPreset;
+        if (preset && presetDownloads)
+          void import("./terminalFontPresets").then((presets) =>
+            presets.addTerminalPresetFaces(preset),
+          );
+        const fonts = await engineFonts(preset, true);
         if (this.disposed || !this.runtime) return;
         await this.runtime.terminal.setFonts(fonts);
+        this.checkMetrics();
       } while (this.fontsDirty);
     };
     this.fontReload = run()
@@ -706,6 +742,17 @@ export class TerminalEngine {
       });
     return this.fontReload;
   };
+
+  /** Refits and reports a cell size that differs from the last one. */
+  private checkMetrics() {
+    const { width, height } = this.cellSize();
+    const metrics = `${width}x${height}`;
+    if (metrics === this.metrics) return;
+    this.metrics = metrics;
+    if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
+    else this.fit();
+    this.metricsEmitter.fire();
+  }
 
   private rendered() {
     this.stateGeneration++;
@@ -794,10 +841,13 @@ export class TerminalEngine {
     )
       this.host?.setLineHeight(options.lineHeight);
     if (
-      options.fontFamily !== undefined &&
-      options.fontFamily !== previous.fontFamily
-    )
+      options.fontPreset !== undefined &&
+      options.fontPreset !== previous.fontPreset
+    ) {
+      // A choice made now downloads now.
+      presetDownloads = true;
       this.reloadFonts();
+    }
   }
 
   private stylePreview() {
