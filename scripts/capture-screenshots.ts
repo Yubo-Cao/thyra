@@ -305,10 +305,16 @@ function writeTools(env: Environment) {
         "draw",
         // Lifecycle first: once Herdr holds a session identity from its own
         // integration source, it keeps the screen-detected state instead.
-        "sleep 1",
-        "for state in $STATES; do",
-        `  herdr pane report-agent "$HERDR_PANE_ID" --source demo --agent ${agent} --state "$state" >/dev/null`,
+        // A turn that ends before Herdr has acquired the process counts as
+        // startup rather than finished work, so replay it until Herdr shows
+        // the expected status.
+        "for attempt in 1 2 3 4 5 6 7 8 9 10; do",
         "  sleep 1",
+        "  for state in $STATES; do",
+        `    herdr pane report-agent "$HERDR_PANE_ID" --source demo --agent ${agent} --state "$state" >/dev/null`,
+        "    sleep 1",
+        "  done",
+        `  herdr pane get "$HERDR_PANE_ID" | grep -q "\\"agent_status\\":\\"$EXPECT\\"" && break`,
         "done",
         `[ -z "$SESSION" ] || herdr pane report-agent-session "$HERDR_PANE_ID" --source herdr:${agent} --agent ${agent} --agent-session-id "$SESSION" >/dev/null`,
         "while :; do sleep 60 & wait $!; done",
@@ -320,14 +326,14 @@ function writeTools(env: Environment) {
   // Finishing while unfocused leaves the docs agent "done" (unseen). A
   // session report would reset that to idle.
   const agents = {
-    "claude-api": [CLAUDE_API_SESSION_ID, "working"],
-    "codex-web": [CODEX_WEB_SESSION_ID, "blocked"],
-    "claude-docs": ["", "working idle"],
+    "claude-api": [CLAUDE_API_SESSION_ID, "working", "working"],
+    "codex-web": [CODEX_WEB_SESSION_ID, "blocked", "blocked"],
+    "claude-docs": ["", "working idle", "done"],
   };
-  for (const [key, [session, states]] of Object.entries(agents)) {
+  for (const [key, [session, states, expect]] of Object.entries(agents)) {
     write(
       join(env.root, "agents", `${key}.env`),
-      `SESSION=${session}\nSTATES="${states}"\n`,
+      `SESSION=${session}\nSTATES="${states}"\nEXPECT=${expect}\n`,
     );
   }
   write(
