@@ -18,10 +18,8 @@ import {
   writeTerminalRecoveryReloadAt,
 } from "../../terminalRecovery";
 import {
-  rememberTerminalRelayViewport,
   terminalAttachWatchdogMs,
   terminalEndpointViewportSize,
-  terminalRelayViewportSize,
 } from "../../terminalResize";
 import type { TerminalEngine, TerminalTheme } from "../../terminalEngine";
 import { terminalPageScroll } from "../../terminalScroll";
@@ -117,27 +115,6 @@ export function useTerminalBindings(
     term.fit();
     return { cols: term.cols, rows: term.rows };
   }, [container, refs]);
-  const relayViewportFor = useCallback(
-    (size: { cols: number; rows: number }) => {
-      if (!refs.isActivePane.current) return null;
-      const relaySize = terminalRelayViewportSize(
-        size,
-        refs.paneLayout.current,
-        refs.paneId.current,
-      );
-      const tabId = refs.paneTabId.current;
-      if (tabId) {
-        rememberTerminalRelayViewport(
-          identity.connectionId,
-          identity.generation,
-          tabId,
-          relaySize,
-        );
-      }
-      return relaySize;
-    },
-    [refs, identity],
-  );
   const scrollPage = useCallback(
     (direction: "up" | "down", amount: "full" | "half" = "full") => {
       const term = refs.term.current;
@@ -216,7 +193,6 @@ export function useTerminalBindings(
       openTerminalInput,
       fitVisibleTerminal,
       focusTerminalSoon,
-      relayViewportFor,
       resolveFilePaths,
       scrollPage,
     }),
@@ -231,7 +207,6 @@ export function useTerminalBindings(
       focusTerminalSoon,
       openTerminalInput,
       refs,
-      relayViewportFor,
       resolveFilePaths,
       scrollPage,
       identity,
@@ -272,7 +247,6 @@ export function useTerminalAttach(
   }: { status: string; attachEpoch: number; attachRetry: number },
 ) {
   const { client, refs, ui, fitVisibleTerminal, focusTerminalSoon } = bindings;
-  const { relayViewportFor } = bindings;
   const terminalAttachEpoch = useRef(attachEpoch);
   const attachTimeoutTerminal = useRef<string | null>(null);
   // Timestamp of the last foreground resume; gates the last-resort reload.
@@ -343,7 +317,6 @@ export function useTerminalAttach(
     const fitSize = fitVisibleTerminal();
     const cols = fitSize?.cols ?? term.cols;
     const rows = fitSize?.rows ?? term.rows;
-    const relaySize = relayViewportFor({ cols, rows });
     const paneLayout = refs.paneLayout.current;
     const surfaceSize = terminalEndpointViewportSize(
       { cols, rows },
@@ -375,10 +348,6 @@ export function useTerminalAttach(
           : {}),
         ...(surfaceSize
           ? { surface_cols: surfaceSize.cols, surface_rows: surfaceSize.rows }
-          : {}),
-        relay_active: relaySize !== null,
-        ...(relaySize
-          ? { relay_cols: relaySize.cols, relay_rows: relaySize.rows }
           : {}),
       })
       .then(
@@ -483,7 +452,6 @@ export function useTerminalAttach(
     focusTerminalSoon,
     paneTerminalId,
     refs,
-    relayViewportFor,
     status,
     term,
     ui,

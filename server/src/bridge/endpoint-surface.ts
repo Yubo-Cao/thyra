@@ -1,7 +1,7 @@
 import { BinReader } from "./bincode";
 import { readGraphics, graphicsJsonBytes } from "./endpoint-graphics";
 import type { EndpointSurface, PaneSurfacePaneMeta } from "./endpoint-client";
-import { readCellData, type CellData, type FrameData } from "./thin-client";
+import { readCellData, type CellData, type FrameData } from "./frame-codec";
 
 export const SURFACE_DELTA_KIND = "endpoint.surface-delta.v1";
 export const SURFACE_REUSE_KIND = "endpoint.surface-reuse.v1";
@@ -38,7 +38,7 @@ function uint(value: unknown, max = Number.MAX_SAFE_INTEGER): number {
 }
 
 // Strict reads are local to the endpoint surface codecs. Counts are checked
-// before allocation; the frozen legacy thin-client codecs remain unchanged.
+// before allocation.
 export class SurfaceReader extends BinReader {
   override bool(): boolean {
     const value = this.u8();

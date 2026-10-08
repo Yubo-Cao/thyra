@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
 import { EndpointClient, type EndpointSurface } from "./endpoint-client";
-import type { CellData, FrameData } from "./thin-client";
+import type { CellData, FrameData } from "./frame-codec";
 import {
   SurfaceReader,
   readFullSurface,

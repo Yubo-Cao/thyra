@@ -14,8 +14,8 @@ A Web/PWA client for a running [Herdr](https://herdr.dev) server.
 - Desktop **Zen mode** hides app chrome. Hover the top edge to reveal controls
   or use **Exit Zen**; the sidebar restores its previous state on exit.
 
-Endpoint connections use **Local navigation** per browser/connection; legacy
-connections use **Shared navigation**. Reconnect preserves selections; reload
+Every connection uses **Local navigation** per browser/connection: switching
+workspaces or tabs never moves other clients. Reconnect preserves selections; reload
 starts from Herdr's selection. Same-tab pane focus, topology, and terminal sizes
 remain shared. Creation preserves Herdr's cwd policy and requires a connected
 source terminal, except for the first workspace in an empty session and the
@@ -99,8 +99,7 @@ The browser only chooses an agent, never the command text.
 
 Herdr 0.9.1 supports read-only wrapped-link resolution; OSC 8 keeps explicit
 full destinations. Viewport-clipped plain URLs cannot be recovered safely.
-Older servers retain local URL/path detection; legacy touch lacks explicit OSC 8
-metadata. See [link contracts](docs/ARCHITECTURE.md#links).
+See [link contracts](docs/ARCHITECTURE.md#links).
 
 ### Prompt Editor
 
@@ -260,7 +259,7 @@ Scope and wrapping persist per browser. Refresh reloads the list and the shown d
   release; handles adjust and recopy. **Copy** and link actions stay
   available; **Done**/Esc exits.
   Scroll first to select older output. Selection freezes the displayed frame,
-  not the connection; legacy streams resume at a 1 MiB buffered UTF-16 limit.
+  not the connection.
 - Pinch the terminal with two fingers to change its font size on this browser; the size shown while pinching applies on release.
   On a pane this device sizes, the new grid resizes it once; on a pane another device displays, pinching only magnifies the scaled view, two fingers pan it (and scroll the terminal once it reaches its top or bottom edge), and the pane is never resized.
   The percentage appears while pinching and for a moment after; tap it to restore the default size.

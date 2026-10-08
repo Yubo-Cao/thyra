@@ -190,7 +190,6 @@ function session(
     panes: [pane(label, "idle")],
     selectedPaneId: "same-pane",
     recentPaneIds: [`${label}-recent`, "same-pane"],
-    pendingFocusWorkspaceId: `${label}-pending`,
     ...overrides,
   };
 }
@@ -442,12 +441,10 @@ describe("connection-partitioned store state", () => {
 
     expect(beta.activeConnectionId).toBe("beta");
     expect(beta.workspaces[0]?.label).toBe("beta");
-    expect(beta.pendingFocusWorkspaceId).toBe("beta-pending");
     expect(beta.recentPaneIds).toEqual(["beta-recent", "same-pane"]);
 
     const restoredAlpha = activateConnectionState(beta, "alpha", 12);
     expect(restoredAlpha.workspaces[0]?.label).toBe("alpha");
-    expect(restoredAlpha.pendingFocusWorkspaceId).toBe("alpha-pending");
     expect(restoredAlpha.recentPaneIds).toEqual(["alpha-recent", "same-pane"]);
   });
 
@@ -469,7 +466,6 @@ describe("connection-partitioned store state", () => {
       panes: [],
       layout: null,
       selectedPaneId: null,
-      pendingFocusWorkspaceId: null,
     });
     expect(reconciliation.activeSession?.panes).not.toContainEqual(
       expect.objectContaining({ terminal_id: "same-terminal" }),
@@ -760,11 +756,7 @@ describe("connection-partitioned store state", () => {
       });
       await store.focusTaskNotificationTarget(target);
       expect(store.get().activeConnectionId).toBe("alpha");
-      expect(calls).toEqual([
-        "alpha:pane.get",
-        "alpha:workspace.focus",
-        "alpha:tab.focus",
-      ]);
+      expect(calls).toEqual(["alpha:pane.get"]);
 
       calls.length = 0;
       activeConnectionId = "beta";
@@ -896,6 +888,8 @@ describe("stabilizeRefreshPatch", () => {
     })) as typeof bridge.connection;
     try {
       __storeTesting.replaceState(snapshot);
+      // The first refresh projects this browser's own selection.
+      await store.refresh();
       let emissions = 0;
       const unsubscribe = store.subscribe(() => {
         emissions += 1;
@@ -908,278 +902,6 @@ describe("stabilizeRefreshPatch", () => {
       } finally {
         unsubscribe();
       }
-    } finally {
-      bridge.connection = originalConnection;
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-});
-
-describe("pending workspace focus settlement", () => {
-  function mockFocusConnection(workspacesFocused: () => unknown[]) {
-    const originalConnection = bridge.connection;
-    const focusDeferreds: Array<{
-      resolve: (value: unknown) => void;
-      promise: Promise<unknown>;
-    }> = [];
-    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
-      connectionId,
-      generation,
-      isCurrent: () => true,
-      call: (async (method: string) => {
-        if (method === "workspace.focus") {
-          const deferred = Promise.withResolvers<unknown>();
-          focusDeferreds.push(deferred);
-          return deferred.promise;
-        }
-        if (method === "workspace.list") {
-          return { workspaces: workspacesFocused() };
-        }
-        if (method === "tab.list") return { tabs: [] };
-        if (method === "pane.list") return { panes: [] };
-        if (method === "pane.layout") return { layout: null };
-        return {};
-      }) as ConnectionClient["call"],
-    })) as typeof bridge.connection;
-    return {
-      focusDeferreds,
-      async resolveFocus(index: number, value: unknown = {}) {
-        while (!focusDeferreds[index]) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-        focusDeferreds[index].resolve(value);
-      },
-      restore() {
-        bridge.connection = originalConnection;
-      },
-    };
-  }
-
-  function unfocusedWorkspaces(): unknown[] {
-    return structuredClone(partitionState().workspaces);
-  }
-
-  test("releases a settled pending focus that a fresh observation still misses", async () => {
-    const mock = mockFocusConnection(unfocusedWorkspaces);
-    try {
-      __storeTesting.replaceState(partitionState());
-      const action = store.focusWorkspace("other-workspace");
-      await mock.resolveFocus(0);
-      await action;
-      await store.refresh();
-      await store.refresh();
-      expect(store.get().pendingFocusWorkspaceId).toBeNull();
-      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
-    } finally {
-      mock.restore();
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-
-  test("keeps an unsettled pending focus across mid-flight refreshes", async () => {
-    const mock = mockFocusConnection(unfocusedWorkspaces);
-    try {
-      __storeTesting.replaceState(partitionState());
-      const action = store.focusWorkspace("other-workspace");
-      await store.refresh();
-      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
-      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
-      await mock.resolveFocus(0);
-      await action;
-      await store.refresh();
-      await store.refresh();
-      expect(store.get().pendingFocusWorkspaceId).toBeNull();
-    } finally {
-      mock.restore();
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-
-  test("never lets a first same-id attempt settle or clear the second", async () => {
-    const mock = mockFocusConnection(unfocusedWorkspaces);
-    try {
-      __storeTesting.replaceState(partitionState());
-      const first = store.focusWorkspace("other-workspace");
-      const second = store.focusWorkspace("other-workspace");
-      await mock.resolveFocus(0);
-      await first;
-      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
-      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
-      await store.refresh();
-      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
-      await mock.resolveFocus(1);
-      await second;
-      await store.refresh();
-      await store.refresh();
-      expect(store.get().pendingFocusWorkspaceId).toBeNull();
-    } finally {
-      mock.restore();
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-
-  test("clears the pending focus as soon as the workspace is observed focused", async () => {
-    const mock = mockFocusConnection(() => [
-      { ...partitionState().workspaces[0], focused: false },
-      {
-        ...partitionState().workspaces[0],
-        workspace_id: "other-workspace",
-        focused: true,
-      },
-    ]);
-    try {
-      __storeTesting.replaceState(partitionState());
-      const action = store.focusWorkspace("other-workspace");
-      await mock.resolveFocus(0);
-      await action;
-      await store.refresh();
-      await store.refresh();
-      expect(store.get().pendingFocusWorkspaceId).toBeNull();
-    } finally {
-      mock.restore();
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-
-  for (const observedFocused of [false, true]) {
-    for (const sameWorkspace of [false, true]) {
-      test(`layout publication preserves a newer ${sameWorkspace ? "same-id" : "different-id"} focus after a ${observedFocused ? "positive" : "negative"} observation`, async () => {
-        const originalConnection = bridge.connection;
-        const layoutEntered = Promise.withResolvers<void>();
-        const layoutResult = Promise.withResolvers<unknown>();
-        const focusResult = Promise.withResolvers<unknown>();
-        const snapshot = partitionState();
-        const oldTarget = observedFocused ? "same-workspace" : "old-target";
-        const newTarget = sameWorkspace ? oldTarget : "new-target";
-        const workspaces = snapshot.workspaces.map((workspace) => ({
-          ...workspace,
-          label: "fresh observation",
-        }));
-        let focus: Promise<unknown> | undefined;
-        let refresh: Promise<unknown> | undefined;
-        bridge.connection = ((connectionId = "alpha", generation = 10) => ({
-          connectionId,
-          generation,
-          isCurrent: () => true,
-          call: (async (method: string) => {
-            if (method === "workspace.list") return { workspaces };
-            if (method === "tab.list") return { tabs: snapshot.tabs };
-            if (method === "pane.list") return { panes: snapshot.panes };
-            if (method === "pane.layout") {
-              layoutEntered.resolve();
-              return layoutResult.promise;
-            }
-            if (method === "workspace.focus") return focusResult.promise;
-            return {};
-          }) as ConnectionClient["call"],
-        })) as typeof bridge.connection;
-        try {
-          __storeTesting.replaceState({
-            ...snapshot,
-            pendingFocusWorkspaceId: oldTarget,
-            pendingFocusWorkspaceSeq: -1,
-            pendingFocusWorkspaceSettledAt: 1,
-          });
-          refresh = store.refresh();
-          await layoutEntered.promise;
-          focus = store.focusWorkspace(newTarget);
-          const newSeq = store.get().pendingFocusWorkspaceSeq;
-          expect(newSeq).not.toBe(-1);
-          layoutResult.resolve({ layout: null });
-          await refresh;
-          expect(store.get().pendingFocusWorkspaceId).toBe(newTarget);
-          expect(store.get().pendingFocusWorkspaceSeq).toBe(newSeq);
-          expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
-          expect(store.get().workspaces).toEqual(workspaces);
-        } finally {
-          layoutResult.resolve({ layout: null });
-          focusResult.resolve({});
-          await refresh;
-          await focus;
-          await store.refresh();
-          bridge.connection = originalConnection;
-          __storeTesting.replaceState(partitionState());
-        }
-      });
-    }
-  }
-
-  test("restores pending focus deterministically and preserves settled tokens", () => {
-    for (const settledAt of [null, 0, 123]) {
-      const withPending: State = {
-        ...partitionState(),
-        lastRefresh: 42,
-        pendingFocusWorkspaceId: "alpha-pending",
-        pendingFocusWorkspaceSeq: 7,
-        pendingFocusWorkspaceSettledAt: settledAt,
-      };
-      const beta = activateConnectionState(withPending, "beta", 11);
-      const restored = activateConnectionState(beta, "alpha", 12);
-      expect(restored.pendingFocusWorkspaceId).toBe("alpha-pending");
-      expect(restored.pendingFocusWorkspaceSettledAt).toBe(settledAt ?? 42);
-      expect(activateConnectionState(beta, "alpha", 12)).toEqual(restored);
-    }
-  });
-
-  test("clears a failed focus attempt even when the lease is already dead", async () => {
-    const originalConnection = bridge.connection;
-    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
-      connectionId,
-      generation,
-      isCurrent: () => false,
-      call: (async (method: string) => {
-        if (method === "workspace.focus") {
-          throw new Error("socket gone");
-        }
-        return {};
-      }) as ConnectionClient["call"],
-    })) as typeof bridge.connection;
-    try {
-      __storeTesting.replaceState(partitionState());
-      await store.focusWorkspace("other-workspace");
-      expect(store.get().pendingFocusWorkspaceId).toBeNull();
-      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
-    } finally {
-      bridge.connection = originalConnection;
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-
-  test("releases a stamped marker when the connection is paused", async () => {
-    const originalConnection = bridge.connection;
-    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
-      connectionId,
-      generation,
-      isCurrent: () => true,
-      call: (async () => ({})) as ConnectionClient["call"],
-    })) as typeof bridge.connection;
-    try {
-      __storeTesting.replaceState({
-        ...partitionState(),
-        connectionPaused: true,
-      });
-      await store.focusWorkspace("other-workspace");
-      expect(store.get().pendingFocusWorkspaceId).toBeNull();
-      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
-    } finally {
-      bridge.connection = originalConnection;
-      __storeTesting.replaceState(partitionState());
-    }
-  });
-
-  test("marks a completed focus attempt settled even when the lease is dead", async () => {
-    const originalConnection = bridge.connection;
-    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
-      connectionId,
-      generation,
-      isCurrent: () => false,
-      call: (async () => ({})) as ConnectionClient["call"],
-    })) as typeof bridge.connection;
-    try {
-      __storeTesting.replaceState(partitionState());
-      await store.focusWorkspace("other-workspace");
-      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
-      expect(store.get().pendingFocusWorkspaceSettledAt).not.toBeNull();
     } finally {
       bridge.connection = originalConnection;
       __storeTesting.replaceState(partitionState());
@@ -1345,7 +1067,11 @@ describe("agent activity refresh", () => {
       unavailable = true;
       await store.refresh();
       expect(store.get().error).toBeNull();
-      expect(store.get().panes).toEqual(snapshot.panes);
+      const withoutFocus = (panes: Pane[]) =>
+        panes.map((pane) => ({ ...pane, focused: undefined }));
+      expect(withoutFocus(store.get().panes)).toEqual(
+        withoutFocus(snapshot.panes),
+      );
     } finally {
       bridge.connection = originalConnection;
       __storeTesting.replaceState(partitionState());

@@ -11,7 +11,7 @@ import pinnedRelease from "./herdr-release.json";
  * `herdr-release.json` release asset. `bun scripts/pin-herdr.ts` records the
  * SHA-256 values from the pinned GitHub release, so a replaced or tampered
  * asset fails verification instead of installing. Re-pin only after verifying
- * a new Herdr build against Thyra's supported protocol range
+ * a new Herdr build against Thyra's supported protocol
  * (server/src/bridge/protocol-compat.ts).
  */
 export const VERIFIED_HERDR_REPOSITORY: string = pinnedRelease.repository;

@@ -186,16 +186,12 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // A pane's scrollback as ANSI text, read through Herdr's passive snapshot.
   "terminal.history": read(r.pane),
   "terminal.link.resolve": read(r.terminal),
-  // The terminal bridge also ignores focus, resize, and relay resize from
+  // The terminal bridge also ignores focus and resize from
   // devices other than a pane's display owner (see terminal.display).
   "terminal.focus": write(r.terminal, { writer: "control" }),
   "terminal.input": write(r.terminal, { writer: "input" }),
   "terminal.key": write(r.terminal, { writer: "input" }),
   "terminal.resize": write(r.terminal, { writer: "control" }),
-  "terminal.relay_resize": write(
-    (p) => (id(p.pane_id) ? { pane: id(p.pane_id) } : { host: true }),
-    { writer: "control" },
-  ),
   // Pin a pane's size to this device, take it here, or release it.
   "terminal.display": write(r.pane, { writer: "control" }),
   // Recolors every terminal on the host; members' reports are ignored.

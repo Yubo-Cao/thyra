@@ -1155,12 +1155,6 @@ function countDevices(sockets: Iterable<ServerWebSocket<unknown>>): number {
   return devices.size;
 }
 
-function notifyBrowserClientCount() {
-  connectionManager.forEachCurrentRuntime((runtime) => {
-    runtime.terminalBridge.browserClientCountChanged(clients.size);
-  });
-}
-
 const webSocketCleanup = new WebSocketCleanupTracker<
   ServerWebSocket<unknown>,
   WebSocketCleanupSnapshot
@@ -1178,7 +1172,6 @@ const webSocketCleanup = new WebSocketCleanupTracker<
   clients.delete(ws);
   leaveSocketPresence(ws);
   clientIdentity.detach(ws);
-  notifyBrowserClientCount();
   return snapshot;
 });
 
@@ -1958,7 +1951,6 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       result = await enrichWorkspacesWithGitStatus(result);
       result = {
         ...result,
-        navigation_mode: await terminalBridge.navigationMode(),
         endpoint_availability: terminalBridge.endpointAvailability(),
       };
     }
@@ -2572,7 +2564,6 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
       client: label,
       clients: clients.size,
     });
-    notifyBrowserClientCount();
     safeSend(
       ws,
       JSON.stringify({
@@ -2707,7 +2698,6 @@ function main() {
     },
     startConnection: async () => {
       await connectionProfiles.startConfigured();
-      notifyBrowserClientCount();
       const runtime = connectionManager.defaultReadyRuntime();
       void runtime?.herdr
         .ping()

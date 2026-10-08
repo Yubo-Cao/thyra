@@ -414,7 +414,6 @@ export type TerminalSessionBindings = TerminalViewInputs & {
   /** Fits the terminal to its container; null while the container is hidden. */
   fitVisibleTerminal: () => TerminalSize | null;
   focusTerminalSoon: () => void;
-  relayViewportFor: (size: TerminalSize) => TerminalSize | null;
   resolveFilePaths: (paths: string[]) => Promise<Map<string, string>>;
   scrollPage: (direction: "up" | "down", amount?: "full" | "half") => void;
 };
@@ -871,7 +870,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     refs.linkReady.current = false;
     ui.setFileLinkMenu(null);
     store.setTerminalEndpoint(client, closed.terminal_id, null);
-    // Herdr closes the direct attach when another client takes the
+    // Herdr closes the stream when another client takes the
     // terminal over (or its stream dies). Re-attach, but bound takeover
     // wars between two clients so they cannot evict each other forever.
     touch.reset();
@@ -931,16 +930,11 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   const resizeSync = new TerminalResizeSync((size) => {
     const terminalId = attachedTerminal.current;
     if (!terminalId) return false;
-    const relaySize = bindings.relayViewportFor(size);
     client
       .call("terminal.resize", {
         terminal_id: terminalId,
         cols: size.cols,
         rows: size.rows,
-        relay_active: relaySize !== null,
-        ...(relaySize
-          ? { relay_cols: relaySize.cols, relay_rows: relaySize.rows }
-          : {}),
       })
       .catch(() => {
         if (client.isCurrent() && attachedTerminal.current === terminalId) {

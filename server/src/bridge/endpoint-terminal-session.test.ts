@@ -11,7 +11,7 @@ import {
   frameHyperlinkAt,
   resolvedFrameLink,
 } from "./endpoint-terminal-session";
-import type { CellData, FrameData } from "./thin-client";
+import type { CellData, FrameData } from "./frame-codec";
 import type { ServerWebSocket } from "bun";
 import { createTerminalBridge } from "./terminal-bridge";
 import { silentLogger } from "../utils/logger";
@@ -1213,7 +1213,6 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
   const ws = {} as ServerWebSocket<unknown>;
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
     safeSend: (_ws, payload) => {
       const message = JSON.parse(payload);
@@ -1229,7 +1228,6 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
         terminal_id: terminalId,
         cols: 8,
         rows: 3,
-        relay_active: false,
       });
     }
     expect(frames).toContainEqual(
@@ -1297,7 +1295,6 @@ test("split tab reattach uses the full surface in every endpoint hello", async (
   const ws = {} as ServerWebSocket<unknown>;
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
     safeSend: (_ws, payload) => {
       const message = JSON.parse(payload);
@@ -1320,7 +1317,6 @@ test("split tab reattach uses the full surface in every endpoint hello", async (
           rows: 69,
           surface_cols: 274,
           surface_rows: 71,
-          relay_active: false,
         });
       }
       await Bun.sleep(40);
@@ -1357,7 +1353,6 @@ test("endpoint frames are clipped per viewer and per terminal after resize", asy
   }> = [];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
     safeSend: (viewer, payload) => {
       const message = JSON.parse(payload);
@@ -1379,7 +1374,6 @@ test("endpoint frames are clipped per viewer and per terminal after resize", asy
         rows,
         surface_cols: 26,
         surface_rows: 6,
-        relay_active: false,
       });
     }
     await Bun.sleep(600);
@@ -1398,7 +1392,6 @@ test("endpoint frames are clipped per viewer and per terminal after resize", asy
       terminal_id: "right",
       cols: 7,
       rows: 2,
-      relay_active: false,
     });
     await Bun.sleep(600);
     expect(frames.at(-1)?.terminal).toMatchObject({
@@ -1421,7 +1414,6 @@ test("invalid initial surface hints are rejected before opening an endpoint", as
   const errors: string[] = [];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     lookupPaneId: async () => "w1:p1",
     safeSend: () => true,
     clientLabel: () => "test",
@@ -1495,7 +1487,6 @@ test.each([
       createTerminalBridge({
         ...identity,
         clientSocketPath: socketPath,
-        herdrProtocol: async () => 22,
         lookupPaneId: async () => "w1:p1",
         safeSend: (ws, payload, context, coalesceKey) => {
           const result = sendWebSocketMessage(ws, payload, {
@@ -1522,7 +1513,6 @@ test.each([
       terminal_id: "same-terminal",
       cols: 8,
       rows: 3,
-      relay_active: false,
     };
     const terminalPayloads = () =>
       sent.filter((payload) => JSON.parse(payload).terminal);
@@ -1620,7 +1610,6 @@ test("a delayed close notifies only old viewers and preserves a replacement's he
   })) as unknown as ServerWebSocket<unknown>[];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     lookupPaneId: async () => "w1:p1",
     safeSend(viewer, payload, context, coalesceKey) {
       const sent = sendWebSocketMessage(viewer, payload, {
@@ -1647,7 +1636,6 @@ test("a delayed close notifies only old viewers and preserves a replacement's he
         terminal_id: "term",
         cols: 8,
         rows: 3,
-        relay_active: false,
       },
     );
   let restoreEmit: (() => void) | undefined;
@@ -1733,7 +1721,6 @@ test("endpoint clipboard follows foreground-recipient ownership, not producing P
       connectionId,
       connectionGeneration,
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 22,
       lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
       logger: { ...silentLogger, warn: (message) => warnings.push(message) },
       safeSend: (ws, payload) => {
@@ -1999,7 +1986,6 @@ test("changing surface codecs reconnects every endpoint viewer, but not other co
     clientSocketPath: socketPath,
     connectionId: "alpha",
     connectionGeneration: 1,
-    herdrProtocol: async () => 22,
     surfaceCodecsEnabled: async () => enabled,
     lookupPaneId: async () => "w1:p1",
     clientLabel: () => "test",
@@ -2177,7 +2163,6 @@ test("an attach waiting for settings cannot negotiate an obsolete codec preferen
   let reads = 0;
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     surfaceCodecsEnabled: () =>
       ++reads === 1 ? oldSettings.promise : Promise.resolve(true),
     lookupPaneId: async () => "w1:p1",
@@ -2214,7 +2199,6 @@ function creationBridge(
   const replies: any[] = [];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 22,
     lookupPaneId: options.lookup ?? (async () => "w1:p1"),
     validateCreationSource: options.validate ?? (async () => {}),
     safeSend: (_ws, message) => {
@@ -2230,7 +2214,6 @@ function creationBridge(
       terminal_id: "term1",
       cols: 80,
       rows: 24,
-      relay_active: false,
     });
   return { bridge, ws, replies, attach };
 }
@@ -2571,7 +2554,6 @@ test("two browser source endpoints create concurrently without changing each oth
         terminal_id: "term2",
         cols: 80,
         rows: 24,
-        relay_active: false,
       }),
     ]);
     expect(
@@ -2910,7 +2892,6 @@ for (const invalidate of [
     const replies: Array<{ ws: ServerWebSocket<unknown>; message: any }> = [];
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 22,
       lookupPaneId: async () => "w1:p1",
       safeSend: (ws, payload) => {
         replies.push({ ws, message: JSON.parse(payload) });
@@ -2938,7 +2919,6 @@ for (const invalidate of [
         terminal_id: "term1",
         cols: 80,
         rows: 24,
-        relay_active: false,
       });
     let current = true;
     try {
@@ -3024,7 +3004,6 @@ test("required pane.focus absent fails attach explicitly without legacy takeover
     expect(requests).toEqual([]);
     expect(lookups).toBe(0);
     expect(bridge.statusTerminals()).toEqual([]);
-    expect(await bridge.navigationMode()).toBe("browser-local");
   } finally {
     bridge.dispose();
   }
@@ -3441,7 +3420,6 @@ describe("attached endpoint cursor focus", () => {
           terminal_id: "term2",
           cols: 8,
           rows: 3,
-          relay_active: false,
         });
         requests.length = 0;
         block = true;
@@ -4527,7 +4505,6 @@ describe("Herdr live handoff", () => {
     const viewer = {} as ServerWebSocket<unknown>;
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 22,
       lookupPaneId: async (terminalId) =>
         herdr.panes.find((pane) => pane.terminalId === terminalId)?.paneId ??
         null,
@@ -4553,7 +4530,6 @@ describe("Herdr live handoff", () => {
         terminal_id: terminalId,
         cols: 8,
         rows: 3,
-        relay_active: false,
       });
       const reply = messages.find((message) => message.id === id);
       if (reply?.error) throw new Error(reply.error.message);

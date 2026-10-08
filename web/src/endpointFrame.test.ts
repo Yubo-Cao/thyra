@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { headlessTerminal } from "./terminalEngine.fixture";
 import { frameToAnsi } from "../../server/src/bridge/frame-to-ansi";
-import type { FrameData } from "../../server/src/bridge/thin-client";
+import type { FrameData } from "../../server/src/bridge/frame-codec";
 
 test.each(["中", "🙂", "👩‍💻", "🇨🇳", "ｶﾞ", "e\u0301"])(
   "keeps source columns and cursor after %s with production Unicode rendering",

@@ -84,7 +84,7 @@ function openWorktree(
     const result = await lease.client.call("worktree.open", {
       ...source,
       ...locator,
-      focus: focus && state.navigationMode !== "browser-local",
+      focus: false,
     });
     if (focus && browserSelectionIsCurrent(navigation))
       adoptBrowserTarget(lease, result);
@@ -127,7 +127,7 @@ export const worktreeActions = {
         const result = await lease.client.call("worktree.create", {
           workspace_id: workspaceId,
           branch,
-          focus: state.navigationMode !== "browser-local",
+          focus: false,
         });
         if (browserSelectionIsCurrent(navigation))
           adoptBrowserTarget(lease, result);

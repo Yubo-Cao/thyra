@@ -95,7 +95,6 @@ export function useWorkspaceInspector({
     | "layout"
     | "lastRefresh"
     | "panes"
-    | "pendingFocusWorkspaceId"
     | "selectedPaneId"
     | "status"
     | "workspaces"
@@ -581,7 +580,7 @@ export function useWorkspaceInspector({
   }, [mobile, setMobileView]);
   useLayoutEffect(() => {
     const current = stateRef.current;
-    if (!current?.open || !focusedWorkspace || s.pendingFocusWorkspaceId) {
+    if (!current?.open || !focusedWorkspace) {
       return;
     }
     const routedWorkspace = resolveWorkspaceForScope(
@@ -590,12 +589,7 @@ export function useWorkspaceInspector({
     );
     if (routedWorkspace?.workspace_id === focusedWorkspace.workspace_id) return;
     keepForWorkspace(focusedWorkspace.workspace_id);
-  }, [
-    focusedWorkspace,
-    keepForWorkspace,
-    s.pendingFocusWorkspaceId,
-    s.workspaces,
-  ]);
+  }, [focusedWorkspace, keepForWorkspace, s.workspaces]);
   useLayoutEffect(() => {
     const current = stateRef.current;
     if (!current) return;

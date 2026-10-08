@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { frameToAnsi } from "./frame-to-ansi";
-import type { CellData, FrameData } from "./thin-client";
+import type { CellData, FrameData } from "./frame-codec";
 
 function cell(symbol: string, over: Partial<CellData> = {}): CellData {
   return {

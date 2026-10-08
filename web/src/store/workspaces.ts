@@ -42,11 +42,9 @@ export function numberedCreatedTabRename(
   return { tabId, label: t("Tab {number}", { number }) };
 }
 
-/** Creation focuses Herdr in shared mode; browser-local names its source. */
+/** Creation leaves Herdr's focus alone and names its browser source. */
 function creationTarget(workspaceId: string | null) {
-  return state.navigationMode === "browser-local"
-    ? { focus: false, browser_source: browserCreationSource(workspaceId) }
-    : { focus: true };
+  return { focus: false, browser_source: browserCreationSource(workspaceId) };
 }
 
 export const workspaceActions = {
@@ -160,7 +158,7 @@ export const workspaceActions = {
       const result = await lease.client.call("pane.split", {
         target_pane_id: paneId,
         direction,
-        focus: state.navigationMode !== "browser-local",
+        focus: false,
       });
       const selectionIsCurrent = browserSelectionIsCurrent(navigation);
       if (selectionIsCurrent) adoptBrowserTarget(lease, result);
@@ -193,10 +191,7 @@ export const workspaceActions = {
       rememberTabLayout(lease.connectionId, lease.generation, layout ?? null);
       if (layout && state.layout?.tab_id === layout.tab_id)
         setForConnection(lease, {
-          layout:
-            state.navigationMode === "browser-local"
-              ? projectBrowserLayout(layout, state.selectedPaneId)
-              : layout,
+          layout: projectBrowserLayout(layout, state.selectedPaneId),
         });
       return result;
     });

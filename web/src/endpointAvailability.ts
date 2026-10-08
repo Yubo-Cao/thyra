@@ -39,11 +39,9 @@ export function parseEndpointAvailability(
 }
 
 export function endpointMethodReason(
-  mode: "browser-local" | "shared",
   advertisement: EndpointAdvertisement | null | undefined,
   method: string,
 ): string | null {
-  if (mode === "shared") return null;
   if (!advertisement)
     return t(
       "Endpoint availability is loading. Open the source terminal and wait for it to connect.",

@@ -126,7 +126,6 @@ test("one live gate blocks keys, IME, paste/composer and resizing while preservi
     );
   await client.call("terminal.focus");
   await client.call("terminal.resize", { cols: 160, rows: 50 });
-  await client.call("terminal.relay_resize", { cols: 160, rows: 50 });
   expect(calls).toEqual([]);
   await client.call("terminal.scroll", { direction: "up", source: "wheel" });
   expect(calls[calls.length - 1]).toEqual([

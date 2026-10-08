@@ -1,71 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
 import * as net from "node:net";
-import { EventEmitter, once } from "node:events";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
 import { createDisplayOwnership } from "./display-ownership";
 import { createTerminalBridge } from "./terminal-bridge";
-import { silentLogger } from "../utils/logger";
-import {
-  flushCoalescedMessages,
-  sendWebSocketMessage,
-  WS_COALESCE_LIMIT_BYTES,
-} from "./websocket-send";
-
-test("explicit half-page history retains legacy Wheel source and line count", async () => {
-  const sources: number[] = [];
-  const socketPath = await startThinServer({
-    onScroll: (reader) => {
-      sources.push(reader.variant());
-      expect(reader.variant()).toBe(0); // Up
-      expect(reader.varint()).toBe(14);
-      expect(reader.bool()).toBe(false); // no column
-      expect(reader.bool()).toBe(false); // no row
-    },
-  });
-  const ws = {} as ServerWebSocket<unknown>;
-  const bridge = createTerminalBridge({
-    clientSocketPath: socketPath,
-    herdrProtocol: async () => 17,
-    safeSend: () => true,
-    clientLabel: () => "test",
-    markRpcError: () => {},
-  });
-  try {
-    await bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
-      terminal_id: "legacy",
-      cols: 80,
-      rows: 30,
-      relay_active: false,
-    });
-    bridge.refreshSurfaceCodecs();
-    expect(bridge.statusTerminals()).toHaveLength(1);
-    await bridge.handleTerminalRpc(ws, "scroll", "terminal.scroll", {
-      terminal_id: "legacy",
-      direction: "up",
-      lines: 14,
-      source: "history",
-    });
-    await Bun.sleep(40);
-    expect(sources).toEqual([0]);
-  } finally {
-    bridge.dispose();
-  }
-});
+import type { CellData, FrameData } from "./frame-codec";
 
 const servers: net.Server[] = [];
 
 test("a view-only join preserves the existing stream size and still receives a frame", async () => {
-  const socketPath = await startThinServer();
+  const socketPath = await startEndpointServer();
   const owner = {} as ServerWebSocket<unknown>;
   const viewer = {} as ServerWebSocket<unknown>;
   const ownerMessages: string[] = [];
   const viewerMessages: string[] = [];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 17,
+    lookupPaneId: async () => "p1",
     safeSend: (ws, payload) => {
       (ws === owner ? ownerMessages : viewerMessages).push(payload);
       return true;
@@ -78,7 +31,6 @@ test("a view-only join preserves the existing stream size and still receives a f
       terminal_id: "t1",
       cols: 100,
       rows: 30,
-      relay_active: false,
     });
     await waitForTerminalFrame(ownerMessages);
     ownerMessages.length = 0;
@@ -87,7 +39,6 @@ test("a view-only join preserves the existing stream size and still receives a f
       cols: 40,
       rows: 15,
       preserve_size: true,
-      relay_active: false,
     });
     expect((await waitForTerminalFrame(ownerMessages)).width).toBe(100);
     expect((await waitForTerminalFrame(viewerMessages)).width).toBe(100);
@@ -96,7 +47,6 @@ test("a view-only join preserves the existing stream size and still receives a f
       terminal_id: "t1",
       cols: 80,
       rows: 24,
-      relay_active: false,
     });
     expect((await waitForTerminalFrame(ownerMessages)).width).toBe(80);
   } finally {
@@ -106,12 +56,9 @@ test("a view-only join preserves the existing stream size and still receives a f
 describe("display owner enforcement", () => {
   async function setup() {
     const tracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
       events: [] as string[],
     };
-    const socketPath = await startThinServer({ tracker });
+    const socketPath = await startEndpointServer({ tracker });
     const ipad = {} as ServerWebSocket<unknown>;
     const phone = {} as ServerWebSocket<unknown>;
     const messages = new Map<ServerWebSocket<unknown>, string[]>([
@@ -121,7 +68,6 @@ describe("display owner enforcement", () => {
     const display = createDisplayOwnership();
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
       lookupPaneId: async () => "p1",
       displayOwnership: display,
       socketIdentity: (ws) =>
@@ -165,7 +111,6 @@ describe("display owner enforcement", () => {
         terminal_id: "t1",
         cols: 120,
         rows: 40,
-        relay_active: false,
       });
       expect(
         (await call(ipad, "terminal.display", { pane_id: "p1", action: "pin" }))
@@ -183,7 +128,6 @@ describe("display owner enforcement", () => {
         terminal_id: "t1",
         cols: 45,
         rows: 30,
-        relay_active: false,
       });
       expect(await frameWidth(phone)).toBe(120);
       await attach;
@@ -195,11 +139,6 @@ describe("display owner enforcement", () => {
           rows: 30,
         }),
       ).toEqual({ ok: true, skipped: true, reason: "display_owner" });
-      await call(phone, "terminal.relay_resize", {
-        pane_id: "p1",
-        cols: 45,
-        rows: 30,
-      });
       await Bun.sleep(20);
       expect(tracker.events).not.toContain("resize");
 
@@ -250,7 +189,6 @@ describe("display owner enforcement", () => {
         terminal_id: "t1",
         cols: 120,
         rows: 40,
-        relay_active: false,
       });
       await call(ipad, "terminal.display", { pane_id: "p1", action: "pin" });
       await call(ipad, "terminal.detach", { terminal_id: "t1" });
@@ -259,7 +197,6 @@ describe("display owner enforcement", () => {
         terminal_id: "t1",
         cols: 45,
         rows: 30,
-        relay_active: false,
       });
       expect(await frameWidth(phone)).toBe(120);
       await attach;
@@ -274,7 +211,7 @@ describe("display owner enforcement", () => {
     const ws = {} as ServerWebSocket<unknown>;
     const bridge = createTerminalBridge({
       clientSocketPath: "/unused.sock",
-      herdrProtocol: async () => 22,
+      lookupPaneId: async () => null,
       readPaneText: async (paneId, lines) => {
         reads.push([paneId, lines]);
         return { text: "last lines", truncated: false };
@@ -313,7 +250,7 @@ describe("display owner enforcement", () => {
     const ws = {} as ServerWebSocket<unknown>;
     const bridge = createTerminalBridge({
       clientSocketPath: "/unused.sock",
-      herdrProtocol: async () => 22,
+      lookupPaneId: async () => null,
       readPaneHistory: async (paneId, lines) => {
         reads.push([paneId, lines]);
         return { text: "\x1b[1mold\x1b[0m\r\nnew\r\n", truncated: true };
@@ -385,63 +322,122 @@ afterEach(async () => {
   );
 });
 
-function terminalFrame(width = 100, height = 30, protocol = 17, full = true) {
-  const writer = new BinWriter();
-  writer.variant(protocol === 22 ? 1 : 2);
-  writer.varint(1);
-  writer.varint(width);
-  writer.varint(height);
-  writer.bool(full);
-  writer.bytes(Buffer.from("frame"));
-  return encodeFrame(writer.toBuffer());
+type ServerTracker = { events: string[] };
+
+function cell(symbol: string): CellData {
+  return { symbol, fg: 0, bg: 0, modifier: 0, skip: false, hyperlink: null };
+}
+
+function writeFrame(w: BinWriter, frame: FrameData) {
+  w.varint(frame.cells.length);
+  for (const c of frame.cells) {
+    w.string(c.symbol);
+    w.varint(c.fg);
+    w.varint(c.bg);
+    w.varint(c.modifier);
+    w.bool(c.skip);
+    w.option(c.hyperlink, (v) => w.varint(v));
+  }
+  w.varint(frame.width);
+  w.varint(frame.height);
+  w.option(frame.cursor, (cur) => {
+    w.varint(cur.x);
+    w.varint(cur.y);
+    w.bool(cur.visible);
+    w.u8(cur.shape);
+  });
+  w.varint(frame.hyperlinks.length);
+  for (const link of frame.hyperlinks) w.string(link);
+  w.bytes(Buffer.alloc(0));
+}
+
+/** One pane filling a cols x rows tab, so the pane crop is the whole surface. */
+function surfaceFrame(revision: number, cols: number, rows: number) {
+  const w = new BinWriter();
+  w.variant(13);
+  w.string("boot-1");
+  w.varint(1);
+  w.varint(revision);
+  writeFrame(w, {
+    cells: Array.from({ length: cols * rows }, () => cell("x")),
+    width: cols,
+    height: rows,
+    cursor: { x: 0, y: 0, visible: true, shape: 1 },
+    hyperlinks: [],
+  });
+  w.varint(1);
+  w.string("p1");
+  w.varint(revision); // content revision
+  for (let i = 0; i < 2; i++) {
+    w.varint(0);
+    w.varint(0);
+    w.varint(cols);
+    w.varint(rows);
+  }
+  w.bool(false); // scrollbar rect
+  w.bool(false); // scroll metrics
+  w.bool(true); // focused
+  w.bool(false); // mouse reporting
+  w.bool(false); // sgr pixel mouse
+  w.bool(false); // alternate screen
+  w.varint(0);
+  w.varint(0);
+  w.varint(0); // splits
+  w.bool(false); // popup
+  w.varint(0); // graphics assets
+  w.varint(0); // graphics placements
+  w.varint(0); // retained assets
+  return encodeFrame(w.toBuffer());
+}
+
+function controlFrame(kind: string, data: unknown) {
+  const w = new BinWriter();
+  w.variant(20);
+  w.string(kind);
+  w.string(JSON.stringify(data));
+  return encodeFrame(w.toBuffer());
 }
 
 function clipboardFrame(data: string) {
-  const writer = new BinWriter();
-  writer.variant(6);
-  writer.string(data);
-  return encodeFrame(writer.toBuffer());
+  const w = new BinWriter();
+  w.variant(5);
+  w.string(data);
+  return encodeFrame(w.toBuffer());
 }
 
-async function startThinServer(
+/**
+ * Fake Herdr endpoint: answers the hello, focuses pane p1, and repaints a
+ * surface at the requested size on every hello and resize.
+ */
+async function startEndpointServer(
   options: {
-    protocol?: number;
+    tracker?: ServerTracker;
+    /** Sent back as an OSC 52 clipboard after pane input. */
     clipboardData?: string;
-    appWelcomeDelayMs?: number;
-    appWelcomeError?: string;
-    skipAppWelcome?: boolean;
-    directClipboardOnResize?: string;
-    directFrameDelayMs?: number;
-    skipDirectFrame?: boolean;
-    onDirectAttach?: (socket: net.Socket) => void;
-    onScroll?: (reader: BinReader) => void;
-    frameFull?: boolean;
-    tracker?: {
-      appConnects: number;
-      appCloses: number;
-      appSizes: string[];
-      events: string[];
-    };
+    /** Sent back as an OSC 52 clipboard after a resize. */
+    clipboardOnResize?: string;
+    /** Withhold every surface (the attach never becomes ready). */
+    skipSurface?: boolean;
+    onConnection?: (socket: net.Socket) => void;
   } = {},
 ) {
   const socketPath = path.join(
     tmpdir(),
     `thyra-terminal-bridge-${process.pid}-${crypto.randomUUID()}.sock`,
   );
-  let appSocket: net.Socket | null = null;
   const server = net.createServer((socket) => {
     serverConnections.add(socket);
+    options.onConnection?.(socket);
     let input = Buffer.alloc(0);
-    let isAppSocket = false;
-    let socketCols = 100;
-    let socketRows = 30;
+    let greeted = false;
+    let revision = 0;
+    const paint = (cols: number, rows: number) => {
+      if (!options.skipSurface && !socket.destroyed)
+        socket.write(surfaceFrame(++revision, cols, rows));
+    };
     // A client may close while a frame to it is still being written.
     socket.on("error", () => {});
-    socket.on("close", () => {
-      serverConnections.delete(socket);
-      if (appSocket === socket) appSocket = null;
-      if (isAppSocket && options.tracker) options.tracker.appCloses += 1;
-    });
+    socket.on("close", () => serverConnections.delete(socket));
     socket.on("data", (chunk) => {
       input = Buffer.concat([
         input,
@@ -453,104 +449,53 @@ async function startThinServer(
         const reader = new BinReader(input.subarray(4, length + 4));
         input = input.subarray(length + 4);
         const variant = reader.variant();
-        if (variant === 0) {
-          const protocol = reader.varint();
-          const helloCols = reader.varint();
-          const helloRows = reader.varint();
+        if (!greeted) {
+          greeted = true;
+          reader.string(); // kind
+          const hello = JSON.parse(reader.string());
+          options.tracker?.events.push("hello");
+          socket.write(
+            controlFrame("endpoint.welcome.v1", {
+              generation: 1,
+              server_version: "0.9.0",
+              snapshot_codec: "shell.snapshot.v1",
+              surface_codec: "shell.surface.v1",
+              input_codec: "shell.input.semantic.v1",
+              blob_codec: "shell.blob.v1",
+              methods: ["pane.focus", "pane.scroll"],
+              capabilities: [],
+            }),
+          );
+          socket.write(
+            controlFrame("shell.snapshot.v1", {
+              boot_id: "boot-1",
+              revision: 1,
+            }),
+          );
+          paint(hello.surface_size.cols, hello.surface_size.rows);
+        } else if (variant === 15) {
+          reader.string(); // boot_id
+          const request = JSON.parse(reader.string());
+          const w = new BinWriter();
+          w.variant(18);
+          w.string("boot-1");
+          w.string(request.id);
+          w.bool(true);
+          w.bytes(Buffer.from(JSON.stringify({ id: request.id, result: {} })));
+          socket.write(encodeFrame(w.toBuffer()));
+        } else if (variant === 12) {
           reader.varint(); // cell width
           reader.varint(); // cell height
-          let launchMode = 2;
-          if (protocol === 22) {
-            expect(reader.bool()).toBe(false); // pixel_mouse
-          } else {
-            reader.varint(); // encoding
-            reader.varint(); // keybindings
-            launchMode = reader.varint();
-          }
-          expect(reader.remaining).toBe(0);
-          socketCols = helloCols;
-          socketRows = helloRows;
-          if (launchMode === 0 && options.tracker) {
-            isAppSocket = true;
-            options.tracker.appConnects += 1;
-            options.tracker.appSizes.push(`${helloCols}x${helloRows}`);
-            options.tracker.events.push("appHello");
-          }
-          const writer = new BinWriter();
-          writer.variant(0);
-          writer.varint(protocol);
-          writer.varint(1);
-          writer.option<string>(
-            launchMode === 0 ? options.appWelcomeError : undefined,
-            (value) => writer.string(value),
-          );
-          const sendWelcome = () => {
-            if (socket.destroyed) return;
-            if (launchMode === 0 && options.skipAppWelcome) return;
-            if (launchMode === 0) appSocket = socket;
-            socket.write(encodeFrame(writer.toBuffer()));
-            if (launchMode === 0) {
-              socket.write(
-                terminalFrame(
-                  socketCols,
-                  socketRows,
-                  options.protocol,
-                  options.frameFull ?? true,
-                ),
-              );
-            }
-          };
-          if (launchMode === 0 && (options.appWelcomeDelayMs ?? 0) > 0) {
-            setTimeout(sendWelcome, options.appWelcomeDelayMs);
-          } else {
-            sendWelcome();
-          }
-        } else if (variant === 1) {
-          if (!isAppSocket) options.tracker?.events.push("input");
-          if (options.clipboardData) {
-            appSocket?.write(clipboardFrame(options.clipboardData));
-          }
-        } else if (variant === 3 || variant === 5) {
-          if (variant === 3) {
-            const resizeCols = reader.varint();
-            const resizeRows = reader.varint();
-            socketCols = resizeCols;
-            socketRows = resizeRows;
-            if (isAppSocket && options.tracker) {
-              options.tracker.appSizes.push(`${resizeCols}x${resizeRows}`);
-            } else if (options.tracker) {
-              options.tracker.events.push("resize");
-            }
-          } else {
-            options.tracker?.events.push("attach");
-            options.tracker?.events.push("terminalFrame");
-            options.onDirectAttach?.(socket);
-          }
-          const sendTerminalFrame = () => {
-            if (!socket.destroyed) {
-              socket.write(
-                terminalFrame(
-                  socketCols,
-                  socketRows,
-                  options.protocol,
-                  options.frameFull ?? true,
-                ),
-              );
-            }
-          };
-          if (variant !== 5 || !options.skipDirectFrame) {
-            if (variant === 5 && (options.directFrameDelayMs ?? 0) > 0) {
-              setTimeout(sendTerminalFrame, options.directFrameDelayMs);
-            } else {
-              sendTerminalFrame();
-            }
-          }
-          if (variant === 3 && options.directClipboardOnResize) {
-            socket.write(clipboardFrame(options.directClipboardOnResize));
-          }
-        } else if (variant === 6) {
-          options.tracker?.events.push("scroll");
-          options.onScroll?.(reader);
+          const cols = reader.varint();
+          const rows = reader.varint();
+          options.tracker?.events.push("resize");
+          paint(cols, rows);
+          if (options.clipboardOnResize)
+            socket.write(clipboardFrame(options.clipboardOnResize));
+        } else if (variant === 13) {
+          options.tracker?.events.push("input");
+          if (options.clipboardData)
+            socket.write(clipboardFrame(options.clipboardData));
         }
       }
     });
@@ -586,63 +531,8 @@ async function waitForCondition(
 }
 
 describe("terminal bridge sharing", () => {
-  for (const protocol of [20, 22]) {
-    test(`protocol ${protocol} ${protocol === 22 ? "skips OSC52 relay" : "retains legacy relay"} while sharing terminal rendering`, async () => {
-      const tracker = {
-        appConnects: 0,
-        appCloses: 0,
-        appSizes: [] as string[],
-        events: [] as string[],
-      };
-      const socketPath = await startThinServer({ protocol, tracker });
-      const browser = {} as ServerWebSocket<unknown>;
-      const messages: string[] = [];
-      const warnings: string[] = [];
-      const bridge = createTerminalBridge({
-        clientSocketPath: socketPath,
-        logger: { ...silentLogger, warn: (message) => warnings.push(message) },
-        herdrProtocol: async () => protocol,
-        safeSend: (_ws, payload) => {
-          messages.push(payload);
-          return true;
-        },
-        clientLabel: () => "test",
-        markRpcError: () => undefined,
-      });
-      try {
-        await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
-          terminal_id: "term_1",
-          cols: 100,
-          rows: 30,
-        });
-        await waitForTerminalFrame(messages);
-        expect(
-          tracker.events.filter((event) => event === "attach"),
-        ).toHaveLength(1);
-        expect(tracker.appConnects).toBe(protocol === 22 ? 0 : 1);
-        expect(
-          warnings.filter((message) =>
-            message.includes("OSC 52 unavailable on the legacy fallback"),
-          ),
-        ).toHaveLength(protocol === 22 ? 1 : 0);
-        const viewer = {} as ServerWebSocket<unknown>;
-        await bridge.handleTerminalRpc(viewer, "second", "terminal.attach", {
-          terminal_id: "term_1",
-          cols: 100,
-          rows: 30,
-        });
-        expect(
-          tracker.events.filter((event) => event === "attach"),
-        ).toHaveLength(1);
-        expect(tracker.appConnects).toBe(protocol === 22 ? 0 : 1);
-      } finally {
-        bridge.dispose();
-      }
-    });
-  }
-
   test("refreshes a reused terminal for a newly attached browser", async () => {
-    const socketPath = await startThinServer();
+    const socketPath = await startEndpointServer();
     const firstBrowser = {} as ServerWebSocket<unknown>;
     const secondBrowser = {} as ServerWebSocket<unknown>;
     const messages = new Map<ServerWebSocket<unknown>, string[]>([
@@ -651,7 +541,7 @@ describe("terminal bridge sharing", () => {
     ]);
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (ws, payload) => {
         messages.get(ws)?.push(payload);
         return true;
@@ -721,8 +611,8 @@ describe("terminal bridge sharing", () => {
 
   test("notifies viewers to re-attach when Herdr closes the terminal stream", async () => {
     const direct: { socket: net.Socket | null } = { socket: null };
-    const socketPath = await startThinServer({
-      onDirectAttach: (socket) => {
+    const socketPath = await startEndpointServer({
+      onConnection: (socket) => {
         direct.socket = socket;
       },
     });
@@ -730,7 +620,7 @@ describe("terminal bridge sharing", () => {
     const messages: string[] = [];
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (ws, payload) => {
         messages.push(payload);
         return true;
@@ -746,8 +636,8 @@ describe("terminal bridge sharing", () => {
     });
     await waitForTerminalFrame(messages);
 
-    // Herdr closes the direct attach when another client takes the terminal
-    // over; the viewer must be told so its UI can re-attach.
+    // Herdr closes the stream when another client takes the terminal over;
+    // the viewer must be told so its UI can re-attach.
     expect(direct.socket).not.toBeNull();
     (direct.socket as net.Socket).destroy();
     await waitForCondition(
@@ -778,98 +668,19 @@ describe("terminal bridge sharing", () => {
     bridge.cleanupWs(browser);
   });
 
-  test("routes Herdr clipboard messages from the app relay to the input owner", async () => {
-    const clipboardData = "cmVtb3RlIGNvcHk=";
-    const socketPath = await startThinServer({
-      clipboardData,
-      appWelcomeDelayMs: 30,
-    });
-    const browser = {} as ServerWebSocket<unknown>;
-    const observer = {} as ServerWebSocket<unknown>;
-    const messages = new Map<ServerWebSocket<unknown>, string[]>([
-      [browser, []],
-      [observer, []],
-    ]);
-    const bridge = createTerminalBridge({
-      clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
-      safeSend: (ws, payload) => {
-        messages.get(ws)?.push(payload);
-        return true;
-      },
-      clientLabel: (ws) => (ws === browser ? "browser" : "observer"),
-      markRpcError: () => undefined,
-    });
-
-    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-    });
-    await bridge.handleTerminalRpc(observer, "observe", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-    });
-    await bridge.handleTerminalRpc(browser, "input", "terminal.input", {
-      terminal_id: "term_1",
-      data: Buffer.from("copy").toString("base64"),
-    });
-    await Bun.sleep(5);
-
-    expect(
-      messages
-        .get(browser)!
-        .map((message) => JSON.parse(message))
-        .find((message) => message.terminal_clipboard)?.terminal_clipboard,
-    ).toEqual({ terminal_id: "term_1", data: clipboardData });
-    expect(
-      messages
-        .get(observer)!
-        .some((message) => JSON.parse(message).terminal_clipboard),
-    ).toBe(false);
-
-    messages.get(browser)!.length = 0;
-    messages.get(observer)!.length = 0;
-    await bridge.handleTerminalRpc(observer, "input-2", "terminal.input", {
-      terminal_id: "term_1",
-      data: Buffer.from("copy again").toString("base64"),
-    });
-    await Bun.sleep(5);
-    expect(
-      messages
-        .get(observer)!
-        .map((message) => JSON.parse(message))
-        .find((message) => message.terminal_clipboard)?.terminal_clipboard,
-    ).toEqual({ terminal_id: "term_1", data: clipboardData });
-    expect(
-      messages
-        .get(browser)!
-        .some((message) => JSON.parse(message).terminal_clipboard),
-    ).toBe(false);
-    bridge.cleanupWs(browser);
-    bridge.cleanupWs(observer);
-  });
-
   test("isolates duplicate terminal ids, operations, frames, and clipboard by connection", async () => {
     const alphaTracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
       events: [] as string[],
     };
     const betaTracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
       events: [] as string[],
     };
     const [alphaSocket, betaSocket] = await Promise.all([
-      startThinServer({
+      startEndpointServer({
         tracker: alphaTracker,
         clipboardData: "YWxwaGE=",
       }),
-      startThinServer({
+      startEndpointServer({
         tracker: betaTracker,
         clipboardData: "YmV0YQ==",
       }),
@@ -881,7 +692,7 @@ describe("terminal bridge sharing", () => {
       connectionId: "alpha",
       connectionGeneration: 11,
       clientSocketPath: alphaSocket,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (_ws, payload) => {
         alphaMessages.push(payload);
         return true;
@@ -893,7 +704,7 @@ describe("terminal bridge sharing", () => {
       connectionId: "beta",
       connectionGeneration: 12,
       clientSocketPath: betaSocket,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (_ws, payload) => {
         betaMessages.push(payload);
         return true;
@@ -975,18 +786,15 @@ describe("terminal bridge sharing", () => {
 
     await waitForCondition(
       () =>
-        alphaTracker.events.includes("input") &&
-        alphaTracker.events.includes("scroll") &&
+        alphaTracker.events.filter((event) => event === "input").length === 2 &&
         betaTracker.events.includes("resize") &&
         alphaMessages.some((message) => JSON.parse(message).terminal_clipboard),
       "timed out waiting for isolated terminal operations",
     );
-    expect(alphaTracker.events).toContain("input");
-    expect(alphaTracker.events).toContain("scroll");
+    // Typing and page keys both reach alpha's pane as input.
     expect(alphaTracker.events).not.toContain("resize");
     expect(betaTracker.events).toContain("resize");
     expect(betaTracker.events).not.toContain("input");
-    expect(betaTracker.events).not.toContain("scroll");
     expect(
       alphaMessages
         .map((message) => JSON.parse(message))
@@ -1008,8 +816,8 @@ describe("terminal bridge sharing", () => {
   });
 
   test("does not broadcast clipboard events without a matching input owner", async () => {
-    const socketPath = await startThinServer({
-      directClipboardOnResize: "bm8gb3duZXI=",
+    const socketPath = await startEndpointServer({
+      clipboardOnResize: "bm8gb3duZXI=",
     });
     const firstBrowser = {} as ServerWebSocket<unknown>;
     const secondBrowser = {} as ServerWebSocket<unknown>;
@@ -1019,7 +827,7 @@ describe("terminal bridge sharing", () => {
     ]);
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (ws, payload) => {
         messages.get(ws)?.push(payload);
         return true;
@@ -1059,312 +867,8 @@ describe("terminal bridge sharing", () => {
     bridge.cleanupWs(secondBrowser);
   });
 
-  test("keeps terminal attach usable when the optional relay is rejected", async () => {
-    const socketPath = await startThinServer({
-      appWelcomeError: "app clients disabled",
-    });
-    const browser = {} as ServerWebSocket<unknown>;
-    const messages: string[] = [];
-    const bridge = createTerminalBridge({
-      clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
-      safeSend: (_ws, payload) => {
-        messages.push(payload);
-        return true;
-      },
-      clientLabel: () => "browser",
-      markRpcError: () => undefined,
-    });
-
-    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-    });
-
-    expect(
-      messages
-        .map((message) => JSON.parse(message))
-        .find((message) => message.id === "attach")?.result,
-    ).toEqual({ ok: true });
-    bridge.cleanupWs(browser);
-  });
-
-  test("does not leave terminal attach waiting on a stalled relay", async () => {
-    const socketPath = await startThinServer({ skipAppWelcome: true });
-    const browser = {} as ServerWebSocket<unknown>;
-    const messages: string[] = [];
-    const bridge = createTerminalBridge({
-      clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
-      safeSend: (_ws, payload) => {
-        messages.push(payload);
-        return true;
-      },
-      clientLabel: () => "browser",
-      markRpcError: () => undefined,
-    });
-
-    const startedAt = performance.now();
-    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-    });
-
-    expect(performance.now() - startedAt).toBeLessThan(1_500);
-    expect(
-      messages
-        .map((message) => JSON.parse(message))
-        .find((message) => message.id === "attach")?.result,
-    ).toEqual({ ok: true });
-    bridge.cleanupWs(browser);
-  });
-
-  test("keeps the clipboard relay alive across terminal detaches", async () => {
-    const tracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
-      events: [] as string[],
-    };
-    const socketPath = await startThinServer({ tracker });
-    const browser = {} as ServerWebSocket<unknown>;
-    const bridge = createTerminalBridge({
-      clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
-      safeSend: () => true,
-      clientLabel: () => "browser",
-      markRpcError: () => undefined,
-    });
-
-    await bridge.handleTerminalRpc(browser, "attach-1", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-    });
-    expect(tracker.appConnects).toBe(1);
-    // The first terminal frame proves that Herdr processed AttachTerminal and
-    // installed its resize lock before the app relay becomes foreground.
-    expect(tracker.events.indexOf("terminalFrame")).toBeGreaterThanOrEqual(0);
-    expect(tracker.events.indexOf("terminalFrame")).toBeLessThan(
-      tracker.events.indexOf("appHello"),
-    );
-
-    // Detaching the last viewer must not tear down the relay: its reconnect
-    // churn is what reflows background pane runtimes on every tab switch.
-    await bridge.handleTerminalRpc(browser, "detach-1", "terminal.detach", {
-      terminal_id: "term_1",
-    });
-    expect(tracker.appCloses).toBe(0);
-
-    await bridge.handleTerminalRpc(browser, "attach-2", "terminal.attach", {
-      terminal_id: "term_2",
-      cols: 100,
-      rows: 30,
-    });
-    expect(tracker.appConnects).toBe(1);
-
-    // The relay follows the latest viewer size so the server's shared pane
-    // geometry stays pinned to the visible window.
-    await bridge.handleTerminalRpc(browser, "resize-1", "terminal.resize", {
-      terminal_id: "term_2",
-      cols: 120,
-      rows: 40,
-    });
-    for (
-      let attempt = 0;
-      attempt < 50 && !tracker.appSizes.includes("120x40");
-      attempt += 1
-    ) {
-      await Bun.sleep(2);
-    }
-    expect(tracker.appSizes).toContain("120x40");
-
-    // Once no browser is connected the relay has no consumer and closes.
-    bridge.browserClientCountChanged(0);
-    for (
-      let attempt = 0;
-      attempt < 50 && tracker.appCloses === 0;
-      attempt += 1
-    ) {
-      await Bun.sleep(2);
-    }
-    expect(tracker.appCloses).toBe(1);
-
-    bridge.browserClientCountChanged(1);
-    await bridge.handleTerminalRpc(browser, "attach-3", "terminal.attach", {
-      terminal_id: "term_3",
-      cols: 100,
-      rows: 30,
-    });
-    expect(tracker.appConnects).toBe(2);
-    bridge.cleanupWs(browser);
-  });
-
-  test("sizes the relay only from the active split pane viewport", async () => {
-    const tracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
-      events: [] as string[],
-    };
-    const socketPath = await startThinServer({ tracker });
-    const browser = {} as ServerWebSocket<unknown>;
-    const confirmedRelaySizes: Array<{
-      cols: number;
-      rows: number;
-      paneId: string | null;
-    }> = [];
-    const bridge = createTerminalBridge({
-      clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
-      safeSend: () => true,
-      clientLabel: () => "browser",
-      markRpcError: () => undefined,
-      confirmRelayResize: async (request) => {
-        confirmedRelaySizes.push(request);
-        return true;
-      },
-    });
-
-    await bridge.handleTerminalRpc(browser, "inactive", "terminal.attach", {
-      terminal_id: "term_inactive",
-      cols: 70,
-      rows: 44,
-      relay_active: false,
-    });
-    expect(tracker.appConnects).toBe(0);
-
-    await bridge.handleTerminalRpc(browser, "active", "terminal.attach", {
-      terminal_id: "term_active",
-      cols: 70,
-      rows: 44,
-      relay_active: true,
-      relay_cols: 168,
-      relay_rows: 45,
-    });
-    expect(tracker.appConnects).toBe(1);
-    expect(tracker.appSizes).toEqual(["168x45"]);
-
-    await bridge.handleTerminalRpc(
-      browser,
-      "relay-resize",
-      "terminal.relay_resize",
-      { cols: 170, rows: 46, pane_id: "pane_active" },
-    );
-    expect(confirmedRelaySizes).toEqual([
-      { cols: 170, rows: 46, paneId: "pane_active" },
-    ]);
-    for (
-      let attempt = 0;
-      attempt < 50 && !tracker.appSizes.includes("170x46");
-      attempt += 1
-    ) {
-      await Bun.sleep(2);
-    }
-    expect(tracker.appSizes).toEqual(["168x45", "170x46"]);
-
-    await bridge.handleTerminalRpc(
-      browser,
-      "inactive-resize",
-      "terminal.resize",
-      {
-        terminal_id: "term_inactive",
-        cols: 72,
-        rows: 44,
-        relay_active: false,
-      },
-    );
-    await Bun.sleep(5);
-    expect(tracker.appSizes).toEqual(["168x45", "170x46"]);
-
-    await bridge.handleTerminalRpc(
-      browser,
-      "active-resize",
-      "terminal.resize",
-      {
-        terminal_id: "term_active",
-        cols: 72,
-        rows: 44,
-        relay_active: true,
-        relay_cols: 172,
-        relay_rows: 45,
-      },
-    );
-    for (
-      let attempt = 0;
-      attempt < 50 && !tracker.appSizes.includes("172x45");
-      attempt += 1
-    ) {
-      await Bun.sleep(2);
-    }
-    expect(tracker.appSizes).toEqual(["168x45", "170x46", "172x45"]);
-    bridge.cleanupWs(browser);
-  });
-
-  test("does not let a delayed attach overwrite a newer relay target", async () => {
-    const tracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
-      events: [] as string[],
-    };
-    const socketPath = await startThinServer({
-      tracker,
-      directFrameDelayMs: 25,
-    });
-    const browser = {} as ServerWebSocket<unknown>;
-    const bridge = createTerminalBridge({
-      clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
-      safeSend: () => true,
-      clientLabel: () => "browser",
-      markRpcError: () => undefined,
-      confirmRelayResize: async () => true,
-    });
-
-    await bridge.handleTerminalRpc(browser, "initial", "terminal.attach", {
-      terminal_id: "term_initial",
-      cols: 100,
-      rows: 30,
-      relay_cols: 100,
-      relay_rows: 30,
-    });
-    const delayedAttach = bridge.handleTerminalRpc(
-      browser,
-      "delayed",
-      "terminal.attach",
-      {
-        terminal_id: "term_delayed",
-        cols: 120,
-        rows: 40,
-        relay_cols: 120,
-        relay_rows: 40,
-      },
-    );
-    await Bun.sleep(5);
-    await bridge.handleTerminalRpc(
-      browser,
-      "new-target",
-      "terminal.relay_resize",
-      { cols: 140, rows: 50, pane_id: "pane_target" },
-    );
-    await delayedAttach;
-    for (
-      let attempt = 0;
-      attempt < 50 && !tracker.appSizes.includes("140x50");
-      attempt += 1
-    ) {
-      await Bun.sleep(2);
-    }
-    expect(tracker.appSizes).toContain("140x50");
-    expect(tracker.appSizes).not.toContain("120x40");
-    bridge.cleanupWs(browser);
-  });
-
   test("rejects input for terminals the browser does not view", async () => {
-    const socketPath = await startThinServer();
+    const socketPath = await startEndpointServer();
     const owner = {} as ServerWebSocket<unknown>;
     const stranger = {} as ServerWebSocket<unknown>;
     const messages = new Map<ServerWebSocket<unknown>, string[]>([
@@ -1373,7 +877,7 @@ describe("terminal bridge sharing", () => {
     ]);
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (ws, payload) => {
         messages.get(ws)?.push(payload);
         return true;
@@ -1404,17 +908,14 @@ describe("terminal bridge sharing", () => {
 
   test("dispose closes runtime-owned terminal resources", async () => {
     const tracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
       events: [] as string[],
     };
-    const socketPath = await startThinServer({ tracker });
+    const socketPath = await startEndpointServer({ tracker });
     const browser = {} as ServerWebSocket<unknown>;
     const messages: string[] = [];
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (_ws, payload) => {
         messages.push(payload);
         return true;
@@ -1452,37 +953,25 @@ describe("terminal bridge sharing", () => {
         .map((message) => JSON.parse(message))
         .find((message) => message.id === "after-dispose")?.error.message,
     ).toBe("terminal bridge disposed");
-    for (
-      let attempt = 0;
-      attempt < 50 && tracker.appCloses !== 1;
-      attempt += 1
-    ) {
-      await Bun.sleep(2);
-    }
-    expect(tracker.appCloses).toBe(1);
+    await waitForCondition(
+      () => serverConnections.size === 0,
+      "timed out waiting for the endpoint stream to close",
+    );
   });
 
   test("dispose wins an in-flight attach without retaining resources", async () => {
     const tracker = {
-      appConnects: 0,
-      appCloses: 0,
-      appSizes: [] as string[],
       events: [] as string[],
     };
-    let resolveDirectAttach!: () => void;
-    const directAttach = new Promise<void>((resolve) => {
-      resolveDirectAttach = resolve;
-    });
-    const socketPath = await startThinServer({
+    const socketPath = await startEndpointServer({
       tracker,
-      skipDirectFrame: true,
-      onDirectAttach: resolveDirectAttach,
+      skipSurface: true,
     });
     const browser = {} as ServerWebSocket<unknown>;
     const messages: string[] = [];
     const bridge = createTerminalBridge({
       clientSocketPath: socketPath,
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (_ws, payload) => {
         messages.push(payload);
         return true;
@@ -1501,19 +990,20 @@ describe("terminal bridge sharing", () => {
         rows: 30,
       },
     );
-    await directAttach;
-    expect(tracker.events).toContain("attach");
+    await waitForCondition(
+      () => tracker.events.includes("hello"),
+      "timed out waiting for the endpoint hello",
+    );
     bridge.dispose();
     await attaching;
 
     expect(bridge.statusTerminals()).toEqual([]);
     expect(bridge.viewedTerminals(browser)).toEqual([]);
-    expect(tracker.appConnects).toBe(0);
     expect(
       messages
         .map((message) => JSON.parse(message))
         .find((message) => message.id === "concurrent-attach")?.error.message,
-    ).toBe("terminal bridge disposed");
+    ).toBe("endpoint connection closed before first surface");
   });
 
   test("suppresses terminal replies after the request lease is invalidated", async () => {
@@ -1521,7 +1011,7 @@ describe("terminal bridge sharing", () => {
     const bridge = createTerminalBridge({
       connectionId: "alpha",
       clientSocketPath: "/tmp/unused-terminal-lease.sock",
-      herdrProtocol: async () => 17,
+      lookupPaneId: async () => "p1",
       safeSend: (_ws, payload) => {
         messages.push(payload);
         return true;
@@ -1549,141 +1039,18 @@ describe("terminal bridge sharing", () => {
   });
 });
 
-test("navigation mode uses exactly the terminal backend decision", async () => {
-  const disabled = process.env.THYRA_DISABLE_ENDPOINT;
-  try {
-    for (const [protocol, lookup, disable, expected] of [
-      [22, true, false, "browser-local"],
-      [22, true, true, "shared"],
-      [22, false, false, "shared"],
-      [20, true, false, "shared"],
-    ] as const) {
-      if (disable) process.env.THYRA_DISABLE_ENDPOINT = "1";
-      else delete process.env.THYRA_DISABLE_ENDPOINT;
-      const bridge = createTerminalBridge({
-        clientSocketPath: "/unused",
-        herdrProtocol: async () => protocol,
-        lookupPaneId: lookup ? async () => "pane" : undefined,
-        safeSend: () => true,
-        clientLabel: () => "test",
-        markRpcError: () => {},
-      });
-      expect(await bridge.navigationMode()).toBe(expected);
-      bridge.dispose();
-    }
-  } finally {
-    if (disabled === undefined) delete process.env.THYRA_DISABLE_ENDPOINT;
-    else process.env.THYRA_DISABLE_ENDPOINT = disabled;
-  }
-});
-
-// A legacy ThinClient stream carries `full` on the wire, and it is false for an
-// incremental frame. Coalescing drops held frames, so a dropped incremental
-// frame loses output that no later frame repeats: the terminal renders corrupt.
-// Only a self-contained repaint may carry a coalesce key.
-test("does not coalesce an incremental legacy frame", async () => {
-  const socketPath = await startThinServer({ protocol: 17, frameFull: false });
-  const browser = {} as ServerWebSocket<unknown>;
-  const sends: { payload: string; coalesceKey?: string }[] = [];
-  const bridge = createTerminalBridge({
-    clientSocketPath: socketPath,
-    herdrProtocol: async () => 17,
-    safeSend: (_ws, payload, _context, coalesceKey) => {
-      sends.push({ payload, coalesceKey });
-      return true;
-    },
-    clientLabel: () => "test",
-    markRpcError: () => undefined,
-  });
-  try {
-    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-    });
-    await waitForTerminalFrame(sends.map((s) => s.payload));
-    const frames = sends.filter((s) => s.payload.includes('"terminal"'));
-    expect(frames.length).toBeGreaterThan(0);
-    for (const frame of frames) {
-      expect(JSON.parse(frame.payload).terminal.full).toBe(false);
-      expect(frame.coalesceKey).toBeUndefined();
-    }
-  } finally {
-    bridge.dispose();
-  }
-});
-
-test("keeps full and incremental legacy frames in order under backpressure", async () => {
-  let source!: net.Socket;
-  const socketPath = await startThinServer({
-    onDirectAttach: (socket) => {
-      source = socket;
-    },
-  });
-  let buffered = WS_COALESCE_LIMIT_BYTES + 1;
-  const sent: string[] = [];
-  const received = new EventEmitter();
-  const browser = {
-    close: () => {},
-    getBufferedAmount: () => buffered,
-    send: (payload: string) => {
-      sent.push(payload);
-      return payload.length;
-    },
-  } as unknown as ServerWebSocket<unknown>;
-  const cleanup = () => {};
-  const bridge = createTerminalBridge({
-    clientSocketPath: socketPath,
-    herdrProtocol: async () => 17,
-    safeSend: (ws, payload, context, coalesceKey) => {
-      const result = sendWebSocketMessage(ws, payload, {
-        cleanup,
-        context,
-        coalesceKey,
-      });
-      if (JSON.parse(payload).terminal) received.emit("frame");
-      return result;
-    },
-    clientLabel: () => "test",
-    markRpcError: () => undefined,
-  });
-  try {
-    const fullFrame = once(received, "frame");
-    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
-      terminal_id: "term_1",
-      cols: 100,
-      rows: 30,
-      relay_active: false,
-    });
-    await fullFrame;
-    const incrementalFrame = once(received, "frame");
-    source.write(terminalFrame(100, 30, 17, false));
-    await incrementalFrame;
-    buffered = 0;
-    flushCoalescedMessages(browser, { cleanup });
-    expect(
-      sent
-        .map((payload) => JSON.parse(payload))
-        .filter((message) => message.terminal)
-        .map((message) => message.terminal.full),
-    ).toEqual([true, false]);
-  } finally {
-    bridge.dispose();
-  }
-});
-
 // A held frame is sized for the surface it was rendered against. If the surface
 // resizes while that frame is held, flushing it paints the OLD size into the new
 // pane, clipping the bottom and right. The bridge must drop the held frame
 // whenever the size it was rendered for stops being current.
 test("drops a held frame when the viewer resizes the terminal", async () => {
-  const socketPath = await startThinServer();
+  const socketPath = await startEndpointServer();
   const browser = {} as ServerWebSocket<unknown>;
   const messages: string[] = [];
   const drops: { ws: ServerWebSocket<unknown>; coalesceKey: string }[] = [];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 17,
+    lookupPaneId: async () => "p1",
     safeSend: (_ws, payload) => {
       messages.push(payload);
       return true;
@@ -1714,14 +1081,14 @@ test("drops a held frame when the viewer resizes the terminal", async () => {
 });
 
 test("drops held frames for every viewer when an attach resizes the shared terminal", async () => {
-  const socketPath = await startThinServer();
+  const socketPath = await startEndpointServer();
   const first = {} as ServerWebSocket<unknown>;
   const second = {} as ServerWebSocket<unknown>;
   const messages: string[] = [];
   const drops: { ws: ServerWebSocket<unknown>; coalesceKey: string }[] = [];
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
-    herdrProtocol: async () => 17,
+    lookupPaneId: async () => "p1",
     safeSend: (_ws, payload) => {
       messages.push(payload);
       return true;

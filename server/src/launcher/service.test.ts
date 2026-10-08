@@ -10,7 +10,6 @@ function harness(
   options: {
     directories?: string[];
     zoxide?: Array<{ path: string; score: number }> | null;
-    mode?: "browser-local" | "shared";
     failSend?: boolean;
     launcher?: GuiSettings["launcher"];
   } = {},
@@ -53,7 +52,6 @@ function harness(
     connectionId: "local",
     host,
     now: () => NOW,
-    navigationMode: async () => options.mode ?? "browser-local",
     readSettings: async () => settings,
     updateSettings: async (update, shouldCommit = () => true) => {
       if (!shouldCommit()) throw new Error("settings update cancelled");
@@ -204,22 +202,6 @@ describe("launcher.launch", () => {
     expect(settings()?.history).toEqual([
       { path: `${HOME}/repo`, count: 1, last_used_at: NOW },
     ]);
-  });
-
-  test("opens a new focused workspace for other folders in shared navigation", async () => {
-    const { service, calls, methods } = harness({ mode: "shared" });
-    const result = (await service.call("launcher.launch", {
-      path: `${HOME}/notes`,
-      agent: "codex",
-    })) as any;
-    expect(
-      calls.find((call) => call.method === "workspace.create")?.params,
-    ).toEqual({ cwd: `${HOME}/notes`, focus: true });
-    expect(methods()).not.toContain("tab.create");
-    expect(
-      calls.find((call) => call.method === "pane.send_input")?.params.text,
-    ).toBe("codex");
-    expect(result.reused_workspace).toBe(false);
   });
 
   test("waits for the prompt before sending the command", async () => {

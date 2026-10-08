@@ -4,7 +4,7 @@
  *
  * A display owner is recorded when a browser pins a pane to its screen
  * ("Display on this device") or takes control and resizes it here. While a
- * pane has one, the terminal bridge ignores resize, relay resize, focus, and
+ * pane has one, the terminal bridge ignores resize, focus, and
  * attach sizes from every other device, and their input no longer claims
  * Herdr's size ownership. Panes without one keep the browser-side rules.
  *

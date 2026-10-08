@@ -33,7 +33,6 @@ import {
 export interface ServerSessionState {
   /** ConnectionManager generation that owns every server resource below. */
   serverRuntimeGeneration: number | null;
-  navigationMode: "browser-local" | "shared";
   endpointAvailability: EndpointAvailability;
   browserNavigation: BrowserNavigation;
   workspaces: Workspace[];
@@ -43,9 +42,6 @@ export interface ServerSessionState {
   selectedPaneId: string | null;
   recentPaneIds: string[];
   error: string | null;
-  pendingFocusWorkspaceId: string | null;
-  pendingFocusWorkspaceSeq: number;
-  pendingFocusWorkspaceSettledAt: number | null;
   terminalAttachEpoch: number;
   lastRefresh: number;
 }
@@ -145,7 +141,6 @@ export function emptyServerSessionState(
 ): ServerSessionState {
   return {
     serverRuntimeGeneration,
-    navigationMode: "shared",
     endpointAvailability: {},
     browserNavigation: emptyBrowserNavigation(),
     workspaces: [],
@@ -155,9 +150,6 @@ export function emptyServerSessionState(
     selectedPaneId: null,
     recentPaneIds: [],
     error: null,
-    pendingFocusWorkspaceId: null,
-    pendingFocusWorkspaceSeq: 0,
-    pendingFocusWorkspaceSettledAt: null,
     terminalAttachEpoch: 0,
     lastRefresh: 0,
   };

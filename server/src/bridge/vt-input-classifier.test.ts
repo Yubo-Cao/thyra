@@ -11,7 +11,6 @@ import {
   encodePaneInput,
   paneKeyEvent,
 } from "./vt-input-classifier";
-import { legacyKeyBytes } from "./legacy-key-bytes";
 
 function feed(input: string | number[]): PaneInputEvent[] {
   const c = new VtInputClassifier();
@@ -438,24 +437,5 @@ describe("encodePaneInput", () => {
     expect(r.bool()).toBe(false);
     expect(r.bool()).toBe(false);
     expect(r.remaining).toBe(0);
-  });
-});
-
-describe("legacyKeyBytes", () => {
-  test("encodes direct-attach keys like xterm", () => {
-    const enc = (...keys: Parameters<typeof legacyKeyBytes>[0]) =>
-      legacyKeyBytes(keys).toString("latin1");
-    expect(enc({ key: "Char", char: "/", mods: MOD_CONTROL })).toBe("\x1f");
-    expect(enc({ key: "Char", char: "a", shifted: "A", mods: 3 })).toBe("\x01");
-    expect(enc({ key: "Char", char: "f", shifted: "F", mods: 5 })).toBe(
-      "\x1bF",
-    );
-    expect(enc({ key: "Char", char: "f", mods: MOD_ALT })).toBe("\x1bf");
-    expect(enc({ key: "Char", char: "a", text: "a", mods: 0 })).toBe("a");
-    expect(enc({ key: "Enter", mods: MOD_CONTROL })).toBe("\r");
-    expect(enc({ key: "Up", mods: MOD_CONTROL })).toBe("\x1b[1;5A");
-    expect(enc({ key: "Tab", mods: MOD_SHIFT })).toBe("\x1b[Z");
-    expect(enc({ key: "F", fn: 5, mods: 0 })).toBe("\x1b[15~");
-    expect(enc({ key: "Char", char: "a", mods: 0, kind: "release" })).toBe("");
   });
 });

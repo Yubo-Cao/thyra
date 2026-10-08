@@ -161,7 +161,6 @@ describe("lookupRpc", () => {
     for (const method of [
       "terminal.display",
       "terminal.resize",
-      "terminal.relay_resize",
       "terminal.focus",
       "terminal.input",
     ]) {

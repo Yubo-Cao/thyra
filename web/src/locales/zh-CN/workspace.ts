@@ -11,7 +11,6 @@ export default {
   "Open worktree lifecycle": "打开工作树生命周期",
   "Expand workspace": "展开工作区",
   "Collapse workspace": "折叠工作区",
-  "Loading workspace": "正在加载工作区",
   Pinned: "已固定",
   "{count} tabs": "{count} 个标签页",
   "{tab}, {count} panes": "{tab}，{count} 个窗格",

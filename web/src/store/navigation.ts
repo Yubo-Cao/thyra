@@ -1,5 +1,5 @@
-// Navigation: which workspace, tab and pane the user is looking at. Shared
-// mode moves Herdr's focus; browser-local mode keeps a per-browser target.
+// Navigation: which workspace, tab and pane the user is looking at. Each
+// browser keeps its own target instead of moving Herdr's focus.
 import type { ConnectionClient } from "../api";
 import {
   type BrowserNavigation,
@@ -16,9 +16,8 @@ import { workspaceCan } from "../capabilities";
 import { t } from "../i18n";
 import type { TaskNotificationTarget } from "../taskNotifications";
 import { provisionalTabLayout, tabLayoutFor } from "../tabLayout";
-import { terminalRelayViewportForTab } from "../terminalResize";
-import type { Pane, PaneLayout, Tab, Workspace } from "../types";
-import { action, enqueueFocusAction } from "./actions";
+import type { Pane, Tab, Workspace } from "../types";
+import { action } from "./actions";
 import { selectConnectionNow } from "./connection";
 import {
   leaseIsCurrent,
@@ -30,11 +29,7 @@ import {
   useStoreSelector,
 } from "./core";
 import { taskNotificationTargetIsCurrent } from "./notifications";
-import {
-  refreshNow,
-  scheduleRefresh,
-  stampPendingFocusWorkspace,
-} from "./refresh";
+import { refreshNow, scheduleRefresh } from "./refresh";
 
 const navigationListeners = new Set<() => void>();
 let programmaticNavigation = 0;
@@ -70,8 +65,8 @@ export function terminalNavigationLoading(s: State): boolean {
     s.status === "connected" &&
     !s.connectionPaused &&
     !s.error &&
-    (!!s.pendingFocusWorkspaceId ||
-      (!s.layout && s.panes.some((pane) => pane.pane_id === s.selectedPaneId)))
+    !s.layout &&
+    s.panes.some((pane) => pane.pane_id === s.selectedPaneId)
   );
 }
 
@@ -104,7 +99,6 @@ export function endpointCreationReason(
         )
   )
     return t("View only");
-  if (snapshot.navigationMode === "shared") return null;
   // Empty bootstrap deliberately uses the validated control API, not an endpoint.
   if (method === "workspace.create" && snapshot.workspaces.length === 0)
     return null;
@@ -117,11 +111,8 @@ export function endpointCreationReason(
     ? snapshot.endpointAvailability[pane.terminal_id]
     : null;
   return (
-    endpointMethodReason(
-      snapshot.navigationMode,
-      advertisement,
-      "pane.focus",
-    ) ?? endpointMethodReason(snapshot.navigationMode, advertisement, method)
+    endpointMethodReason(advertisement, "pane.focus") ??
+    endpointMethodReason(advertisement, method)
   );
 }
 
@@ -182,8 +173,6 @@ function navigateBrowser(workspaceId: string, tabId?: string, paneId?: string) {
   set({
     ...projected,
     layout: projectBrowserLayout(nextLayout, projected.selectedPaneId),
-    pendingFocusWorkspaceId: null,
-    pendingFocusWorkspaceSettledAt: null,
     error: null,
   });
   return refreshNow();
@@ -194,13 +183,7 @@ export function adoptBrowserTarget(
   lease: StoreConnectionLease,
   result: unknown,
 ) {
-  if (
-    !leaseIsCurrent(lease) ||
-    state.navigationMode !== "browser-local" ||
-    !result ||
-    typeof result !== "object"
-  )
-    return;
+  if (!leaseIsCurrent(lease) || !result || typeof result !== "object") return;
   userNavigated();
   const target = result as {
     root_pane?: Partial<Pane>;
@@ -225,43 +208,12 @@ export function adoptBrowserTarget(
   });
 }
 
-/**
- * Move Herdr's shared focus: mark the workspace focus in flight, then run the
- * RPCs in click order and refresh as soon as they land.
- */
-function sharedFocus<T>(
-  workspaceId: string | undefined,
-  fn: (lease: StoreConnectionLease) => Promise<T>,
-  retryOnReconnect?: boolean,
-) {
-  const pendingFocusWorkspaceSeq = workspaceId
-    ? stampPendingFocusWorkspace(workspaceId)
-    : undefined;
-  return action((lease) => enqueueFocusAction(() => fn(lease)), {
-    refresh: "immediate",
-    pendingFocusWorkspaceSeq,
-    retryOnReconnect,
-  });
-}
-
 function focusPane(paneId: string) {
   userNavigated();
   const pane = state.panes.find((p) => p.pane_id === paneId);
-  if (state.navigationMode === "browser-local") {
-    return pane
-      ? navigateBrowser(pane.workspace_id, pane.tab_id, paneId)
-      : Promise.resolve();
-  }
-  return sharedFocus(pane?.workspace_id, async (lease) => {
-    if (pane?.workspace_id) {
-      await lease.client.call("workspace.focus", {
-        workspace_id: pane.workspace_id,
-      });
-    }
-    if (pane) await lease.client.call("tab.focus", { tab_id: pane.tab_id });
-    setForConnection(lease, { selectedPaneId: paneId });
-    return pane;
-  });
+  return pane
+    ? navigateBrowser(pane.workspace_id, pane.tab_id, paneId)
+    : Promise.resolve();
 }
 
 export const navigationActions = {
@@ -303,7 +255,6 @@ export const navigationActions = {
   terminalScrollReason(terminalId: string, mouseReporting = false) {
     if (mouseReporting) return null; // Wheel input uses the negotiated semantic codec.
     return endpointMethodReason(
-      state.navigationMode,
       state.endpointAvailability[terminalId],
       "pane.scroll",
     );
@@ -311,63 +262,17 @@ export const navigationActions = {
 
   focusWorkspace(workspaceId: string) {
     userNavigated();
-    if (state.navigationMode === "browser-local") {
-      return state.workspaces.some(
-        (workspace) => workspace.workspace_id === workspaceId,
-      )
-        ? navigateBrowser(workspaceId)
-        : Promise.resolve();
-    }
-    return sharedFocus(
-      workspaceId,
-      (lease) =>
-        lease.client.call("workspace.focus", { workspace_id: workspaceId }),
-      true,
-    );
+    return state.workspaces.some(
+      (workspace) => workspace.workspace_id === workspaceId,
+    )
+      ? navigateBrowser(workspaceId)
+      : Promise.resolve();
   },
 
   focusTab(tabId: string) {
     userNavigated();
-    if (state.navigationMode === "browser-local") {
-      const tab = state.tabs.find((tab) => tab.tab_id === tabId);
-      return tab ? navigateBrowser(tab.workspace_id, tabId) : Promise.resolve();
-    }
-    const workspaceId = state.tabs.find(
-      (t) => t.tab_id === tabId,
-    )?.workspace_id;
-    const targetPane =
-      state.panes.find((pane) => pane.tab_id === tabId && pane.focused) ??
-      state.panes.find((pane) => pane.tab_id === tabId);
-    return sharedFocus(
-      workspaceId,
-      async (lease) => {
-        const relaySize = terminalRelayViewportForTab(
-          lease.connectionId,
-          lease.generation,
-          tabId,
-        );
-        if (relaySize) {
-          // Pre-size background runtimes for the target tab while the current
-          // tab's direct attachments are still locked. The bridge confirms the
-          // projected viewport through pane.layout before focus proceeds, so
-          // the target is stable before it becomes visible.
-          await lease.client
-            .call("terminal.relay_resize", {
-              cols: relaySize.cols,
-              rows: relaySize.rows,
-              ...(targetPane ? { pane_id: targetPane.pane_id } : {}),
-            })
-            .catch(() => null);
-        }
-        if (workspaceId) {
-          await lease.client.call("workspace.focus", {
-            workspace_id: workspaceId,
-          });
-        }
-        return lease.client.call("tab.focus", { tab_id: tabId });
-      },
-      true,
-    );
+    const tab = state.tabs.find((tab) => tab.tab_id === tabId);
+    return tab ? navigateBrowser(tab.workspace_id, tabId) : Promise.resolve();
   },
 
   focusPane,
@@ -377,29 +282,8 @@ export const navigationActions = {
     direction: "left" | "right" | "up" | "down",
   ) {
     userNavigated();
-    if (state.navigationMode === "browser-local") {
-      const target = browserPaneInDirection(state.layout, paneId, direction);
-      return target ? focusPane(target) : Promise.resolve();
-    }
-    return action(async (lease) => {
-      const result = await lease.client.call("pane.focus_direction", {
-        pane_id: paneId,
-        direction,
-      });
-      const focus = result?.focus ?? result?.focus_direction ?? result;
-      const focusedPaneId =
-        typeof focus?.focused_pane_id === "string"
-          ? focus.focused_pane_id
-          : null;
-      if (focusedPaneId) {
-        setForConnection(lease, { selectedPaneId: focusedPaneId });
-      }
-      if (focus?.layout) {
-        setForConnection(lease, { layout: focus.layout as PaneLayout });
-      }
-      await refreshNow(lease);
-      return result;
-    });
+    const target = browserPaneInDirection(state.layout, paneId, direction);
+    return target ? focusPane(target) : Promise.resolve();
   },
 
   focusTaskNotificationTarget(target: TaskNotificationTarget) {
@@ -419,53 +303,25 @@ export const navigationActions = {
     ) {
       return Promise.resolve(undefined);
     }
-    if (state.navigationMode === "browser-local") {
-      const navigation = state.browserNavigation;
-      return action(
-        async (lease) => {
-          const result = await lease.client
-            .call("pane.get", { pane_id: target.paneId })
-            .catch(() => null);
-          if (!leaseIsCurrent(lease)) return;
-          if (!browserSelectionIsCurrent(navigation)) return refreshNow(lease);
-          if (result?.pane) adoptBrowserTarget(lease, result);
-          else
-            setForConnection(lease, {
-              browserNavigation: selectBrowserTarget(
-                state.browserNavigation,
-                target.workspaceId,
-              ),
-            });
-          return refreshNow(lease);
-        },
-        { refresh: "none" },
-      );
-    }
-    return sharedFocus(target.workspaceId, async (lease) => {
-      let pane: Pane | null = null;
-      try {
-        const result = await lease.client.call("pane.get", {
-          pane_id: target.paneId,
-        });
-        pane = (result?.pane ?? null) as Pane | null;
-      } catch {
-        // The pane may have closed after the notification was shown.
-      }
-
-      const workspaceId = pane?.workspace_id ?? target.workspaceId;
-      await lease.client.call("workspace.focus", {
-        workspace_id: workspaceId,
-      });
-      if (!pane) return null;
-
-      try {
-        await lease.client.call("tab.focus", { tab_id: pane.tab_id });
-      } catch {
-        // The pane or tab can close between pane.get and tab.focus.
-        return null;
-      }
-      setForConnection(lease, { selectedPaneId: pane.pane_id });
-      return pane;
-    });
+    const navigation = state.browserNavigation;
+    return action(
+      async (lease) => {
+        const result = await lease.client
+          .call("pane.get", { pane_id: target.paneId })
+          .catch(() => null);
+        if (!leaseIsCurrent(lease)) return;
+        if (!browserSelectionIsCurrent(navigation)) return refreshNow(lease);
+        if (result?.pane) adoptBrowserTarget(lease, result);
+        else
+          setForConnection(lease, {
+            browserNavigation: selectBrowserTarget(
+              state.browserNavigation,
+              target.workspaceId,
+            ),
+          });
+        return refreshNow(lease);
+      },
+      { refresh: "none" },
+    );
   },
 };

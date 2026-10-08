@@ -166,9 +166,7 @@ export function paneControlClient(
         );
       }
       if (
-        (!access.canResize &&
-          (method === "terminal.resize" ||
-            method === "terminal.relay_resize")) ||
+        (!access.canResize && method === "terminal.resize") ||
         ((access.viewOnly || (access.display && !access.display.mine)) &&
           method === "terminal.focus")
       ) {

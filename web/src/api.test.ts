@@ -8,7 +8,6 @@ import {
 import { BridgeError, type BridgeFailure } from "./bridgeError";
 import { installCatalog } from "./i18n";
 import zhCN from "./locales/zh-CN";
-import { isReconnectRetryableError } from "./reconnectRetry";
 
 const originalWebSocket = globalThis.WebSocket;
 const originalFetch = globalThis.fetch;
@@ -1375,7 +1374,6 @@ describe("bridge connection lifecycle", () => {
             ? zhCN["not connected to bridge"]
             : "not connected to bridge",
         );
-        expect(isReconnectRetryableError(offline)).toBe(true);
 
         bridge.connect();
         await Bun.sleep(1);
@@ -1390,7 +1388,6 @@ describe("bridge connection lifecycle", () => {
             ? zhCN["bridge disconnected"]
             : "bridge disconnected",
         );
-        expect(isReconnectRetryableError(dropped)).toBe(true);
       } finally {
         installCatalog("en", {});
       }

@@ -3,7 +3,6 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import * as net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BinReader, BinWriter, encodeFrame } from "../bridge/bincode";
 import type { LocalConnectionProfile } from "./profiles";
 
 const roots: string[] = [];
@@ -61,8 +60,7 @@ async function listen(server: net.Server, path: string): Promise<void> {
 async function fakeHerdr(
   root: string,
   id: string,
-  protocol: unknown = 14,
-  welcomeProtocol?: number,
+  protocol: unknown = 22,
   respond?: (request: {
     method: string;
     params?: Record<string, unknown>;
@@ -105,22 +103,7 @@ async function fakeHerdr(
   await listen(
     net.createServer((socket) => {
       trackSocket(socket);
-      let input = Buffer.alloc(0);
-      socket.on("data", (chunk) => {
-        input = Buffer.concat([input, Buffer.from(chunk)]);
-        if (input.length < 4) return;
-        const length = input.readUInt32LE(0);
-        if (input.length < length + 4) return;
-        const reader = new BinReader(input.subarray(4, length + 4));
-        expect(reader.variant()).toBe(0);
-        const protocol = reader.varint();
-        const writer = new BinWriter();
-        writer.variant(0);
-        writer.varint(welcomeProtocol ?? protocol);
-        writer.varint(1);
-        writer.option<string>(undefined, (value) => writer.string(value));
-        socket.write(encodeFrame(writer.toBuffer()));
-      });
+      socket.end();
     }),
     renderPath,
   );
@@ -194,7 +177,7 @@ test("production dispatcher isolates two local profiles and profile CRUD", async
   roots.push(root);
   mkdirSync(root, { recursive: true, mode: 0o700 });
   chmodSync(root, 0o700);
-  const alpha = await fakeHerdr(root, "alpha", 14, undefined, ({ method }) =>
+  const alpha = await fakeHerdr(root, "alpha", 22, ({ method }) =>
     method === "workspace.get"
       ? { workspace: { worktree: { checkout_path: root } } }
       : undefined,
@@ -418,8 +401,6 @@ test("production dispatcher isolates two local profiles and profile CRUD", async
     // proving generation-bound current requests reach only the replacement.
     const legacySnapshot = await browserA.rpc("workspace.list", {}, "alpha");
     expect(legacySnapshot.workspaces[0].name).toBe("from-beta");
-    expect(legacySnapshot.navigation_mode).toBe("shared");
-    // The first snapshot also resolves the replacement terminal backend.
     const beforeLegacyHttp = betaPingCalls();
     const legacyHttp = await fetch(
       `http://127.0.0.1:${port}/api/connections/alpha/herdr-info`,
@@ -469,20 +450,19 @@ test("production dispatcher isolates two local profiles and profile CRUD", async
   }
 }, 20_000);
 
-for (const { protocol, welcomeProtocol, accepted } of [
-  { protocol: 20, accepted: true },
+for (const { protocol, accepted } of [
   { protocol: 22, accepted: true },
+  { protocol: 20, accepted: false },
   { protocol: 21, accepted: false },
   { protocol: 23, accepted: false },
   { protocol: "22", accepted: false },
-  { protocol: 22, welcomeProtocol: 23, accepted: false },
 ]) {
-  test(`default local startup validates protocol ${JSON.stringify(protocol)} / Welcome ${welcomeProtocol ?? "same"} before background RPCs`, async () => {
+  test(`default local startup validates protocol ${JSON.stringify(protocol)} before background RPCs`, async () => {
     if (process.platform === "win32") return;
     const root = join(tmpdir(), `h090-default-${crypto.randomUUID()}`);
     roots.push(root);
     mkdirSync(root, { recursive: true, mode: 0o700 });
-    const profile = await fakeHerdr(root, "test", protocol, welcomeProtocol);
+    const profile = await fakeHerdr(root, "test", protocol);
     const env: Record<string, string | undefined> = {
       ...process.env,
       HOST: "127.0.0.1",
@@ -552,29 +532,23 @@ test("production routing bootstraps only a verified empty session and serializes
   let valid = false;
   let workspaces: Array<{ workspace_id: string }> = [];
   const mutations: Record<string, unknown>[] = [];
-  const profile = await fakeHerdr(
-    root,
-    "empty",
-    22,
-    undefined,
-    async (request) => {
-      if (request.method === "workspace.list")
-        return valid
-          ? { type: "workspace_list", workspaces }
-          : { workspaces: [] };
-      if (request.method === "workspace.create") {
-        mutations.push(request.params ?? {});
-        await Bun.sleep(20);
-        workspaces = [{ workspace_id: "w1" }];
-        return {
-          type: "workspace_created",
-          workspace: workspaces[0],
-          tab: { workspace_id: "w1", tab_id: "w1:t1" },
-          root_pane: { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1" },
-        };
-      }
-    },
-  );
+  const profile = await fakeHerdr(root, "empty", 22, async (request) => {
+    if (request.method === "workspace.list")
+      return valid
+        ? { type: "workspace_list", workspaces }
+        : { workspaces: [] };
+    if (request.method === "workspace.create") {
+      mutations.push(request.params ?? {});
+      await Bun.sleep(20);
+      workspaces = [{ workspace_id: "w1" }];
+      return {
+        type: "workspace_created",
+        workspace: workspaces[0],
+        tab: { workspace_id: "w1", tab_id: "w1:t1" },
+        root_pane: { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1" },
+      };
+    }
+  });
   const registryPath = join(root, "connections.json");
   writeFileSync(
     registryPath,

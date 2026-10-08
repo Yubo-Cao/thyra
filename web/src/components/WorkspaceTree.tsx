@@ -965,9 +965,6 @@ function WorkspaceRow({
   const agents = agentsByWorkspace.get(w.workspace_id) ?? EMPTY_AGENT_PANES;
   const tabCount = tabCountsByWorkspace.get(w.workspace_id) ?? 0;
   const tabCountVisible = alwaysShowTabCount || tabCount > 1;
-  const pendingFocusWorkspaceId = useStoreSelector(
-    (state) => state.pendingFocusWorkspaceId,
-  );
   // Keep the previous list while the fields the row shows are unchanged.
   const shownTabs = useRef<Tab[]>([]);
   const workspaceTabs = useStoreSelector((state) => {
@@ -1008,8 +1005,6 @@ function WorkspaceRow({
   const collapsed =
     hasNestedItems && isWorktreeGroupCollapsed(collapsedWorktreeGroupKeys, w);
   const pinned = isWorkspacePinned(pinnedWorkspaceKeys, w);
-  const isPendingFocus =
-    pendingFocusWorkspaceId === w.workspace_id && !w.focused;
   const openMenu = (x: number, y: number) => {
     onContextMenu(w, x, y);
   };
@@ -1026,10 +1021,8 @@ function WorkspaceRow({
         className={`tree-row clickable-row ${w.focused ? "is-focused" : ""} ${
           hasActiveAgent ? "has-active-agent" : ""
         } ${isChild ? "is-child" : ""} ${pinned ? "is-pinned" : ""} ${
-          isPendingFocus ? "is-loading" : ""
-        } ${tabCountVisible ? "has-tab-count" : ""} ${
-          workspaceDrag?.isDragging ? "is-dragging" : ""
-        } ${
+          tabCountVisible ? "has-tab-count" : ""
+        } ${workspaceDrag?.isDragging ? "is-dragging" : ""} ${
           workspaceDrag?.dropPosition
             ? `drop-${workspaceDrag.dropPosition}`
             : ""
@@ -1161,9 +1154,6 @@ function WorkspaceRow({
             fill="currentColor"
             aria-label={t("Pinned")}
           />
-        ) : null}
-        {isPendingFocus ? (
-          <span className="row-spinner" aria-label={t("Loading workspace")} />
         ) : null}
         {w.worktree ? (
           <GitStatusBadges

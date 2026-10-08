@@ -13,24 +13,24 @@ access, use the [tutorial](./TUTORIAL.md#networking).
 
 ### Herdr compatibility
 
-This source build supports verified legacy protocols 14–20 (Herdr 0.7.0–0.8.2)
-and **Herdr 0.9.x / protocol 22**; the installers and `thyra herdr setup` install the
-[pinned build](#managed-herdr-setup). Protocol 21 and unknown versions are
-rejected at control/binary probes. Use a compatible Thyra build or separate
-server; **do not downgrade a live server**. Published binaries follow their
+This build requires **Herdr 0.9.x / protocol 22**; the installers and
+`thyra herdr setup` install the [pinned build](#managed-herdr-setup). Other
+protocols, including Herdr 0.8 and older, are rejected at the control probe.
+Use a compatible Thyra build or separate server; **do not downgrade a live
+server**. Published binaries follow their
 [release notes](https://github.com/Yubo-Cao/thyra/releases).
 The [plugin](#herdr-plugin) separately requires Herdr 0.7.2+.
 
 Herdr 0.9.0 uses stable endpoint generation 1, distinct from protocol 22.
-`THYRA_DISABLE_ENDPOINT=1` explicitly selects legacy direct-terminal fallback.
+Every terminal streams over an endpoint.
 
 | Area | Behavior / limitation |
 | --- | --- |
-| Attachment | Endpoints crop the server-rendered tab per pane. Unknown codecs/generations or missing required `pane.focus` fail without silent fallback. Legacy fallback uses takeover and may disconnect another owner. |
+| Attachment | Endpoints crop the server-rendered tab per pane. Unknown codecs/generations or missing required `pane.focus` fail without fallback. |
 | Optional methods | Creation/history controls require advertised methods; unavailable controls explain why. Input, mouse, paste, resize, and rendering can work without optional history. |
-| Navigation | Endpoint workspace/tab selection is browser-local across reconnects, not reload/runtime replacement. Same-tab pane focus, topology, and terminal sizes remain shared; size follows Herdr's last-interacting client. Legacy uses shared navigation. |
+| Navigation | Workspace/tab selection is browser-local across reconnects, not reload/runtime replacement. Same-tab pane focus, topology, and terminal sizes remain shared; size follows Herdr's last-interacting client. |
 | Creation | Requires a connected source terminal, except first-workspace bootstrap. Preserves `terminal.new_cwd` (`follow`, `home`, `current`, fixed path); explicit cwd wins. Shared pane focus means `follow` is not browser-isolated. |
-| Input | Hardware keys reach endpoint panes as semantic keys that Herdr encodes for the pane's Kitty keyboard / modifyOtherKeys mode; bare modifier presses are not reported. Direct-attach fallback receives legacy key bytes. Pixel mouse is unsupported. |
+| Input | Hardware keys reach endpoint panes as semantic keys that Herdr encodes for the pane's Kitty keyboard / modifyOtherKeys mode; bare modifier presses are not reported. Pixel mouse is unsupported. |
 | Input from a non-displaying device | Keeping Herdr's size owner while another device [displays the pane](./ARCHITECTURE.md#display-owner-and-input-owner) needs a Herdr build advertising the `input_geometry` endpoint capability. Without it, such input makes Thyra's shell Herdr's size owner, which matters only when a native Herdr TUI views the same tab; Thyra's own resize rules apply either way. |
 
 **OSC 52 clipboard writes:** only the browser with input in the last 30 seconds
@@ -41,8 +41,7 @@ Herdr supplies no producing-pane/input identity: a delayed write from A after B
 becomes foreground can reach B's recent input owner. This is not source-PTY or
 original-browser isolation. Detach/replacement/disposal invalidates ownership.
 Reads are disabled; permission failures show copy-retry UI. Ordinary copy/paste
-is unchanged. OSC 52 is unavailable on the **0.9.0 legacy fallback**; older
-servers retain their existing relay.
+is unchanged.
 
 Closing one workspace never implicitly closes its linked group. If Herdr requires
 that, inspect all linked workspaces before explicitly running:
@@ -257,7 +256,6 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_UPDATE_BASE_URL` | Latest-release mirror directory |
 | `THYRA_DISABLE_UPDATE_CHECK=1` | Disable update checks |
 | `THYRA_RESTART_SUPERVISOR=0\|1` | Override external supervisor detection |
-| `THYRA_DISABLE_ENDPOINT=1` | Legacy terminal fallback; see compatibility |
 | `THYRA_PUBLIC_BASE_URL` | Comma-separated URLs browsers use through a proxy or DNS name, such as `https://thyra.example.ts.net`; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TRUSTED_PROXIES` | Reverse proxies whose forwarded headers are believed; see [reverse proxies](#reverse-proxies-and-allowed-origins) |
 | `THYRA_TAILNET_AUTH=admin\|member\|off` | Log in proxied tailnet users by Tailscale `whois`, creating accounts with that role (default `admin` when `whois` is available); see [accounts and login](#accounts-and-login) |

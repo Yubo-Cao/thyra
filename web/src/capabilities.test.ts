@@ -24,8 +24,15 @@ test("the interface offers what the bridge reports, not what a role implies", ()
 
 test("viewers cannot create tabs; creation offers no write it would refuse", () => {
   const snapshot = {
-    navigationMode: "shared",
-    browserNavigation: { workspaceId: "w1", tabIds: {}, paneIds: {} },
+    browserNavigation: {
+      workspaceId: "w1",
+      tabIds: { w2: "t2" },
+      paneIds: { t2: "p2" },
+    },
+    panes: [{ pane_id: "p2", terminal_id: "term2" }],
+    endpointAvailability: {
+      term2: { methods: ["pane.focus", "tab.create"], capabilities: [] },
+    },
     workspaces: [
       { workspace_id: "w1", capabilities: [] },
       { workspace_id: "w2", capabilities: ["edit"] },

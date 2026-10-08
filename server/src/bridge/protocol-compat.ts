@@ -1,30 +1,14 @@
-export const MINIMUM_HERDR_PROTOCOL = 14;
-export const MAXIMUM_HERDR_PROTOCOL = 22;
+/** The private terminal protocol of tagged Herdr 0.9.0, the only one supported. */
+export const HERDR_PROTOCOL = 22;
 
 export class HerdrCompatibilityError extends Error {}
 
-// Retain the verified legacy codecs (14-20) and add only tagged v0.9.0 (22).
-// Protocol 21 and future versions must never be echoed through either codec.
+// Private terminal protocol 22 is distinct from stable endpoint generation 1.
+// Protocol 21 and future versions must never be accepted silently.
 export function isSupportedHerdrProtocol(
   protocol: unknown,
 ): protocol is number {
-  return (
-    typeof protocol === "number" &&
-    Number.isSafeInteger(protocol) &&
-    ((protocol >= MINIMUM_HERDR_PROTOCOL && protocol <= 20) || protocol === 22)
-  );
-}
-
-// Private terminal protocol 22 is distinct from stable endpoint generation 1.
-export function isTerminalHelloProtocol(protocol: number): boolean {
-  return protocol === 22;
-}
-
-// Herdr 0.8.2 inserted AppDirectGraphics before TerminalAttach.
-export const APP_DIRECT_GRAPHICS_LAUNCH_MODE_PROTOCOL = 20;
-
-export function terminalAttachLaunchModeWireValue(protocol: number): number {
-  return protocol >= APP_DIRECT_GRAPHICS_LAUNCH_MODE_PROTOCOL ? 2 : 1;
+  return protocol === HERDR_PROTOCOL;
 }
 
 export function assertSupportedHerdrProtocol(
@@ -39,7 +23,7 @@ export function assertSupportedHerdrProtocol(
       : "unknown";
   throw new HerdrCompatibilityError(
     `Herdr protocol ${actual} is not supported by this Thyra build ` +
-      "(supports protocols 14-20 and 22). Use a Thyra release explicitly " +
+      `(supports protocol ${HERDR_PROTOCOL}, Herdr 0.9 or newer). Use a Thyra release explicitly ` +
       "supporting this server, or a separate compatible server. Do not downgrade a live server.",
   );
 }

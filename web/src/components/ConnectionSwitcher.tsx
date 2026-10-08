@@ -96,7 +96,6 @@ function useBrowserTransport() {
       bridgeStatus: snapshot.bridgeStatus,
       connectionPaused: snapshot.connectionPaused,
       status: snapshot.status,
-      navigationMode: snapshot.navigationMode,
     })),
   );
   const presentation = browserTransportPresentation(
@@ -107,21 +106,14 @@ function useBrowserTransport() {
   );
   const { label, countLabel } = presentation;
   const statusLabel = countLabel ? `${label} · ${countLabel}` : label;
-  const browserLocal = state.navigationMode === "browser-local";
   return {
     ...presentation,
     statusLabel,
     dotState: state.connectionPaused ? "paused" : state.status,
-    navigationLabel: browserLocal
-      ? t("Local navigation")
-      : t("Shared navigation"),
-    navigationHint: browserLocal
-      ? t(
-          "Workspace, tab and pane selection stays in this browser. Topology and sizes are shared.",
-        )
-      : t(
-          "Legacy navigation follows shared Herdr focus and can move other clients.",
-        ),
+    navigationLabel: t("Local navigation"),
+    navigationHint: t(
+      "Workspace, tab and pane selection stays in this browser. Topology and sizes are shared.",
+    ),
   };
 }
 

@@ -65,7 +65,6 @@ export default function App() {
       lastRefresh: state.lastRefresh,
       layout: state.layout,
       panes: state.panes,
-      pendingFocusWorkspaceId: state.pendingFocusWorkspaceId,
       recentPaneIds: state.recentPaneIds,
       selectedPaneId: state.selectedPaneId,
       status: state.status,

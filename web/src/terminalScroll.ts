@@ -55,8 +55,8 @@ export function terminalPageScroll(
       amount === "half"
         ? Math.max(1, Math.floor(viewportLines / 2))
         : viewportLines,
-    // The bridge retains legacy wheel semantics for half pages, but endpoint
-    // sessions must distinguish these coordinate-less shortcuts from a mouse.
+    // Endpoint sessions must distinguish these coordinate-less shortcuts
+    // from a mouse wheel.
     source: amount === "full" ? "page-key" : "history",
   };
 }

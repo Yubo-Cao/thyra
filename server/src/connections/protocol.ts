@@ -229,7 +229,6 @@ const SILENT_LEGACY_RPC_METHODS = new Set([
   "terminal.input",
   "terminal.key",
   "terminal.resize",
-  "terminal.relay_resize",
   "terminal.scroll",
 ]);
 

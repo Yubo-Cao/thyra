@@ -1,5 +1,5 @@
 /**
- * Minimal bincode 2.0 (`config::standard()`) codec for the Herdr thin-client
+ * Minimal bincode 2.0 (`config::standard()`) codec for the Herdr client-socket
  * wire protocol.
  *
  * Integer encoding is **varint**:

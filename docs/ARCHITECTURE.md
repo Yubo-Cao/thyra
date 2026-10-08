@@ -30,7 +30,7 @@ not an atomic or replayable event log.
 
 A bridge-global `ConnectionManager` owns shared profiles and independent
 `ConnectionRuntime` instances. Each runtime owns its transport, viewers,
-subscriptions, clipboard relay, services, caches, and reconnect lifecycle.
+subscriptions, clipboard ownership, services, caches, and reconnect lifecycle.
 Render streams open only while viewed. Disconnect/removal stops the runtime and
 SSH tunnel, not Herdr or its workspaces.
 
@@ -57,9 +57,10 @@ SSH tunnel, not Herdr or its workspaces.
 
 ### Negotiation and transport
 
-Backend selection uses a verified protocol allowlist, not browser inference.
-[Compatibility](./DEPLOYMENT.md#herdr-compatibility) defines supported versions,
-legacy fallback, and clipboard limitations.
+Thyra requires Herdr 0.9 (protocol 22), checked at the control probe, and
+streams every terminal over an endpoint.
+[Compatibility](./DEPLOYMENT.md#herdr-compatibility) defines supported versions
+and clipboard limitations.
 
 Herdr 0.9.0 endpoints require generation 1 and exact codecs
 `shell.snapshot.v1`, `shell.surface.v1`, `shell.input.semantic.v1`, and
@@ -71,7 +72,7 @@ and are checked again at dispatch:
 
 | Capability | Contract |
 | --- | --- |
-| `pane.focus` | Required for attachment; absence fails without legacy takeover. |
+| `pane.focus` | Required for attachment; absence fails the attach. |
 | `pane.scroll` | Gates explicit history scrolling, not semantic page keys. |
 | `tab.create`, `workspace.create` | Gate creation on the existing source endpoint. |
 | `health_check` | Enables ping/pong; input and resize are core codec operations. |
@@ -100,7 +101,7 @@ When the event subscription recovers, the bridge re-resolves every terminal a vi
 in `settings.json`. Changes close that runtime's endpoint displays and broadcast
 `settings.terminal_transport.updated`; viewers reattach with fresh baselines.
 Queued attachments reread settings. Configuration closes do not consume takeover
-retries; tasks, legacy sessions, and other runtimes are unaffected. This is a
+retries; tasks and other runtimes are unaffected. This is a
 shared preference, not an authorization boundary.
 
 These codecs reduce **Herdr-to-bridge** traffic. On the bridge-to-browser leg,
@@ -116,7 +117,7 @@ one, so a slow link skips to the newest screen instead of queueing repaints.
 A missing base makes the browser send `terminal.frame_ack { resync: true }` and
 the bridge answers with a full frame. Attach and resize also restart from a
 full frame, and a 10 s acknowledgement timeout releases the window. Viewers
-that do not opt in, and legacy streams keep base64 `bytes` repaints.
+that do not opt in keep base64 `bytes` repaints.
 A viewer may thin only its own stream: `min_frame_interval_ms` (0–10000, on `terminal.attach` or `terminal.stream`) sends at most the newest frame per interval, and `terminal.stream { paused: true }` sends none until it is resumed with a full frame.
 Full repaints (attach, resize, resync) are never held back, and other viewers of the same terminal keep their rate.
 The browser writes only changed rows into the terminal while its viewport is unchanged.
@@ -139,8 +140,7 @@ disabled; backpressure and generation checks still apply.
 
 `terminal.attach` supplies pane `cols`/`rows` and optionally tab
 `surface_cols`/`surface_rows` (both integers in 1..65535). Tab dimensions include
-pane borders, not app chrome; surface feedback corrects stale hints. Legacy
-attachments use pane dimensions. Repaints clip wide characters and cursors to
+pane borders, not app chrome; surface feedback corrects stale hints. Repaints clip wide characters and cursors to
 the viewer's viewport; browsers reject oversized frames after shrinking.
 
 Root CSS zoom scales the UI. Terminals cancel it and scale their fonts directly,
@@ -168,15 +168,13 @@ requests and invalidates clipboard ownership.
   `0x1f` in a shell and `CSI 47;5u` in a Kitty-keyboard app, as from Ghostty.
   IME composition, dead keys, paste and on-screen keyboards keep the
   `terminal.input` byte path; both share one ordered queue per terminal.
-  Direct attaches (`THYRA_DISABLE_ENDPOINT`) encode keys as xterm-style legacy
-  bytes in the bridge. On macOS, Cmd belongs to Thyra's bindings and native
+  On macOS, Cmd belongs to Thyra's bindings and native
   copy/paste; other Cmd chords reach the pane with Super, except the browser's
   reload/address/tab/window/zoom/find/select-all chords, which the opt-in exclusive keyboard
   (fullscreen plus Keyboard Lock, Chromium only) hands to the pane too. The
   Option-as-Alt setting (left by default) sends Option+f as Alt+f.
 - Full PageUp/PageDown sends semantic input for Herdr to route by PTY mode;
   explicit half-page history uses `pane.scroll`, even in mouse-aware apps.
-  Legacy attachments retain PageKey/Wheel routing.
 - Wheel and touch scrolls (`source: "wheel"`) reach a mouse-reporting app as wheel input.
   Over a full-screen app without mouse reporting (the surface's `alternate_screen_active`, e.g. `less`, `man`), Herdr builds advertising the `alternate_scroll` endpoint capability get the wheel too, at most 8 lines per request, and turn it into that many Up/Down cursor keys in the app's cursor key mode, as terminals do in alternate scroll mode.
   Herdr alone decides keys versus scrollback from the app's DECSET 1007 and its `[terminal] alternate_scroll` setting (default on); without the capability, or on the normal screen, the wheel scrolls Herdr's history with `pane.scroll`.
@@ -248,8 +246,7 @@ Touch long-press resolves the original touched cell, with at most one upstream
 probe, then requires an explicit **Open link** or **File actions** gesture.
 Selection edits, cancellation, multitouch, scrolling, frame changes, resize, and
 reconnect retire lookups. Unsafe explicit OSC 8 targets and failed endpoint touch
-reads never fall back to URL-looking labels. Legacy touch supports plain-text
-URLs/paths only, without explicit OSC 8 cell metadata.
+reads never fall back to URL-looking labels.
 
 ## Shell input service
 
@@ -265,8 +262,7 @@ Interactive Bash, Zsh, and Fish hooks atomically publish private state files.
 Thyra checks file ownership, mode, live PID, and `pane.process_info.shell_pid`.
 A prompt is available only while its shell owns the foreground process group,
 with no subsequent input or submission. Known alternate-screen state from
-endpoint frames also blocks availability; legacy terminal streams without that
-metadata rely on the shell and foreground-process checks. Filesystem events are
+endpoint frames also blocks availability. Filesystem events are
 coalesced and a periodic scan recovers missed notifications. Raw input is tied
 to the prompt file at dispatch, including binary terminal input, so a delayed
 watcher cannot accidentally clear dirty state.
@@ -298,10 +294,11 @@ live aliases/functions, and nested SSH shells are not completion sources.
 
 ## Browser navigation and creation
 
-`browserNavigation.ts` projects endpoint browser-local selections into shared UI
-fields. Snapshots supply topology, not subsequent navigation; stale layouts and
-results cannot overwrite newer selections. Legacy navigation, topology changes,
-terminal dimensions, and native same-tab pane focus remain shared.
+`browserNavigation.ts` projects each browser's own workspace, tab and pane
+selection into the UI fields; workspace and tab switches never move Herdr's
+focus. Snapshots supply topology, not subsequent navigation; stale layouts and
+results cannot overwrite newer selections. Topology changes, terminal
+dimensions, and native same-tab pane focus remain shared.
 
 Active selection/clicks send `terminal.focus` through the attached `pane.focus`
 endpoint. Focus restores after split attachment, not on routine frames/snapshots.
@@ -322,7 +319,7 @@ readiness, validation, and queuing: expired undispatched mutations never execute
 dispatched timeouts report uncertain completion, requiring inspection before retry.
 
 The project launcher's `launcher.launch { path, agent }` is the one other control-API creation.
-It always passes an explicit cwd, so no source terminal or `terminal.new_cwd` policy is involved, and it uses `focus: false` under browser-local navigation (the initiating browser then selects the returned pane).
+It always passes an explicit cwd, so no source terminal or `terminal.new_cwd` policy is involved, and it uses `focus: false` (the initiating browser then selects the returned pane).
 The bridge accepts only a known agent ID, expands `~` with the runtime host's home, and checks that the path is a directory on that host before creating anything.
 It adds a tab to the workspace whose checkout (or, failing that, most panes) is that folder, or creates a workspace there, waits up to three seconds for the shell to draw output, then sends the server-configured command with `pane.send_input` and Enter.
 A failed send is returned as `start_error` next to the created tab rather than hiding it.
@@ -523,7 +520,7 @@ Records are per connection runtime, live in bridge memory, and are announced at 
 
 While a pane has a display owner, the bridge enforces it for every other device regardless of what the page asks:
 
-- `terminal.resize` and `terminal.relay_resize` are skipped (`skipped: true`), and `terminal.focus` is skipped because focusing makes Thyra's shell Herdr's size owner.
+- `terminal.resize` is skipped (`skipped: true`), and `terminal.focus` is skipped because focusing makes Thyra's shell Herdr's size owner.
 - `terminal.attach` behaves as `preserve_size`; a stream opened for such a follower starts at the display owner's last size, not the follower's.
 - Followers always receive the whole surface at the shared size; after the owner resizes, every follower's viewport moves with it.
 - Their input tells Herdr not to claim size ownership (below).
@@ -715,7 +712,7 @@ Web Push subscriptions record their account and receive only notifications for w
 Routine host-level calls a member's page makes (`terminal.host_theme`) get a fixed harmless answer instead of an error.
 
 **Single writer.** The bridge mirrors each connection's pane claims from every collaboration snapshot and from the results of the claim, release and leave calls it makes.
-`writer` entries (`terminal.input`, `terminal.key`, `pane.send_*`, `pane.paste`, `terminal.focus`, `terminal.resize`, `terminal.relay_resize`, `terminal.display`) are refused while another principal's participant holds the pane; input to an unclaimed pane first claims it for the caller with 15 seconds of protection.
+`writer` entries (`terminal.input`, `terminal.key`, `pane.send_*`, `pane.paste`, `terminal.focus`, `terminal.resize`, `terminal.display`) are refused while another principal's participant holds the pane; input to an unclaimed pane first claims it for the caller with 15 seconds of protection.
 `collaboration.claim` needs the editor role, protection is capped at 15 seconds, and a workspace owner's or admin's takeover first releases a protected claim.
 `terminal.scroll` from a caller who may not write stays in Herdr's history.
 The [display owner](#display-owner-and-input-owner) rules compose with these checks inside the terminal bridge: only a person who may control a pane can take or pin its display, and that person's own devices may split display and input between them.

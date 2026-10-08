@@ -185,7 +185,6 @@ function browserState(): State {
   const topology = navigationTopology();
   const session = {
     ...emptyServerSessionState(1),
-    navigationMode: "browser-local" as const,
     endpointAvailability: Object.fromEntries(
       topology.panes.map((pane) => [
         pane.terminal_id,
@@ -235,7 +234,6 @@ async function withBrowserStore(
     calls: Array<{ method: string; params: Record<string, unknown> }>,
     topology: ReturnType<typeof navigationTopology>,
     control: {
-      mode: string;
       endpointAvailability?: EndpointAvailability;
       layoutWait?: Promise<void>;
       createWait?: Promise<void>;
@@ -249,14 +247,11 @@ async function withBrowserStore(
   clearTabLayouts();
   const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
   const control: {
-    mode: string;
     endpointAvailability?: EndpointAvailability;
     layoutWait?: Promise<void>;
     createWait?: Promise<void>;
     actionWait?: (method: string) => Promise<void>;
-  } = {
-    mode: "browser-local",
-  };
+  } = {};
   bridge.connection = ((connectionId = "test") =>
     ({
       connectionId,
@@ -270,7 +265,6 @@ async function withBrowserStore(
         if (method === "workspace.list")
           return {
             workspaces: topology.workspaces,
-            navigation_mode: control.mode,
             endpoint_availability:
               control.endpointAvailability ??
               Object.fromEntries(
@@ -502,13 +496,6 @@ describe("store browser-local navigation", () => {
     ]) {
       expect(terminalNavigationLoading({ ...pending, ...patch })).toBe(false);
     }
-    expect(
-      terminalNavigationLoading({
-        ...pending,
-        selectedPaneId: null,
-        pendingFocusWorkspaceId: "b",
-      }),
-    ).toBe(true);
   });
 
   test("all navigation routes avoid shared focus", async () => {
@@ -802,24 +789,6 @@ describe("store browser-local navigation", () => {
       expect(store.get().selectedPaneId).toBe("b1p");
     });
   });
-
-  test("legacy or endpoint-disabled metadata explicitly restores shared behavior", async () => {
-    await withBrowserStore(async (calls, _topology, control) => {
-      await store.focusWorkspace("b");
-      control.mode = "shared";
-      await store.refresh();
-      expect(store.get().navigationMode).toBe("shared");
-      expect(store.get().workspaces.find((w) => w.focused)?.workspace_id).toBe(
-        "a",
-      );
-      await store.focusTab("b1");
-      expect(
-        calls
-          .filter((call) => /focus/.test(call.method))
-          .map((call) => call.method),
-      ).toEqual(["workspace.focus", "tab.focus"]);
-    });
-  });
 });
 
 for (const kind of [
@@ -1050,29 +1019,6 @@ test("navigation revisions remain partitioned by connection and reset with runti
     );
     expect(store.get().browserNavigation).toEqual(original);
     expect(emptyServerSessionState(2).browserNavigation.revision).toBe(0);
-  });
-});
-
-test("shared fallback retains shared focus, creation and split selection semantics", async () => {
-  await withBrowserStore(async (calls, _topology, control) => {
-    control.mode = "shared";
-    await store.refresh();
-    const revision = store.get().browserNavigation.revision;
-    await store.createTab("a");
-    expect(calls.find((call) => call.method === "tab.create")?.params).toEqual({
-      workspace_id: "a",
-      focus: true,
-    });
-    await store.focusWorkspace("b");
-    expect(
-      calls.some(
-        (call) =>
-          call.method === "workspace.focus" && call.params.workspace_id === "b",
-      ),
-    ).toBe(true);
-    await store.splitPane("a1p", "right");
-    expect(store.get().selectedPaneId).toBe("a1q");
-    expect(store.get().browserNavigation.revision).toBe(revision);
   });
 });
 

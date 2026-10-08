@@ -12,7 +12,7 @@
 A **browser client** for [Herdr](https://herdr.dev). Control terminals, watch
 agent status, and review files and diffs on desktop or mobile.
 Watch an agent on a tablet and type from your phone without resizing it.
-**Requires a Herdr server;** the installer sets one up.
+**Requires a [Herdr 0.9](./docs/DEPLOYMENT.md#herdr-compatibility) server;** the installer sets one up.
 
 ## Screenshots
 

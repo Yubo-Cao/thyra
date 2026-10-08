@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import * as net from "node:net";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
-import type { FrameData } from "./thin-client";
+import type { FrameData } from "./frame-codec";
 import {
   SurfaceReader,
   type SurfaceBaseline,

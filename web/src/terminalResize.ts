@@ -1,6 +1,6 @@
 export type TerminalSize = { cols: number; rows: number };
 
-export type TerminalRelayLayout = {
+export type TerminalViewportLayout = {
   zoomed?: boolean;
   area: {
     x: number;
@@ -19,55 +19,6 @@ export type TerminalRelayLayout = {
 
 export const TERMINAL_RESIZE_DEBOUNCE_MS = 90;
 
-const relayViewportByTab = new Map<string, TerminalSize>();
-
-function relayViewportKey(
-  connectionId: string,
-  generation: number,
-  tabId: string,
-) {
-  return `${connectionId}\0${generation}\0${tabId}`;
-}
-
-export function rememberTerminalRelayViewport(
-  connectionId: string,
-  generation: number,
-  tabId: string,
-  size: TerminalSize,
-) {
-  if (!connectionId || !tabId || !validSize(size)) return;
-  relayViewportByTab.set(relayViewportKey(connectionId, generation, tabId), {
-    ...size,
-  });
-}
-
-export function terminalRelayViewportForTab(
-  connectionId: string,
-  generation: number,
-  tabId: string,
-): TerminalSize | null {
-  const size = relayViewportByTab.get(
-    relayViewportKey(connectionId, generation, tabId),
-  );
-  return size ? { ...size } : null;
-}
-
-export function forgetTerminalRelayViewportsExcept(
-  connectionId: string,
-  generation: number,
-  tabIds: Set<string>,
-) {
-  const prefix = `${connectionId}\0${generation}\0`;
-  for (const key of relayViewportByTab.keys()) {
-    if (!key.startsWith(prefix)) continue;
-    if (!tabIds.has(key.slice(prefix.length))) relayViewportByTab.delete(key);
-  }
-}
-
-export function clearTerminalRelayViewports() {
-  relayViewportByTab.clear();
-}
-
 function sameSize(a: TerminalSize | null, b: TerminalSize | null): boolean {
   return !!a && !!b && a.cols === b.cols && a.rows === b.rows;
 }
@@ -76,35 +27,10 @@ function validSize(size: TerminalSize): boolean {
   return size.cols > 0 && size.rows > 0;
 }
 
-/**
- * Converts one rendered pane's xterm size into the full Herdr app-client
- * viewport used by the clipboard relay.
- *
- * A relay is an app client, not a direct pane attachment: its dimensions must
- * include Herdr's sidebar/tab-bar chrome and the complete split layout. Using
- * the latest pane's dimensions directly makes every split pane drag background
- * runtimes through unrelated geometries. A single pane reserves its right-edge
- * column; split panes also
- * have borders around each pane, for three columns and two rows of total pane
- * chrome. Scale the desired content dimensions with that chrome included.
- */
-export function terminalRelayViewportSize(
-  size: TerminalSize,
-  layout: TerminalRelayLayout | null | undefined,
-  paneId: string | null | undefined,
-): TerminalSize {
-  const surface = terminalEndpointViewportSize(size, layout, paneId);
-  if (!surface || !layout) return size;
-  return {
-    cols: Math.min(65_535, surface.cols + Math.max(0, layout.area.x)),
-    rows: Math.min(65_535, surface.rows + Math.max(0, layout.area.y)),
-  };
-}
-
 /** Endpoint surfaces cover the tab, excluding app sidebar and tab-bar insets. */
 export function terminalEndpointViewportSize(
   size: TerminalSize,
-  layout: TerminalRelayLayout | null | undefined,
+  layout: TerminalViewportLayout | null | undefined,
   paneId: string | null | undefined,
 ): TerminalSize | null {
   if (!validSize(size) || !layout || !paneId) return null;

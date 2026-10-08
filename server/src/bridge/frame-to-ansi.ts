@@ -3,7 +3,7 @@ import {
   type TerminalFrameParts,
   terminalFrameText,
 } from "../../../shared/terminalFrame";
-import type { CellData, FrameData } from "./thin-client";
+import type { CellData, FrameData } from "./frame-codec";
 
 // Serializes a Herdr wire FrameData cell grid into ANSI bytes for xterm.js.
 // The stable endpoint path delivers server-rendered cells instead of an ANSI

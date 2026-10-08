@@ -11,7 +11,6 @@ describe("user navigation signal", () => {
     const previous = store.get();
     __storeTesting.replaceState({
       ...previous,
-      navigationMode: "browser-local",
       workspaces: [],
       tabs: [],
       panes: [],

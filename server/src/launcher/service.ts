@@ -45,7 +45,6 @@ export function createLauncherService(args: {
   connectionId: string;
   host: LauncherHost;
   herdrCall: HerdrCall;
-  navigationMode: () => Promise<"browser-local" | "shared">;
   readSettings: () => Promise<GuiSettings>;
   updateSettings: (
     update: (current: GuiSettings) => GuiSettings,
@@ -327,24 +326,23 @@ export function createLauncherService(args: {
     );
     const { workspaces, panes } = await topology();
     const workspaceId = workspaceForFolder(path, workspaces, panes);
-    // Endpoint (browser-local) navigation must not move other clients; the
-    // initiating browser selects the result itself.
-    const focus = (await args.navigationMode()) !== "browser-local";
+    // Browser-local navigation must not move other clients; the initiating
+    // browser selects the result itself.
     if (!isCurrent()) throw new Error(CONNECTION_CHANGED_DURING_REQUEST);
     const created = workspaceId
       ? await args.herdrCall(
           "tab.create",
-          { workspace_id: workspaceId, cwd: path, focus },
+          { workspace_id: workspaceId, cwd: path, focus: false },
           20_000,
         )
-      : await args.herdrCall("workspace.create", { cwd: path, focus }, 20_000);
+      : await args.herdrCall(
+          "workspace.create",
+          { cwd: path, focus: false },
+          20_000,
+        );
     const paneId = created?.root_pane?.pane_id;
     if (typeof paneId !== "string" || !paneId)
       throw new Error("Herdr did not report the new pane");
-    if (focus && workspaceId)
-      await args
-        .herdrCall("workspace.focus", { workspace_id: workspaceId }, 5000)
-        .catch(() => undefined);
     // Let the shell draw its prompt first so startup cannot swallow the
     // typed command; send anyway if it stays silent.
     await args

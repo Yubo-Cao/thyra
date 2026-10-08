@@ -202,10 +202,7 @@ export default {
     "{devices} 台设备上的 {count} 个浏览器",
   "Workspace, tab and pane selection stays in this browser. Topology and sizes are shared.":
     "工作区、标签页和窗格的选择仅保留在此浏览器中。拓扑和尺寸是共享的。",
-  "Legacy navigation follows shared Herdr focus and can move other clients.":
-    "旧版导航跟随共享的 Herdr 焦点，可能会移动其他客户端。",
   "Local navigation": "本地导航",
-  "Shared navigation": "共享导航",
   "Edit local connection": "编辑本地连接",
   "Add local connection": "添加本地连接",
   "Attach to existing Herdr control and render Unix sockets.":

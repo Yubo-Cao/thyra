@@ -27,7 +27,6 @@ import {
   herdrHostLabel,
   type PresenceContext,
 } from "../identity/identity-service";
-import { assertSupportedHerdrProtocol } from "../bridge/protocol-compat";
 import { createSettingsRpcHandler } from "../bridge/settings-rpc";
 import {
   readGuiSettings,
@@ -309,7 +308,6 @@ export function createLegacyConnectionRuntime(args: {
       : createLocalLauncherHost(runProcessWithCodeTimeout),
     herdrCall: (method, params, timeoutMs) =>
       herdr.call(method, params, timeoutMs),
-    navigationMode: () => terminalBridge.navigationMode(),
     readSettings: readGuiSettings,
     updateSettings: updateGuiSettings,
   });
@@ -370,11 +368,6 @@ export function createLegacyConnectionRuntime(args: {
     ownShellClients,
     surfaceCodecsEnabled: async () =>
       terminalSurfaceCodecsEnabled(await readGuiSettings(), identity.id),
-    herdrProtocol: async () => {
-      const protocol: unknown = (await herdr.ping()).protocol;
-      assertSupportedHerdrProtocol(protocol);
-      return protocol;
-    },
     createEmptyWorkspace: createEmptyWorkspaceCreator(
       (method, params, timeoutMs) => herdr.call(method, params, timeoutMs),
     ),
@@ -430,26 +423,6 @@ export function createLegacyConnectionRuntime(args: {
         text: Bun.stripANSI(typeof read?.text === "string" ? read.text : ""),
         truncated: read?.truncated === true,
       };
-    },
-    confirmRelayResize: async ({ cols, rows, paneId }) => {
-      if (!paneId) return false;
-      for (let attempt = 0; attempt < 6; attempt += 1) {
-        try {
-          const result = await herdr.call("pane.layout", { pane_id: paneId });
-          const area = result?.layout?.area;
-          if (
-            area &&
-            Number(area.x) + Number(area.width) === cols &&
-            Number(area.y) + Number(area.height) === rows
-          ) {
-            return true;
-          }
-        } catch {
-          return false;
-        }
-        await Bun.sleep(50);
-      }
-      return false;
     },
   });
 

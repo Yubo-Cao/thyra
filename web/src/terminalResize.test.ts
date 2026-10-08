@@ -2,13 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   TerminalAttachFrameWatchdog,
   TerminalResizeSync,
-  clearTerminalRelayViewports,
-  forgetTerminalRelayViewportsExcept,
-  rememberTerminalRelayViewport,
   terminalAttachWatchdogMs,
   terminalEndpointViewportSize,
-  terminalRelayViewportForTab,
-  terminalRelayViewportSize,
 } from "./terminalResize";
 
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -135,60 +130,6 @@ describe("TerminalResizeSync", () => {
   });
 });
 
-describe("terminal relay viewport", () => {
-  test("adds Herdr app chrome to a single pane", () => {
-    expect(
-      terminalRelayViewportSize(
-        { cols: 142, rows: 44 },
-        {
-          area: { x: 26, y: 1, width: 54, height: 23 },
-          panes: [{ pane_id: "pane_1", rect: { width: 54, height: 23 } }],
-        },
-        "pane_1",
-      ),
-    ).toEqual({ cols: 169, rows: 45 });
-  });
-
-  test("projects split pane dimensions back to one stable viewport", () => {
-    const layout = {
-      area: { x: 26, y: 1, width: 100, height: 40 },
-      panes: [
-        { pane_id: "left", rect: { width: 50, height: 40 } },
-        { pane_id: "right", rect: { width: 50, height: 40 } },
-      ],
-    };
-    expect(
-      terminalRelayViewportSize({ cols: 70, rows: 44 }, layout, "left"),
-    ).toEqual({ cols: 172, rows: 47 });
-    expect(
-      terminalRelayViewportSize({ cols: 70, rows: 44 }, layout, "right"),
-    ).toEqual({ cols: 172, rows: 47 });
-  });
-
-  test("treats a zoomed split tab as one visible pane", () => {
-    expect(
-      terminalRelayViewportSize(
-        { cols: 142, rows: 44 },
-        {
-          zoomed: true,
-          area: { x: 26, y: 1, width: 100, height: 40 },
-          panes: [
-            { pane_id: "focused", rect: { width: 100, height: 40 } },
-            { pane_id: "hidden", rect: { width: 50, height: 40 } },
-          ],
-        },
-        "focused",
-      ),
-    ).toEqual({ cols: 169, rows: 45 });
-  });
-
-  test("falls back to the direct size without usable layout geometry", () => {
-    expect(
-      terminalRelayViewportSize({ cols: 100, rows: 30 }, null, "pane_1"),
-    ).toEqual({ cols: 100, rows: 30 });
-  });
-});
-
 describe("endpoint initial viewport", () => {
   const layout = {
     area: { x: 26, y: 1, width: 134, height: 69 },
@@ -253,20 +194,6 @@ describe("endpoint initial viewport", () => {
     }
   });
 
-  test("both settled panes project the identical relay viewport", () => {
-    // Regression: per-pane fit rounding must not alternate the shared relay
-    // viewport (and with it the pane widths) when focus switches.
-    for (const [paneId, size] of [
-      ["left", { cols: 64, rows: 67 }],
-      ["right", { cols: 63, rows: 66 }],
-    ] as const) {
-      expect(terminalRelayViewportSize(size, layout, paneId)).toEqual({
-        cols: 160,
-        rows: 70,
-      });
-    }
-  });
-
   test("a real resize still projects a corrected viewport", () => {
     expect(
       terminalEndpointViewportSize({ cols: 70, rows: 67 }, layout, "left"),
@@ -290,36 +217,6 @@ describe("endpoint initial viewport", () => {
         "left",
       ),
     ).toBeNull();
-  });
-});
-
-describe("terminal relay viewport cache", () => {
-  test("isolates colliding tab IDs by connection generation and prunes one scope", () => {
-    clearTerminalRelayViewports();
-    rememberTerminalRelayViewport("alpha", 1, "same", {
-      cols: 169,
-      rows: 45,
-    });
-    rememberTerminalRelayViewport("beta", 1, "same", {
-      cols: 172,
-      rows: 47,
-    });
-    expect(terminalRelayViewportForTab("alpha", 1, "same")).toEqual({
-      cols: 169,
-      rows: 45,
-    });
-    expect(terminalRelayViewportForTab("beta", 1, "same")).toEqual({
-      cols: 172,
-      rows: 47,
-    });
-    expect(terminalRelayViewportForTab("alpha", 2, "same")).toBeNull();
-    forgetTerminalRelayViewportsExcept("alpha", 1, new Set());
-    expect(terminalRelayViewportForTab("alpha", 1, "same")).toBeNull();
-    expect(terminalRelayViewportForTab("beta", 1, "same")).toEqual({
-      cols: 172,
-      rows: 47,
-    });
-    clearTerminalRelayViewports();
   });
 });
 

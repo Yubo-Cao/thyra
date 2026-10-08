@@ -14,8 +14,7 @@ import {
 import { t } from "../i18n";
 import { clearTabLayouts } from "../tabLayout";
 import { disposeTerminalConnection } from "../terminalConnection";
-import { clearTerminalRelayViewports } from "../terminalResize";
-import { action, noticeFor, resetFocusActions } from "./actions";
+import { action, noticeFor } from "./actions";
 import {
   type BridgeStatus,
   captureConnectionLease,
@@ -85,12 +84,6 @@ export function activateConnectionState(
   const newSession = {
     ...restored,
     endpointAvailability: {},
-    // A restored pending focus outlived its action, so treat it as settled:
-    // the next fresh observation decides whether it still applies. Reuse the
-    // snapshot timestamp as a stable non-null token; wall-clock time is unused.
-    pendingFocusWorkspaceSettledAt: restored.pendingFocusWorkspaceId
-      ? (restored.pendingFocusWorkspaceSettledAt ?? restored.lastRefresh)
-      : restored.pendingFocusWorkspaceSettledAt,
     terminalAttachEpoch: restored.terminalAttachEpoch + 1,
   };
   return {
@@ -281,9 +274,7 @@ function startPolling() {
 
 /** Drop client caches keyed to the outgoing connection lease. */
 function forgetLeaseCaches() {
-  clearTerminalRelayViewports();
   clearTabLayouts();
-  resetFocusActions();
 }
 
 function detachActiveConnection(sendRemoteDetach: boolean) {
@@ -506,7 +497,6 @@ export function markTerminalReattachPending() {
 export function resetConnectionRuntime(snapshot: State) {
   stopPolling();
   clearRefreshQueue(true);
-  resetFocusActions();
   taskCompletionTracker.clear();
   replaceState(snapshot);
   terminalReattachPending = false;

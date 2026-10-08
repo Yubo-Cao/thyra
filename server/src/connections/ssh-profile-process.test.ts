@@ -9,7 +9,6 @@ import {
 } from "node:fs";
 import * as net from "node:net";
 import { join } from "node:path";
-import { BinReader, BinWriter, encodeFrame } from "../bridge/bincode";
 import type { SshConnectionProfile } from "./profiles";
 
 const roots: string[] = [];
@@ -59,7 +58,7 @@ async function fakeHerdr(
         const request = JSON.parse(input.slice(0, newline));
         const result =
           request.method === "ping"
-            ? { version: `fake-${id}`, protocol: 14 }
+            ? { version: `fake-${id}`, protocol: 22 }
             : request.method === "workspace.list"
               ? {
                   workspaces: [
@@ -80,22 +79,7 @@ async function fakeHerdr(
     net.createServer((socket) => {
       sockets.add(socket);
       socket.on("close", () => sockets.delete(socket));
-      let input = Buffer.alloc(0);
-      socket.on("data", (chunk) => {
-        input = Buffer.concat([input, Buffer.from(chunk)]);
-        if (input.length < 4) return;
-        const length = input.readUInt32LE(0);
-        if (input.length < length + 4) return;
-        const reader = new BinReader(input.subarray(4, length + 4));
-        expect(reader.variant()).toBe(0);
-        const protocol = reader.varint();
-        const writer = new BinWriter();
-        writer.variant(0);
-        writer.varint(protocol);
-        writer.varint(1);
-        writer.option<string>(undefined, (value) => writer.string(value));
-        socket.write(encodeFrame(writer.toBuffer()));
-      });
+      socket.end();
     }),
     renderPath,
   );

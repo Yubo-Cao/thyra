@@ -7,7 +7,7 @@ import {
 } from "./endpoint-client";
 import { EndpointCreationDeadline } from "./endpoint-creation";
 import { frameToAnsi } from "./frame-to-ansi";
-import type { FrameData } from "./thin-client";
+import type { FrameData } from "./frame-codec";
 import type { OwnShellClients } from "./own-shell-clients";
 import type { Logger } from "../utils/logger";
 import { silentLogger } from "../utils/logger";
@@ -43,10 +43,6 @@ type ScrollDispatch = {
  * The endpoint shell renders the focused tab, so this session focuses the
  * pane (which focuses its tab for this shell connection only) and crops the
  * tab surface down to the pane's content rect before re-encoding to ANSI.
- *
- * Members intentionally mirror the ThinClient surface the terminal bridge
- * uses (isClosed/connecting/resize/input/scroll/close/events) so the bridge
- * can hold either backend in one field.
  */
 export class EndpointTerminalSession extends EventEmitter {
   private graphics = new PaneGraphicsCache();

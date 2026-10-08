@@ -8,14 +8,12 @@ import {
 } from "../browserNavigation";
 import { parseEndpointAvailability } from "../endpointAvailability";
 import { forgetTabLayoutsExcept, rememberTabLayout } from "../tabLayout";
-import { forgetTerminalRelayViewportsExcept } from "../terminalResize";
 import type { PaneLayout, Tab, Workspace } from "../types";
 import {
   captureConnectionLease,
   connectionEventIsActive,
   jsonDeepEqual,
   leaseIsCurrent,
-  set,
   setForConnection,
   type State,
   state,
@@ -44,13 +42,7 @@ const REFRESH_SLICE_KEYS = [
   "browserNavigation",
   "endpointAvailability",
 ] as const;
-const REFRESH_SCALAR_KEYS = [
-  "navigationMode",
-  "error",
-  "pendingFocusWorkspaceId",
-  "pendingFocusWorkspaceSettledAt",
-  "selectedPaneId",
-] as const;
+const REFRESH_SCALAR_KEYS = ["error", "selectedPaneId"] as const;
 
 /**
  * Reuse the previous reference for every refresh slice whose content is
@@ -92,47 +84,6 @@ export function stabilizeRefreshPatch(
   return patch;
 }
 
-// --- Pending workspace focus ---
-
-let nextPendingFocusWorkspaceSeq = 1;
-
-/**
- * Marks a workspace focus as in flight and returns the sequence token that
- * identifies this attempt. The pending flag suppresses focus-follower
- * effects until a fresh refresh observes the workspace focused (or the focus
- * is declared lost after the action settled).
- */
-export function stampPendingFocusWorkspace(workspaceId: string): number {
-  const seq = nextPendingFocusWorkspaceSeq++;
-  set({
-    pendingFocusWorkspaceId: workspaceId,
-    pendingFocusWorkspaceSeq: seq,
-    pendingFocusWorkspaceSettledAt: null,
-  });
-  return seq;
-}
-
-/** Clears an in-flight focus marker identified by its sequence token. */
-export function clearPendingFocusWorkspace(seq: number): void {
-  if (state.pendingFocusWorkspaceSeq !== seq) return;
-  set({
-    pendingFocusWorkspaceId: null,
-    pendingFocusWorkspaceSettledAt: null,
-  });
-}
-
-/** Records that the action behind an in-flight focus has completed. */
-export function settlePendingFocusWorkspace(seq: number): void {
-  if (
-    !state.pendingFocusWorkspaceId ||
-    state.pendingFocusWorkspaceSeq !== seq ||
-    state.pendingFocusWorkspaceSettledAt !== null
-  ) {
-    return;
-  }
-  set({ pendingFocusWorkspaceSettledAt: Date.now() });
-}
-
 // --- Refresh ---
 
 export async function refreshNow(lease = captureConnectionLease()) {
@@ -150,15 +101,8 @@ export async function refreshNow(lease = captureConnectionLease()) {
   }
   refreshingConnectionKeys.add(refreshKey);
   lastRefreshStartedAt = Date.now();
-  // Snapshot the pending-focus marker when the fetch actually starts. Only a
-  // refresh that began after the focus action settled may declare the focus
-  // lost, and only while the marker still belongs to that same attempt.
   const navigationAtEntry = state.browserNavigation;
   const endpointAvailabilityAtEntry = state.endpointAvailability;
-  const pendingFocusAtEntry = {
-    seq: state.pendingFocusWorkspaceSeq,
-    settledAt: state.pendingFocusWorkspaceSettledAt,
-  };
   try {
     const [wsRes, tabRes, paneRes, agentRes] = await Promise.all([
       lease.client.call("workspace.list"),
@@ -172,21 +116,13 @@ export async function refreshNow(lease = captureConnectionLease()) {
     const tabs: Tab[] = tabRes?.tabs ?? [];
     const panes = withAgentActivity(paneRes?.panes ?? [], agentRes);
     const liveTabIds = new Set(tabs.map((tab) => tab.tab_id));
-    forgetTerminalRelayViewportsExcept(
-      lease.connectionId,
-      lease.generation,
-      liveTabIds,
-    );
     forgetTabLayoutsExcept(lease.connectionId, lease.generation, liveTabIds);
     const completedPanes = taskCompletionTracker.update(
       lease.connectionId,
       panes,
     );
 
-    const navigationMode =
-      wsRes?.navigation_mode === "browser-local" ? "browser-local" : "shared";
     const next: Partial<State> = {
-      navigationMode,
       endpointAvailability: parseEndpointAvailability(
         wsRes?.endpoint_availability,
       ),
@@ -196,53 +132,15 @@ export async function refreshNow(lease = captureConnectionLease()) {
       error: null,
       lastRefresh: Date.now(),
     };
-    if (navigationMode === "browser-local") {
-      Object.assign(
-        next,
-        projectBrowserNavigation(
-          state.browserNavigation,
-          workspaces,
-          tabs,
-          panes,
-        ),
-      );
-    }
-    const pendingFocusAtObservation = {
-      seq: state.pendingFocusWorkspaceSeq,
-      settledAt: state.pendingFocusWorkspaceSettledAt,
-    };
-    if (
-      state.pendingFocusWorkspaceId &&
-      workspaces.some(
-        (w) => w.workspace_id === state.pendingFocusWorkspaceId && w.focused,
-      )
-    ) {
-      next.pendingFocusWorkspaceId = null;
-      next.pendingFocusWorkspaceSettledAt = null;
-    } else if (
-      state.pendingFocusWorkspaceId &&
-      state.pendingFocusWorkspaceSeq === pendingFocusAtEntry.seq &&
-      pendingFocusAtEntry.settledAt !== null &&
-      state.pendingFocusWorkspaceSettledAt === pendingFocusAtEntry.settledAt
-    ) {
-      // The focus action settled before this refresh started, yet a fresh
-      // observation still does not show the workspace focused: the focus was
-      // pre-empted or the workspace vanished, so release follower effects.
-      next.pendingFocusWorkspaceId = null;
-      next.pendingFocusWorkspaceSettledAt = null;
-    }
-
-    // Keep selection valid globally. Layout-scoped validation runs after the
-    // active tab layout is fetched below, because a pane can exist while no
-    // longer belonging to the visible terminal.
-    if (
-      navigationMode === "shared" &&
-      state.selectedPaneId &&
-      !panes.some((p) => p.pane_id === state.selectedPaneId)
-    ) {
-      next.selectedPaneId = null;
-    }
-
+    Object.assign(
+      next,
+      projectBrowserNavigation(
+        state.browserNavigation,
+        workspaces,
+        tabs,
+        panes,
+      ),
+    );
     // Fetch layout for the active tab (needs a pane_id in that tab).
     const merged = { ...state, ...next } as State;
     const activeTabId = pickActiveTabId(merged);
@@ -259,7 +157,6 @@ export async function refreshNow(lease = captureConnectionLease()) {
         // Panes can move or close between pane.list and pane.layout. Never
         // substitute shared layout focus for a missing browser-selected pane.
         const staleLayout =
-          navigationMode === "browser-local" &&
           observedLayout &&
           (observedLayout.tab_id !== activeTabId ||
             observedLayout.workspace_id !== aPane.workspace_id ||
@@ -270,18 +167,7 @@ export async function refreshNow(lease = captureConnectionLease()) {
         const layout = staleLayout ? null : observedLayout;
         if (staleLayout) queuedConnectionKeys.add(refreshKey);
         rememberTabLayout(lease.connectionId, lease.generation, layout);
-        next.layout =
-          navigationMode === "browser-local"
-            ? projectBrowserLayout(layout, next.selectedPaneId ?? null)
-            : layout;
-        if (
-          navigationMode === "shared" &&
-          layout &&
-          state.selectedPaneId &&
-          !layout.panes.some((p) => p.pane_id === state.selectedPaneId)
-        ) {
-          next.selectedPaneId = null;
-        }
+        next.layout = projectBrowserLayout(layout, next.selectedPaneId ?? null);
       } catch (error) {
         next.layout = null;
         next.error = error instanceof Error ? error.message : String(error);
@@ -296,17 +182,6 @@ export async function refreshNow(lease = captureConnectionLease()) {
       return;
     }
 
-    // Layout fetching can overlap another focus attempt or its settlement.
-    // Drop only a stale marker clear, preserving the useful snapshot data.
-    if (
-      next.pendingFocusWorkspaceId === null &&
-      (state.pendingFocusWorkspaceSeq !== pendingFocusAtObservation.seq ||
-        state.pendingFocusWorkspaceSettledAt !==
-          pendingFocusAtObservation.settledAt)
-    ) {
-      delete next.pendingFocusWorkspaceId;
-      delete next.pendingFocusWorkspaceSettledAt;
-    }
     // Close/reattach can replace advertisements while either RPC is pending.
     // Keep that newer slice without discarding useful topology/layout updates.
     if (endpointAvailabilityAtEntry !== state.endpointAvailability) {

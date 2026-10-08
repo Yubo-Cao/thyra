@@ -97,7 +97,6 @@ const RPC_MATRIX: Record<string, string> = {
   "terminal.key": "admin owner editor",
   "terminal.link.resolve": "admin owner editor viewer guest guest-pane",
   "terminal.preview_text": "admin owner editor viewer guest guest-pane",
-  "terminal.relay_resize": "admin owner editor",
   "terminal.resize": "admin owner editor",
   "terminal.scroll": "admin owner editor",
   "terminal.stream": "admin owner editor viewer outsider guest guest-pane",
@@ -244,17 +243,13 @@ const request = (
   );
 
 describe("authorize", () => {
-  test("host-wide file scopes and pane-less relay resizes need an admin", async () => {
+  test("host-wide file scopes need an admin", async () => {
     for (const method of ["file.read", "file.list", "file.write"]) {
       const params = { workspace_id: "w1", scope: "filesystem", path: "/" };
       expect((await request("owner", method, params)).allowed).toBe(false);
       expect((await request("admin", method, params)).allowed).toBe(true);
       expect((await request("local", method, params)).allowed).toBe(true);
     }
-    expect(
-      (await request("editor", "terminal.relay_resize", { cols: 80, rows: 24 }))
-        .allowed,
-    ).toBe(false);
   });
 
   test("every named id must be readable, and unknown ids fail closed", async () => {

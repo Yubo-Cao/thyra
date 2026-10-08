@@ -1,10 +1,7 @@
 import { HerdrClient } from "../bridge/herdr-client";
-import {
-  assertSupportedHerdrProtocol,
-  HerdrCompatibilityError,
-} from "../bridge/protocol-compat";
+import * as net from "node:net";
+import { assertSupportedHerdrProtocol } from "../bridge/protocol-compat";
 import { createSshTunnelManager, SshTunnelError } from "../bridge/ssh-tunnel";
-import { ThinClient } from "../bridge/thin-client";
 import { runProcess } from "../utils/process-utils";
 import {
   ConnectionManager,
@@ -135,47 +132,51 @@ type RetryState = {
   stableTimer: RetryTimer | null;
 };
 
+/** Resolves once the client socket accepts a connection. */
+function probeClientSocket(path: string, timeoutMs = 8_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ path });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("timed out connecting to the Herdr client socket"));
+    }, timeoutMs);
+    socket.once("connect", () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve();
+    });
+    socket.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
 export async function testConnectionSockets(
   controlSocketPath: string,
   clientSocketPath: string,
 ): Promise<{ ok: true; version: string | null; protocol: number }> {
   const herdr = new HerdrClient(controlSocketPath);
-  let thinClient: ThinClient | null = null;
+  const ping = await herdr.call("ping", {}, 8_000);
+  const protocol: unknown = ping?.protocol;
   try {
-    const ping = await herdr.call("ping", {}, 8_000);
-    const protocol: unknown = ping?.protocol;
-    try {
-      assertSupportedHerdrProtocol(protocol);
-    } catch (error) {
-      throw new ConnectionProbeError((error as Error).message, false, {
-        cause: error,
-      });
-    }
-    thinClient = new ThinClient(clientSocketPath, async () => protocol);
-    // ThinClient mirrors runtime failures through EventEmitter in addition to
-    // rejecting connect(). A probe has no long-lived consumer, but it still
-    // must register an error listener before opening the socket so ordinary
-    // render failures remain contained by this promise.
-    thinClient.on("error", () => undefined);
-    try {
-      await thinClient.connect(80, 24);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const permanent =
-        error instanceof HerdrCompatibilityError ||
-        /(?:protocol .*not supported|rejected thin-client protocol|welcomed protocol|unsupported encoding|bincode:|invalid protocol version)/i.test(
-          message,
-        );
-      throw new ConnectionProbeError(message, !permanent, { cause: error });
-    }
-    return {
-      ok: true,
-      version: typeof ping?.version === "string" ? ping.version : null,
-      protocol,
-    };
-  } finally {
-    thinClient?.close();
+    assertSupportedHerdrProtocol(protocol);
+  } catch (error) {
+    throw new ConnectionProbeError((error as Error).message, false, {
+      cause: error,
+    });
   }
+  try {
+    await probeClientSocket(clientSocketPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ConnectionProbeError(message, true, { cause: error });
+  }
+  return {
+    ok: true,
+    version: typeof ping?.version === "string" ? ping.version : null,
+    protocol,
+  };
 }
 
 export function testLocalConnectionProfile(
