@@ -379,6 +379,34 @@ entry inside an existing parent. `file.mkdir` takes `kind: "directory" | "file"`
 creates one empty entry, and fails when the name exists. Deleting the checkout
 root, a filesystem root, or the host home directory itself is refused.
 
+File-manager requests resolve one scope per call (`fileScope` in
+`server/src/workspace/files.ts`): workspace paths are sanitized and joined to
+the checkout, filesystem paths are expanded and normalized, and both become
+absolute host paths before an operation runs. Operations that need host tools
+run one bash script on the host owning the files (`file-host.ts`): the bridge
+host for local connections, the SSH destination otherwise. Tools are detected
+per host with `command -v` and cached for five minutes.
+
+`GET .../file/thumbnail` (`workspace_id`, `path`, `scope`, `size`, `mtime`,
+`bytes`) returns a WebP of at most 64, 128 or 256 px, or `204` when the file
+has none. Raster images (PNG, JPEG, WebP, GIF, BMP) decode in the bridge with
+`Bun.Image`, with a 144-megapixel cap; over SSH, files up to 4 MiB cross the
+link as-is, larger ones and HEIC/AVIF/TIFF need vips or ImageMagick on the
+host, videos need ffmpegthumbnailer or ffmpeg, and PDFs pdftoppm. Requests to
+one SSH host within 25 ms share one session (up to 12 files). Results are
+cached on disk under `$XDG_CACHE_HOME/thyra/thumbnails` (`THYRA_THUMBNAIL_CACHE_DIR`
+overrides; empty disables), keyed by host, path, listing mtime and size and box,
+pruned to 192 MiB once it passes 256 MiB; failures are remembered for five
+minutes. The URL carries the listing's mtime, so responses are cached privately
+for a week. The browser asks only for tiles within a screen of the viewport;
+small SVGs (64 KiB) use the inline download URL instead.
+
+File and folder icons are Material Icon Theme's SVGs, emitted unchanged by
+`web/vite.fileIcons.ts` under `/assets/file-icons/<hash of every icon>/` and
+fetched per icon on first display. Its name, extension and folder-name rules
+are the lazy `virtual:file-icons` chunk (about 16 KiB gzip), loaded when a file
+manager first renders; rows show a generic icon until it arrives.
+
 Absolute previews use `scope=filesystem` download URLs; relative Markdown links
 and images resolve beside their source. Explorer caches are separate from lazy
 UI code. Mermaid previews share a lazy

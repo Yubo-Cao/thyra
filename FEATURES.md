@@ -204,17 +204,29 @@ that another fetch could change.
 
 ## File Explorer and Preview
 
-- Browse cached trees, toggle hidden files, and filter **loaded** names/paths
-  with case-insensitive substrings or globs (`*`, `?`, `[]`, `{}`, `**`).
-  Git badges mark changes; ignored files are dimmed.
-- The explorer header switches between **Workspace** (the checkout tree) and
+- Browse a folder as a tree (**List**) or as tiles (**Grid**) with
+  [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
+  file and folder icons (exact names such as `package.json` and `Dockerfile`,
+  extensions, and folder names such as `src` or `.github`, open and closed).
+  Grid tiles show thumbnails of images, and of videos and PDFs when the host has
+  ffmpeg or pdftoppm; thumbnails load only for visible tiles and never delay the
+  listing. Sort by name, type, size or modification time (folders first), toggle
+  hidden files, and filter **loaded** names/paths with case-insensitive
+  substrings or globs (`*`, `?`, `[]`, `{}`, `**`). Git badges mark changes;
+  ignored files are dimmed.
+- Both scopes have back/forward/up (also Alt+Left/Right/Up and the mouse back
+  and forward buttons) and clickable breadcrumbs; double-click a folder, or
+  Alt+Down, to open it. Keys work as in VS Code: arrows move and Right/Left
+  expand and collapse, Enter or Space opens, Backspace goes to the parent,
+  Home/End/Page Up/Page Down jump, typing a name jumps to it, Shift+Alt+C
+  copies the path, and the Menu key or Shift+F10 opens the context menu.
+- The explorer header switches between **Workspace** (the checkout) and
   **Filesystem** (any path on the connected host, local or SSH). Filesystem mode
-  has back/forward/up, clickable breadcrumbs, a path bar (click the path; `~`
-  and `~/...` resolve to the host user's home), quick locations (workspace
-  root, pane directories, Home, `/`), a loaded-entry filter, and hidden-file
-  toggle. Arrow keys move between rows; Backspace or Left goes up. Each
-  explorer remembers its mode and directory until the page reloads; opening an
-  agent's files at a cwd outside the checkout starts in Filesystem mode there.
+  adds a path bar (click the empty part of the path; `~` and `~/...` resolve to
+  the host user's home) and quick locations (workspace root, pane directories,
+  Home, `/`). Each explorer remembers its mode and directory until the page
+  reloads; opening an agent's files at a cwd outside the checkout starts in
+  Filesystem mode there.
 - Both modes create files and folders, upload (button or drop), and delete with
   confirmation. Files outside the checkout preview and download like workspace
   files.

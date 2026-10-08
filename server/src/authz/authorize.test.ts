@@ -151,6 +151,7 @@ const HTTP_MATRIX: Record<string, string> = {
   "auth.sessions": "admin owner editor viewer outsider",
   "auth.sessions.revoke": "admin owner editor viewer outsider",
   "connection.file-delete": "admin owner editor",
+  "connection.file-thumbnail": "admin owner editor viewer guest",
   "connection.file-download": "admin owner editor viewer guest",
   "connection.file-upload": "admin owner editor",
   "connection.herdr-info": "admin owner editor viewer outsider",

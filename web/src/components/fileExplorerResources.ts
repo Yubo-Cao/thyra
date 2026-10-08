@@ -28,27 +28,7 @@ export function workspaceName(workspace?: {
   return workspace?.label || workspace?.workspace_id || "";
 }
 
-export function isExplorerDirectoryEntry(entry: FileExplorerEntry) {
-  return (
-    entry.type === "directory" ||
-    (entry.type === "symlink" &&
-      entry.symlink_status !== "broken" &&
-      entry.symlink_target_type === "directory")
-  );
-}
-
-export function displaySize(entry: FileExplorerEntry) {
-  if (isExplorerDirectoryEntry(entry)) return "";
-  if (entry.size < 1024) return `${entry.size} B`;
-  if (entry.size < 1024 * 1024) return `${Math.round(entry.size / 1024)} KB`;
-  return `${(entry.size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-export function absolutePath(root: string, entry: FileExplorerEntry) {
-  return /^(?:\/|[a-z]:[\\/])/i.test(entry.path)
-    ? entry.path
-    : `${root.replace(/\/+$/, "")}/${entry.path}`;
-}
+export { isDirectoryEntry as isExplorerDirectoryEntry } from "./files/fileManagerModel";
 
 export function initialWorkspacePath(workspace?: {
   worktree?: { checkout_path: string };
@@ -59,6 +39,8 @@ export function initialWorkspacePath(workspace?: {
 
 export type FileExplorerCache = {
   search: string;
+  /** The folder the file manager shows (checkout-relative). */
+  location?: string;
   rootInfo: FileExplorerList | null;
   children: Record<string, FileExplorerEntry[]>;
   expanded: Set<string>;
@@ -113,7 +95,7 @@ function explorerCacheRevision(key: string): number {
   return explorerCacheRevisions.get(key) ?? 0;
 }
 
-export function advanceExplorerCacheRevision(key: string): number {
+function advanceExplorerCacheRevision(key: string): number {
   const next = explorerCacheRevision(key) + 1;
   explorerCacheRevisions.set(key, next);
   explorerPrefetches.delete(key);
@@ -230,30 +212,6 @@ export function invalidateFilePreviewCache(
       queryKey[4] === path ||
       (recursive && String(queryKey[4]).startsWith(`${path}/`)),
   });
-}
-
-export function parentDirectoryPaths(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  const directories: string[] = [""];
-  for (let i = 1; i < parts.length; i += 1) {
-    directories.push(parts.slice(0, i).join("/"));
-  }
-  return directories;
-}
-
-export function parentDirectoryPath(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  parts.pop();
-  return parts.join("/");
-}
-
-export function directoryPaths(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  return ["", ...parts.map((_, index) => parts.slice(0, index + 1).join("/"))];
-}
-
-export function isWorkspaceRelativePath(path: string) {
-  return Boolean(path) && !/^(?:\/|[a-z]:[\\/])/i.test(path);
 }
 
 function normalizeDisplayPath(path: string) {

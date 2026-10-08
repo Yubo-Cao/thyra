@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { posix } from "node:path";
 import type { HerdrClient } from "../bridge/herdr-client";
 import { sshCommandArgv } from "../bridge/ssh-command";
 import { checkoutPath as getCheckoutPath } from "./utils";
@@ -50,6 +51,12 @@ import {
 import { HtmlPreviewError, readHtmlPreviewFile } from "./html-preview-files";
 import { HTML_PREVIEW_CSP, renderHtmlPreview } from "./html-preview";
 import { optionalString } from "../utils/rpc-params";
+import {
+  sharedThumbnailService,
+  snapThumbnailSize,
+  thumbnailKind,
+  type ThumbnailService,
+} from "./file-thumbnails";
 
 const MAX_FILE_RESOLUTION_CANDIDATES = 32;
 const MAX_FILE_RESOLUTION_PATH_LENGTH = 4096;
@@ -59,11 +66,13 @@ export function createFileHandlers({
   sshHost,
   runProcessWithCodeTimeout,
   shQuote,
+  thumbnails = sharedThumbnailService(),
 }: {
   herdr: HerdrClient;
   sshHost: () => string | undefined;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
+  thumbnails?: ThumbnailService;
 }) {
   const remoteHomes = new Map<string, Promise<string>>();
 
@@ -172,6 +181,82 @@ export function createFileHandlers({
     }
     const { parent, name } = splitFilesystemPath(absolute);
     return { workspaceId, rootPath: parent, path: name, filesystem: true };
+  }
+
+  /**
+   * The workspace, host and path form of a file-manager request. Workspace
+   * scope confines checkout-relative paths lexically (no `..`, no absolute
+   * paths) and joins them to the checkout; filesystem scope takes absolute
+   * host paths or `~`. `toHost` returns absolute host paths and `toScope`
+   * maps them back to what the browser sent.
+   */
+  async function fileScope(params: Record<string, unknown>, method: string) {
+    const workspaceId = optionalString(params, "workspace_id") ?? "";
+    if (!workspaceId) throw new Error(`${method} requires workspace_id`);
+    const workspace = await getWorkspace(workspaceId);
+    const checkoutPath = (await explorerRoot(workspaceId, workspace)).replace(
+      /(.)\/+$/,
+      "$1",
+    );
+    if (!checkoutPath) throw new Error("workspace has no directory path");
+    const host = sshHost();
+    const filesystem = params.scope === "filesystem";
+    const home = filesystem ? (await hostHome(host)).replace(/\/+$/, "") : "";
+    return {
+      workspaceId,
+      host,
+      filesystem,
+      checkoutPath,
+      /** Paths an operation may never move, rename or delete. */
+      protectedPaths: filesystem
+        ? new Set(["/", home])
+        : new Set([checkoutPath]),
+      async toHost(value: unknown, allowRoot = false) {
+        if (filesystem) {
+          return posix
+            .normalize(await filesystemPath(value, host))
+            .replace(/(.)\/+$/, "$1");
+        }
+        const relative = sanitizeExplorerPath(value);
+        if (!relative && !allowRoot) throw new Error(`${method} requires path`);
+        if (!relative) return checkoutPath;
+        return `${checkoutPath === "/" ? "" : checkoutPath}/${relative}`;
+      },
+      toScope(path: string) {
+        if (filesystem || path === checkoutPath) return filesystem ? path : "";
+        return path.startsWith(`${checkoutPath}/`)
+          ? path.slice(checkoutPath.length + 1)
+          : path;
+      },
+    };
+  }
+
+  async function thumbnailFile(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.thumbnail");
+    const path = await scope.toHost(params.path);
+    const bytes = thumbnailKind(path)
+      ? await thumbnails.thumbnail({
+          host: scope.host,
+          path,
+          mtimeMs: Number(params.mtime) || 0,
+          bytes: Number(params.bytes) || 0,
+          size: snapThumbnailSize(params.size),
+        })
+      : null;
+    // The URL names the listing's mtime, so a thumbnail never goes stale;
+    // "none" is rechecked soon in case a tool was installed.
+    return bytes
+      ? new Response(Buffer.from(bytes), {
+          headers: {
+            "content-type": "image/webp",
+            "cache-control": "private, max-age=604800, immutable",
+            "x-content-type-options": "nosniff",
+          },
+        })
+      : new Response(null, {
+          status: 204,
+          headers: { "cache-control": "private, max-age=600" },
+        });
   }
 
   function joinFilesystemPath(root: string, name: string) {
@@ -628,6 +713,8 @@ export function createFileHandlers({
     resolveWorkspaceFiles: resolveFiles,
     readWorkspaceFile: readFile,
     downloadWorkspaceFile: downloadFile,
+    thumbnailWorkspaceFile: thumbnailFile,
+
     uploadWorkspaceFile: uploadFile,
     deleteWorkspaceFile: deleteFile,
     writeWorkspaceFile: writeFile,

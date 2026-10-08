@@ -34,6 +34,11 @@ const maxFirstScreenCssBytes = 143 * 1024;
 const fontDirectory = "assets/fonts";
 const maxFontFileCount = 900;
 const maxFontBytes = 36 * 1024 * 1024;
+// Material Icon Theme SVGs (web/vite.fileIcons.ts): one small file per icon,
+// fetched only when a file row shows it.
+const fileIconDirectory = "assets/file-icons";
+const maxFileIconCount = 1400;
+const maxFileIconBytes = 1.5 * 1024 * 1024;
 
 /** Follow eager imports only, from app entries or explicitly selected features. */
 export function initialAssetFiles(
@@ -89,7 +94,7 @@ export function assertLazyGrammarAssets(manifest) {
   }
 }
 
-async function collectAssetStats(root, skip = null) {
+async function collectAssetStats(root, skip = []) {
   const directories = [root];
   let fileCount = 0;
   let totalBytes = 0;
@@ -100,7 +105,7 @@ async function collectAssetStats(root, skip = null) {
     for (const entry of entries) {
       const path = `${directory}/${entry.name}`;
       if (entry.isDirectory()) {
-        if (skip && path === `${root}/${skip}`) continue;
+        if (skip.some((directory) => path === `${root}/${directory}`)) continue;
         directories.push(path);
         continue;
       }
@@ -115,13 +120,16 @@ async function collectAssetStats(root, skip = null) {
 
 async function checkAssets() {
   const root = publicRoot.replace(/\/$/, "");
-  const { fileCount, totalBytes } = await collectAssetStats(
-    root,
+  const { fileCount, totalBytes } = await collectAssetStats(root, [
     fontDirectory,
-  );
+    fileIconDirectory,
+  ]);
   const fonts = await collectAssetStats(`${root}/${fontDirectory}`).catch(
     () => ({ fileCount: 0, totalBytes: 0 }),
   );
+  const fileIcons = await collectAssetStats(
+    `${root}/${fileIconDirectory}`,
+  ).catch(() => ({ fileCount: 0, totalBytes: 0 }));
   let manifest;
   try {
     manifest = JSON.parse(
@@ -188,6 +196,14 @@ async function checkAssets() {
     ],
     ["font files", fonts.fileCount, maxFontFileCount, 1, "files"],
     ["font total", fonts.totalBytes, maxFontBytes, 1024 * 1024, "MiB"],
+    ["file icons", fileIcons.fileCount, maxFileIconCount, 1, "files"],
+    [
+      "file icon total",
+      fileIcons.totalBytes,
+      maxFileIconBytes,
+      1024 * 1024,
+      "MiB",
+    ],
   ];
   for (const [name, actual, max, unit, suffix] of checks) {
     const exceeded = actual > max;

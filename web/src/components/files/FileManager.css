@@ -1,0 +1,295 @@
+/* File manager: stacked full-bleed bars over a tree list or a tile grid. */
+.file-manager {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.file-manager-nav,
+.file-manager-tools {
+  gap: 2px;
+  padding: 0 4px;
+  background: transparent;
+}
+.file-manager-nav > .button,
+.file-manager-tools > .button {
+  flex: 0 0 auto;
+}
+.file-manager-crumbs,
+.file-manager-path-form {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  height: var(--ui-control-height);
+  margin: 0 4px;
+}
+.file-manager-crumbs {
+  overflow: hidden;
+  font-family: var(--mono-font);
+  font-size: var(--ui-font-size-xs);
+  white-space: nowrap;
+}
+.file-manager-crumb {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+.file-manager-crumb:first-child,
+.file-manager-crumb:has(> button[aria-current="location"]) {
+  flex: 0 0 auto;
+}
+/* Widths come from a ResizeObserver class: Chromium drops boxes inside
+   size containers here, so the file manager avoids container queries. */
+/* In a narrow Inspector keep only the root, the collapse, and the current. */
+.file-manager.is-narrow .file-manager-crumb.is-ancestor {
+  display: none;
+}
+.file-manager-crumb > .button {
+  --button-height: var(--ui-token-height);
+  min-width: 0;
+  max-width: 180px;
+  padding-inline: 4px;
+  font: inherit;
+}
+.file-manager-crumb > .button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-manager-crumb > .button[aria-current="location"] {
+  --button-fg: var(--text-strong);
+  font-weight: 600;
+}
+.file-manager-crumb-separator {
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+/* Empty space after the crumbs: a hit area that opens the path editor. */
+.file-manager-path-edit {
+  --button-bg-hover: transparent;
+  --button-bg-pressed: transparent;
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 100%;
+  padding: 0;
+  cursor: text;
+}
+.file-manager-path-form .input.file-manager-path-input {
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+  font-family: var(--mono-font);
+  font-size: var(--ui-font-size-xs);
+}
+.file-manager-places {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+.file-manager-place {
+  flex: 0 0 auto;
+  max-width: 160px;
+  font-size: var(--ui-font-size-xs);
+  font-weight: 500;
+}
+.file-manager-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.file-manager-filter .search-field__input {
+  min-width: 0;
+}
+.file-manager-message {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+}
+.file-manager-message.is-error {
+  color: var(--danger-text);
+  background: var(--danger-soft);
+}
+
+.file-manager-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 2px 0;
+  overflow: auto;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.file-manager-body.is-drop-target {
+  background: var(--accent-soft);
+}
+.file-manager-body.is-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  align-content: start;
+  gap: 2px;
+  padding: 6px;
+}
+.file-manager-body.is-grid > .file-manager-message {
+  grid-column: 1 / -1;
+}
+
+.file-row,
+.file-tile {
+  position: relative;
+  color: var(--text);
+  cursor: default;
+}
+.file-row:hover,
+.file-tile:hover {
+  background: var(--panel-2);
+}
+.file-row.is-selected,
+.file-tile.is-selected {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.file-row:focus-visible,
+.file-tile:focus-visible {
+  outline: none;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.file-row.is-drop-target,
+.file-tile.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.file-row.is-ignored .file-icon,
+.file-row.is-ignored .file-name,
+.file-tile.is-ignored {
+  opacity: 0.5;
+}
+.file-row.is-hidden-entry .file-name,
+.file-tile.is-hidden-entry .file-name {
+  color: var(--muted);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ui-row-height);
+  padding-right: 4px;
+  font-size: var(--ui-font-size-sm);
+}
+@media (pointer: coarse) {
+  .file-row {
+    min-height: 40px;
+  }
+}
+.file-twisty {
+  display: inline-flex;
+  flex: 0 0 16px;
+  justify-content: center;
+  color: var(--muted);
+}
+.file-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+.file-icon-glyph {
+  color: var(--muted);
+}
+.file-icon-image {
+  display: block;
+}
+.file-row .file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-git-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+.file-meta {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--ui-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+.file-meta-date {
+  width: 88px;
+  text-align: right;
+}
+/* Narrow Inspectors show names first; size, then date, appear with room. */
+.file-manager:is(.is-narrow, .is-medium) .file-meta-date,
+.file-manager.is-narrow .file-row .file-meta {
+  display: none;
+}
+.file-row-action {
+  flex: 0 0 auto;
+  opacity: 0;
+}
+.file-row:hover .file-row-action,
+.file-row:focus-within .file-row-action,
+.file-tile:hover .file-row-action,
+.file-tile:focus-within .file-row-action {
+  opacity: 1;
+}
+@media (hover: none) {
+  .file-row-action {
+    opacity: 1;
+  }
+}
+
+.file-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 4px 6px;
+  font-size: var(--ui-font-size-xs);
+}
+.file-tile .file-name {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.file-tile .file-row-action {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+.file-tile .row-spinner {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+}
+.file-thumbnail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+}
+.file-thumbnail > img:not(.file-icon-image) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.file-thumbnail[data-state="loading"] > img:not(.file-icon-image) {
+  opacity: 0;
+}

@@ -283,13 +283,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   animation: row-spinner 0.8s linear infinite;
 }
 
-.file-loading-text {
-  overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .is-spinning {
   animation: row-spinner 0.8s linear infinite;
 }
@@ -301,15 +294,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   background: var(--accent-soft);
   color: var(--muted);
   font-size: 12px;
-}
-
-@keyframes file-skeleton-pulse {
-  0% {
-    background-position: 120% 0;
-  }
-  100% {
-    background-position: -120% 0;
-  }
 }
 
 .modal-error {

@@ -12,6 +12,7 @@ export type ConnectionHttpEndpoint =
   | "herdr-info"
   | "upload-image"
   | "file-download"
+  | "file-thumbnail"
   | "file-upload"
   | "file-delete";
 
@@ -40,6 +41,12 @@ const ENDPOINTS: EndpointDefinition[] = [
     suffix: "/file/download",
     method: "GET",
     legacyPath: "/api/file/download",
+  },
+  {
+    endpoint: "file-thumbnail",
+    suffix: "/file/thumbnail",
+    method: "GET",
+    legacyPath: "/api/file/thumbnail",
   },
   {
     endpoint: "file-upload",

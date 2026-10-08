@@ -57,6 +57,16 @@ LobeHub, under the MIT License. See
 vendors the same Codex and Kimi SVGs as `site/assets/codex.svg` and
 `site/assets/kimi.svg` so it does not need a package install or icon CDN.
 
+## Material Icon Theme
+
+The file manager's file and folder icons, and the file name, extension and
+folder name rules that choose them, come from
+[Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
+(`material-icon-theme` 5.39), Copyright (c) 2025 Material Extensions, under
+the MIT License. The build copies its SVGs unchanged under
+`/assets/file-icons/` (`web/vite.fileIcons.ts`). See
+[`LICENSES/MATERIAL-ICON-THEME.txt`](./LICENSES/MATERIAL-ICON-THEME.txt).
+
 ## Monaco Editor
 
 The file editor bundles [Monaco Editor](https://github.com/microsoft/monaco-editor),

@@ -8,9 +8,7 @@ import {
   parentFilesystemPath,
 } from "./filesystemPaths";
 import {
-  absolutePath,
   isFilesystemPath,
-  isWorkspaceRelativePath,
   readExplorerViewMemory,
   symlinkDescription,
   writeExplorerViewMemory,
@@ -128,22 +126,4 @@ test("filesystem paths normalize separators and trailing slashes", () => {
   expect(normalizeFilesystemPath("/repo/src/")).toBe("/repo/src");
   expect(normalizeFilesystemPath("/")).toBe("/");
   expect(normalizeFilesystemPath("C:\\repo\\src")).toBe("C:/repo/src");
-});
-
-test("copy paths do not prefix an absolute filesystem entry with the workspace", () => {
-  expect(isWorkspaceRelativePath("/references/r.md")).toBe(false);
-  expect(isWorkspaceRelativePath("C:/references/r.md")).toBe(false);
-  expect(isWorkspaceRelativePath("docs/r.md")).toBe(true);
-  const entry = {
-    name: "r.md",
-    path: "/references/r.md",
-    type: "file" as const,
-    size: 0,
-    mtime_ms: 0,
-    hidden: false,
-  };
-  expect(absolutePath("/workspace", entry)).toBe("/references/r.md");
-  expect(absolutePath("/workspace", { ...entry, path: "docs/r.md" })).toBe(
-    "/workspace/docs/r.md",
-  );
 });

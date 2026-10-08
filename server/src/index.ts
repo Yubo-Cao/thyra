@@ -2022,6 +2022,14 @@ async function handleConnectionHttpRequest(
       } catch (error) {
         response = new Response((error as Error).message, { status: 400 });
       }
+    } else if (endpoint === "file-thumbnail") {
+      try {
+        response = await connection.files.thumbnailWorkspaceFile(
+          Object.fromEntries(url.searchParams),
+        );
+      } catch (error) {
+        response = new Response((error as Error).message, { status: 400 });
+      }
     } else if (endpoint === "file-upload") {
       try {
         const result = await connection.files.uploadWorkspaceFile(

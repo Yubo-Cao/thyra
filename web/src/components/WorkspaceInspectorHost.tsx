@@ -232,7 +232,7 @@ export function WorkspaceInspectorHost({
     if (event.key !== "ArrowDown" || state.view !== "files") return;
     if (!(event.target as HTMLElement).matches("[role='tab']")) return;
     const treeItem = hostRef.current?.querySelector<HTMLElement>(
-      ".inspector-files-resource .file-row[role='treeitem'][tabindex='0']",
+      ".inspector-files-resource [data-file-path][tabindex='0']",
     );
     if (!treeItem) return;
     event.preventDefault();

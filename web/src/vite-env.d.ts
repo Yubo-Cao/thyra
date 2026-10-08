@@ -17,3 +17,16 @@ declare module "virtual:restty-wasm" {
   const url: string;
   export default url;
 }
+
+declare module "virtual:file-icons" {
+  /** URL prefix of the icon SVGs (see vite.fileIcons.ts). */
+  export const base: string;
+  /** Keys grouped by icon, space separated; names may use `stem.{a,b}`. */
+  export const table: {
+    extensions: Record<string, string>;
+    names: Record<string, string>;
+    /** Folder icons without their `folder-` prefix. */
+    folders: Record<string, string>;
+    light: string;
+  };
+}

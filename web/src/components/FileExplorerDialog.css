@@ -17,61 +17,21 @@
   flex-direction: column;
 }
 
-.file-explorer-browser {
+/* Workspace / Filesystem switch above the file manager. */
+.file-explorer-modebar {
+  gap: 6px;
+  padding: 0 8px;
+  background: transparent;
+}
+.file-explorer-mode-root {
   min-width: 0;
-  min-height: 0;
-  flex: 1 1 58%;
-  display: flex;
-  flex-direction: column;
-}
-
-.file-skeleton-list {
-  display: grid;
-  gap: 1px;
-  padding: 4px 0;
-}
-
-.file-skeleton-row {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 5px 10px;
-}
-
-.file-skeleton-icon,
-.file-skeleton-line {
-  display: block;
-  background: linear-gradient(
-    90deg,
-    var(--border-soft),
-    var(--accent-soft),
-    var(--border-soft)
-  );
-  background-size: 220% 100%;
-  animation: file-skeleton-pulse 1.2s ease-in-out infinite;
-}
-
-.file-skeleton-icon {
-  width: 15px;
-  height: 15px;
-}
-
-.file-skeleton-lines {
-  display: grid;
-  gap: 5px;
-}
-
-.file-skeleton-line {
-  height: 8px;
-}
-
-.file-skeleton-line-name {
-  width: min(72%, 180px);
-}
-
-.file-skeleton-line-path {
-  width: min(46%, 130px);
-  opacity: 0.65;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono-font);
+  font-size: var(--ui-font-size-xs);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
 }
