@@ -939,6 +939,7 @@ export function TerminalView({
                 key={promptEditorKey}
                 draftKey={promptEditorKey}
                 agent={promptAgent}
+                agentStatus={pane?.agent_status}
                 term={termInstance}
                 terminalTheme={terminalTheme}
                 active={isActivePane}

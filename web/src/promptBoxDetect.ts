@@ -54,10 +54,14 @@ export type PromptBoxScan =
 // Footer rows below the box: Claude's mode line, hints, and its `?` help.
 const MAX_CLAUDE_FOOTER_ROWS = 10;
 const MAX_CODEX_FOOTER_ROWS = 4;
-// Key hints that only selection menus and dialogs print.
+// Key hints that only selection menus, forms and dialogs print.
 const MENU_HINT =
-  /\b(?:enter to (?:confirm|select|continue|submit)|esc to (?:cancel|go back|back|close)|press enter\b|enter continue)/i;
+  /\b(?:enter to (?:confirm|select|continue|submit)|esc to (?:cancel|go back|back|close)|press enter\b|enter continue|to navigate\b)/i;
 const NUMBERED_OPTION = /^\s*\d+\.\s/;
+// A numbered option under a menu's cursor (`❯ 1. Yes`, `› 2. Green`).
+const CURSOR_OPTION = /^\s*[❯›>▶►]\s*\d+\.\s/;
+// Menus and forms keep their options and hints near the bottom.
+const MENU_ROWS = 14;
 
 function isBlank(row: string | undefined): boolean {
   return !row || row.trim() === "";
@@ -200,6 +204,24 @@ export function agentInputHasText(
   return false;
 }
 
+/**
+ * Whether the bottom of the screen draws a selection UI: a key hint only
+ * menus and forms print (`Enter to confirm`, `↑/↓ to navigate`, `enter to
+ * submit answer`), or numbered options with a cursor on one of them. The
+ * agent then reads digits, arrows and Enter as choices, not as text.
+ */
+export function screenShowsSelection(rows: readonly string[]): boolean {
+  const recent: string[] = [];
+  for (let row = rows.length - 1; row >= 0 && recent.length < MENU_ROWS; row--)
+    if (!isBlank(rows[row])) recent.push(rows[row]);
+  if (footerLooksLikeMenu(recent)) return true;
+  return (
+    recent.some((row) => CURSOR_OPTION.test(row)) &&
+    recent.filter((row) => NUMBERED_OPTION.test(row.replace(/^\s*[❯›>▶►]/, "")))
+      .length >= 2
+  );
+}
+
 /** Scans the visible rows for the prompt box of `agent`. */
 export function scanPromptBox(
   agent: AgentKind,
@@ -264,24 +286,3 @@ export type PromptEditorPlacement =
   | { mode: "overlay"; region: PromptBoxRegion }
   | { mode: "dock" }
   | { mode: "hidden" };
-
-/**
- * Where the editor goes for a scan. A supported agent that has shown its box
- * and now does not is in a menu or dialog: hide, so keys reach it. One whose
- * box was never found (a new layout, a startup screen) docks instead of
- * leaving the pane without an editor. Text in the agent's own box (recalled
- * history, typing into the terminal) also hides the editor, so it can be
- * seen and finished in place.
- */
-export function promptEditorPlacement(
-  scan: PromptBoxScan,
-  boxSeen: boolean,
-  agentHasText = false,
-): PromptEditorPlacement {
-  if (scan.state === "box")
-    return agentHasText
-      ? { mode: "hidden" }
-      : { mode: "overlay", region: scan.region };
-  if (scan.state === "absent" && boxSeen) return { mode: "hidden" };
-  return { mode: "dock" };
-}

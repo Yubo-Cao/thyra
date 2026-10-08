@@ -6,7 +6,6 @@ import {
   detectClaudePromptBox,
   detectCodexPromptBox,
   promptEditorFrame,
-  promptEditorPlacement,
   scanPromptBox,
 } from "./promptBoxDetect";
 
@@ -225,38 +224,5 @@ describe("editor frame", () => {
       padBottom: 1,
     });
     expect(promptEditorFrame({ mode: "hidden" }, 24, 1)).toBeNull();
-  });
-});
-
-describe("placement", () => {
-  test("agents without a detector dock at the bottom", () => {
-    const { rows, cols } = screen("claude-idle-80");
-    const scan = scanPromptBox("gemini", rows, cols);
-    expect(scan).toEqual({ state: "unsupported" });
-    expect(promptEditorPlacement(scan, false)).toEqual({ mode: "dock" });
-  });
-
-  test("a found box places the overlay on it", () => {
-    const { rows, cols } = screen("codex-idle-80");
-    expect(
-      promptEditorPlacement(scanPromptBox("codex", rows, cols), false),
-    ).toEqual({
-      mode: "overlay",
-      region: { top: 25, bottom: 27, inputTop: 26, inputBottom: 26 },
-    });
-  });
-
-  test("text in the agent's own box hides the editor", () => {
-    const { rows, cols } = screen("claude-multiline-80");
-    const scan = scanPromptBox("claude", rows, cols);
-    expect(promptEditorPlacement(scan, true, true)).toEqual({ mode: "hidden" });
-  });
-
-  test("a menu hides the editor once the box has been seen", () => {
-    const { rows, cols } = screen("claude-permission-80");
-    const scan = scanPromptBox("claude", rows, cols);
-    expect(promptEditorPlacement(scan, true)).toEqual({ mode: "hidden" });
-    // Never seen: an unknown startup screen or layout docks instead.
-    expect(promptEditorPlacement(scan, false)).toEqual({ mode: "dock" });
   });
 });

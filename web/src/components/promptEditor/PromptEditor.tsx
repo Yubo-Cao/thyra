@@ -21,10 +21,11 @@ import { lazyPanel } from "../../lazyWithReload";
 import {
   type PromptEditorPlacement,
   promptEditorFrame,
-  promptEditorPlacement,
   scanPromptBox,
   agentInputHasText,
+  screenShowsSelection,
 } from "../../promptBoxDetect";
+import { decidePromptEditor } from "../../promptEditorDecision";
 import { promptEditorKeyAction } from "../../promptEditorKeys";
 import {
   getShortcutSnapshot,
@@ -91,6 +92,8 @@ export type PromptEditorControl = {
 export type PromptEditorProps = {
   draftKey: string;
   agent: AgentKind;
+  /** Herdr's agent status for the pane (`blocked` while it asks for input). */
+  agentStatus: string | undefined;
   term: TerminalEngine;
   terminalTheme: TerminalTheme;
   /** The pane is the selected one; only it takes focus. */
@@ -211,6 +214,7 @@ function sendKeys() {
 export function PromptEditor({
   draftKey,
   agent,
+  agentStatus,
   term,
   terminalTheme,
   active,
@@ -246,6 +250,8 @@ export function PromptEditor({
   const composingRef = useRef(false);
   const boxSeen = useRef(false);
   const sentAt = useRef(Number.NEGATIVE_INFINITY);
+  // The pane asks for a choice: an empty draft passes choice keys to it.
+  const selection = useRef(false);
 
   // Scan the grid for the agent's box as frames land, and follow resizes.
   useEffect(() => {
@@ -256,9 +262,10 @@ export function PromptEditor({
       timer = null;
       const now = performance.now();
       last = now;
+      const rows = visibleRows(term);
       const result = dockOnly
         ? ({ state: "unsupported" } as const)
-        : scanPromptBox(agent, visibleRows(term), term.cols);
+        : scanPromptBox(agent, rows, term.cols);
       // Text in the agent's own box yields to it once it has stayed a
       // moment, and never right after a send, whose paste briefly shows there.
       let agentText = false;
@@ -279,11 +286,15 @@ export function PromptEditor({
               sentAt.current + SEND_GRACE_MS,
             );
       if (settleAt > now) schedule(settleAt - now);
-      const next = promptEditorPlacement(
-        result,
-        boxSeen.current,
-        agentText && settleAt <= now,
-      );
+      const decision = decidePromptEditor({
+        scan: result,
+        boxSeen: boxSeen.current,
+        agentHasText: agentText && settleAt <= now,
+        status: agentStatus,
+        menu: screenShowsSelection(rows),
+      });
+      selection.current = decision.selection;
+      const next = decision.placement;
       setPlacement((current) =>
         samePlacement(current, next) ? current : next,
       );
@@ -314,7 +325,7 @@ export function PromptEditor({
       resized.dispose();
       observer.disconnect();
     };
-  }, [agent, dockOnly, term]);
+  }, [agent, agentStatus, dockOnly, term]);
 
   const hidden = placement.mode === "hidden";
   const frame =
@@ -446,6 +457,7 @@ export function PromptEditor({
       applicationCursor: term.modes.applicationCursorKeysMode,
       bindings: getShortcutSnapshot().preset.bindings,
       enterSends,
+      selection: selection.current,
     });
     if (!action) return false;
     if (action.type === "send") void send();

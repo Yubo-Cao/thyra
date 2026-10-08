@@ -40,7 +40,10 @@ function ctrlOnly(event: PromptEditorKeyEvent, key: string) {
  * Cmd+Enter on macOS) always sends. With an empty draft
  * the keys an agent reads outside its text (interrupt, history, mode toggle,
  * menus) go straight to the terminal, so they keep working with the editor
- * on top. IME composition always belongs to the editor.
+ * on top. While the pane asks for a choice (`selection`, see
+ * decidePromptEditor), an empty draft also passes digits, y/n and
+ * Left/Right, so a numbered menu or a yes/no prompt answers as in the
+ * terminal. IME composition always belongs to the editor.
  */
 export function promptEditorKeyAction(
   event: PromptEditorKeyEvent,
@@ -49,11 +52,13 @@ export function promptEditorKeyAction(
     applicationCursor,
     bindings,
     enterSends,
+    selection = false,
   }: {
     empty: boolean;
     applicationCursor: boolean;
     bindings: ShortcutBindings;
     enterSends: boolean;
+    selection?: boolean;
   },
 ): PromptEditorKeyAction | null {
   if (event.isComposing || event.keyCode === 229) return null;
@@ -79,7 +84,19 @@ export function promptEditorKeyAction(
     if (event.key === "ArrowUp") return { type: "forward", data: arrow("A") };
     if (event.key === "ArrowDown") return { type: "forward", data: arrow("B") };
     if (event.key === "Tab") return { type: "forward", data: "\t" };
+    if (selection && event.key === "ArrowLeft")
+      return { type: "forward", data: arrow("D") };
+    if (selection && event.key === "ArrowRight")
+      return { type: "forward", data: arrow("C") };
   }
+  if (
+    selection &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    /^[0-9yYnN]$/.test(event.key)
+  )
+    return { type: "forward", data: event.key };
   if (
     event.key === "Tab" &&
     event.shiftKey &&
