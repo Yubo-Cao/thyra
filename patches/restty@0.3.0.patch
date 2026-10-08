@@ -1,6 +1,9 @@
 diff --git a/node_modules/restty/.bun-tag-1da53985077d5c64 b/.bun-tag-1da53985077d5c64
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-687b841979c3ee82 b/.bun-tag-687b841979c3ee82
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-68ce9866d42b44f0 b/.bun-tag-68ce9866d42b44f0
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
@@ -11,6 +14,9 @@ diff --git a/node_modules/restty/.bun-tag-8747452460d81869 b/.bun-tag-8747452460
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-92384439fc045d9a b/.bun-tag-92384439fc045d9a
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-95cfacde6c8bda23 b/.bun-tag-95cfacde6c8bda23
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-b4b2630233cad9a5 b/.bun-tag-b4b2630233cad9a5
@@ -43,9 +49,18 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc66699343e843 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..99aeb0d2a6abcf9a7801ec5f90063d689ade7e1a 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
+@@ -1428,7 +1428,7 @@ function createInputHandler2(options = {}) {
+   const positionToCell = options.positionToCell || (() => ({ row: 0, col: 0 }));
+   const positionToPixel = options.positionToPixel || null;
+   const mouse = new MouseController({
+-    sendReply: replySink,
++    sendReply: options.sendMouseReport || replySink,
+     positionToCell,
+     positionToPixel: positionToPixel ?? undefined,
+     getWheelCellMetrics: options.getWheelCellMetrics
 @@ -34366,7 +34366,7 @@ function createResttyFontResourceStore(options = {}) {
  }
  
@@ -153,7 +168,41 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
        event.preventDefault();
        return;
      }
-@@ -53444,7 +53447,7 @@ function createFontRuntimeGridHelpers(options) {
+@@ -48836,7 +48839,7 @@ function createScrollbarRuntime(options) {
+   let pendingPrecisionScrollPx = 0;
+   const hasCoarsePointer = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(any-pointer: coarse)").matches;
+   const hasTouchPoints = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
+-  const nativeScrollHost = !hasCoarsePointer && !hasTouchPoints && typeof document !== "undefined" ? createNativeScrollbarHost({
++  const nativeScrollHost = options.nativeScrollbar !== false && !hasCoarsePointer && !hasTouchPoints && typeof document !== "undefined" ? createNativeScrollbarHost({
+     canvas: getCanvas(),
+     getGridState,
+     noteScrollActivity: () => {
+@@ -49075,6 +49078,7 @@ function createRuntimeInteraction(options) {
+     return true;
+   };
+   const scrollbarRuntime = createScrollbarRuntime({
++    nativeScrollbar: options.nativeScrollbar,
+     scrollbarState,
+     selectionState,
+     linkState,
+@@ -50397,11 +50401,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
+   const factor = primaryMetric / primary.unitsPerEm / (fallbackMetric / fallback.unitsPerEm);
+   return Number.isFinite(factor) && factor > 0 ? factor : 1;
+ }
++function isSameFaceMetrics(primary, fallback) {
++  return primary.unitsPerEm === fallback.unitsPerEm && primary.ascender === fallback.ascender && primary.lineHeight === fallback.lineHeight && primary.exHeight === fallback.exHeight && primary.capHeight === fallback.capHeight;
++}
+ function resolveFallbackScaleAdjustment(primaryFont, fallbackFont) {
+   if (!primaryFont || !fallbackFont)
+     return 1;
+   const primary = measureFallbackFace(primaryFont);
+   const fallback = measureFallbackFace(fallbackFont);
++  if (isSameFaceMetrics(primary, fallback))
++    return 1;
+   if (fallback.icWidth > 0) {
+     return normalizedMetricFactor(icWidth(primary), primary, fallback.icWidth, fallback);
+   }
+@@ -53444,7 +53453,7 @@ function createFontRuntimeGridHelpers(options) {
      const advanceUnits = glyphId !== undefined && glyphId !== null ? primary.font.advanceWidth(glyphId) : shapeClusterWithFont(primary, "M").advance;
      const cellW = Math.max(1, Math.round(advanceUnits * scale));
      const lineHeight = fontHeightUnits2(primary.font) * scale;
@@ -162,7 +211,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
      const baselineOffset = primary.font.ascender * scale;
      const yPad = Math.max(0, (cellH - lineHeight) * 0.5);
      return { cellW, cellH, fontSizePx, scale, lineHeight, baselineOffset, yPad };
-@@ -53668,8 +53671,12 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53668,8 +53677,12 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -176,7 +225,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
        const result = tryIndex(emojiIndex);
        if (result !== null)
          return result;
-@@ -53679,7 +53686,7 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53679,7 +53692,7 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -185,7 +234,26 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
      if (firstIndex >= 0) {
        setBoundedMap(fontState.fontPickCache, cacheKey, firstIndex, fontPickCacheLimit);
        return firstIndex;
-@@ -55278,14 +55285,8 @@ function createResttyRuntime2(options) {
+@@ -55175,6 +55188,7 @@ function createResttyRuntime2(options) {
+   let lastRenderState = null;
+   const runtimeInteraction = createRuntimeInteraction({
+     attachCanvasEvents,
++    nativeScrollbar: terminal.nativeScrollbar ?? true,
+     touchSelectionMode,
+     touchSelectionLongPressMs,
+     touchSelectionMoveThresholdPx,
+@@ -55249,6 +55263,10 @@ function createResttyRuntime2(options) {
+   inputHandler = createInputHandler2({
+     getCursorPosition: resolveCursorForCpr,
+     sendReply: (data) => {
++      if (forwardTerminalReplies)
++        ptyTransport.sendInput(data);
++    },
++    sendMouseReport: (data) => {
+       ptyTransport.sendInput(data);
+     },
+     positionToCell,
+@@ -55278,14 +55296,8 @@ function createResttyRuntime2(options) {
        const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
        return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
      },
@@ -202,7 +270,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
      getKittyKeyboardFlags: () => {
        if (!wasm || !wasmHandle)
          return 0;
-@@ -55332,9 +55333,11 @@ function createResttyRuntime2(options) {
+@@ -55332,9 +55344,11 @@ function createResttyRuntime2(options) {
        getLastKeydownSeq: () => lastKeydownSeq,
        getLastKeydownSeqAt: () => lastKeydownSeqAt,
        keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
@@ -215,7 +283,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
    bindCanvasEvents();
    const fontState = {
      font: null,
-@@ -55828,6 +55831,8 @@ function createResttyRuntime2(options) {
+@@ -55828,6 +55842,8 @@ function createResttyRuntime2(options) {
      },
      set lastRenderState(value) {
        lastRenderState = value;
@@ -224,7 +292,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
      }
    });
    const readRuntimeControllerState = () => ({
-@@ -55923,7 +55928,7 @@ function createResttyRuntime2(options) {
+@@ -55923,7 +55939,7 @@ function createResttyRuntime2(options) {
        maxScrollback: terminal.maxScrollback
      }
    });
@@ -233,7 +301,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
      terminal: {
        setFontSize: applyFontSize,
        setLigatures,
-@@ -55950,6 +55955,62 @@ function createResttyRuntime2(options) {
+@@ -55950,6 +55966,62 @@ function createResttyRuntime2(options) {
        getShaderStages
      }
    });
@@ -296,3 +364,19 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..058f4a551c8814a5e58640d86afc6669
  }
  
  export { createInputHandler2, isSymbolFont2, isNerdSymbolFont2, fontMaxCellSpan2, fontScaleOverride2, fontRasterScale2, fontHeightUnits2, computeCellMetrics2, createGridState2, updateGridState2, clamp2, createFontEntry2, resetFontEntry2, createFontManagerState2, fontHasGlyph2, fontAdvanceUnits2, glyphWidthUnits2, NERD_SYMBOL_RANGES2, isNerdSymbolCodepoint2, pickFontIndexForText2, tryFetchFontBuffer2, tryLocalFontBuffer2, loadPrimaryFontBuffer2, loadFallbackFontBuffers2, NERD_CONSTRAINTS2, getNerdConstraint2, createPtyConnection2, connectPty2, disconnectPty2, sendPtyInput2, sendPtyResize2, isPtyConnected2, createWebSocketPtyTransport2, BOX_STYLE_NONE2, BOX_STYLE_LIGHT2, BOX_STYLE_HEAVY2, BOX_STYLE_DOUBLE2, isPrivateUse2, isSpaceCp2, isBoxDrawing2, isBlockElement2, isLegacyComputing2, isPowerline2, isBraille2, isGraphicsElement2, isSymbolCp2, applyAlpha2, pushRect2, pushRectSnapped2, pushRectBox2, drawBlockElement2, BOX_LINE_MAP2, drawBoxDrawing2, drawBraille2, drawPowerline2, constrainGlyphBox2, RECT_SHADER2, GLYPH_SHADER2, initWebGPUCore2, initWebGPU2, initWebGL2, ensureInstanceBuffer2, configureContext2, ensureGLInstanceBuffer2, createResizeState2, createScrollbarState2, createImeState2, setPreedit2, clearPreedit2, startComposition2, updateComposition2, endComposition2, syncImeSelection2, updateImePosition2, PREEDIT_BG2, PREEDIT_ACTIVE_BG2, PREEDIT_FG2, PREEDIT_UL2, PREEDIT_CARET2, createSelectionState2, clearSelection2, startSelection2, updateSelection2, endSelection2, selectionForRow2, normalizeSelectionCell2, positionToCell2, getSelectionText2, copyToClipboard2, pasteFromClipboard2, createResttyRuntimeSession2, getDefaultResttyRuntimeSession2, cloneShaderStages, normalizeShaderStage, normalizeShaderStages, sortShaderStages, parseGhosttyColor2, colorToFloats2, colorToRgbU322, parseGhosttyTheme2, listBuiltinThemeNames2, isBuiltinThemeName2, getBuiltinThemeSource2, getBuiltinTheme2, createResttyRuntime2 };
+diff --git a/dist/runtime/core/config.d.ts b/dist/runtime/core/config.d.ts
+index 139fc00ee1ddb8a041d654f2d7f7a572402d0e36..ea5638b4acf2de8e87c8ec3373fd5bb30c2242d8 100644
+--- a/dist/runtime/core/config.d.ts
++++ b/dist/runtime/core/config.d.ts
+@@ -86,6 +86,11 @@ export type ResttyTerminalConfig = {
+      * Set false when a backend/headless terminal is authoritative for replies.
+      */
+     forwardTerminalReplies?: boolean;
++    /**
++     * Wrap the canvas in a native overflow scroller for local scrollback
++     * (desktop pointers only). Set false when the host owns scrolling.
++     */
++    nativeScrollbar?: boolean;
+     /** Attach resize/focus listeners to the window object. */
+     attachWindowEvents?: boolean;
+     /** Attach pointer/keyboard listeners to the canvas. */

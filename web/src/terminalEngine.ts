@@ -78,7 +78,13 @@ export type RenderState = {
 };
 /** The engine internals Thyra's restty patch exposes (patches/restty@*.patch). */
 type ResttyHost = {
-  grid(): { cols: number; rows: number; cellW: number; cellH: number };
+  grid(): {
+    cols: number;
+    rows: number;
+    cellW: number;
+    cellH: number;
+    dpr: number;
+  };
   renderState(): RenderState | null;
   selection(): { anchor: Cell; focus: Cell; dragging: boolean } | null;
   select(anchor: Cell, focus: Cell): void;
@@ -612,6 +618,12 @@ export class TerminalEngine {
         autoResize: false,
         showResizeOverlay: false,
         forwardTerminalReplies: false,
+        // Herdr owns the scrollback and Thyra the wheel; restty's native
+        // scroller would also keep the canvas on a sticky, will-change layer
+        // that it shifts by fractional pixels, which blurs the text.
+        nativeScrollbar: false,
+        // Blend glyph edges in sRGB like browser text on both backends.
+        alphaBlending: "native",
         touchSelectionMode: "off",
         maxScrollbackBytes: Math.max(64_000, this.opts.scrollback * 400),
       },
@@ -629,6 +641,9 @@ export class TerminalEngine {
     this.host.onRender(() => {
       firstRender();
       this.rendered();
+      // Not every pixel ratio change reports a media query change.
+      if (this.host?.grid().dpr !== window.devicePixelRatio)
+        requestAnimationFrame(this.refit);
     });
     runtime.events.subscribe((event) => {
       if (event.type !== "term-size") return;
@@ -646,6 +661,7 @@ export class TerminalEngine {
     if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
     else this.fit();
     this.checkMetrics();
+    this.watchPixelRatio();
     const pending = this.pending;
     this.pending = "";
     if (pending) this.transportCallbacks?.onData?.(pending);
@@ -883,12 +899,10 @@ export class TerminalEngine {
   /** Cell size in CSS layout pixels, before the engine loads an estimate. */
   cellSize(): { width: number; height: number } {
     const grid = this.host?.grid();
-    const scale =
-      this.screen.width > 0 && this.screen.offsetWidth > 0
-        ? this.screen.offsetWidth / this.screen.width
-        : 1 / (window.devicePixelRatio || 1);
-    if (grid?.cellW && grid.cellH)
-      return { width: grid.cellW * scale, height: grid.cellH * scale };
+    if (grid?.cellW && grid.cellH) {
+      const dpr = grid.dpr || window.devicePixelRatio || 1;
+      return { width: grid.cellW / dpr, height: grid.cellH / dpr };
+    }
     // The bundled font advances 600/1000 em and spans 1320/1000 em.
     const dpr = window.devicePixelRatio || 1;
     const px = Math.max(1, Math.round(Math.round(this.opts.fontSize) * dpr));
@@ -920,8 +934,13 @@ export class TerminalEngine {
 
   private proposeSize() {
     const cell = this.cellSize();
-    const width = this.screen.offsetWidth || this.element.clientWidth;
-    const height = this.screen.offsetHeight || this.element.clientHeight;
+    // The layout size, fractional and before transforms (a follow scale).
+    const shown = this.screen.offsetWidth > 0;
+    const style = shown ? getComputedStyle(this.screen) : null;
+    const width =
+      Number.parseFloat(style?.width ?? "") || this.element.clientWidth;
+    const height =
+      Number.parseFloat(style?.height ?? "") || this.element.clientHeight;
     return {
       cols: Math.max(2, Math.floor(width / cell.width) || 80),
       rows: Math.max(1, Math.floor(height / cell.height) || 24),
@@ -933,25 +952,61 @@ export class TerminalEngine {
     this.fixedSize = null;
     this.screen.style.removeProperty("width");
     this.screen.style.removeProperty("height");
-    if (this.runtime) {
+    // Cell metrics follow the pixel ratio; remeasure when it moved.
+    const grid = this.host?.grid();
+    if (this.runtime && (!grid?.cellW || grid.dpr !== window.devicePixelRatio))
       this.runtime.interaction.updateSize(true);
-      const grid = this.host?.grid();
-      if (grid?.cols && grid.rows) this.setSize(grid.cols, grid.rows);
-      return;
-    }
     const size = this.proposeSize();
+    if (this.runtime) this.sizeScreen(size.cols, size.rows);
     this.setSize(size.cols, size.rows);
   }
 
   /** Pins the grid to a size (another device's), whatever the element's. */
   resize(cols: number, rows: number) {
     this.fixedSize = { cols, rows };
+    this.sizeScreen(cols, rows);
+    this.setSize(cols, rows);
+  }
+
+  /**
+   * Sizes the canvas to whole cells on the device-pixel grid: its backing
+   * store is exactly its CSS size times the pixel ratio, so the compositor
+   * shows it 1:1 instead of resampling (and blurring) every glyph.
+   */
+  private sizeScreen(cols: number, rows: number) {
+    this.runtime?.interaction.resize(cols, rows);
     const cell = this.cellSize();
     this.screen.style.width = `${cols * cell.width}px`;
     this.screen.style.height = `${rows * cell.height}px`;
-    this.runtime?.interaction.resize(cols, rows);
-    this.setSize(cols, rows);
   }
+
+  /** Refits when the pixel ratio changes (another display, page zoom). */
+  private watchPixelRatio() {
+    const query = window.matchMedia?.(
+      `(resolution: ${window.devicePixelRatio || 1}dppx)`,
+    );
+    query?.addEventListener(
+      "change",
+      () => {
+        this.watchPixelRatio();
+        this.refit();
+      },
+      { once: true, signal: this.abort.signal },
+    );
+  }
+
+  /**
+   * Moves the canvas to the current device-pixel grid at the same size, then
+   * lets the view refit (cell sizes round differently per pixel ratio).
+   */
+  private refit = () => {
+    if (this.disposed || !this.runtime) return;
+    if (this.host?.grid().dpr === window.devicePixelRatio) return;
+    this.sizeScreen(this.cols, this.rows);
+    const { width, height } = this.cellSize();
+    this.metrics = `${width}x${height}`;
+    this.metricsEmitter.fire();
+  };
 
   private setSize(cols: number, rows: number) {
     this.stateGeneration++;
