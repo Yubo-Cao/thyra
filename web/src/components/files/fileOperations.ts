@@ -37,7 +37,60 @@ export function fileOperations(
       }>("file.trash", { paths }),
     restore: (tokens: string[]) =>
       call<{ paths: string[] }>("file.restore", { tokens }),
+    tools: () => call<FileTools>("file.tools", {}),
+    extract: (path: string) =>
+      call<{ job_id: string }>("file.extract", { path }),
+    compress: (paths: string[], format: CompressFormat) =>
+      call<{ job_id: string }>("file.compress", { paths, format }),
+    job: (id: string) => call<ArchiveJob>("file.job", { job_id: id }),
+    cancelJob: (id: string) => call("file.job_cancel", { job_id: id }),
   };
+}
+
+export type CompressFormat = "zip" | "tar.gz";
+
+/** What the host can do: `true`, or the tool to install. */
+export type FileTools = {
+  os: string;
+  extract: Record<string, true | string>;
+  compress: Record<CompressFormat, true | string>;
+  thumbnails: { image: boolean; video: boolean; pdf: boolean };
+};
+
+export type ArchiveJob = {
+  id: string;
+  kind: "extract" | "compress";
+  state: "running" | "done" | "failed" | "canceled";
+  files: number;
+  bytes: number;
+  total_bytes: number;
+  result?: string;
+  error?: string;
+};
+
+const ARCHIVE_SUFFIXES: Array<[string, string]> = [
+  [".tar.gz", "tar.gz"],
+  [".tgz", "tar.gz"],
+  [".tar.xz", "tar.xz"],
+  [".txz", "tar.xz"],
+  [".tar.zst", "tar.zst"],
+  [".tzst", "tar.zst"],
+  [".tar.bz2", "tar.bz2"],
+  [".tbz2", "tar.bz2"],
+  [".tbz", "tar.bz2"],
+  [".tar", "tar"],
+  [".zip", "zip"],
+  [".jar", "zip"],
+  [".7z", "7z"],
+  [".rar", "rar"],
+];
+
+/** The archive format a name has (the keys of `FileTools.extract`). */
+export function archiveFormatOf(name: string) {
+  const lower = name.toLowerCase();
+  return (
+    ARCHIVE_SUFFIXES.find(([suffix]) => lower.endsWith(suffix))?.[1] ?? null
+  );
 }
 
 export type FileOperationsClient = ReturnType<typeof fileOperations>;

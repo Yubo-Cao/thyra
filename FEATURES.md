@@ -253,6 +253,14 @@ that another fetch could change.
   copy, paste, rename, download, trash and the full menu); further taps add or
   remove rows, and moving the finger after the long-press drags the selection
   onto a folder.
+- **Extract here** unpacks zip, tar, tar.gz/tgz, tar.xz, tar.zst, tar.bz2,
+  and 7z or rar when 7-Zip, unrar or bsdtar is installed, into a new folder
+  named after the archive. **Compress to .zip** or **.tar.gz** packs the
+  selection. Both run on the host that owns the files (the SSH host for SSH
+  connections) with its own tar, unzip, zip, bsdtar or 7-Zip, show progress in
+  a toast with **Cancel**, and say which tool to install when one is missing.
+  Archives with absolute or `..` paths, or symlinks that point outside, are
+  refused, and extraction stops past 100,000 entries or 8 GiB.
 - Text previews provide highlighting, line numbers, search, and refresh.
   Markdown has a Preview/Source switch with the active mode highlighted;
   Mermaid fences and `.mmd`/`.mermaid` files

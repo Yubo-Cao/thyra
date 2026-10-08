@@ -103,7 +103,13 @@ import {
   typeaheadMatch,
   visibleRows,
 } from "./fileManagerModel";
-import { fileOperations, isConflictError } from "./fileOperations";
+import {
+  type ArchiveJob,
+  type FileTools,
+  archiveFormatOf,
+  fileOperations,
+  isConflictError,
+} from "./fileOperations";
 import { FileIcon, FileThumbnail } from "./FileVisual";
 import "./FileManager.css";
 
@@ -316,6 +322,19 @@ export function FileManager({
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [width, setWidth] = useState<"narrow" | "medium" | "wide">("wide");
   const clipboard = useFileClipboard();
+  const [tools, setTools] = useState<FileTools | null>(null);
+  useEffect(() => {
+    let current = true;
+    ops.tools().then(
+      (result) => {
+        if (current) setTools(result);
+      },
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [ops]);
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -1004,6 +1023,87 @@ export function FileManager({
     }
   };
 
+  const jobProgress = (job: ArchiveJob) => {
+    const size = formatSize(job.bytes);
+    if (job.kind === "compress") return t("{size} written", { size });
+    // The entry list is read (and checked) before anything is written.
+    if (!job.files && !job.bytes) return t("Checking the archive...");
+    if (job.total_bytes) {
+      return t("{percent}% · {count} files", {
+        percent: Math.min(99, Math.floor((job.bytes / job.total_bytes) * 100)),
+        count: job.files,
+      });
+    }
+    return t("{size} · {count} files", { size, count: job.files });
+  };
+
+  /**
+   * Follow an archive job in a toast with progress and Cancel, then show
+   * its result and select the new folder or archive.
+   */
+  const runJob = async (
+    start: () => Promise<{ job_id: string }>,
+    titles: { running: string; done: string; failed: string },
+    folder: string,
+  ) => {
+    const token = contextRef.current;
+    let id = "";
+    const toastId = toast.show(
+      {
+        title: titles.running,
+        loading: true,
+        description: t("Starting..."),
+        action: {
+          label: t("Cancel"),
+          onAction: () => {
+            if (id) void ops.cancelJob(id).catch(() => {});
+          },
+        },
+      },
+      { timeout: 0 },
+    );
+    const finish = (content: Parameters<typeof toast.show>[0]) => {
+      const final = { ...content, loading: false, action: undefined };
+      if (!toast.update(toastId, final, { timeout: 6000 })) {
+        toast.show(final, { timeout: 6000 });
+      }
+    };
+    try {
+      id = (await start()).job_id;
+      let job: ArchiveJob;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        job = await ops.job(id);
+        if (job.state !== "running") break;
+        toast.update(toastId, { description: jobProgress(job) });
+      }
+      if (!isCurrent(token)) return;
+      if (job.state === "done" && job.result) {
+        finish({
+          title: titles.done,
+          tone: "success",
+          description: baseName(job.result),
+        });
+        afterChange([folder], { paths: [job.result] });
+        select(job.result);
+      } else if (job.state === "canceled") {
+        finish({ title: t("Canceled"), tone: "neutral" });
+      } else {
+        finish({
+          title: titles.failed,
+          tone: "danger",
+          description: job.error,
+        });
+      }
+    } catch (reason) {
+      finish({
+        title: titles.failed,
+        tone: "danger",
+        description: (reason as Error).message,
+      });
+    }
+  };
+
   /** The folder a paste or new entry targets for the current selection. */
   const targetFolder = (list: FileExplorerEntry[] = selected) => {
     const first = list[0];
@@ -1099,6 +1199,50 @@ export function FileManager({
             uploadRef.current?.click();
           },
           trash: (list) => void trashEntries(list),
+          extract: (entry) =>
+            void runJob(
+              () => ops.extract(entry.path),
+              {
+                running: t("Extracting {name}", { name: entry.name }),
+                done: t("Extracted {name}", { name: entry.name }),
+                failed: t("Could not extract {name}", { name: entry.name }),
+              },
+              parentPath(entry.path, scope),
+            ),
+          extractBlocked: (entry) => {
+            const format = isDirectoryEntry(entry)
+              ? null
+              : archiveFormatOf(entry.name);
+            if (!format) return undefined;
+            const available = tools?.extract[format];
+            if (available === true || !tools) return null;
+            return t("Needs {tool} on the host", {
+              tool: available ?? format,
+            });
+          },
+          compress: (list, format) =>
+            void runJob(
+              () =>
+                ops.compress(
+                  list.map((entry) => entry.path),
+                  format,
+                ),
+              {
+                running:
+                  list.length === 1
+                    ? t("Compressing {name}", { name: list[0]!.name })
+                    : t("Compressing {count} items", { count: list.length }),
+                done: t("Created a .{format} archive", { format }),
+                failed: t("Could not compress"),
+              },
+              list[0] ? parentPath(list[0].path, scope) : here,
+            ),
+          compressBlocked: (format) => {
+            const available = tools?.compress[format];
+            return available === true || !tools
+              ? null
+              : t("Needs {tool} on the host", { tool: available ?? format });
+          },
           remove: (list) => setPendingDelete(list),
         }),
   };
@@ -1112,6 +1256,15 @@ export function FileManager({
         : null;
     }
     if (!THUMBNAIL_EXTENSIONS.has(extension)) return null;
+    // Skip requests the host cannot answer (no ffmpeg, pdftoppm or vips).
+    const kind = /^(?:mp4|m4v|mov|webm|mkv|avi|ogv)$/.test(extension)
+      ? "video"
+      : extension === "pdf"
+        ? "pdf"
+        : /^(?:avif|heic|heif|tif|tiff)$/.test(extension)
+          ? "image"
+          : null;
+    if (kind && tools && !tools.thumbnails[kind]) return null;
     const size = Math.min(256, Math.ceil(72 * (window.devicePixelRatio || 1)));
     return fileUrl("/file/thumbnail", {
       path: entry.path,

@@ -30,6 +30,11 @@ export type FileMenuActions = {
   paste?: (folder: string) => void;
   create?: (kind: "file" | "directory", folder: string) => void;
   upload?: (folder: string) => void;
+  /** Extract an archive here; a string is the missing tool. */
+  extract?: (entry: FileExplorerEntry) => void;
+  extractBlocked?: (entry: FileExplorerEntry) => string | null | undefined;
+  compress?: (entries: FileExplorerEntry[], format: "zip" | "tar.gz") => void;
+  compressBlocked?: (format: "zip" | "tar.gz") => string | null | undefined;
   /** Move to the host's trash (Undo restores). */
   trash?: (entries: FileExplorerEntry[]) => void;
   /** Delete permanently, after a confirmation. */
@@ -97,6 +102,37 @@ export function selectionMenu(
             onAction: () => actions.duplicate?.(entries),
           },
         ),
+      ],
+    },
+    {
+      items: [
+        ...item(
+          single &&
+            actions.extract &&
+            actions.extractBlocked?.(single) !== undefined && {
+              id: "extract",
+              label: t("Extract here"),
+              description:
+                actions.extractBlocked(single) ??
+                t("Into a new folder named after the archive"),
+              disabled: !!actions.extractBlocked(single),
+              onAction: () => actions.extract?.(single),
+            },
+        ),
+        ...(actions.compress
+          ? (["zip", "tar.gz"] as const).map((format) => {
+              const blocked = actions.compressBlocked?.(format);
+              return {
+                id: `compress-${format}`,
+                label:
+                  format === "zip"
+                    ? t("Compress to .zip")
+                    : t("Compress to .tar.gz"),
+                ...(blocked ? { description: blocked, disabled: true } : {}),
+                onAction: () => actions.compress?.(entries, format),
+              };
+            })
+          : []),
       ],
     },
     {

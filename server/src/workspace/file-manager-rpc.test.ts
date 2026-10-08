@@ -77,6 +77,9 @@ test("workspace-scope file-manager calls cannot leave the checkout", async () =>
         { paths: ["src/a.txt"], destination: path, mode: "move" },
       ],
       ["file.trash", { paths: [path] }],
+      ["file.extract", { path: `${path}/a.zip` }],
+      ["file.extract", { path: "a.zip", destination: path }],
+      ["file.compress", { paths: [path] }],
     ] as const) {
       await expect(call(method, params)).rejects.toThrow(
         "invalid file explorer path",
@@ -128,6 +131,38 @@ test("trash returns tokens that undo only in the same workspace", async () => {
   })) as { paths: string[] };
   expect(restored.paths).toEqual(["src/a.txt"]);
   expect(await readFile(join(workspace, "src/a.txt"), "utf8")).toBe("a");
+});
+
+test("archive jobs are found only through their workspace", async () => {
+  if (!Bun.which("tar") || !Bun.which("gzip")) return;
+  const { fileRpc } = handlers();
+  const tools = (await fileRpc["file.tools"]!({ workspace_id: "w1" })) as {
+    compress: Record<string, true | string>;
+  };
+  expect(tools.compress["tar.gz"]).toBe(true);
+  const { job_id } = (await fileRpc["file.compress"]!({
+    workspace_id: "w1",
+    paths: ["src"],
+    format: "tar.gz",
+  })) as { job_id: string };
+  await expect(
+    fileRpc["file.job"]!({ workspace_id: "w2", job_id }),
+  ).rejects.toThrow("unknown archive job");
+  await expect(
+    fileRpc["file.job_cancel"]!({ workspace_id: "w2", job_id }),
+  ).rejects.toThrow("unknown archive job");
+  let job: { state: string; result?: string } = { state: "running" };
+  while (job.state === "running") {
+    await Bun.sleep(20);
+    job = (await fileRpc["file.job"]!({ workspace_id: "w1", job_id })) as {
+      state: string;
+      result?: string;
+    };
+  }
+  expect(job).toMatchObject({ state: "done", result: "src.tar.gz" });
+  await expect(
+    fileRpc["file.extract"]!({ workspace_id: "w1", path: "src/a.txt" }),
+  ).rejects.toThrow("not a supported archive");
 });
 
 test("thumbnail paths cannot leave the checkout", async () => {

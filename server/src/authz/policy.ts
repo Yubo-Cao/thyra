@@ -172,6 +172,13 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // Undo tokens restore only into the workspace and scope that trashed them.
   "file.trash": write(r.files),
   "file.restore": write(r.files),
+  // Archives run host tools; jobs are found only through their workspace.
+  "file.extract": write(r.files),
+  "file.compress": write(r.files),
+  "file.job_cancel": write(r.files),
+  "file.job": read(r.files),
+  // Which archive and thumbnail tools the host has (what to offer).
+  "file.tools": read(r.files),
   "git.diff_summary": read(r.workspace),
   "git.diff_file": read(r.workspace),
   "git.pull": write(r.workspace),

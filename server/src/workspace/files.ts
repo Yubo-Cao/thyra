@@ -55,7 +55,20 @@ import {
   type ConflictPolicy,
   TRANSFER_MAX_PATHS,
   createFileOperations,
+  validateEntryName,
 } from "./file-manager";
+import {
+  type CompressFormat,
+  archiveCapabilities,
+  archiveFormat,
+  archiveStem,
+  compressScript,
+  compressTool,
+  createArchiveJobs,
+  extractScript,
+  extractTool,
+} from "./file-archive";
+import { createHostToolProbe } from "./file-host";
 import { createTrash, createTrashRegistry } from "./file-trash";
 import {
   sharedThumbnailService,
@@ -84,6 +97,8 @@ export function createFileHandlers({
   const operations = createFileOperations();
   const trash = createTrash();
   const trashed = createTrashRegistry();
+  const archiveJobs = createArchiveJobs();
+  const probeTools = createHostToolProbe();
 
   /** Home of the runtime user on the host that owns the files. */
   async function hostHome(host: string | undefined) {
@@ -357,6 +372,116 @@ export function createFileHandlers({
     });
     const paths = await trash.restore(scope.host, entries);
     return scopeReply(scope, { paths: paths.map(scope.toScope) });
+  }
+
+  function hostLabel(host: string | undefined) {
+    return host ? `the SSH host ${host}` : "this computer";
+  }
+
+  async function fileTools(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.tools");
+    const info = await probeTools(scope.host);
+    const tools = info.tools;
+    return scopeReply(scope, {
+      os: info.os,
+      ...archiveCapabilities(info),
+      thumbnails: {
+        image: ["vipsthumbnail", "magick", "convert", "ffmpeg"].some((tool) =>
+          tools.has(tool as never),
+        ),
+        video: tools.has("ffmpegthumbnailer") || tools.has("ffmpeg"),
+        pdf: tools.has("pdftoppm") || tools.has("vipsthumbnail"),
+      },
+    });
+  }
+
+  async function extractArchive(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.extract");
+    const archive = await scope.toHost(params.path);
+    const format = archiveFormat(archive);
+    if (!format) throw new Error("this file is not a supported archive");
+    const choice = extractTool(format, await probeTools(scope.host));
+    if (!choice.tool) {
+      throw new Error(
+        `extracting .${format} needs ${choice.missing} on ${hostLabel(scope.host)}`,
+      );
+    }
+    const parent =
+      params.destination === undefined
+        ? posix.dirname(archive)
+        : await scope.toHost(params.destination, true);
+    const jobId = archiveJobs.start(
+      scope.host,
+      scope.workspaceId,
+      "extract",
+      extractScript({
+        archive,
+        parent,
+        folder: archiveStem(posix.basename(archive)),
+        tool: choice.tool,
+      }),
+    );
+    return scopeReply(scope, { job_id: jobId });
+  }
+
+  async function compressEntries(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.compress");
+    const format: CompressFormat =
+      params.format === "tar.gz" ? "tar.gz" : "zip";
+    const paths = await scopePaths(scope, params.paths);
+    const choice = compressTool(format, await probeTools(scope.host));
+    if (!choice.tool) {
+      throw new Error(
+        `creating .${format} needs ${choice.missing} on ${hostLabel(scope.host)}`,
+      );
+    }
+    // Archive members are named relative to the selection's common folder.
+    let base = posix.dirname(paths[0]!);
+    for (const path of paths) {
+      while (base !== "/" && !path.startsWith(`${base}/`)) {
+        base = posix.dirname(base);
+      }
+    }
+    const names = paths.map((path) =>
+      base === "/" ? path.slice(1) : path.slice(base.length + 1),
+    );
+    const stem =
+      params.name === undefined
+        ? paths.length === 1
+          ? posix.basename(paths[0]!)
+          : "Archive"
+        : validateEntryName(params.name).replace(/\.(zip|tar\.gz|tgz)$/i, "");
+    const jobId = archiveJobs.start(
+      scope.host,
+      scope.workspaceId,
+      "compress",
+      compressScript({
+        base,
+        names,
+        output: posix.join(base, `${stem}.${format}`),
+        format,
+        tool: choice.tool,
+      }),
+    );
+    return scopeReply(scope, { job_id: jobId });
+  }
+
+  async function archiveJob(params: Record<string, unknown>, cancel = false) {
+    const scope = await fileScope(
+      params,
+      cancel ? "file.job_cancel" : "file.job",
+    );
+    if (cancel) {
+      return scopeReply(
+        scope,
+        archiveJobs.cancel(params.job_id, scope.workspaceId),
+      );
+    }
+    const job = archiveJobs.status(params.job_id, scope.workspaceId);
+    return scopeReply(scope, {
+      ...job,
+      ...(job.result ? { result: scope.toScope(job.result) } : {}),
+    });
   }
 
   function joinFilesystemPath(root: string, name: string) {
@@ -820,6 +945,12 @@ export function createFileHandlers({
       "file.transfer": transferEntries,
       "file.trash": trashEntries,
       "file.restore": restoreEntries,
+      "file.tools": fileTools,
+      "file.extract": extractArchive,
+      "file.compress": compressEntries,
+      "file.job": (params: Record<string, unknown>) => archiveJob(params),
+      "file.job_cancel": (params: Record<string, unknown>) =>
+        archiveJob(params, true),
     } as Record<string, (params: Record<string, unknown>) => Promise<unknown>>,
 
     uploadWorkspaceFile: uploadFile,

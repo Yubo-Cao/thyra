@@ -407,6 +407,26 @@ with a `.trashinfo` written first with `O_EXCL` and removed again if the move
 fails. macOS uses `~/.Trash` and other hosts `$XDG_DATA_HOME/thyra/trash`
 (`%LOCALAPPDATA%\thyra\trash` for a Windows bridge).
 
+`file.extract` (`path`, optional `destination` folder) and `file.compress`
+(`paths`, `format: "zip" | "tar.gz"`, optional `name`) start a job and answer
+its `job_id`; `file.job` reports `state` (`running`, `done`, `failed`,
+`canceled`), `files`, `bytes`, `total_bytes` (when the format lists sizes) and
+the new path as `result`, and `file.job_cancel` stops it. Jobs belong to the
+connection runtime and are found only with the workspace that started them;
+finished jobs are kept for ten minutes. `file.tools` reports, per archive
+format, `true` or the tool to install, and which thumbnail kinds the host can
+make. Extraction (`file-archive.ts`) lists the entry names first and refuses
+any absolute, drive-letter or `..` name and more than 100,000 entries (and,
+for zip and 7z, more than 8 GiB uncompressed); unpacks with the host's tool
+into `mktemp -d` beside the destination while a monitor checks entry count and
+`du` size every 0.3 s against the same limits; then refuses any symlink whose
+target is absolute or lexically leaves the staging folder, drops FIFOs,
+sockets and device nodes, and renames the folder to `<archive stem>` (or
+`<stem> (2)`). Compression archives paths relative to the selection's common
+folder into a temporary file that is renamed when complete. Cancel and every
+failure kill the tool and delete the staging folder or temporary file; over
+SSH the remote script cleans up on the hang-up or broken pipe.
+
 `GET .../file/thumbnail` (`workspace_id`, `path`, `scope`, `size`, `mtime`,
 `bytes`) returns a WebP of at most 64, 128 or 256 px, or `204` when the file
 has none. Raster images (PNG, JPEG, WebP, GIF, BMP) decode in the bridge with
