@@ -59,3 +59,27 @@ export function terminalFocusBlockedByOverlay(
   if (!activeElement) return false;
   return Boolean(activeElement.closest(TERMINAL_FOCUS_OVERLAY_SELECTOR));
 }
+
+type FocusTarget = Pick<HTMLElement, "addEventListener" | "focus">;
+
+/**
+ * Sends focus that lands on the terminal's canvas on to its text input while
+ * `active()` holds. restty moves canvas focus to the input itself once its
+ * runtime exists, and it refocuses the canvas first: two canvas listeners
+ * would then bounce focus between canvas and input. WebKit dispatches those
+ * focus events re-entrantly, so the bounce overflows the stack.
+ */
+export function redirectScreenFocus(
+  screen: FocusTarget,
+  input: Pick<HTMLElement, "focus">,
+  active: () => boolean,
+  signal: AbortSignal,
+) {
+  screen.addEventListener(
+    "focus",
+    () => {
+      if (active()) input.focus({ preventScroll: true });
+    },
+    { signal },
+  );
+}

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  redirectScreenFocus,
   terminalFocusBlockedByOverlay,
   terminalPointerShouldBlurInput,
   terminalTapOpensInput,
@@ -80,4 +81,69 @@ test("taps on the input rows near the bottom or cursor open the keyboard", () =>
   expect(terminalTapOpensInput(10, 40, null)).toBe(false);
   expect(terminalTapOpensInput(11, 40, 12)).toBe(true);
   expect(terminalTapOpensInput(2, 4, null)).toBe(true);
+});
+
+/**
+ * Focus as WebKit runs it: focus() on an element that is not focused fires
+ * its listeners synchronously, inside the caller.
+ */
+function reentrantFocusPair() {
+  let active: string | null = null;
+  let depth = 0;
+  const element = (name: string) => {
+    const listeners: (() => void)[] = [];
+    return {
+      addEventListener: (_type: string, listener: () => void) => {
+        listeners.push(listener);
+      },
+      focus: () => {
+        if (active === name) return;
+        if (++depth > 50) throw new RangeError("Maximum call stack size");
+        active = name;
+        try {
+          for (const listener of listeners) listener();
+        } finally {
+          depth--;
+        }
+      },
+    };
+  };
+  return {
+    screen: element("screen"),
+    input: element("input"),
+    active: () => active,
+  };
+}
+
+describe("redirectScreenFocus", () => {
+  test("moves canvas focus to the input before the engine runs", () => {
+    const { screen, input, active } = reentrantFocusPair();
+    redirectScreenFocus(
+      screen as never,
+      input as never,
+      () => true,
+      new AbortController().signal,
+    );
+    screen.focus();
+    expect(active()).toBe("input");
+  });
+
+  test("leaves canvas focus to restty once it runs", () => {
+    const { screen, input, active } = reentrantFocusPair();
+    let engineRunning = false;
+    redirectScreenFocus(
+      screen as never,
+      input as never,
+      () => !engineRunning,
+      new AbortController().signal,
+    );
+    // restty's own canvas focus handler: refocus the canvas, then the input.
+    screen.addEventListener("focus", () => {
+      screen.focus();
+      input.focus();
+    });
+    engineRunning = true;
+    expect(() => screen.focus()).not.toThrow();
+    expect(active()).toBe("input");
+  });
 });

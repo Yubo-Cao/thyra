@@ -2,6 +2,7 @@ import type { PtyTransport } from "restty";
 import type { ResttyRuntime } from "restty/internal/runtime";
 import { TERMINAL_FONT_FAMILY } from "./appearance";
 import { afterStartup, holdStartup } from "./startupGate";
+import { redirectScreenFocus } from "./terminalFocus";
 import {
   addTerminalFontStylesheets,
   sortTerminalFontChunks,
@@ -628,10 +629,11 @@ export class TerminalEngine {
   private bindPreEngineInput() {
     const { signal } = this.preEngineInput;
     // A click focuses the canvas; text has to land in the input.
-    this.screen.addEventListener(
-      "focus",
-      () => this.textarea.focus({ preventScroll: true }),
-      { signal },
+    redirectScreenFocus(
+      this.screen,
+      this.textarea,
+      () => !this.runtime,
+      signal,
     );
     const send = (text: string) => {
       if (text && !this.disposed) this.dataEmitter.fire(text);
