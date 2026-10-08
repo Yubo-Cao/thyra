@@ -1,10 +1,10 @@
 import { createStore, useStore } from "zustand";
 import { thyraLocalStorage } from "./browserStorage";
+import { type LocalEditorMode, storedLocalEditorMode } from "./latencyAuto";
 
-export type ShellEditorMode = "auto" | "on" | "off";
-const stored = thyraLocalStorage.getItem("shellEditorMode");
+export type ShellEditorMode = LocalEditorMode;
 const preferences = createStore<{ mode: ShellEditorMode }>(() => ({
-  mode: stored === "on" || stored === "off" ? stored : "auto",
+  mode: storedLocalEditorMode(thyraLocalStorage.getItem("shellEditorMode")),
 }));
 export const useShellEditorMode = () => useStore(preferences, (s) => s.mode);
 export function setShellEditorMode(mode: ShellEditorMode) {

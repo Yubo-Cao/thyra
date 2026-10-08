@@ -274,10 +274,8 @@ export default {
     "显示或隐藏 Agent 窗格的提示词编辑器",
   "Move focus between the terminal and its prompt editor":
     "在终端与其提示词编辑器之间切换焦点",
-  "Open a local editor over the input box of agent panes, so typing never waits for the connection":
-    "在 Agent 窗格的输入框上打开本地编辑器，输入不必等待网络连接",
-  "Open the prompt editor by default on agent panes":
-    "在 Agent 窗格默认打开提示词编辑器",
+  "A local editor over the input box of agent panes, so typing never waits for the connection. Auto opens it on slow connections":
+    "在 Agent 窗格的输入框上覆盖本地编辑器，输入不必等待网络连接。自动模式在连接较慢时打开",
   "Voice typing: hold to talk, tap to start or insert":
     "语音输入：按住说话，轻按开始或插入",
   "Search the raw file preview": "在原始文件预览中搜索",

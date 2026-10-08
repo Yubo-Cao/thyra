@@ -32,8 +32,8 @@ import {
   Type as TypeIcon,
 } from "lucide-react";
 import {
-  setPromptEditorOpensByDefault,
-  usePromptEditorOpensByDefault,
+  setPromptEditorMode,
+  usePromptEditorMode,
 } from "../promptEditorPreferences";
 import {
   ACCENT_OPTIONS,
@@ -192,7 +192,7 @@ export function ConfigurationDialog({
     visibleTabs.includes(initialTab) ? initialTab : "Appearance",
   );
   const voiceCleanup = useVoiceCleanupMode();
-  const promptEditorByDefault = usePromptEditorOpensByDefault();
+  const promptEditorMode = usePromptEditorMode();
   const shellMode = useShellEditorMode();
   const [swipeFingers, setSwipeFingers] = useState(() =>
     String(paneSwipeFingers()),
@@ -417,13 +417,18 @@ export function ConfigurationDialog({
         icon={<TextCursorInput size={15} />}
         title={t("Prompt editor")}
         description={t(
-          "Open a local editor over the input box of agent panes, so typing never waits for the connection",
+          "A local editor over the input box of agent panes, so typing never waits for the connection. Auto opens it on slow connections",
         )}
       >
-        <Switch
-          aria-label={t("Open the prompt editor by default on agent panes")}
-          checked={promptEditorByDefault}
-          onChange={setPromptEditorOpensByDefault}
+        <Select
+          aria-label={t("Prompt editor")}
+          value={promptEditorMode}
+          options={[
+            { value: "auto", label: t("Auto") },
+            { value: "on", label: t("On") },
+            { value: "off", label: t("Off") },
+          ]}
+          onChange={(value) => setPromptEditorMode(value as ShellEditorMode)}
         />
       </PreferenceRow>
       <PreferenceRow

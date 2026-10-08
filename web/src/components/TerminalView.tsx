@@ -60,6 +60,8 @@ import {
   usePromptEditorOpen,
 } from "../promptEditorPreferences";
 import { useStartupSettled } from "../startupGate";
+import { useHighLatency } from "../latencyAuto";
+import { useTerminalComposerHasDraft } from "../useTerminalComposerDraft";
 import {
   type TerminalConnectionIdentity,
   terminalConnectionKey,
@@ -537,9 +539,13 @@ export function TerminalView({
     promptAgent !== "unknown" &&
     localEditors &&
     !control.access.viewOnly;
+  const highLatency = useHighLatency();
+  const promptDraft = useTerminalComposerHasDraft(promptEditorKey);
   const promptEditorOpen = usePromptEditorOpen(
     promptEditorKey,
     promptEditorAvailable,
+    highLatency,
+    promptDraft,
   );
   const startupSettled = useStartupSettled();
   const showPromptEditor =

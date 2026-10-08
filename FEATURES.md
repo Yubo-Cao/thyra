@@ -108,7 +108,8 @@ See [link contracts](docs/ARCHITECTURE.md#links).
 
 ### Prompt Editor
 
-In the desktop layout, including tablets such as the iPad, agent panes (Claude Code, Codex, and other detected agents; never plain shells) get a local prompt editor laid over the agent's own input box, so typing never waits for the connection: nothing reaches the pane until the draft is sent.
+In the desktop layout, including tablets such as the iPad, agent panes (Claude Code, Codex, and other detected agents; never plain shells) can get a local prompt editor laid over the agent's own input box, so typing never waits for the connection: nothing reaches the pane until the draft is sent.
+**Configuration > Behavior > Prompt editor** offers Auto (the default), On, and Off. Auto uses the [shell command line](#shell-command-line)'s measurement: it opens the editor above a median bridge round-trip time of 60 ms and closes it below 40 ms, unless the pane still holds a draft; on a fast link keys go straight to the terminal.
 It finds Claude Code's and Codex's input box on screen and takes its place in the terminal's font and colors, growing upward with the draft to 40% of the pane; for other agents it docks at the pane bottom.
 While the agent shows a menu or dialog (a permission prompt, a picker) or has text in its own box (recalled history, an interrupted prompt), the editor steps aside and keys go to the terminal; it returns, with its draft, when the box is empty again.
 
@@ -117,7 +118,6 @@ While the agent shows a menu or dialog (a permission prompt, a picker) or has te
 - The editor starts as a plain text field and becomes a Monaco editor (multiple cursors with `Cmd/Ctrl+D`, Alt+click, and `Ctrl+Shift+L`, find, Markdown highlighting): prefetched after the first output on a link the browser reports as fast 4G, otherwise downloaded on the first click or keystroke in the editor, then cached; Data Saver and 2G links keep the plain field; tablets such as iPads get Monaco too, and phones keep the mobile composer.
   `Cmd/Ctrl+Shift+V` previews the draft as Markdown, and pasted images upload and insert their paths.
 - `Ctrl+Alt+P` or the pane header button shows or hides it for the pane, and `Ctrl+Alt+I` moves focus between the terminal and the editor; clicking the terminal types into the terminal.
-  **Configuration > Behavior > Prompt editor** sets whether agent panes open it by default.
   Drafts stay in memory, shared with the mobile composer, and viewers without control see no editor.
 - On a touch-first device the editor takes focus only when tapped, and a send button stands in for the shortcut; once a hardware keyboard is detected (a shortcut, a navigation key, or a key press outside a text field), it focuses itself as on a desktop.
 

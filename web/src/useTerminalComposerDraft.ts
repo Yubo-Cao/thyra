@@ -35,3 +35,17 @@ export function useTerminalComposerDraft(draftKey: string) {
   }, [draftKey]);
   return { text, setText, submissionPending, uploadCount };
 }
+
+/** Whether a pane's draft holds text; re-renders only when that changes. */
+export function useTerminalComposerHasDraft(draftKey: string): boolean {
+  const [hasDraft, setHasDraft] = useState(
+    () => !!readTerminalComposerDraft(draftKey),
+  );
+  useEffect(() => {
+    setHasDraft(!!readTerminalComposerDraft(draftKey));
+    return subscribeTerminalComposerDraft(draftKey, (text) =>
+      setHasDraft(!!text),
+    );
+  }, [draftKey]);
+  return hasDraft;
+}

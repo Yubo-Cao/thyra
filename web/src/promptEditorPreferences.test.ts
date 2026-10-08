@@ -2,25 +2,34 @@ import { describe, expect, test } from "bun:test";
 import { promptEditorOpen } from "./promptEditorPreferences";
 
 describe("prompt editor visibility", () => {
-  const defaults = { byDefault: true, panes: {} };
+  const auto = { mode: "auto" as const, panes: {} };
 
-  test("agent panes follow the default until toggled", () => {
-    expect(promptEditorOpen(defaults, "p1", true)).toBe(true);
+  test("Auto follows the link and keeps a pane with a draft", () => {
+    expect(promptEditorOpen(auto, "p1", true, false)).toBe(false);
+    expect(promptEditorOpen(auto, "p1", true, true)).toBe(true);
+    expect(promptEditorOpen(auto, "p1", true, false, true)).toBe(true);
+  });
+
+  test("On and Off ignore the link", () => {
+    const on = { mode: "on" as const, panes: {} };
+    const off = { mode: "off" as const, panes: {} };
+    expect(promptEditorOpen(on, "p1", true, false)).toBe(true);
+    expect(promptEditorOpen(off, "p1", true, true, true)).toBe(false);
+  });
+
+  test("a pane's own toggle wins over the mode", () => {
     expect(
-      promptEditorOpen({ ...defaults, byDefault: false }, "p1", true),
+      promptEditorOpen({ ...auto, panes: { p1: false } }, "p1", true, true),
     ).toBe(false);
     expect(
-      promptEditorOpen({ byDefault: true, panes: { p1: false } }, "p1", true),
-    ).toBe(false);
-    expect(
-      promptEditorOpen({ byDefault: false, panes: { p1: true } }, "p1", true),
+      promptEditorOpen({ mode: "off", panes: { p1: true } }, "p1", true, false),
     ).toBe(true);
   });
 
   test("shell panes never show it, whatever was toggled", () => {
-    expect(promptEditorOpen(defaults, "p1", false)).toBe(false);
+    expect(promptEditorOpen(auto, "p1", false, true, true)).toBe(false);
     expect(
-      promptEditorOpen({ byDefault: true, panes: { p1: true } }, "p1", false),
+      promptEditorOpen({ mode: "on", panes: { p1: true } }, "p1", false, true),
     ).toBe(false);
   });
 });

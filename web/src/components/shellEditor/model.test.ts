@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import type { ShellHistoryEntry } from "../../../../shared/shell";
 import {
   applyCompletion,
-  autoEnabled,
   commonPrefix,
   ghostText,
   historyMatches,
@@ -95,15 +94,6 @@ test("completion preserves server quoting and suffix beyond the replace range", 
       { text: "scripts/", kind: "dir" },
     ]),
   ).toBe("s");
-});
-test("Auto median uses strict thresholds and hysteresis", () => {
-  expect(autoEnabled([], true)).toBe(false);
-  expect(autoEnabled([11, 10, 300], false)).toBe(false);
-  expect(autoEnabled([150, 200, 300], false)).toBe(true);
-  expect(autoEnabled([60], false)).toBe(false);
-  expect(autoEnabled([40], true)).toBe(true);
-  expect(autoEnabled([39], true)).toBe(false);
-  expect(autoEnabled([30, 90], false)).toBe(false);
 });
 test("shell keys distinguish execution, newline, IME and empty passthrough", () => {
   const key = (key: string, options = {}, empty = false) =>

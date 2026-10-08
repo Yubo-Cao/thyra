@@ -1,38 +1,45 @@
 import { createStore, useStore } from "zustand";
 import { thyraLocalStorage } from "./browserStorage";
+import { type LocalEditorMode, storedLocalEditorMode } from "./latencyAuto";
 
-// Whether agent panes open the desktop prompt editor by default (stored per
-// browser), and this page's per-pane choices (memory only, keyed like the
-// composer drafts, so a reconnect starts again from the default).
-const STORAGE_KEY = "promptEditorAgentDefault";
+// When agent panes show the desktop prompt editor (stored per browser), and
+// this page's per-pane choices (memory only, keyed like the composer
+// drafts, so a reconnect starts again from the mode).
+const STORAGE_KEY = "promptEditorMode";
 
 type PromptEditorPreferences = {
-  byDefault: boolean;
+  mode: LocalEditorMode;
   panes: Readonly<Record<string, boolean>>;
 };
 
-function storedDefault() {
-  return thyraLocalStorage.getItem(STORAGE_KEY) !== "0";
-}
-
 const preferences = createStore<PromptEditorPreferences>()(() => ({
-  byDefault: storedDefault(),
+  mode: storedLocalEditorMode(thyraLocalStorage.getItem(STORAGE_KEY)),
   panes: {},
 }));
 
-/** The editor exists only on agent panes; there it follows the pane's toggle. */
+/**
+ * The editor exists only on agent panes. There a pane's own toggle wins;
+ * otherwise On and Off decide, and Auto shows it while the link is slow
+ * (`highLatency`) or while the pane still holds a draft (`hasDraft`), so a
+ * faster link never takes away text being written.
+ */
 export function promptEditorOpen(
   state: PromptEditorPreferences,
   paneKey: string,
   agentPane: boolean,
+  highLatency: boolean,
+  hasDraft = false,
 ): boolean {
-  return agentPane && (state.panes[paneKey] ?? state.byDefault);
+  if (!agentPane) return false;
+  const toggled = state.panes[paneKey];
+  if (toggled !== undefined) return toggled;
+  if (state.mode === "auto") return highLatency || hasDraft;
+  return state.mode === "on";
 }
 
-export function setPromptEditorOpensByDefault(open: boolean) {
-  if (open) thyraLocalStorage.removeItem(STORAGE_KEY);
-  else thyraLocalStorage.setItem(STORAGE_KEY, "0");
-  preferences.setState({ byDefault: open });
+export function setPromptEditorMode(mode: LocalEditorMode) {
+  thyraLocalStorage.setItem(STORAGE_KEY, mode);
+  preferences.setState({ mode });
 }
 
 export function setPromptEditorPaneOpen(paneKey: string, open: boolean) {
@@ -41,15 +48,17 @@ export function setPromptEditorPaneOpen(paneKey: string, open: boolean) {
   }));
 }
 
-export function usePromptEditorOpensByDefault(): boolean {
-  return useStore(preferences, (state) => state.byDefault);
+export function usePromptEditorMode(): LocalEditorMode {
+  return useStore(preferences, (state) => state.mode);
 }
 
 export function usePromptEditorOpen(
   paneKey: string,
   agentPane: boolean,
+  highLatency: boolean,
+  hasDraft: boolean,
 ): boolean {
   return useStore(preferences, (state) =>
-    promptEditorOpen(state, paneKey, agentPane),
+    promptEditorOpen(state, paneKey, agentPane, highLatency, hasDraft),
   );
 }

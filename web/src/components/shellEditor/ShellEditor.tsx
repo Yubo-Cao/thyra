@@ -16,6 +16,7 @@ import type {
 import { bridge, type ConnectionClient } from "../../api";
 import { t } from "../../i18n";
 import { editorMayTakeFocus } from "../../localEditorPolicy";
+import { useHighLatency } from "../../latencyAuto";
 import { useShellEditorMode } from "../../shellEditorPreferences";
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import {
@@ -30,7 +31,6 @@ import { ShellSuggestions } from "../ui/ShellSuggestions";
 import { historyCache, readDraft, refreshHistory, writeDraft } from "./cache";
 import {
   applyCompletion,
-  autoEnabled,
   commonPrefix,
   ghostText,
   historyMatches,
@@ -69,7 +69,7 @@ export function ShellEditor({
   onSpanChange(span: EditorSpan | null): void;
 }) {
   const mode = useShellEditorMode();
-  const [auto, setAuto] = useState(false);
+  const auto = useHighLatency();
   const [state, setState] = useState<ShellInputState | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -143,13 +143,6 @@ export function ShellEditor({
     writeDraft(draftKey, next);
     surface.current?.setText(next, at);
   };
-  useEffect(() => {
-    const update = () =>
-      setAuto((previous) => autoEnabled(bridge.recentRoundTrips, previous));
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, []);
   useEffect(() => {
     let live = true;
     let revision = 0;
