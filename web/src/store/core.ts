@@ -9,7 +9,6 @@ import {
   type ConnectionClient,
   type ConnectionStatus,
   type ConnectionSummary,
-  type PopupStatePush,
 } from "../api";
 import {
   type BrowserNavigation,
@@ -43,8 +42,6 @@ export interface ServerSessionState {
   layout: PaneLayout | null;
   selectedPaneId: string | null;
   recentPaneIds: string[];
-  /** A plugin's session-modal floating pane (e.g. Herdr Float), if open. */
-  popup: PopupInfo | null;
   error: string | null;
   pendingFocusWorkspaceId: string | null;
   pendingFocusWorkspaceSeq: number;
@@ -52,8 +49,6 @@ export interface ServerSessionState {
   terminalAttachEpoch: number;
   lastRefresh: number;
 }
-
-export type PopupInfo = NonNullable<PopupStatePush["popup"]>;
 
 export interface State extends ServerSessionState {
   status: ConnectionStatus;
@@ -159,7 +154,6 @@ export function emptyServerSessionState(
     layout: null,
     selectedPaneId: null,
     recentPaneIds: [],
-    popup: null,
     error: null,
     pendingFocusWorkspaceId: null,
     pendingFocusWorkspaceSeq: 0,
@@ -169,17 +163,13 @@ export function emptyServerSessionState(
   };
 }
 
-const SESSION_KEYS = Object.keys(emptyServerSessionState()) as Array<
-  keyof ServerSessionState
->;
-/** Session keys a patch mirrors into the active connection's cache (not `popup`). */
-export const SERVER_SESSION_KEYS = SESSION_KEYS.filter(
-  (key) => key !== "popup",
-);
+export const SERVER_SESSION_KEYS = Object.keys(
+  emptyServerSessionState(),
+) as Array<keyof ServerSessionState>;
 
 export function serverSessionFromState(snapshot: State): ServerSessionState {
   return Object.fromEntries(
-    SESSION_KEYS.map((key) => [key, snapshot[key]]),
+    SERVER_SESSION_KEYS.map((key) => [key, snapshot[key]]),
   ) as unknown as ServerSessionState;
 }
 

@@ -40,7 +40,6 @@ const LATE_SHORTCUT_IDS: ShortcutId[] = [
   "pane.zoom",
   "inspector.expand",
   "panes.search",
-  "plugin.herdrFloat.toggle",
   "terminal.ctrlEnter",
   "voice.pushToTalk",
   "composer.preview",
@@ -53,6 +52,7 @@ const RETIRED_SHORTCUT_IDS = new Set([
   "annotation.submit",
   "annotations.copy",
   "annotations.prefill",
+  "plugin.herdrFloat.toggle",
 ]);
 export function validateShortcutPreset(value: unknown): ShortcutPreset {
   if (!value || typeof value !== "object")

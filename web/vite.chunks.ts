@@ -25,9 +25,8 @@ export function packageName(id: string): string | null {
 // re-download it on a slow link. Groups are ordered by how rarely they change.
 const REACT_PACKAGES = new Set(["react", "react-dom", "scheduler"]);
 // The GPU terminal engine (WASM core, renderer, text shaper) loads lazily
-// after the terminal view; the popup terminal still uses xterm.
+// after the terminal view.
 const TERMINAL_PACKAGES = new Set(["restty", "text-shaper"]);
-const XTERM_PACKAGES = new Set(["@xterm/xterm"]);
 const UI_PACKAGE =
   /^(?:@floating-ui\/.+|tslib|@heroui\/.+|react-aria|react-aria-components|react-stately|@react-aria\/.+|@react-stately\/.+|@react-types\/.+|@internationalized\/.+|@swc\/helpers|tailwind-variants|tailwind-merge|clsx|client-only)$/;
 
@@ -71,7 +70,6 @@ export function vendorChunk(
   if (!name) return undefined;
   if (REACT_PACKAGES.has(name)) return "vendor-react";
   if (TERMINAL_PACKAGES.has(name)) return "vendor-terminal";
-  if (XTERM_PACKAGES.has(name)) return "vendor-xterm";
   if (!UI_PACKAGE.test(name)) return undefined;
   if (eagerSet(meta).has(id)) return "vendor-ui";
   return ARIA_PACKAGE.test(name) ? "vendor-aria" : undefined;

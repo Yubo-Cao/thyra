@@ -29,7 +29,6 @@ import { useAppShortcuts } from "./app/useAppShortcuts";
 import { useWorkspaceInspector } from "./app/useWorkspaceInspector";
 import {
   mobileTabSheet,
-  PopupOverlay,
   projectLauncherPanel,
   StartupLayers,
   useIdlePrefetch,
@@ -284,7 +283,6 @@ export default function App() {
       </div>
       {startupReady ? <StartupLayers /> : null}
       {viewportDebugEnabled ? <ViewportDebugOverlay /> : null}
-      <PopupOverlay terminalTheme={terminalTheme} />
       {paneJump.open ? <PaneJumpOverlay paneJump={paneJump} /> : null}
     </div>
   );

@@ -86,9 +86,8 @@ metadata. Geometry changes require a full surface.
 
 Decoders bound collections and validate boot/projection/surface revisions, spans,
 and hyperlink indices. Invalid updates close the stream and clear its baseline;
-viewers reattach for a fresh full frame rather than keep stale output. A
-connection-wide endpoint observer follows the focused Space to report popup
-identity even without pane viewers; the popup terminal uses direct attach.
+viewers reattach for a fresh full frame rather than keep stale output. Herdr
+plugin popups are decoded to keep the surface in sync but not presented.
 Kitty graphics are not presented.
 
 A Herdr restart or live handoff keeps pane ids but gives every pane a new terminal id, and drops every endpoint stream.
@@ -117,7 +116,7 @@ one, so a slow link skips to the newest screen instead of queueing repaints.
 A missing base makes the browser send `terminal.frame_ack { resync: true }` and
 the bridge answers with a full frame. Attach and resize also restart from a
 full frame, and a 10 s acknowledgement timeout releases the window. Viewers
-that do not opt in, popups, and legacy streams keep base64 `bytes` repaints.
+that do not opt in, and legacy streams keep base64 `bytes` repaints.
 A viewer may thin only its own stream: `min_frame_interval_ms` (0–10000, on `terminal.attach` or `terminal.stream`) sends at most the newest frame per interval, and `terminal.stream { paused: true }` sends none until it is resumed with a full frame.
 Full repaints (attach, resize, resync) are never held back, and other viewers of the same terminal keep their rate.
 The browser writes only changed rows into the terminal while its viewport is unchanged.
@@ -169,7 +168,7 @@ requests and invalidates clipboard ownership.
   `0x1f` in a shell and `CSI 47;5u` in a Kitty-keyboard app, as from Ghostty.
   IME composition, dead keys, paste and on-screen keyboards keep the
   `terminal.input` byte path; both share one ordered queue per terminal.
-  Direct attaches (popups, `THYRA_DISABLE_ENDPOINT`) encode keys as xterm-style legacy
+  Direct attaches (`THYRA_DISABLE_ENDPOINT`) encode keys as xterm-style legacy
   bytes in the bridge. On macOS, Cmd belongs to Thyra's bindings and native
   copy/paste; other Cmd chords reach the pane with Super, except the browser's
   reload/address/tab/window/zoom/find/select-all chords, which the opt-in exclusive keyboard
@@ -546,7 +545,7 @@ a bridge-local lease map with the same response shape. If a stock direct client
 or another bridge already controls the terminal, the browser falls back to
 observe mode and does not evict it until the user chooses **Take control**.
 
-Herdr lists every client-socket shell as a `tui:<client id>` participant, including the bridge's own endpoint shells (terminal sessions and the popup observer).
+Herdr lists every client-socket shell as a `tui:<client id>` participant, including the bridge's own endpoint shells (terminal sessions).
 Herdr does not tell a shell its id, so the bridge brackets each of its handshakes with `collaboration.list` calls and records the new `tui:` id; a window claims ids only when there are no more of them than its concurrent bridge handshakes, so a real client attaching at the same moment stays visible.
 Recorded ids are shared by every profile using the same client socket, reset when the endpoint boot ID changes, and removed from forwarded events and collaboration RPC results, so browsers see only other browsers and real Herdr clients.
 
@@ -620,7 +619,7 @@ Everything else waits for the terminal engine and the first terminal output (`st
 The gate's fallback for output that never comes starts only once a terminal attach has completed, so it cannot expire while the terminal code is still downloading.
 Zstandard and compression dictionaries are not offered: WebKit supports neither, and quality-11 Brotli is smaller than zstd for these bundles.
 
-The build splits long-lived vendor code into `vendor-react`, the lazy `vendor-terminal` (the terminal engine), `vendor-xterm` (the popup terminal), `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
+The build splits long-lived vendor code into `vendor-react`, the lazy `vendor-terminal` (the terminal engine), `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
 Chunks that import from the entry still change with it.
 It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the terminal engine and its WASM core, and the core font stylesheet with its regular and bold slices.
 
@@ -713,7 +712,7 @@ A test compares the decisions for an instance admin, a workspace owner, editor a
 Cross-workspace results and events are filtered per principal (`server/src/authz/filters.ts`): workspace, tab, pane and agent lists (workspaces gain the caller's `access` role), presence snapshots, claims and display owners (`collaboration.display` events and `terminal.display` results too), bridge status and connection lists (no profile details), and forwarded Herdr events, which pass, are filtered, become a bare `session.resync_required`, or are dropped (unknown events without a workspace are dropped).
 For a pane-scoped guest the same filters keep only the pane, the tab holding it and the workspace, shrink `pane.layout` to the one pane, pass events about only that pane, resync on ones that reshape it, and drop the rest; its presence updates never name another place.
 Web Push subscriptions record their account and receive only notifications for workspaces it may see; guests cannot subscribe.
-Routine host-level calls a member's page makes (`terminal.host_theme`, `terminal.watch_popup`) get a fixed harmless answer instead of an error.
+Routine host-level calls a member's page makes (`terminal.host_theme`) get a fixed harmless answer instead of an error.
 
 **Single writer.** The bridge mirrors each connection's pane claims from every collaboration snapshot and from the results of the claim, release and leave calls it makes.
 `writer` entries (`terminal.input`, `terminal.key`, `pane.send_*`, `pane.paste`, `terminal.focus`, `terminal.resize`, `terminal.relay_resize`, `terminal.display`) are refused while another principal's participant holds the pane; input to an unclaimed pane first claims it for the caller with 15 seconds of protection.

@@ -153,7 +153,6 @@ export function createLegacyConnectionRuntime(args: {
   config: SshTunnelConfig;
   logger?: Logger;
   safeSend: SafeSend;
-  broadcast?: (payload: string, context?: string) => void;
   clientLabel: (ws: ServerWebSocket<unknown>) => string;
   markRpcError: MarkRpcError;
   onEvent: (event: unknown, identity: ConnectionIdentity) => void;
@@ -364,7 +363,6 @@ export function createLegacyConnectionRuntime(args: {
     onPaneAlternateScreen: (pane, active) =>
       shell.state.setAlternate(pane, active),
     connectionId: identity.id,
-    broadcast: args.broadcast,
     logger: logger.child("terminal"),
     connectionGeneration: args.connectionGeneration,
     formatError: sanitizeConnectionError,
@@ -387,14 +385,6 @@ export function createLegacyConnectionRuntime(args: {
         5000,
       );
       assertEndpointCreationSource(source, result?.pane);
-    },
-    focusedWorkspaceId: async () => {
-      const result = await herdr.call("workspace.list", {}, 5000);
-      return (
-        result?.workspaces?.find(
-          (workspace: { focused?: boolean }) => workspace.focused,
-        )?.workspace_id ?? null
-      );
     },
     // Herdr errors surface as the attach error; "no pane found" then means
     // Herdr really has no such terminal (e.g. renumbered by a live handoff).
@@ -528,8 +518,6 @@ export function createLegacyConnectionRuntime(args: {
     taskEvents.handleHerdrEvent(event);
     agentStatusSubscriptions.handleHerdrEvent(event);
     const name = (event as { event?: string })?.event;
-    if (name === "workspace.focused")
-      terminalBridge.refreshPopupObserverFocus();
     if (isStructuralEvent(name)) topology.invalidate();
     // Herdr names this event with an underscore; the local fallback uses a dot.
     if (name === "collaboration_updated" || name === "collaboration.updated") {

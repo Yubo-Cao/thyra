@@ -143,8 +143,7 @@ function readPanes(r: SurfaceReader, metadata = false): PaneSurfacePaneMeta[] {
   return panes;
 }
 
-/** Same two fields the surface has always carried, now kept: a popup is
- * presented with its own title and requested size. */
+/** A plugin popup's requested size; decoded to stay in sync, not presented. */
 function readPopupSize(r: SurfaceReader): PopupSize {
   return r.option(() =>
     r.number(1) === 0

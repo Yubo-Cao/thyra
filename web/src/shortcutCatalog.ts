@@ -20,11 +20,6 @@ const descriptions: Description[] = [
   ],
   ["zen.toggle", msg("Toggle Zen mode on desktop"), msg("Global")],
   ["panes.recent", msg("Open the recent pane switcher"), msg("Global")],
-  [
-    "plugin.herdrFloat.toggle",
-    msg("Toggle the Herdr Float popup shell"),
-    msg("Global"),
-  ],
   ["panes.search", msg("Search panes in the pane switcher"), msg("Global")],
   ["workspaces.open", msg("Open Workspaces"), msg("Global")],
   ["files.toggle", msg("Toggle File Explorer"), msg("Global")],

@@ -3,7 +3,7 @@
 //
 // Layering (each module imports only from those above it):
 //   preferences -> core -> notifications -> refresh -> actions -> updates
-//   -> popup -> connection -> navigation -> workspaces, worktrees, git
+//   -> connection -> navigation -> workspaces, worktrees, git
 import { bridge, type ConnectionSummary } from "../api";
 import { prepareAppUpdate, servesOtherBuild } from "../appServiceWorker";
 import { hostCapable } from "../capabilities";
@@ -30,7 +30,6 @@ import {
   reloadTaskNotificationPreferences,
   restoreTaskNotifications,
 } from "./notifications";
-import { handlePopupPush, popupActions } from "./popup";
 import { taskNotificationStorageChanged } from "./preferences";
 import { handleHerdrEvent, refreshNow } from "./refresh";
 import {
@@ -52,7 +51,6 @@ export {
   noticeAutoDismissDelay,
   useStoreSelector,
   type Notice,
-  type PopupInfo,
   type State,
   type UpdateInfo,
 } from "./core";
@@ -103,7 +101,6 @@ function init() {
   });
   bridge.onStatus(handleStatus);
   bridge.onEvent(handleHerdrEvent);
-  bridge.onPopup(handlePopupPush);
   bridge.onControl((control) => {
     if (control.type === "pause_connection") {
       store.pauseConnection(
@@ -159,7 +156,6 @@ export const store = {
   ...workspaceActions,
   ...worktreeActions,
   ...gitActions,
-  ...popupActions,
   ...notificationActions,
   ...updateActions,
 

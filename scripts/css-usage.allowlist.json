@@ -1,18 +1,6 @@
 [
   {
-    "prefix": "xterm",
-    "reason": "@xterm/xterm renders terminal DOM classes, including viewport and rows."
-  },
-  {
     "prefix": "monaco-",
     "reason": "monaco-editor renders the editor DOM beneath FileEditor."
-  },
-  {
-    "prefix": "composition-view",
-    "reason": "@xterm/xterm creates the IME composition overlay at runtime."
-  },
-  {
-    "prefix": "allow-transparency",
-    "reason": "@xterm/xterm toggles this class from its allowTransparency option."
   }
 ]

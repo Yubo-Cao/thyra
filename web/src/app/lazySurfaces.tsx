@@ -1,4 +1,3 @@
-import type { TerminalTheme } from "../terminalEngine";
 import { Suspense, useEffect, useRef } from "react";
 import { commandComboboxPanel } from "../components/CommandMenu";
 import { configMenuPanel } from "../components/ConfigMenu";
@@ -15,7 +14,6 @@ import { preloadOverlays } from "../components/ui/lazyOverlays";
 import { workspaceContextMenu } from "../components/WorkspaceTree";
 import { prefetchWhenIdle } from "../idlePrefetch";
 import { lazyPanel, lazyWithReload } from "../lazyWithReload";
-import { useStoreSelector } from "../store";
 
 // Surfaces that open on demand; Latched keeps them mounted afterwards.
 export const workspaceInspectorPanel = lazyPanel("workspace-inspector", () =>
@@ -98,32 +96,6 @@ export function StartupLayers() {
     <Suspense fallback={null}>
       <LazyGlobalTooltip />
       <LazyOverlayScrollbarLayer />
-    </Suspense>
-  );
-}
-
-// Keep this import after the terminal's: Rollup lays out the shared xterm
-// vendor chunk in the order dynamic imports first reach it.
-// xterm.js is heavy; keep the overlay's own copy out of the initial bundle the
-// same way LazyTerminalView does, since most sessions never open a popup.
-const LazyPopupOverlay = lazyWithReload("popup-overlay", () =>
-  import("../components/PopupOverlay").then((module) => ({
-    default: module.PopupOverlay,
-  })),
-);
-
-export function PopupOverlay({
-  terminalTheme,
-}: {
-  terminalTheme: TerminalTheme;
-}) {
-  // Gate the dynamic import on popup presence, not just its content, so a
-  // session that never opens one never fetches xterm.js for it.
-  const hasPopup = useStoreSelector((s) => s.popup !== null);
-  if (!hasPopup) return null;
-  return (
-    <Suspense fallback={null}>
-      <LazyPopupOverlay terminalTheme={terminalTheme} />
     </Suspense>
   );
 }

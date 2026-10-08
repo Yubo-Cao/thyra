@@ -55,7 +55,7 @@ export type RpcPolicyEntry = {
   guest?: true;
   /**
    * Answer for callers the method is not allowed for, instead of an error,
-   * when the browser calls it routinely (host theme, popup state). Nothing
+   * when the browser calls it routinely (host theme). Nothing
    * is dispatched.
    */
   deniedResult?: unknown;
@@ -178,12 +178,6 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "terminal.stream": guest(session()),
   // A pane's last lines as text, read through Herdr's passive snapshot path.
   "terminal.preview_text": read(r.pane),
-  // Herdr's popup belongs to the host TUI; members see none.
-  "terminal.watch_popup": {
-    class: "read",
-    scope: "host",
-    deniedResult: { popup: null },
-  },
   // Herdr keeps one history position per pane, shared by everyone watching
   // it, so viewers never move it: they read history with terminal.history
   // and browse it locally. Editors that do not hold the pane scroll Herdr's
@@ -268,7 +262,6 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "pane.send_key": herdr(write(r.pane, { writer: "input" })),
   "pane.send_keys": herdr(write(r.pane, { writer: "input" })),
   "pane.paste": herdr(write(r.pane, { writer: "input" })),
-  "popup.close": herdr(hostWrite),
   "integration.list": herdr(admin),
   // Plugin actions run plugin-defined code on the host.
   "plugin.action.invoke": herdr(dangerous),

@@ -44,24 +44,18 @@ test("vendor groups keep lazy-only UI code out of the initial chunk", () => {
   const eagerUi = `${store}/@floating-ui+dom/node_modules/@floating-ui/dom/dist/index.mjs`;
   const lazyUi = `${store}/@heroui+react/node_modules/@heroui/react/dist/index.mjs`;
   const react = `${store}/react/node_modules/react/index.js`;
-  const xterm = `${store}/@xterm+xterm/node_modules/@xterm/xterm/lib/xterm.mjs`;
-  const webgl = `${store}/@xterm+addon-webgl/node_modules/@xterm/addon-webgl/lib/addon-webgl.mjs`;
   const engine = `${store}/restty@0.3.0/node_modules/restty/dist/chunk-c0rcpsc5.js`;
   const meta = graph({
     "/repo/web/src/main.tsx": { entry: true, imports: [eagerUi, react] },
-    "/repo/web/src/components/TerminalView.tsx": { imports: [xterm] },
+    "/repo/web/src/components/TerminalView.tsx": { imports: [engine] },
     [eagerUi]: { imports: [react] },
     [lazyUi]: { imports: [react] },
     [react]: { imports: [] },
-    [xterm]: { imports: [] },
-    [webgl]: { imports: [] },
     [engine]: { imports: [] },
   });
   expect(vendorChunk(react, meta)).toBe("vendor-react");
   expect(vendorChunk(eagerUi, meta)).toBe("vendor-ui");
   expect(vendorChunk(lazyUi, meta)).toBeUndefined();
-  expect(vendorChunk(xterm, meta)).toBe("vendor-xterm");
-  expect(vendorChunk(webgl, meta)).toBeUndefined();
   expect(vendorChunk(engine, meta)).toBe("vendor-terminal");
   expect(vendorChunk("/repo/web/src/App.tsx", meta)).toBeUndefined();
 });

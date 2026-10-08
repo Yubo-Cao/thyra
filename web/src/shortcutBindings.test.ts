@@ -374,18 +374,7 @@ test("older presets gain panel shortcuts without replacing saved assignments", (
   }
 });
 
-test("older presets keep a key assigned before the popup shortcut existed", () => {
-  for (const base of ["mac", "windows", "linux"] as const) {
-    const bindings: Partial<ShortcutBindings> = defaultShortcutBindings(base);
-    bindings["tab.close"] = bindings["plugin.herdrFloat.toggle"];
-    delete bindings["plugin.herdrFloat.toggle"];
-    const loaded = validateShortcutPreset({ ...preset(), base, bindings });
-    expect(loaded.bindings["tab.close"]).toEqual(bindings["tab.close"]!);
-    expect(loaded.bindings["plugin.herdrFloat.toggle"]).toEqual([]);
-  }
-});
-
-test("presets saved with the removed annotation actions still load", () => {
+test("presets saved with removed actions still load", () => {
   for (const base of ["mac", "windows", "linux"] as const) {
     const defaults = defaultShortcutBindings(base);
     const loaded = validateShortcutPreset({
@@ -397,6 +386,7 @@ test("presets saved with the removed annotation actions still load", () => {
         "annotation.submit": ["Ctrl+Enter"],
         "annotations.copy": ["Ctrl+Shift+C"],
         "annotations.prefill": ["Ctrl+Enter"],
+        "plugin.herdrFloat.toggle": ["Ctrl+Alt+F"],
       },
     });
     expect(loaded.bindings).toEqual(defaults);

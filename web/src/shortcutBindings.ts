@@ -27,7 +27,6 @@ const base = {
   "inspector.expand": ["Ctrl+Alt+Shift+Enter"],
   "zen.toggle": ["Ctrl+Alt+Z"],
   "panes.recent": ["Ctrl+Alt+J"],
-  "plugin.herdrFloat.toggle": ["Ctrl+Alt+F"],
   "panes.search": ["Alt+K"],
   "tab.create": ["Ctrl+Alt+T"],
   "tab.close": ["Ctrl+Alt+W"],
@@ -108,9 +107,6 @@ export function defaultShortcutBindings(
       "inspector.expand": ["Alt+Meta+Enter"],
       "zen.toggle": ["Meta+Shift+Z"],
       "panes.recent": ["Ctrl+Tab", "Ctrl+Shift+Tab"],
-      // Meta+F is the system Find shortcut on macOS; use the Ctrl+Meta
-      // chord already used for pane.left/right/up/down instead.
-      "plugin.herdrFloat.toggle": ["Ctrl+Meta+F"],
       "tab.create": ["Meta+T"],
       "tab.close": ["Meta+W"],
       "tab.previous": ["Alt+Meta+ArrowLeft"],

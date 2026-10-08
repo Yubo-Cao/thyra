@@ -202,12 +202,6 @@ export default {
   Typeset: "排版",
   Polish: "润色",
 
-  // Popup terminal
-  "Unable to attach popup terminal.": "无法连接弹出终端。",
-  "Popup terminal stream closed; reopen the popup to retry.":
-    "弹出终端流已关闭；请重新打开弹窗以重试。",
-  "Close popup": "关闭弹窗",
-
   // File link menu
   "Preview directory": "预览目录",
   "Preview file": "预览文件",

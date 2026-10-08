@@ -3,7 +3,7 @@ import { type Logger, silentLogger } from "../utils/logger";
 /**
  * Herdr registers every active client-socket shell as a collaboration
  * participant named `tui:<client id>`. The bridge's own endpoint connections
- * (terminal sessions and the popup observer) are such shells, so without this
+ * (terminal sessions) are such shells, so without this
  * registry every browser would count them as extra "Herdr TUI" collaborators.
  *
  * Herdr does not tell a shell its client id, so the id is learned from the

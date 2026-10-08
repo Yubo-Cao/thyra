@@ -75,7 +75,6 @@ const RPC_MATRIX: Record<string, string> = {
   "plugin.action.invoke": "admin",
   "plugin.disable": "-",
   "plugin.enable": "-",
-  "popup.close": "admin",
   "server.live_handoff": "-",
   "server.stop": "-",
   "session.appearance": "admin owner editor viewer outsider guest guest-pane",
@@ -102,7 +101,6 @@ const RPC_MATRIX: Record<string, string> = {
   "terminal.resize": "admin owner editor",
   "terminal.scroll": "admin owner editor",
   "terminal.stream": "admin owner editor viewer outsider guest guest-pane",
-  "terminal.watch_popup": "admin",
   "workspace.close": "admin owner",
   "workspace.create": "admin",
   "workspace.focus": "admin owner editor",
@@ -274,7 +272,7 @@ describe("authorize", () => {
       terminal_id: "nope",
     });
     expect(unknown).toMatchObject({ allowed: false });
-    // Admins keep access to ids the bridge cannot place (popups).
+    // Admins keep access to ids the bridge cannot place.
     expect(
       (await request("admin", "terminal.attach", { terminal_id: "nope" }))
         .allowed,
@@ -400,12 +398,6 @@ describe("authorize", () => {
   });
 
   test("routine host calls from members get a harmless answer", async () => {
-    expect(await request("editor", "terminal.watch_popup", {})).toMatchObject({
-      allowed: true,
-      stub: { result: { popup: null } },
-    });
-    const admin = await request("admin", "terminal.watch_popup", {});
-    expect(admin.allowed && admin.stub).toBeUndefined();
     expect((await request("viewer", "settings.get", {})).allowed).toBe(false);
   });
 

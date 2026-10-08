@@ -1001,12 +1001,6 @@ function runtimeFactoryForProfile(
         config: profileConfig,
         logger: logger.child("connection"),
         safeSend,
-        // Host-wide notices (the Herdr popup) reach instance admins only.
-        broadcast: (payload, context) => {
-          for (const ws of clients)
-            if (isInstanceAdmin(socketPrincipals.get(ws)))
-              safeSend(ws, payload, context);
-        },
         clientLabel,
         markRpcError,
         presentSnapshot: clientIdentity.annotateSnapshot,

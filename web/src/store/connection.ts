@@ -32,7 +32,6 @@ import {
   state,
 } from "./core";
 import { taskCompletionTracker } from "./notifications";
-import { watchPopup } from "./popup";
 import { storeConnectionPaused } from "./preferences";
 import {
   cancelScheduledRefresh,
@@ -329,10 +328,7 @@ export function selectConnectionNow(
   forgetLeaseCaches();
   const generation = bridge.setActiveConnection(connectionId);
   replaceState(activateConnectionState(state, connectionId, generation));
-  // Popup state is tracked per connection on the bridge, so a switch needs
-  // its own query: otherwise only the connection that was active when the
-  // socket came up ever reports one.
-  if (refresh && resumeActiveConnection()) void watchPopup();
+  if (refresh) resumeActiveConnection();
   return true;
 }
 
@@ -592,9 +588,6 @@ export function handleStatus(s: ConnectionStatus) {
       rearmTerminalAttachmentsAfterCatalog(true);
       void refreshNow();
       void refreshBridgeStatus();
-      // Popup state is pushed only on change, so ask once per
-      // settled connection.
-      void watchPopup();
     });
     if (state.pendingRestartVersion) {
       void reloadWhenUpdatedServerIsReady(state.pendingRestartVersion);

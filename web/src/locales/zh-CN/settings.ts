@@ -233,7 +233,6 @@ export default {
   "Expand or restore the Inspector on desktop": "在桌面端展开或还原检查器",
   "Toggle Zen mode on desktop": "在桌面端切换禅模式",
   "Open the recent pane switcher": "打开最近窗格切换器",
-  "Toggle the Herdr Float popup shell": "切换 Herdr Float 弹出式 shell",
   "Search panes in the pane switcher": "在窗格切换器中搜索窗格",
   "Open Workspaces": "打开工作区",
   "Toggle File Explorer": "切换文件浏览器",

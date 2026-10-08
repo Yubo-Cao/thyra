@@ -6,7 +6,6 @@ import { requestClosePane, requestCloseTab } from "../components/TabBar";
 import { keyboardOverlayOpen } from "../components/ui/overlayState";
 import { activePaneIdForSnapshot } from "../paneJump";
 import { paneShortcutAction } from "../paneShortcuts";
-import { pluginActionShortcut } from "../pluginActionShortcuts";
 import { SHORTCUT_NUMBERS, type ShortcutId } from "../shortcutBindings";
 import { shortcutMatches } from "../shortcutPreferences";
 import { store } from "../store";
@@ -215,30 +214,6 @@ export function useAppShortcuts({
         const targetTabId = adjacentTabId(tabs, activeTabId, tabAction);
         if (!targetTabId || targetTabId === activeTabId) return;
         store.focusTab(targetTabId);
-        return;
-      }
-      const pluginAction = pluginActionShortcut(e);
-      if (pluginAction) {
-        // Typing into the popup's own terminal never reaches here, since
-        // isEditableElement stops at the xterm textarea.
-        // Plugin actions run code on the host: instance admins only.
-        if (claimUnlessEditing() || e.repeat || store.get().host === false)
-          return;
-        const current = store.get();
-        const layoutActivePaneId = activePaneIdForSnapshot(current);
-        const activePane = current.panes.find(
-          (pane) => pane.pane_id === layoutActivePaneId,
-        );
-        // Hide-or-open is resolved against Herdr, not this client's popup
-        // state, which a Space switch can leave stale. See togglePluginPopup.
-        void store.togglePluginPopup(
-          pluginAction.pluginId,
-          pluginAction.actionId,
-          {
-            workspace_id: activePane?.workspace_id,
-            focused_pane_cwd: activePane?.foreground_cwd ?? activePane?.cwd,
-          },
-        );
         return;
       }
       const paneAction = paneShortcutAction(e);
