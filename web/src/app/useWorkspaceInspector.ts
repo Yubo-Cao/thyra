@@ -165,7 +165,7 @@ export function useWorkspaceInspector({
       requestAnimationFrame(() => {
         document
           .querySelector<HTMLElement>(
-            ":is(.pane-layout-cell.is-active,.pane-switcher-layout,.workspace-terminal-surface>.terminal-shell) .xterm-helper-textarea",
+            ":is(.pane-layout-cell.is-active,.pane-switcher-layout,.workspace-terminal-surface>.terminal-shell) .terminal-engine-input",
           )
           ?.focus();
       });

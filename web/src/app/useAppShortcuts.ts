@@ -21,7 +21,10 @@ import type { WorkspaceInspector } from "./useWorkspaceInspector";
 // The prompt editor stands in for the terminal's input, so workspace, tab
 // and pane shortcuts work from it as they do from the terminal.
 function isEditableElement(target: EventTarget | null) {
-  if (target instanceof HTMLElement && target.closest(".xterm, .prompt-editor"))
+  if (
+    target instanceof HTMLElement &&
+    target.closest(".terminal-engine, .prompt-editor")
+  )
     return false;
   return isEditableTarget(target);
 }

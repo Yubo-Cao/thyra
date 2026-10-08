@@ -33,7 +33,7 @@ export function isCommandMenuShortcut(e: KeyboardEvent) {
   if (!shortcutMatches(e, "command.menu") || e.repeat) return false;
   return !(
     isEditableElement(e.target) &&
-    !(e.target as HTMLElement).closest(".command-popover, .xterm")
+    !(e.target as HTMLElement).closest(".command-popover, .terminal-engine")
   );
 }
 
