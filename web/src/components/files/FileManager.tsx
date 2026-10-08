@@ -1,25 +1,4 @@
 import {
-  ArrowDownWideNarrow,
-  ArrowUpNarrowWide,
-  ChevronDown,
-  ChevronRight,
-  ClipboardPaste,
-  Copy,
-  Download,
-  Ellipsis,
-  Eye,
-  EyeOff,
-  FilePlus,
-  FolderPlus,
-  LayoutGrid,
-  List,
-  Pencil,
-  Scissors,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
-import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   useEffect,
@@ -31,46 +10,30 @@ import type { ConnectionClient } from "../../api";
 import { thyraLocalStorage } from "../../browserStorage";
 import { connectionHttpPath } from "../../connectionHttp";
 import { downloadFileFromUrl } from "../../downloadFile";
-import {
-  fileExplorerRefreshKey,
-  useFileExplorerRefresh,
-} from "../../fileExplorerRefresh";
-import { normalizeFilesystemPath } from "../../filesystemPaths";
 import { t } from "../../i18n";
 import { store } from "../../store";
 import { copyTextFromUserGesture } from "../../terminalClipboard";
-import type { FileExplorerEntry, FileExplorerList } from "../../types";
+import type { FileExplorerEntry } from "../../types";
 import { useDocumentTheme } from "../documentTheme";
 import {
-  type FileExplorerCache,
   type buildGitStatusMaps,
   createExplorerEntry,
   deleteExplorerEntry,
-  readExplorerCache,
-  readExplorerViewMemory,
-  symlinkDescription,
   uploadExplorerFile,
-  writeExplorerCache,
-  writeExplorerViewMemory,
 } from "../fileExplorerResources";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ContextMenu } from "../ui/ContextMenu";
 import { Dialog } from "../ui/Dialog";
-import { IconButton } from "../ui/IconButton";
-import { Menu } from "../ui/Menu";
-import { SearchField } from "../ui/SearchField";
-import { TextField } from "../ui/TextField";
-import { Token } from "../ui/Token";
-import { keepFocus } from "../ui/keepFocus";
-import { toast } from "../ui/toastQueue";
-import { type DroppedFile, droppedFiles, useTouchPress } from "./fileDrop";
 import {
   type FileClipboard,
   clipboardPathsFor,
   setFileClipboard,
   useFileClipboard,
 } from "./fileClipboard";
+import { type DroppedFile, droppedFiles } from "./fileDrop";
+import { followArchiveJob, trashToast } from "./fileJobs";
+import { FileManagerTools, FileSelectionBar } from "./FileManagerBars";
 import { FileManagerNav, locationCrumbs } from "./FileManagerNav";
 import {
   type FileMenuActions,
@@ -82,7 +45,6 @@ import {
   writeSort,
 } from "./fileManagerMenus";
 import {
-  type FileRow,
   type FileScope,
   type FileView,
   type MoveKey,
@@ -90,7 +52,6 @@ import {
   ancestorsBetween,
   baseName,
   extensionOf,
-  formatSize,
   hostPathOf,
   isAbsolutePath,
   isDirectoryEntry,
@@ -104,13 +65,14 @@ import {
   visibleRows,
 } from "./fileManagerModel";
 import {
-  type ArchiveJob,
   type FileTools,
   archiveFormatOf,
   fileOperations,
   isConflictError,
 } from "./fileOperations";
-import { FileIcon, FileThumbnail } from "./FileVisual";
+import { CreateEntryRow, FileEntryRow, type RowContext } from "./FileRowView";
+import { canDropInto, useFileDrag } from "./useFileDrag";
+import { useFileListing } from "./useFileListing";
 import "./FileManager.css";
 
 type GitStatusMaps = ReturnType<typeof buildGitStatusMaps>;
@@ -151,7 +113,6 @@ export type FileManagerProps = {
   onRootResolved?: (root: string) => void;
 };
 
-type MenuState = { x: number; y: number; entries: FileExplorerEntry[] };
 type Editing =
   | { kind: "rename"; path: string }
   | { kind: "create"; type: "file" | "directory"; folder: string }
@@ -161,13 +122,7 @@ type TransferRequest = {
   destination: string;
   mode: "move" | "copy";
 };
-
-/** The rows being dragged, readable during dragover (dataTransfer is not). */
-let activeDrag: FileClipboard | null = null;
-const DRAG_TYPE = "application/x-thyra-files";
-const HOVER_OPEN_MS = 700;
-const copyModifier = (event: { ctrlKey: boolean; altKey: boolean }) =>
-  modifierKey === "Cmd" ? event.altKey : event.ctrlKey;
+type Conflict = "fail" | "rename" | "replace";
 
 const VIEW_KEY = "fileManagerView";
 const SORT_KEY = "fileManagerSort";
@@ -181,80 +136,25 @@ const MOVE_KEYS = new Set([
   "PageUp",
   "PageDown",
 ]);
-const THUMBNAIL_EXTENSIONS = new Set(
-  "png jpg jpeg jfif webp gif bmp avif heic heif tif tiff mp4 m4v mov webm mkv avi ogv pdf".split(
-    " ",
-  ),
-);
+const kinds = (list: string, kind: string) =>
+  list.split(" ").map((extension) => [extension, kind]);
+// Thumbnail kinds by extension; the host may lack the tool for some.
+const THUMBNAIL_KINDS: Record<string, "raster" | "image" | "video" | "pdf"> =
+  Object.fromEntries([
+    ...kinds("png jpg jpeg jfif webp gif bmp", "raster"),
+    ...kinds("avif heic heif tif tiff", "image"),
+    ...kinds("mp4 m4v mov webm mkv avi ogv", "video"),
+    ["pdf", "pdf"],
+  ]);
 // SVG has no server thumbnail; small ones are shown as-is (inert in <img>).
 const INLINE_SVG_MAX_BYTES = 64 * 1024;
 
-function shortDate(ms: number) {
-  if (!ms) return "";
-  return new Date(ms).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/** Inline name field for rename and new entries; Enter or blur commits. */
-function NameInput({
-  initial,
-  label,
-  onCommit,
-  onCancel,
-}: {
-  initial: string;
-  label: string;
-  onCommit: (value: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const done = useRef(false);
-  const finish = (commit: boolean) => {
-    if (done.current) return;
-    done.current = true;
-    const name = value.trim();
-    if (commit && name && name !== initial) onCommit(name);
-    else onCancel();
-  };
-  return (
-    <TextField
-      autoFocus
-      className="file-name-field"
-      inputClassName="file-name-input"
-      aria-label={label}
-      value={value}
-      spellCheck={false}
-      autoCapitalize="off"
-      autoCorrect="off"
-      onValueChange={setValue}
-      onFocus={(event) => {
-        // Select the stem, as VS Code does, so typing keeps the extension.
-        const dot = initial.lastIndexOf(".");
-        event.currentTarget.setSelectionRange(
-          0,
-          dot > 0 ? dot : initial.length,
-        );
-      }}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Enter") {
-          event.preventDefault();
-          finish(true);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          finish(false);
-        }
-      }}
-      onBlur={() => finish(true)}
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-    />
-  );
-}
-
+/**
+ * The Inspector's file manager, for the workspace checkout or the host
+ * filesystem: a tree (List) or tiles (Grid) with multi-select, inline
+ * rename and create, clipboard, drag and drop, trash, archives and
+ * thumbnails. Every operation runs on the host that owns the files.
+ */
 export function FileManager({
   client,
   workspaceId,
@@ -280,36 +180,22 @@ export function FileManager({
     () => fileOperations(client, workspaceId, filesystem),
     [client, workspaceId, filesystem],
   );
-  const cacheKey = filesystem ? `${resourceKey}\u0000filesystem` : resourceKey;
-  const readCache = () =>
-    readExplorerCache(client, workspaceId, showHidden, cacheKey);
-  const [cache, setCache] = useState<FileExplorerCache>(readCache);
-  const [location, setLocation] = useState(() =>
-    filesystem
-      ? readExplorerViewMemory(memoryContext).directory ||
-        initialLocation ||
-        rootPath
-      : (cache.location ?? ""),
-  );
-  const [history, setHistory] = useState<{ back: string[]; forward: string[] }>(
-    { back: [], forward: [] },
-  );
-  const [loading, setLoading] = useState<Set<string>>(() => new Set());
   const [view, setView] = useState<FileView>(() =>
     thyraLocalStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list",
   );
   const [sort, setSort] = useState<SortState>(() =>
     readSort(thyraLocalStorage.getItem(SORT_KEY)),
   );
-  const [selection, setSelection] = useState<{
-    paths: Set<string>;
-    anchor: string | null;
-  }>(() => ({
+  const [selection, setSelection] = useState(() => ({
     paths: new Set(activePath ? [activePath] : []),
-    anchor: activePath ?? null,
+    anchor: activePath ?? (null as string | null),
   }));
   const [focused, setFocused] = useState<string | null>(activePath ?? null);
-  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    entries: FileExplorerEntry[];
+  } | null>(null);
   const [folderMenuAt, setFolderMenuAt] = useState<{
     x: number;
     y: number;
@@ -319,10 +205,34 @@ export function FileManager({
   const [conflict, setConflict] = useState<TransferRequest | null>(null);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [width, setWidth] = useState<"narrow" | "medium" | "wide">("wide");
-  const clipboard = useFileClipboard();
+  const [selectionMode, setSelectionMode] = useState(false);
   const [tools, setTools] = useState<FileTools | null>(null);
+  const clipboard = useFileClipboard();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const uploadFolder = useRef("");
+  const typeahead = useRef({ text: "", at: 0 });
+
+  const listing = useFileListing({
+    client,
+    workspaceId,
+    scope,
+    resourceKey,
+    rootPath,
+    memoryContext,
+    initialLocation,
+    showHidden,
+    onRootResolved,
+    onReset: () => {
+      setMenu(null);
+      setEditing(null);
+    },
+  });
+  const { cache, here, loading, isCurrent } = listing;
+  const { children, expanded, search: filter, error } = cache;
+
   useEffect(() => {
     let current = true;
     ops.tools().then(
@@ -335,29 +245,6 @@ export function FileManager({
       current = false;
     };
   }, [ops]);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const uploadRef = useRef<HTMLInputElement>(null);
-  const uploadFolder = useRef("");
-  const contextRef = useRef(0);
-  const typeahead = useRef({ text: "", at: 0 });
-  const pointerType = useRef("mouse");
-  const hoverOpen = useRef<{
-    path: string;
-    since: number;
-    timer: ReturnType<typeof setTimeout>;
-  } | null>(null);
-  const dragDepth = useRef(0);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [ghost, setGhost] = useState<{
-    x: number;
-    y: number;
-    label: string;
-  } | null>(null);
-  const { children, expanded, search: filter, error } = cache;
-  const listKey = (path: string) =>
-    filesystem ? normalizeFilesystemPath(path) : path;
-  const here = listKey(location);
 
   // Widths come from a ResizeObserver class, not container queries: Chromium
   // drops the boxes of children inserted into size containers here.
@@ -371,144 +258,6 @@ export function FileManager({
     observer.observe(root);
     return () => observer.disconnect();
   }, []);
-
-  const update = (
-    patch: (current: FileExplorerCache) => Partial<FileExplorerCache>,
-  ) =>
-    setCache((current) => {
-      const next = { ...current, ...patch(current) };
-      writeExplorerCache(client, workspaceId, showHidden, next, cacheKey);
-      return next;
-    });
-
-  const isCurrent = (token: number) =>
-    client.isCurrent() && contextRef.current === token;
-
-  /** List one directory; filesystem results are keyed by their real path. */
-  const load = async (path: string, force = false): Promise<string | null> => {
-    const key = listKey(path);
-    if (!force && children[key]) return key;
-    const token = contextRef.current;
-    setLoading((current) => new Set(current).add(key));
-    try {
-      const list = (await client.call("file.list", {
-        workspace_id: workspaceId,
-        path,
-        show_hidden: showHidden,
-        ...(filesystem ? { scope: "filesystem" } : {}),
-      })) as FileExplorerList & { scope?: string };
-      if (!isCurrent(token)) return null;
-      if (filesystem && list.scope !== "filesystem") {
-        throw new Error(
-          t("Filesystem browsing requires an updated Thyra bridge."),
-        );
-      }
-      const listed = filesystem ? normalizeFilesystemPath(list.root) : path;
-      if (!filesystem && !path) onRootResolved?.(list.root);
-      update((current) => ({
-        rootInfo: listed === listKey(location) ? list : current.rootInfo,
-        children: { ...current.children, [listed]: list.entries },
-        error: null,
-      }));
-      return listed;
-    } catch (reason) {
-      if (isCurrent(token)) {
-        update(() => ({ error: (reason as Error).message }));
-      }
-      return null;
-    } finally {
-      if (isCurrent(token)) {
-        setLoading((current) => {
-          const next = new Set(current);
-          next.delete(key);
-          return next;
-        });
-      }
-    }
-  };
-
-  const reloadVisible = (extra: string[] = []) => {
-    const paths = new Set([here, ...extra.map(listKey)]);
-    for (const path of expanded) if (isWithin(path, here)) paths.add(path);
-    for (const path of paths) void load(path, true);
-  };
-
-  // A new connection, workspace, scope or hidden-file setting starts over.
-  const context = `${client.connectionId}\n${client.generation}\n${workspaceId}\n${cacheKey}\n${showHidden}`;
-  useEffect(() => {
-    contextRef.current += 1;
-    const fresh = readCache();
-    setCache(fresh);
-    setLoading(new Set());
-    setMenu(null);
-    setEditing(null);
-    const start = filesystem ? location : (fresh.location ?? "");
-    void navigate(start, "replace");
-    for (const path of fresh.expanded) {
-      if (path && isWithin(path, start)) void load(path, true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context]);
-
-  // Git mutations elsewhere (the Changes panel) re-list what is visible.
-  const refreshVersion = useFileExplorerRefresh(
-    fileExplorerRefreshKey(client, workspaceId),
-  );
-  const seenRefresh = useRef(refreshVersion);
-  useEffect(() => {
-    if (seenRefresh.current === refreshVersion) return;
-    seenRefresh.current = refreshVersion;
-    if (!filesystem) reloadVisible();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshVersion]);
-
-  async function navigate(
-    target: string,
-    mode: "push" | "back" | "forward" | "replace" = "push",
-  ) {
-    const path = target.trim();
-    if (filesystem && !path) return;
-    const previous = location;
-    const listed = await load(path, true);
-    if (listed === null) return;
-    setLocation(listed);
-    setEditing(null);
-    if (filesystem) {
-      writeExplorerViewMemory(memoryContext, { directory: listed });
-    } else update(() => ({ location: listed }));
-    if (mode === "push" && listed !== previous) {
-      setHistory((current) => ({
-        back: [...current.back, previous].slice(-50),
-        forward: [],
-      }));
-    }
-  }
-
-  const goBack = () => {
-    const previous = history.back[history.back.length - 1];
-    if (previous === undefined) return;
-    setHistory((current) => ({
-      back: current.back.slice(0, -1),
-      forward: [location, ...current.forward],
-    }));
-    void navigate(previous, "back");
-  };
-  const goForward = () => {
-    const next = history.forward[0];
-    if (next === undefined) return;
-    setHistory((current) => ({
-      back: [...current.back, location],
-      forward: current.forward.slice(1),
-    }));
-    void navigate(next, "forward");
-  };
-  const parentOfHere = parentPath(location, scope);
-  const atRoot = filesystem
-    ? normalizeFilesystemPath(parentOfHere) === here
-    : location === "";
-  const goUp = () => {
-    if (!atRoot) void navigate(parentOfHere);
-  };
 
   const rows = useMemo(
     () => visibleRows({ root: here, children, expanded, sort, filter, view }),
@@ -526,10 +275,7 @@ export function FileManager({
 
   const select = (
     path: string | null,
-    {
-      toggle = false,
-      range = false,
-    }: { toggle?: boolean; range?: boolean } = {},
+    { toggle = false, range = false } = {},
   ) => {
     if (!path) {
       setSelection({ paths: new Set(), anchor: null });
@@ -537,49 +283,41 @@ export function FileManager({
     }
     setSelection((current) => {
       if (range) {
-        const extent = rangeBetween(rows, current.anchor, path);
         const paths = toggle ? new Set(current.paths) : new Set<string>();
-        for (const item of extent) paths.add(item);
+        for (const item of rangeBetween(rows, current.anchor, path)) {
+          paths.add(item);
+        }
         return { paths, anchor: current.anchor ?? path };
       }
       if (toggle) {
         const paths = new Set(current.paths);
-        if (paths.has(path)) paths.delete(path);
-        else paths.add(path);
+        if (!paths.delete(path)) paths.add(path);
         return { paths, anchor: path };
       }
       return { paths: new Set([path]), anchor: path };
     });
     setFocused(path);
   };
+  const selectAll = (paths: string[]) =>
+    setSelection({ paths: new Set(paths), anchor: paths[0] ?? null });
 
   // Touch selection mode ends with its last selected row.
   useEffect(() => {
     if (selectionMode && !selection.paths.size) setSelectionMode(false);
   }, [selectionMode, selection.paths.size]);
 
-  const toggleFolder = (path: string, open?: boolean) => {
-    const next = new Set(expanded);
-    const opening = open ?? !next.has(path);
-    if (opening) {
-      next.add(path);
-      void load(path);
-    } else next.delete(path);
-    update(() => ({ expanded: next }));
-  };
-
   // Reveal the previewed file: show its folder and expand down to it.
   const reveal = (path: string | undefined) => {
     if (!path || isAbsolutePath(path) !== filesystem) return;
     const inside = isWithin(path, here) && path !== here;
     const base = inside ? here : filesystem ? parentPath(path, scope) : "";
-    if (!inside) void navigate(base);
+    if (!inside) void listing.navigate(base);
     const folders = view === "list" ? ancestorsBetween(base, path, scope) : [];
     if (folders.some((folder) => !expanded.has(folder))) {
-      update((current) => ({
+      listing.update((current) => ({
         expanded: new Set([...current.expanded, ...folders]),
       }));
-      for (const folder of folders) void load(folder);
+      for (const folder of folders) void listing.load(folder);
     }
     select(path);
   };
@@ -592,6 +330,12 @@ export function FileManager({
     bodyRef.current?.querySelector<HTMLElement>(
       `[data-file-path="${CSS.escape(path)}"]`,
     ) ?? null;
+  const focusPath = (path: string) => {
+    setFocused(path);
+    const element = rowElement(path);
+    element?.focus({ preventScroll: true });
+    element?.scrollIntoView({ block: "nearest" });
+  };
 
   const focusedVisible = !!focused && entries.has(focused);
   useEffect(() => {
@@ -602,9 +346,10 @@ export function FileManager({
 
   const hasRows = rows.length > 0;
   useEffect(() => {
-    if (!keyboardActive) return;
     const body = bodyRef.current;
-    if (!body || body.contains(document.activeElement)) return;
+    if (!keyboardActive || !body || body.contains(document.activeElement)) {
+      return;
+    }
     const target =
       (focused && rowElement(focused)) ||
       body.querySelector<HTMLElement>("[data-file-path]");
@@ -612,32 +357,21 @@ export function FileManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyboardActive, hasRows]);
 
-  const focusPath = (path: string) => {
-    setFocused(path);
-    const element = rowElement(path);
-    element?.focus({ preventScroll: true });
-    element?.scrollIntoView({ block: "nearest" });
-  };
-
   const open = (entry: FileExplorerEntry, intoFolder = view === "grid") => {
     select(entry.path);
     if (isDirectoryEntry(entry)) {
-      if (intoFolder) void navigate(entry.path);
-      else toggleFolder(entry.path);
-      return;
-    }
-    if (entry.type === "symlink" && entry.symlink_status === "broken") {
+      if (intoFolder) void listing.navigate(entry.path);
+      else listing.toggleFolder(entry.path);
+    } else if (entry.type === "symlink" && entry.symlink_status === "broken") {
       store.notify({
         kind: "error",
         message: t("Cannot open symlink"),
         detail: t("The symlink target does not exist or cannot be resolved."),
       });
-      return;
-    }
-    onOpenFile(entry);
+    } else onOpenFile(entry);
   };
 
-  // --- Actions -----------------------------------------------------------
+  // --- Operations --------------------------------------------------------
 
   const notifyError = (message: string, reason: unknown) =>
     store.notify({
@@ -645,6 +379,47 @@ export function FileManager({
       message,
       detail: (reason as Error).message,
     });
+  const notifyDone = (message: string, detail?: string) =>
+    store.notify({ kind: "success", message, detail, autoDismissMs: 4000 });
+
+  const markBusy = (paths: string[], on: boolean) =>
+    setBusy((current) => {
+      const next = new Set(current);
+      for (const path of paths) {
+        if (on) next.add(path);
+        else next.delete(path);
+      }
+      return next;
+    });
+
+  /**
+   * Run one operation: mark its rows busy, ignore its outcome once the
+   * explorer moved on, and report failures `failed` does not handle.
+   */
+  const operate = async <T,>(
+    paths: string[],
+    failure: string,
+    run: () => Promise<T>,
+    done: (result: T) => void,
+    failed?: (reason: unknown) => boolean,
+  ) => {
+    const token = listing.token();
+    markBusy(paths, true);
+    try {
+      const result = await run();
+      if (isCurrent(token)) done(result);
+    } catch (reason) {
+      if (isCurrent(token) && !failed?.(reason)) notifyError(failure, reason);
+    } finally {
+      if (isCurrent(token)) markBusy(paths, false);
+    }
+  };
+
+  /** Re-list the folders an operation touched, and report the change. */
+  const afterChange = (folders: string[], change?: FileManagerChange) => {
+    listing.reloadFolders(folders);
+    if (change) onChanged?.(change);
+  };
 
   const copyPaths = async (paths: string[], relative: boolean) => {
     const value = paths
@@ -699,28 +474,10 @@ export function FileManager({
     });
   };
 
-  const markBusy = (paths: string[], on: boolean) =>
-    setBusy((current) => {
-      const next = new Set(current);
-      for (const path of paths) {
-        if (on) next.add(path);
-        else next.delete(path);
-      }
-      return next;
-    });
-
-  /** Re-list the folders an operation touched, and report the change. */
-  const afterChange = (folders: string[], change?: FileManagerChange) => {
-    for (const folder of new Set(folders.map(listKey))) {
-      if (isWithin(folder, here)) void load(folder, true);
-    }
-    if (change) onChanged?.(change);
-  };
-
   const uploadFiles = async (folder: string, files: File[]) => {
     const list = files.filter((file) => file.name);
     if (!list.length || readOnly) return;
-    const token = contextRef.current;
+    const token = listing.token();
     setUploading((count) => count + list.length);
     const paths: string[] = [];
     for (const file of list) {
@@ -737,43 +494,44 @@ export function FileManager({
     }
     if (!isCurrent(token)) return;
     if (paths.length) {
-      store.notify({
-        kind: "success",
-        message:
-          paths.length === 1
-            ? t("File uploaded")
-            : t("{count} files uploaded", { count: paths.length }),
-        detail: folder || rootLabel,
-        autoDismissMs: 5000,
-      });
+      notifyDone(
+        paths.length === 1
+          ? t("File uploaded")
+          : t("{count} files uploaded", { count: paths.length }),
+        folder || rootLabel,
+      );
     }
-    if (folder !== here && !expanded.has(folder)) toggleFolder(folder, true);
+    listing.expand(folder);
     afterChange([folder], { paths });
   };
 
-  /** Upload an OS drop, creating its folders first. */
+  /** Make a folder, accepting one that already exists. */
+  const ensureFolder = async (path: string) => {
+    try {
+      await createExplorerEntry(client, workspaceId, path, "directory");
+    } catch (reason) {
+      if (!isConflictError(reason)) throw reason;
+    }
+  };
+
+  /** Upload a desktop drop, making its folders first. */
   const uploadDropped = async (folder: string, files: DroppedFile[]) => {
-    const token = contextRef.current;
+    const token = listing.token();
     const made = new Set<string>();
     const groups = new Map<string, File[]>();
-    for (const { folders, file } of files) {
-      let path = folder;
-      for (const name of folders) {
-        path = joinPath(path, name);
-        if (made.has(path)) continue;
-        made.add(path);
-        try {
-          await createExplorerEntry(client, workspaceId, path, "directory");
-        } catch (reason) {
-          if (!isConflictError(reason)) {
-            if (isCurrent(token)) {
-              notifyError(t("Cannot create folder"), reason);
-            }
-            return;
-          }
+    try {
+      for (const { folders, file } of files) {
+        let path = folder;
+        for (const name of folders) {
+          path = joinPath(path, name);
+          if (!made.has(path)) await ensureFolder(path);
+          made.add(path);
         }
+        if (file) groups.set(path, [...(groups.get(path) ?? []), file]);
       }
-      if (file) groups.set(path, [...(groups.get(path) ?? []), file]);
+    } catch (reason) {
+      if (isCurrent(token)) notifyError(t("Cannot create folder"), reason);
+      return;
     }
     if (!isCurrent(token)) return;
     if (made.size) afterChange([folder]);
@@ -781,7 +539,7 @@ export function FileManager({
   };
 
   /** Create `a/b/c.txt` inside a folder, making missing folders on the way. */
-  const createEntry = async (
+  const createEntry = (
     kind: "file" | "directory",
     folder: string,
     value: string,
@@ -792,316 +550,179 @@ export function FileManager({
       .split("/")
       .filter((part) => part && part !== ".");
     if (!parts.length || parts.includes("..")) return;
-    const token = contextRef.current;
-    let path = folder;
-    try {
-      for (const [index, part] of parts.entries()) {
-        path = joinPath(path, part);
-        const last = index === parts.length - 1;
-        try {
-          await createExplorerEntry(
-            client,
-            workspaceId,
+    const path = parts.reduce(joinPath, folder);
+    void operate(
+      [],
+      kind === "file" ? t("Cannot create file") : t("Cannot create folder"),
+      async () => {
+        let parent = folder;
+        for (const name of parts.slice(0, -1)) {
+          parent = joinPath(parent, name);
+          await ensureFolder(parent);
+        }
+        await createExplorerEntry(client, workspaceId, path, kind);
+      },
+      () => {
+        for (const ancestor of [
+          folder,
+          ...ancestorsBetween(folder, path, scope),
+        ]) {
+          listing.expand(ancestor);
+        }
+        afterChange([folder, parentPath(path, scope)], { paths: [path] });
+        select(path);
+        if (kind === "file") {
+          onOpenFile({
+            name: baseName(path),
             path,
-            last ? kind : "directory",
-          );
-        } catch (reason) {
-          if (last || !isConflictError(reason)) throw reason;
+            type: "file",
+            size: 0,
+            mtime_ms: Date.now(),
+            hidden: baseName(path).startsWith("."),
+          });
         }
-      }
-      if (!isCurrent(token)) return;
-      const parent = parentPath(path, scope);
-      for (const ancestor of [
-        folder,
-        ...ancestorsBetween(folder, path, scope),
-      ]) {
-        if (ancestor !== here && !expanded.has(ancestor)) {
-          toggleFolder(ancestor, true);
-        }
-      }
-      afterChange([folder, parent], { paths: [path] });
-      select(path);
-      if (kind === "file") {
-        onOpenFile({
-          name: baseName(path),
-          path,
-          type: "file",
-          size: 0,
-          mtime_ms: Date.now(),
-          hidden: baseName(path).startsWith("."),
-        });
-      }
-    } catch (reason) {
-      if (!isCurrent(token)) return;
-      notifyError(
-        kind === "file" ? t("Cannot create file") : t("Cannot create folder"),
-        reason,
-      );
-    }
-  };
-
-  const rename = async (entry: FileExplorerEntry, name: string) => {
-    const token = contextRef.current;
-    markBusy([entry.path], true);
-    try {
-      const { path } = await ops.rename(entry.path, name);
-      if (!isCurrent(token)) return;
-      if (expanded.has(entry.path)) {
-        update((current) => {
-          const next = new Set(
-            [...current.expanded].filter((item) => !isWithin(item, entry.path)),
-          );
-          next.add(path);
-          return { expanded: next };
-        });
-      }
-      afterChange([parentPath(entry.path, scope)], {
-        paths: [entry.path],
-        removed: true,
-        moved: [{ from: entry.path, path }],
-      });
-      select(path);
-    } catch (reason) {
-      if (isCurrent(token)) notifyError(t("Rename failed"), reason);
-    } finally {
-      if (isCurrent(token)) markBusy([entry.path], false);
-    }
-  };
-
-  const transfer = async (
-    request: TransferRequest,
-    conflictPolicy: "fail" | "rename" | "replace" = request.mode === "copy"
-      ? "rename"
-      : "fail",
-  ) => {
-    const token = contextRef.current;
-    markBusy(request.paths, true);
-    try {
-      const { items } = await ops.transfer({
-        ...request,
-        conflict: conflictPolicy,
-      });
-      if (!isCurrent(token)) return;
-      const moved = items.filter((item) => item.from !== item.path);
-      if (request.mode === "move" && clipboard?.mode === "cut") {
-        setFileClipboard(null);
-      }
-      if (request.destination !== here && !expanded.has(request.destination)) {
-        toggleFolder(request.destination, true);
-      }
-      afterChange(
-        [
-          request.destination,
-          ...request.paths.map((path) => parentPath(path, scope)),
-        ],
-        request.mode === "move"
-          ? { paths: moved.map((item) => item.from), removed: true, moved }
-          : { paths: items.map((item) => item.path) },
-      );
-      setSelection({
-        paths: new Set(items.map((item) => item.path)),
-        anchor: items[0]?.path ?? null,
-      });
-      if (items[0]) setFocused(items[0].path);
-      if (moved.length || request.mode === "copy") {
-        store.notify({
-          kind: "success",
-          message:
-            request.mode === "copy"
-              ? items.length === 1
-                ? t("Copied 1 item")
-                : t("Copied {count} items", { count: items.length })
-              : moved.length === 1
-                ? t("Moved 1 item")
-                : t("Moved {count} items", { count: moved.length }),
-          detail: request.destination || rootLabel,
-          autoDismissMs: 4000,
-        });
-      }
-    } catch (reason) {
-      if (!isCurrent(token)) return;
-      if (conflictPolicy === "fail" && isConflictError(reason)) {
-        setConflict(request);
-      } else {
-        notifyError(
-          request.mode === "copy" ? t("Copy failed") : t("Move failed"),
-          reason,
-        );
-      }
-    } finally {
-      if (isCurrent(token)) markBusy(request.paths, false);
-    }
-  };
-
-  const remove = async (list: FileExplorerEntry[]) => {
-    const token = contextRef.current;
-    const paths = list.map((entry) => entry.path);
-    markBusy(paths, true);
-    const removed: string[] = [];
-    for (const entry of list) {
-      try {
-        await deleteExplorerEntry(client, workspaceId, entry.path);
-        removed.push(entry.path);
-      } catch (reason) {
-        if (!isCurrent(token)) return;
-        notifyError(t("Delete failed"), reason);
-        break;
-      }
-    }
-    if (!isCurrent(token)) return;
-    markBusy(paths, false);
-    if (!removed.length) return;
-    select(null);
-    afterChange(
-      removed.map((path) => parentPath(path, scope)),
-      { paths: removed, removed: true },
+      },
     );
-    store.notify({
-      kind: "success",
-      message:
-        removed.length === 1
-          ? t("Deleted {name}", { name: baseName(removed[0]!) })
-          : t("Deleted {count} items", { count: removed.length }),
-      autoDismissMs: 5000,
-    });
   };
 
-  const undoTrash = async (tokens: string[], folders: string[]) => {
-    const token = contextRef.current;
-    try {
-      const { paths } = await ops.restore(tokens);
-      if (!isCurrent(token)) return;
-      afterChange(folders, { paths });
-      setSelection({ paths: new Set(paths), anchor: paths[0] ?? null });
-    } catch (reason) {
-      if (isCurrent(token)) notifyError(t("Undo failed"), reason);
-    }
+  const rename = (entry: FileExplorerEntry, name: string) =>
+    void operate(
+      [entry.path],
+      t("Rename failed"),
+      () => ops.rename(entry.path, name),
+      ({ path }) => {
+        if (expanded.has(entry.path)) {
+          listing.update((current) => ({
+            expanded: new Set([
+              ...[...current.expanded].filter(
+                (item) => !isWithin(item, entry.path),
+              ),
+              path,
+            ]),
+          }));
+        }
+        afterChange([parentPath(entry.path, scope)], {
+          paths: [entry.path],
+          removed: true,
+          moved: [{ from: entry.path, path }],
+        });
+        select(path);
+      },
+    );
+
+  const transfer = (request: TransferRequest, conflictPolicy?: Conflict) => {
+    const policy =
+      conflictPolicy ?? (request.mode === "copy" ? "rename" : "fail");
+    void operate(
+      request.paths,
+      request.mode === "copy" ? t("Copy failed") : t("Move failed"),
+      () => ops.transfer({ ...request, conflict: policy }),
+      ({ items }) => {
+        const moved = items.filter((item) => item.from !== item.path);
+        if (request.mode === "move" && clipboard?.mode === "cut") {
+          setFileClipboard(null);
+        }
+        listing.expand(request.destination);
+        afterChange(
+          [
+            request.destination,
+            ...request.paths.map((path) => parentPath(path, scope)),
+          ],
+          request.mode === "move"
+            ? { paths: moved.map((item) => item.from), removed: true, moved }
+            : { paths: items.map((item) => item.path) },
+        );
+        selectAll(items.map((item) => item.path));
+        if (items[0]) setFocused(items[0].path);
+        const count = request.mode === "copy" ? items.length : moved.length;
+        if (count) {
+          notifyDone(
+            request.mode === "copy"
+              ? count === 1
+                ? t("Copied 1 item")
+                : t("Copied {count} items", { count })
+              : count === 1
+                ? t("Moved 1 item")
+                : t("Moved {count} items", { count }),
+            request.destination || rootLabel,
+          );
+        }
+      },
+      (reason) => {
+        // A name clash on move asks to Replace or Keep both.
+        if (policy !== "fail" || !isConflictError(reason)) return false;
+        setConflict(request);
+        return true;
+      },
+    );
+  };
+
+  const remove = (list: FileExplorerEntry[]) => {
+    const paths = list.map((entry) => entry.path);
+    void operate(
+      paths,
+      t("Delete failed"),
+      async () => {
+        for (const path of paths) {
+          await deleteExplorerEntry(client, workspaceId, path);
+        }
+      },
+      () => {
+        select(null);
+        afterChange(
+          paths.map((path) => parentPath(path, scope)),
+          { paths, removed: true },
+        );
+        notifyDone(
+          paths.length === 1
+            ? t("Deleted {name}", { name: baseName(paths[0]!) })
+            : t("Deleted {count} items", { count: paths.length }),
+        );
+      },
+    );
   };
 
   /** Move to the host's trash, with an Undo toast. */
-  const trashEntries = async (list: FileExplorerEntry[]) => {
-    const token = contextRef.current;
+  const trash = (list: FileExplorerEntry[]) => {
     const paths = list.map((entry) => entry.path);
-    if (!paths.length) return;
-    markBusy(paths, true);
-    try {
-      const { items, method } = await ops.trash(paths);
-      if (!isCurrent(token)) return;
-      const folders = paths.map((path) => parentPath(path, scope));
-      select(null);
-      setSelectionMode(false);
-      afterChange(folders, { paths, removed: true });
-      const name = baseName(items[0]?.path ?? "");
-      const count = items.length;
-      const title =
-        method === "thyra"
-          ? count === 1
-            ? t("Moved {name} to the Thyra trash folder", { name })
-            : t("Moved {count} items to the Thyra trash folder", { count })
-          : count === 1
-            ? t("Moved {name} to the trash", { name })
-            : t("Moved {count} items to the trash", { count });
-      toast.show(
-        {
-          title,
-          tone: "neutral",
-          action: {
-            label: t("Undo"),
-            onAction: () =>
-              void undoTrash(
-                items.map((item) => item.token),
-                folders,
-              ),
-          },
-        },
-        { timeout: 10000 },
-      );
-    } catch (reason) {
-      if (isCurrent(token)) notifyError(t("Move to trash failed"), reason);
-    } finally {
-      if (isCurrent(token)) markBusy(paths, false);
-    }
+    const folders = paths.map((path) => parentPath(path, scope));
+    void operate(
+      paths,
+      t("Move to trash failed"),
+      () => ops.trash(paths),
+      ({ items, method }) => {
+        select(null);
+        setSelectionMode(false);
+        afterChange(folders, { paths, removed: true });
+        trashToast(
+          method,
+          items.map((item) => item.path),
+          () =>
+            void operate(
+              [],
+              t("Undo failed"),
+              () => ops.restore(items.map((item) => item.token)),
+              ({ paths: restored }) => {
+                afterChange(folders, { paths: restored });
+                selectAll(restored);
+              },
+            ),
+        );
+      },
+    );
   };
 
-  const jobProgress = (job: ArchiveJob) => {
-    const size = formatSize(job.bytes);
-    if (job.kind === "compress") return t("{size} written", { size });
-    // The entry list is read (and checked) before anything is written.
-    if (!job.files && !job.bytes) return t("Checking the archive...");
-    if (job.total_bytes) {
-      return t("{percent}% · {count} files", {
-        percent: Math.min(99, Math.floor((job.bytes / job.total_bytes) * 100)),
-        count: job.files,
-      });
-    }
-    return t("{size} · {count} files", { size, count: job.files });
-  };
-
-  /**
-   * Follow an archive job in a toast with progress and Cancel, then show
-   * its result and select the new folder or archive.
-   */
-  const runJob = async (
+  const runArchive = (
     start: () => Promise<{ job_id: string }>,
     titles: { running: string; done: string; failed: string },
     folder: string,
   ) => {
-    const token = contextRef.current;
-    let id = "";
-    const toastId = toast.show(
-      {
-        title: titles.running,
-        loading: true,
-        description: t("Starting..."),
-        action: {
-          label: t("Cancel"),
-          onAction: () => {
-            if (id) void ops.cancelJob(id).catch(() => {});
-          },
-        },
-      },
-      { timeout: 0 },
-    );
-    const finish = (content: Parameters<typeof toast.show>[0]) => {
-      const final = { ...content, loading: false, action: undefined };
-      if (!toast.update(toastId, final, { timeout: 6000 })) {
-        toast.show(final, { timeout: 6000 });
-      }
-    };
-    try {
-      id = (await start()).job_id;
-      let job: ArchiveJob;
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        job = await ops.job(id);
-        if (job.state !== "running") break;
-        toast.update(toastId, { description: jobProgress(job) });
-      }
-      if (!isCurrent(token)) return;
-      if (job.state === "done" && job.result) {
-        finish({
-          title: titles.done,
-          tone: "success",
-          description: baseName(job.result),
-        });
-        afterChange([folder], { paths: [job.result] });
-        select(job.result);
-      } else if (job.state === "canceled") {
-        finish({ title: t("Canceled"), tone: "neutral" });
-      } else {
-        finish({
-          title: titles.failed,
-          tone: "danger",
-          description: job.error,
-        });
-      }
-    } catch (reason) {
-      finish({
-        title: titles.failed,
-        tone: "danger",
-        description: (reason as Error).message,
-      });
-    }
+    const token = listing.token();
+    void followArchiveJob(ops, start, titles).then((result) => {
+      if (!result || !isCurrent(token)) return;
+      afterChange([folder], { paths: [result] });
+      select(result);
+    });
   };
 
   /** The folder a paste or new entry targets for the current selection. */
@@ -1112,44 +733,49 @@ export function FileManager({
     return parentPath(first.path, scope);
   };
 
+  const target = {
+    connectionId: client.connectionId,
+    workspaceId,
+    filesystem,
+    root: rootPath,
+  };
+  const sourceOf = (
+    mode: FileClipboard["mode"],
+    paths: string[],
+  ): FileClipboard => ({ mode, ...target, paths });
+
   const toClipboard = (mode: "copy" | "cut", list: FileExplorerEntry[]) => {
     if (!list.length) return;
-    setFileClipboard({
-      mode,
-      connectionId: client.connectionId,
-      workspaceId,
-      filesystem,
-      root: rootPath,
-      paths: list.map((entry) => entry.path),
-    });
+    setFileClipboard(
+      sourceOf(
+        mode,
+        list.map((entry) => entry.path),
+      ),
+    );
+    const count = list.length;
     store.notify({
       kind: "info",
       message:
         mode === "cut"
-          ? list.length === 1
+          ? count === 1
             ? t("Cut 1 item")
-            : t("Cut {count} items", { count: list.length })
-          : list.length === 1
+            : t("Cut {count} items", { count })
+          : count === 1
             ? t("Copied 1 item to the clipboard")
-            : t("Copied {count} items to the clipboard", {
-                count: list.length,
-              }),
+            : t("Copied {count} items to the clipboard", { count }),
       detail: t("Paste with {key}+V in a folder", { key: modifierKey }),
       autoDismissMs: 3000,
     });
   };
 
-  const clipboardPaths = clipboard
-    ? clipboardPathsFor(clipboard, {
-        connectionId: client.connectionId,
-        workspaceId,
-        filesystem,
-        root: rootPath,
-      })
-    : null;
-  const paste = (folder: string) => {
-    if (!clipboard) return;
-    if (!clipboardPaths) {
+  /** Move or copy clipboard or dragged paths into a folder. */
+  const transferFrom = (
+    source: FileClipboard,
+    folder: string,
+    copy: boolean,
+  ) => {
+    const paths = clipboardPathsFor(source, target);
+    if (!paths) {
       store.notify({
         kind: "error",
         message: t("Cannot paste here"),
@@ -1157,50 +783,64 @@ export function FileManager({
           "Items from another workspace paste only in Filesystem mode.",
         ),
       });
-      return;
+    } else if (canDropInto(folder, paths)) {
+      transfer({ paths, destination: folder, mode: copy ? "copy" : "move" });
     }
-    void transfer({
-      paths: clipboardPaths,
-      destination: folder,
-      mode: clipboard.mode === "cut" ? "move" : "copy",
-    });
   };
 
-  const startCreate = (kind: "file" | "directory", folder: string) => {
-    if (folder !== here && !expanded.has(folder)) toggleFolder(folder, true);
-    setEditing({ kind: "create", type: kind, folder });
+  /** null: the host can; a string: what to install; undefined: not offered. */
+  const needs = (available: true | string | undefined, format: string) =>
+    available === true || !tools
+      ? null
+      : t("Needs {tool} on the host", { tool: available ?? format });
+
+  const changeSort = (next: SortState) => {
+    setSort(next);
+    thyraLocalStorage.setItem(SORT_KEY, writeSort(next));
   };
 
   const actions: FileMenuActions = {
     open,
     download,
     copyPaths: (paths, relative) => void copyPaths(paths, relative),
-    refresh: () => reloadVisible(),
+    refresh: () => listing.reloadVisible(),
     ...(readOnly
       ? {}
       : {
-          rename: (entry) => setEditing({ kind: "rename", path: entry.path }),
+          rename: (entry) => {
+            setSelectionMode(false);
+            setEditing({ kind: "rename", path: entry.path });
+          },
           duplicate: (list) => {
             const groups = new Map<string, string[]>();
-            for (const entry of list) {
-              const folder = parentPath(entry.path, scope);
-              groups.set(folder, [...(groups.get(folder) ?? []), entry.path]);
+            for (const { path } of list) {
+              const folder = parentPath(path, scope);
+              groups.set(folder, [...(groups.get(folder) ?? []), path]);
             }
             for (const [destination, paths] of groups) {
-              void transfer({ paths, destination, mode: "copy" });
+              transfer({ paths, destination, mode: "copy" });
             }
           },
           cut: (list) => toClipboard("cut", list),
           copy: (list) => toClipboard("copy", list),
-          ...(clipboard ? { paste } : {}),
-          create: startCreate,
+          ...(clipboard
+            ? {
+                paste: (folder: string) =>
+                  transferFrom(clipboard, folder, clipboard.mode === "copy"),
+              }
+            : {}),
+          create: (kind, folder) => {
+            listing.expand(folder);
+            setEditing({ kind: "create", type: kind, folder });
+          },
           upload: (folder) => {
             uploadFolder.current = folder;
             uploadRef.current?.click();
           },
-          trash: (list) => void trashEntries(list),
+          trash,
+          remove: setPendingDelete,
           extract: (entry) =>
-            void runJob(
+            runArchive(
               () => ops.extract(entry.path),
               {
                 running: t("Extracting {name}", { name: entry.name }),
@@ -1213,15 +853,10 @@ export function FileManager({
             const format = isDirectoryEntry(entry)
               ? null
               : archiveFormatOf(entry.name);
-            if (!format) return undefined;
-            const available = tools?.extract[format];
-            if (available === true || !tools) return null;
-            return t("Needs {tool} on the host", {
-              tool: available ?? format,
-            });
+            return format ? needs(tools?.extract[format], format) : undefined;
           },
           compress: (list, format) =>
-            void runJob(
+            runArchive(
               () =>
                 ops.compress(
                   list.map((entry) => entry.path),
@@ -1237,13 +872,7 @@ export function FileManager({
               },
               list[0] ? parentPath(list[0].path, scope) : here,
             ),
-          compressBlocked: (format) => {
-            const available = tools?.compress[format];
-            return available === true || !tools
-              ? null
-              : t("Needs {tool} on the host", { tool: available ?? format });
-          },
-          remove: (list) => setPendingDelete(list),
+          compressBlocked: (format) => needs(tools?.compress[format], format),
         }),
   };
 
@@ -1255,16 +884,11 @@ export function FileManager({
         ? fileUrl("/file/download", { path: entry.path, inline: "1" })
         : null;
     }
-    if (!THUMBNAIL_EXTENSIONS.has(extension)) return null;
+    const kind = THUMBNAIL_KINDS[extension];
     // Skip requests the host cannot answer (no ffmpeg, pdftoppm or vips).
-    const kind = /^(?:mp4|m4v|mov|webm|mkv|avi|ogv)$/.test(extension)
-      ? "video"
-      : extension === "pdf"
-        ? "pdf"
-        : /^(?:avif|heic|heif|tif|tiff)$/.test(extension)
-          ? "image"
-          : null;
-    if (kind && tools && !tools.thumbnails[kind]) return null;
+    if (!kind || (kind !== "raster" && tools && !tools.thumbnails[kind])) {
+      return null;
+    }
     const size = Math.min(256, Math.ceil(72 * (window.devicePixelRatio || 1)));
     return fileUrl("/file/thumbnail", {
       path: entry.path,
@@ -1272,15 +896,6 @@ export function FileManager({
       mtime: String(Math.round(entry.mtime_ms)),
       bytes: String(entry.size),
     });
-  };
-
-  const changeSort = (next: SortState) => {
-    setSort(next);
-    thyraLocalStorage.setItem(SORT_KEY, writeSort(next));
-  };
-  const changeView = (next: FileView) => {
-    setView(next);
-    thyraLocalStorage.setItem(VIEW_KEY, next);
   };
 
   /** Open the selection menu; a row outside the selection selects itself. */
@@ -1296,322 +911,197 @@ export function FileManager({
     setMenu({ x, y, entries: inSelection ? selected : [entry] });
   };
 
-  /**
-   * Hovering a folder during a drag opens it after a moment (expands it in
-   * the list, enters it in the grid). Elapsed time is checked on every
-   * dragover as well as by a timer, since drag events can outlive timers
-   * scheduled from inside them.
-   */
-  const hoverTarget = (path: string | null) => {
-    const current = hoverOpen.current;
-    if (current && current.path === path) {
-      if (performance.now() - current.since >= HOVER_OPEN_MS) openHovered();
-      return;
-    }
-    if (current) clearTimeout(current.timer);
-    hoverOpen.current = null;
-    const entry = path ? entries.get(path) : undefined;
-    if (!path || !entry || !isDirectoryEntry(entry)) return;
-    if (view === "list" && expanded.has(path)) return;
-    hoverOpen.current = {
-      path,
-      since: performance.now(),
-      timer: setTimeout(openHovered, HOVER_OPEN_MS),
-    };
-  };
-  const openHovered = () => {
-    const current = hoverOpen.current;
-    if (!current) return;
-    clearTimeout(current.timer);
-    hoverOpen.current = { ...current, since: Number.POSITIVE_INFINITY };
-    if (view === "list") toggleFolder(current.path, true);
-    else void navigate(current.path);
+  const pathOf = (target: EventTarget | null) =>
+    (target as HTMLElement | null)?.closest<HTMLElement>("[data-file-path]")
+      ?.dataset.filePath ?? null;
+
+  /** Where a drop on an element lands: a folder row, else its folder. */
+  const dropFolder = (target: EventTarget | null) => {
+    const entry = entries.get(pathOf(target) ?? "");
+    if (!entry) return here;
+    if (isDirectoryEntry(entry)) return entry.path;
+    return view === "grid" ? here : parentPath(entry.path, scope);
   };
 
-  /** Whether the dragged paths may drop into a folder. */
-  const canDropInto = (folder: string, paths: string[]) =>
-    !paths.some((path) => isWithin(folder, path));
-
-  const dragSource = (paths: string[]): FileClipboard => ({
-    mode: "cut",
-    connectionId: client.connectionId,
-    workspaceId,
-    filesystem,
-    root: rootPath,
-    paths,
-  });
-
-  const dropDragged = (
-    source: FileClipboard,
-    folder: string,
-    copy: boolean,
-  ) => {
-    const paths = clipboardPathsFor(source, {
-      connectionId: client.connectionId,
-      workspaceId,
-      filesystem,
-      root: rootPath,
-    });
-    if (!paths) {
-      store.notify({
-        kind: "error",
-        message: t("Cannot move here"),
-        detail: t(
-          "Items from another workspace paste only in Filesystem mode.",
-        ),
-      });
-      return;
-    }
-    if (!canDropInto(folder, paths)) return;
-    void transfer({
-      paths,
-      destination: folder,
-      mode: copy ? "copy" : "move",
-    });
-  };
-
-  const touch = useTouchPress({
+  const drag = useFileDrag({
+    readOnly,
+    body: bodyRef,
+    here,
+    entry: (path) => entries.get(path),
+    isOpen: (path) => view === "list" && expanded.has(path),
+    openFolder: (path) =>
+      view === "list"
+        ? listing.toggleFolder(path, true)
+        : void listing.navigate(path),
+    dropFolder,
+    dragPaths: (path) => {
+      if (selection.paths.has(path)) return selected.map((entry) => entry.path);
+      select(path);
+      return [path];
+    },
+    source: (paths) => sourceOf("cut", paths),
+    downloadUrl: (entry) => fileUrl("/file/download", { path: entry.path }),
+    hostPath: (path) => hostPathOf(rootPath, path),
+    onDropRows: transferFrom,
+    onDropFiles: (folder, transfer) =>
+      void droppedFiles(transfer).then((files) => uploadDropped(folder, files)),
     onLongPress(path, x, y) {
       const entry = path ? entries.get(path) : undefined;
       if (!entry) {
         openMenuAt(null, x, y);
         return;
       }
-      // Long-press selects; the action bar holds the commands.
+      // Long-press selects; the selection bar holds the commands.
       navigator.vibrate?.(10);
       setSelectionMode(true);
       if (!selection.paths.has(entry.path)) {
         select(entry.path, { toggle: selectionMode });
       }
     },
-    onDragMove({ x, y, path }) {
-      if (readOnly) return;
-      const paths = selection.paths.has(path) ? [...selection.paths] : [path];
-      setGhost({
-        x,
-        y,
-        label:
-          paths.length === 1
-            ? baseName(paths[0]!)
-            : t("{count} items", { count: paths.length }),
-      });
-      // Scroll when the finger nears the list's top or bottom edge.
-      const box = bodyRef.current?.getBoundingClientRect();
-      if (box && (y < box.top + 32 || y > box.bottom - 32)) {
-        bodyRef.current?.scrollBy({ top: y < box.top + 32 ? -24 : 24 });
-      }
-      const under = document
-        .elementFromPoint(x, y)
-        ?.closest<HTMLElement>("[data-file-path]")?.dataset.filePath;
-      const folder =
-        under !== undefined
-          ? dropFolder({ target: rowElement(under) })
-          : bodyRef.current?.contains(document.elementFromPoint(x, y))
-            ? here
-            : null;
-      setDropTarget(
-        folder !== null && canDropInto(folder, paths) ? folder : null,
-      );
-      hoverTarget(under ?? null);
-    },
-    onDrop(drag) {
-      setGhost(null);
-      hoverTarget(null);
-      const folder = dropTarget;
-      setDropTarget(null);
-      if (!drag || folder === null || readOnly) return;
-      const paths = selection.paths.has(drag.path)
-        ? [...selection.paths]
-        : [drag.path];
-      dropDragged(dragSource(paths), folder, false);
-    },
+    isEditing: !!editing,
   });
 
   // --- Events (delegated from the body) ----------------------------------
 
-  const pathFromEvent = (event: { target: EventTarget | null }) =>
-    (event.target as HTMLElement | null)?.closest<HTMLElement>(
-      "[data-file-path]",
-    )?.dataset.filePath ?? null;
-
-  const pressHandlers = {
-    onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-      pointerType.current = event.pointerType;
-      touch.onPointerDown(event, pathFromEvent(event));
-    },
-    onPointerMove: touch.onPointerMove,
-    onPointerUp: touch.onPointerUp,
-    onPointerCancel: touch.onPointerCancel,
-  };
-
   const onBodyClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (touch.consumeClick()) return;
-    const entry = entries.get(pathFromEvent(event) ?? "");
+    if (drag.consumeClick()) return;
+    const entry = entries.get(pathOf(event.target) ?? "");
     if (!entry) {
       if (event.target === event.currentTarget) select(null);
       return;
     }
-    const target = event.target as HTMLElement;
-    const action = target.closest(".file-row-action");
+    const element = event.target as HTMLElement;
+    const action = element.closest(".file-row-action");
     if (action) {
       const rect = action.getBoundingClientRect();
       openMenuAt(entry.path, rect.left, rect.bottom);
-      return;
-    }
-    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+    } else if (event.shiftKey || event.ctrlKey || event.metaKey) {
       select(entry.path, {
         range: event.shiftKey,
         toggle: event.ctrlKey || event.metaKey,
       });
-      return;
-    }
-    if (target.closest(".file-twisty")) {
+    } else if (element.closest(".file-twisty")) {
       select(entry.path);
-      toggleFolder(entry.path);
-      return;
-    }
-    // In touch selection mode a tap adds or removes the row.
-    if (selectionMode) {
+      listing.toggleFolder(entry.path);
+    } else if (selectionMode) {
+      // In touch selection mode a tap adds or removes the row.
       select(entry.path, { toggle: true });
-      return;
-    }
-    // Touch opens folders in the grid with one tap; a mouse selects first.
-    if (
+    } else if (
       view === "grid" &&
       isDirectoryEntry(entry) &&
-      pointerType.current === "mouse"
+      drag.pointerType.current === "mouse"
     ) {
+      // A mouse selects a folder tile; a tap (or double-click) opens it.
       select(entry.path);
-      return;
-    }
-    open(entry);
-  };
-
-  const onBodyDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const entry = entries.get(pathFromEvent(event) ?? "");
-    if (entry && isDirectoryEntry(entry)) void navigate(entry.path);
+    } else open(entry);
   };
 
   const columns = () => {
-    if (view !== "grid") return 1;
     const tiles =
-      bodyRef.current?.querySelectorAll<HTMLElement>("[data-file-path]");
+      view === "grid"
+        ? bodyRef.current?.querySelectorAll<HTMLElement>("[data-file-path]")
+        : undefined;
     if (!tiles?.length) return 1;
-    const top = tiles[0]!.offsetTop;
     let count = 0;
-    for (const tile of tiles) {
-      if (tile.offsetTop !== top) break;
+    while (
+      count < tiles.length &&
+      tiles[count]!.offsetTop === tiles[0]!.offsetTop
+    ) {
       count += 1;
     }
-    return Math.max(1, count);
+    return count;
   };
 
   const onBodyKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (!target.matches("[data-file-path]")) return;
-    const path = target.dataset.filePath!;
+    const element = event.target as HTMLElement;
+    if (!element.matches("[data-file-path]")) return;
+    const path = element.dataset.filePath!;
     const entry = entries.get(path);
     const index = rows.findIndex((row) => row.entry.path === path);
     if (!entry || index < 0) return;
     const { altKey, shiftKey, key } = event;
     const mod = event.ctrlKey || event.metaKey;
     const lower = key.toLowerCase();
-    const handled = () => {
+    const targets = selection.paths.has(path) ? selected : [entry];
+    const run = (action: () => void) => {
       event.preventDefault();
       event.stopPropagation();
+      action();
     };
-    const targets = selection.paths.has(path) ? selected : [entry];
+    const moveTo = (next: string | undefined, extend = false) => {
+      if (!next) return;
+      // Shift extends the selection; Ctrl/Cmd moves the cursor alone.
+      if (extend) select(next, { range: true });
+      else if (!mod) select(next);
+      focusPath(next);
+    };
+    const removal = shiftKey ? actions.remove : actions.trash;
     if (altKey && (key === "ArrowLeft" || key === "ArrowRight")) {
-      handled();
-      if (key === "ArrowLeft") goBack();
-      else goForward();
+      run(key === "ArrowLeft" ? listing.goBack : listing.goForward);
+    } else if (event.metaKey && key === "Backspace" && actions.trash) {
+      run(() => actions.trash?.(targets));
     } else if ((altKey && key === "ArrowUp") || key === "Backspace") {
-      handled();
-      goUp();
+      run(listing.goUp);
     } else if (altKey && key === "ArrowDown") {
-      handled();
-      open(entry, true);
+      run(() => open(entry, true));
     } else if (shiftKey && altKey && lower === "c") {
-      handled();
-      void copyPaths(
-        targets.map((item) => item.path),
-        mod,
+      run(
+        () =>
+          void copyPaths(
+            targets.map((item) => item.path),
+            mod,
+          ),
       );
     } else if (key === "ContextMenu" || (shiftKey && key === "F10")) {
-      handled();
-      const rect = target.getBoundingClientRect();
-      openMenuAt(path, rect.left + 24, rect.top + rect.height / 2);
-    } else if (key === "F2" && actions.rename) {
-      handled();
-      actions.rename(entry);
-    } else if (key === "Delete" && shiftKey && actions.remove) {
-      handled();
-      actions.remove(targets);
-    } else if (
-      (key === "Delete" || (event.metaKey && key === "Backspace")) &&
-      actions.trash
-    ) {
-      handled();
-      actions.trash(targets);
-    } else if (mod && lower === "a") {
-      handled();
-      setSelection({
-        paths: new Set(rows.map((row) => row.entry.path)),
-        anchor: rows[0]?.entry.path ?? null,
+      run(() => {
+        const rect = element.getBoundingClientRect();
+        openMenuAt(path, rect.left + 24, rect.top + rect.height / 2);
       });
-    } else if (mod && lower === "c" && actions.copy) {
-      handled();
-      actions.copy(targets);
-    } else if (mod && lower === "x" && actions.cut) {
-      handled();
-      actions.cut(targets);
+    } else if (key === "F2" && actions.rename) {
+      run(() => actions.rename?.(entry));
+    } else if (key === "Delete" && removal) {
+      run(() => removal(targets));
+    } else if (mod && lower === "a") {
+      run(() => selectAll(rows.map((row) => row.entry.path)));
+    } else if (mod && (lower === "c" || lower === "x") && actions.copy) {
+      run(() => (lower === "c" ? actions.copy : actions.cut)?.(targets));
     } else if (mod && lower === "v" && actions.paste) {
-      handled();
-      actions.paste(targetFolder(targets));
+      run(() => actions.paste?.(targetFolder(targets)));
     } else if (key === "Escape" && (selection.paths.size > 1 || clipboard)) {
-      handled();
-      if (clipboard?.mode === "cut") setFileClipboard(null);
-      select(path);
+      run(() => {
+        if (clipboard?.mode === "cut") setFileClipboard(null);
+        select(path);
+      });
     } else if (mod && key === " ") {
-      handled();
-      select(path, { toggle: true });
+      run(() => select(path, { toggle: true }));
     } else if (key === "Enter" || key === " ") {
-      handled();
-      open(entry);
+      run(() => open(entry));
     } else if (
       view === "list" &&
       !shiftKey &&
       !mod &&
       (key === "ArrowRight" || key === "ArrowLeft")
     ) {
-      handled();
+      // Right expands, then steps in; Left collapses, then steps out.
       const folder = isDirectoryEntry(entry);
       const child = rows[index + 1];
-      if (key === "ArrowRight") {
-        if (folder && !expanded.has(path)) toggleFolder(path, true);
-        else if (folder && child && child.depth === rows[index]!.depth + 1) {
-          select(child.entry.path);
-          focusPath(child.entry.path);
-        }
-      } else if (folder && expanded.has(path)) toggleFolder(path, false);
-      else {
-        const parent = parentPath(path, scope);
-        if (entries.has(parent)) {
-          select(parent);
-          focusPath(parent);
-        }
-      }
+      const parent = parentPath(path, scope);
+      run(() => {
+        if (key === "ArrowRight" && folder && !expanded.has(path)) {
+          listing.toggleFolder(path, true);
+        } else if (key === "ArrowRight") {
+          if (folder && child?.depth === rows[index]!.depth + 1) {
+            moveTo(child.entry.path);
+          }
+        } else if (folder && expanded.has(path)) {
+          listing.toggleFolder(path, false);
+        } else if (entries.has(parent)) moveTo(parent);
+      });
     } else if (MOVE_KEYS.has(key)) {
-      handled();
-      const next =
-        rows[
-          moveIndex(index, key as MoveKey, rows.length, { columns: columns() })
-        ];
-      if (!next) return;
-      // Shift extends the selection; Ctrl/Cmd moves the cursor alone.
-      if (shiftKey) select(next.entry.path, { range: true });
-      else if (!mod) select(next.entry.path);
-      focusPath(next.entry.path);
+      const next = moveIndex(index, key as MoveKey, rows.length, {
+        columns: columns(),
+      });
+      run(() => moveTo(rows[next]?.entry.path, shiftKey));
     } else if (key.length === 1 && !mod && !altKey) {
       const now = Date.now();
       const text =
@@ -1622,278 +1112,60 @@ export function FileManager({
         text,
         text.length > 1 ? index - 1 : index,
       );
-      if (match >= 0) {
-        handled();
-        select(rows[match]!.entry.path);
-        focusPath(rows[match]!.entry.path);
-      }
+      if (match >= 0) run(() => moveTo(rows[match]!.entry.path));
     }
-  };
-
-  const isFileDrag = (event: React.DragEvent) =>
-    !readOnly && Array.from(event.dataTransfer.types).includes("Files");
-  const isRowDrag = (event: React.DragEvent) =>
-    !readOnly && Array.from(event.dataTransfer.types).includes(DRAG_TYPE);
-
-  const onDragStart = (event: React.DragEvent<HTMLDivElement>) => {
-    const path = pathFromEvent(event);
-    const entry = path ? entries.get(path) : undefined;
-    // Touch drags use the long-press gesture instead of native drag.
-    if (!entry || pointerType.current !== "mouse" || editing) {
-      event.preventDefault();
-      return;
-    }
-    const list = selection.paths.has(entry.path) ? selected : [entry];
-    if (!selection.paths.has(entry.path)) select(entry.path);
-    activeDrag = dragSource(list.map((item) => item.path));
-    const transfer = event.dataTransfer;
-    transfer.effectAllowed = readOnly ? "copy" : "copyMove";
-    transfer.setData(DRAG_TYPE, JSON.stringify(activeDrag));
-    transfer.setData(
-      "text/plain",
-      list.map((item) => hostPathOf(rootPath, item.path)).join("\n"),
-    );
-    // Chromium saves a dragged file to the desktop from DownloadURL.
-    if (list.length === 1) {
-      const url = fileUrl("/file/download", { path: entry.path });
-      const name = isDirectoryEntry(entry)
-        ? `${entry.name}.tar.gz`
-        : entry.name;
-      transfer.setData(
-        "DownloadURL",
-        `application/octet-stream:${name}:${url}`,
-      );
-    } else {
-      const badge = document.createElement("div");
-      badge.className = "file-manager-drag-badge";
-      badge.textContent = t("{count} items", { count: list.length });
-      document.body.append(badge);
-      transfer.setDragImage(badge, -8, -8);
-      setTimeout(() => badge.remove(), 0);
-    }
-  };
-
-  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    const rowDrag = isRowDrag(event);
-    if (!rowDrag && !isFileDrag(event)) return;
-    const folder = dropFolder(event);
-    hoverTarget(pathFromEvent(event));
-    if (rowDrag && activeDrag && !canDropInto(folder, activeDrag.paths)) {
-      event.dataTransfer.dropEffect = "none";
-      setDropTarget(null);
-      return;
-    }
-    event.preventDefault();
-    event.dataTransfer.dropEffect =
-      rowDrag && !copyModifier(event) ? "move" : "copy";
-    setDropTarget(folder);
-  };
-
-  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    dragDepth.current = 0;
-    const folder = dropFolder(event);
-    setDropTarget(null);
-    hoverTarget(null);
-    if (isRowDrag(event)) {
-      event.preventDefault();
-      let source: FileClipboard | null = activeDrag;
-      try {
-        source = JSON.parse(event.dataTransfer.getData(DRAG_TYPE));
-      } catch {}
-      activeDrag = null;
-      if (source) dropDragged(source, folder, copyModifier(event));
-      return;
-    }
-    if (!isFileDrag(event)) return;
-    event.preventDefault();
-    void droppedFiles(event.dataTransfer).then((files) =>
-      uploadDropped(folder, files),
-    );
-  };
-
-  const dropFolder = (event: { target: EventTarget | null }) => {
-    const entry = entries.get(pathFromEvent(event) ?? "");
-    if (!entry) return here;
-    if (isDirectoryEntry(entry)) return entry.path;
-    return view === "grid" ? here : parentPath(entry.path, scope);
   };
 
   // --- Rendering ---------------------------------------------------------
 
-  const crumbs = locationCrumbs(location, filesystem, rootLabel);
-  const hereLabel = crumbs[crumbs.length - 1]?.label ?? location;
-  const cutPaths =
-    clipboard?.mode === "cut" && clipboardPaths
-      ? new Set(clipboardPaths)
-      : null;
-  const iconSize = view === "grid" ? 40 : 16;
-  const indent = (depth: number) =>
-    view === "list" ? { paddingLeft: 4 + depth * 12 } : undefined;
-
+  const crumbs = locationCrumbs(listing.location, filesystem, rootLabel);
+  const hereLabel = crumbs[crumbs.length - 1]?.label ?? listing.location;
+  const clipboardPaths = clipboard
+    ? clipboardPathsFor(clipboard, target)
+    : null;
+  const rowContext: RowContext = {
+    view,
+    light,
+    parentName: (path) => baseName(parentPath(path, scope)),
+    tabStop: focused ?? rows[0]?.entry.path,
+    activePath,
+    selected: selection.paths,
+    expanded,
+    dropTarget: drag.dropTarget,
+    cut:
+      clipboard?.mode === "cut" && clipboardPaths
+        ? new Set(clipboardPaths)
+        : null,
+    busy: (path) => loading.has(path) || busy.has(path),
+    gitStatus,
+    renaming: editing?.kind === "rename" ? editing.path : null,
+    thumbnail: thumbnailSrc,
+    onFocus: setFocused,
+    onRename: (entry, name) => {
+      setEditing(null);
+      rename(entry, name);
+    },
+    onRenameCancel: (path) => {
+      setEditing(null);
+      focusPath(path);
+    },
+  };
   const createRow = (folder: string, depth: number) =>
     editing?.kind === "create" && editing.folder === folder ? (
-      <div
+      <CreateEntryRow
         key={`create:${folder}`}
-        className={`${view === "grid" ? "file-tile" : "file-row"} is-editing`}
-        style={indent(depth)}
-      >
-        {view === "list" ? <span className="file-twisty" /> : null}
-        <span className="file-icon">
-          <FileIcon
-            name=""
-            directory={editing.type === "directory"}
-            light={light}
-            size={iconSize}
-          />
-        </span>
-        <NameInput
-          initial=""
-          label={
-            editing.type === "directory"
-              ? t("New folder name")
-              : t("New file name")
-          }
-          onCommit={(value) => void createEntry(editing.type, folder, value)}
-          onCancel={() => setEditing(null)}
-        />
-      </div>
-    ) : null;
-
-  const renderRow = ({ entry, depth }: FileRow) => {
-    const path = entry.path;
-    const folder = isDirectoryEntry(entry);
-    const isOpen = folder && expanded.has(path);
-    const isSelected = selection.paths.has(path);
-    const status = folder
-      ? gitStatus?.directoryStatuses.get(path)
-      : gitStatus?.fileStatuses.get(path);
-    const meta = [
-      symlinkDescription(entry),
-      folder ? "" : formatSize(entry.size),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    const renaming = editing?.kind === "rename" && editing.path === path;
-    const className = [
-      view === "grid" ? "file-tile" : "file-row",
-      isSelected ? "is-selected" : "",
-      dropTarget === path ? "is-drop-target" : "",
-      cutPaths?.has(path) ? "is-cut" : "",
-      entry.ignored ? "is-ignored" : "",
-      entry.hidden ? "is-hidden-entry" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const icon = (
-      <FileIcon
-        name={entry.name}
-        directory={folder}
-        open={isOpen}
-        parent={baseName(parentPath(path, scope))}
+        type={editing.type}
+        depth={depth}
+        view={view}
         light={light}
-        size={iconSize}
+        onCommit={(value) => createEntry(editing.type, folder, value)}
+        onCancel={() => setEditing(null)}
       />
-    );
-    const name = renaming ? (
-      <NameInput
-        initial={entry.name}
-        label={t("New name for {name}", { name: entry.name })}
-        onCommit={(value) => {
-          setEditing(null);
-          void rename(entry, value);
-        }}
-        onCancel={() => {
-          setEditing(null);
-          focusPath(path);
-        }}
-      />
-    ) : (
-      <span className="file-name">{entry.name}</span>
-    );
-    return [
-      <div
-        key={path}
-        className={className}
-        role={view === "grid" ? "option" : "treeitem"}
-        data-file-path={path}
-        tabIndex={path === (focused ?? rows[0]?.entry.path) ? 0 : -1}
-        aria-level={view === "list" ? depth + 1 : undefined}
-        aria-selected={isSelected}
-        aria-expanded={view === "list" && folder ? isOpen : undefined}
-        aria-current={path === activePath ? "true" : undefined}
-        draggable={!renaming}
-        title={entry.ignored ? t("{path} · Ignored by Git", { path }) : path}
-        style={indent(depth)}
-        onFocus={(event) => {
-          if (event.target === event.currentTarget) setFocused(path);
-        }}
-      >
-        {view === "list" ? (
-          <>
-            <span className="file-twisty" aria-hidden="true">
-              {folder ? (
-                isOpen ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )
-              ) : null}
-            </span>
-            <span className="file-icon">{icon}</span>
-            {name}
-            {status ? (
-              <span
-                className="file-git-status"
-                title={status.title}
-                role="img"
-                aria-label={status.title}
-              >
-                {status.codes.map((code) => (
-                  <span
-                    className={`git-status-code git-status-${code.toLowerCase()}`}
-                    key={code}
-                    aria-hidden="true"
-                  >
-                    {code}
-                  </span>
-                ))}
-              </span>
-            ) : null}
-            {meta ? <span className="file-meta">{meta}</span> : null}
-            <span className="file-meta file-meta-date">
-              {shortDate(entry.mtime_ms)}
-            </span>
-          </>
-        ) : (
-          <>
-            <FileThumbnail src={thumbnailSrc(entry)}>{icon}</FileThumbnail>
-            {name}
-          </>
-        )}
-        {loading.has(path) || busy.has(path) ? (
-          <span className="row-spinner" />
-        ) : null}
-        <span className="file-row-action">
-          <IconButton
-            tabIndex={-1}
-            label={t("Actions for {name}", { name: entry.name })}
-            icon={<Ellipsis size={14} />}
-          />
-        </span>
-      </div>,
-      view === "list" && isOpen ? createRow(path, depth + 1) : null,
-    ];
-  };
-
-  const counts = hereEntries
-    ? filter
-      ? `${rows.length}/${hereEntries.length}`
-      : String(hereEntries.length)
-    : null;
-  const conflictAction = (policy: "rename" | "replace") => {
+    ) : null;
+  const conflictAction = (policy: Conflict) => {
     const request = conflict;
     setConflict(null);
-    if (request) void transfer(request, policy);
+    if (request) transfer(request, policy);
   };
 
   return (
@@ -1901,125 +1173,78 @@ export function FileManager({
       ref={rootRef}
       className={`file-manager is-${width}`}
       onMouseUp={(event) => {
-        if (event.button === 3) goBack();
-        if (event.button === 4) goForward();
+        if (event.button === 3) listing.goBack();
+        if (event.button === 4) listing.goForward();
       }}
     >
       <FileManagerNav
         workspaceId={workspaceId}
         filesystem={filesystem}
-        location={location}
+        location={listing.location}
         rootPath={rootPath}
         rootLabel={rootLabel}
-        canBack={history.back.length > 0}
-        canForward={history.forward.length > 0}
-        atRoot={atRoot}
+        canBack={listing.canBack}
+        canForward={listing.canForward}
+        atRoot={listing.atRoot}
         loading={loading.size > 0}
         canReveal={!!activePath && isAbsolutePath(activePath) === filesystem}
-        onBack={goBack}
-        onForward={goForward}
-        onUp={goUp}
-        onNavigate={(path) => void navigate(path)}
-        onRefresh={() => reloadVisible()}
+        onBack={listing.goBack}
+        onForward={listing.goForward}
+        onUp={listing.goUp}
+        onNavigate={(path) => void listing.navigate(path)}
+        onRefresh={() => listing.reloadVisible()}
         onReveal={() => {
           reveal(activePath);
           if (activePath) focusPath(activePath);
         }}
       />
-      <div className="ui-bar file-manager-tools">
-        <SearchField
-          className="file-manager-filter"
-          fullWidth
-          value={filter}
-          onValueChange={(value) => update(() => ({ search: value }))}
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowDown") return;
-            event.preventDefault();
-            bodyRef.current
-              ?.querySelector<HTMLElement>("[data-file-path]")
-              ?.focus();
-          }}
-          placeholder={t("Filter")}
-          aria-label={t("Filter loaded entries")}
-          title={t(
-            "Filter loaded names or paths. Globs: r*md, ?.txt, **/*.md, *.{md,txt}",
-          )}
-          maxLength={512}
-        />
-        {counts ? (
-          <Token
-            title={t("{count} entries", { count: hereEntries?.length ?? 0 })}
-          >
-            {counts}
-          </Token>
-        ) : null}
-        <IconButton
-          aria-pressed={view === "grid"}
-          label={view === "grid" ? t("List view") : t("Grid view")}
-          onClick={() => changeView(view === "grid" ? "list" : "grid")}
-          icon={view === "grid" ? <List size={14} /> : <LayoutGrid size={14} />}
-        />
-        <Menu
-          aria-label={t("Sort")}
-          items={sortMenu(sort, changeSort)}
-          trigger={
-            <IconButton
-              label={t("Sort")}
-              icon={
-                sort.descending ? (
-                  <ArrowDownWideNarrow size={14} />
-                ) : (
-                  <ArrowUpNarrowWide size={14} />
-                )
-              }
-            />
-          }
-        />
-        <IconButton
-          aria-pressed={showHidden}
-          label={t("Show hidden files")}
-          tooltip={showHidden ? t("Hide hidden files") : t("Show hidden files")}
-          onClick={() => onShowHiddenChange(!showHidden)}
-          icon={showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
-        />
-        {actions.create ? (
-          <>
-            <IconButton
-              label={t("New file")}
-              onClick={() => startCreate("file", targetFolder())}
-              icon={<FilePlus size={14} />}
-            />
-            <IconButton
-              label={t("New folder")}
-              onClick={() => startCreate("directory", targetFolder())}
-              icon={<FolderPlus size={14} />}
-            />
-            <IconButton
-              label={t("Upload files")}
-              tooltip={t("Upload files here")}
-              onClick={() => actions.upload?.(targetFolder())}
-              icon={<Upload size={14} />}
-            />
-          </>
-        ) : null}
-        <input
-          ref={uploadRef}
-          type="file"
-          multiple
-          hidden
-          onChange={(event) => {
-            const files = Array.from(event.currentTarget.files ?? []);
-            event.currentTarget.value = "";
-            void uploadFiles(uploadFolder.current || here, files);
-          }}
-        />
-      </div>
+      <FileManagerTools
+        filter={filter}
+        onFilter={(value) => listing.update(() => ({ search: value }))}
+        onFilterExit={() =>
+          bodyRef.current
+            ?.querySelector<HTMLElement>("[data-file-path]")
+            ?.focus()
+        }
+        count={
+          hereEntries ? { shown: rows.length, total: hereEntries.length } : null
+        }
+        view={view}
+        onView={(next) => {
+          setView(next);
+          thyraLocalStorage.setItem(VIEW_KEY, next);
+        }}
+        sort={sort}
+        onSort={changeSort}
+        showHidden={showHidden}
+        onShowHidden={onShowHiddenChange}
+        onCreate={
+          actions.create
+            ? (kind) => actions.create?.(kind, targetFolder())
+            : undefined
+        }
+        onUpload={
+          actions.upload ? () => actions.upload?.(targetFolder()) : undefined
+        }
+      />
+      <input
+        ref={uploadRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? []);
+          event.currentTarget.value = "";
+          void uploadFiles(uploadFolder.current || here, files);
+        }}
+      />
       {error ? (
         <p className="file-manager-message is-error" role="alert">
           {error}
         </p>
       ) : null}
-      {cache.rootInfo?.truncated && listKey(cache.rootInfo.root) === here ? (
+      {cache.rootInfo?.truncated &&
+      listing.listKey(cache.rootInfo.root) === here ? (
         <p className="file-manager-message">
           {t("Showing the first {count} entries.", {
             count: hereEntries?.length ?? 0,
@@ -2036,41 +1261,26 @@ export function FileManager({
       ) : null}
       <div
         ref={bodyRef}
-        className={`file-manager-body is-${view} ${dropTarget === here ? "is-drop-target" : ""}`}
+        className={`file-manager-body is-${view} ${drag.dropTarget === here ? "is-drop-target" : ""}`}
         role={view === "grid" ? "listbox" : "tree"}
         aria-multiselectable="true"
         aria-label={t("Files in {path}", { path: hereLabel })}
         aria-busy={hereLoading}
         onClick={onBodyClick}
-        onDoubleClick={onBodyDoubleClick}
+        onDoubleClick={(event) => {
+          const entry = entries.get(pathOf(event.target) ?? "");
+          if (entry && isDirectoryEntry(entry)) {
+            void listing.navigate(entry.path);
+          }
+        }}
         onKeyDown={onBodyKeyDown}
         onContextMenu={(event) => {
           event.preventDefault();
           // Touch long-press is handled by the press gesture instead.
-          if (pointerType.current !== "mouse") return;
-          openMenuAt(pathFromEvent(event), event.clientX, event.clientY);
+          if (drag.pointerType.current !== "mouse") return;
+          openMenuAt(pathOf(event.target), event.clientX, event.clientY);
         }}
-        onDragStart={onDragStart}
-        onDragEnd={() => {
-          activeDrag = null;
-          dragDepth.current = 0;
-          setDropTarget(null);
-          hoverTarget(null);
-        }}
-        onDragOver={onDragOver}
-        onDragEnter={() => {
-          dragDepth.current += 1;
-        }}
-        onDragLeave={() => {
-          // Enter/leave pairs nest per row; zero means the drag left the body.
-          dragDepth.current = Math.max(0, dragDepth.current - 1);
-          if (dragDepth.current === 0) {
-            setDropTarget(null);
-            hoverTarget(null);
-          }
-        }}
-        onDrop={onDrop}
-        {...pressHandlers}
+        {...drag.handlers}
       >
         {createRow(here, 0)}
         {hereLoading ? (
@@ -2078,7 +1288,16 @@ export function FileManager({
             {t("Loading directory...")}
           </div>
         ) : rows.length ? (
-          rows.flatMap(renderRow)
+          rows.flatMap((row) => [
+            <FileEntryRow
+              key={row.entry.path}
+              row={row}
+              context={rowContext}
+            />,
+            view === "list" && expanded.has(row.entry.path)
+              ? createRow(row.entry.path, row.depth + 1)
+              : null,
+          ])
         ) : hereEntries && editing?.kind !== "create" ? (
           <div className="file-manager-message">
             {filter ? t("No loaded entries match.") : t("Empty directory")}
@@ -2086,98 +1305,24 @@ export function FileManager({
         ) : null}
       </div>
       {selectionMode || selected.length > 1 ? (
-        <div
-          className="ui-bar file-manager-selection-bar"
-          role="toolbar"
-          aria-label={t("Selection")}
-        >
-          <Token tone="accent">
-            {t("{count} selected", { count: selected.length })}
-          </Token>
-          <span className="ui-bar-spacer" />
-          {actions.cut ? (
-            <IconButton
-              label={t("Cut")}
-              disabled={!selected.length}
-              onMouseDown={keepFocus}
-              onClick={() => actions.cut?.(selected)}
-              icon={<Scissors size={15} />}
-            />
-          ) : null}
-          {actions.copy ? (
-            <IconButton
-              label={t("Copy")}
-              disabled={!selected.length}
-              onMouseDown={keepFocus}
-              onClick={() => actions.copy?.(selected)}
-              icon={<Copy size={15} />}
-            />
-          ) : null}
-          {actions.paste ? (
-            <IconButton
-              label={t("Paste")}
-              onMouseDown={keepFocus}
-              onClick={() => actions.paste?.(targetFolder())}
-              icon={<ClipboardPaste size={15} />}
-            />
-          ) : null}
-          {actions.rename && selected.length === 1 ? (
-            <IconButton
-              label={t("Rename")}
-              onMouseDown={keepFocus}
-              onClick={() => {
-                setSelectionMode(false);
-                actions.rename?.(selected[0]!);
-              }}
-              icon={<Pencil size={15} />}
-            />
-          ) : null}
-          {selected.length === 1 ? (
-            <IconButton
-              label={t("Download")}
-              onMouseDown={keepFocus}
-              onClick={() => download(selected[0]!)}
-              icon={<Download size={15} />}
-            />
-          ) : null}
-          {actions.trash ? (
-            <IconButton
-              label={t("Move to trash")}
-              tone="danger"
-              disabled={!selected.length}
-              onMouseDown={keepFocus}
-              onClick={() => actions.trash?.(selected)}
-              icon={<Trash2 size={15} />}
-            />
-          ) : null}
-          <IconButton
-            label={t("More actions")}
-            disabled={!selected.length}
-            onMouseDown={keepFocus}
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              setMenu({ x: rect.left, y: rect.top, entries: selected });
-            }}
-            icon={<Ellipsis size={15} />}
-          />
-          <IconButton
-            label={t("Done")}
-            onMouseDown={keepFocus}
-            onClick={() => {
-              setSelectionMode(false);
-              select(null);
-            }}
-            icon={<X size={15} />}
-          />
-        </div>
+        <FileSelectionBar
+          selected={selected}
+          actions={actions}
+          folder={targetFolder()}
+          onMore={(x, y) => setMenu({ x, y, entries: selected })}
+          onDone={() => {
+            setSelectionMode(false);
+            select(null);
+          }}
+        />
       ) : null}
-      {ghost ? (
+      {drag.ghost ? (
         <div
           className="file-manager-drag-badge is-touch"
-          style={{ left: ghost.x + 12, top: ghost.y + 12 }}
+          style={{ left: drag.ghost.x + 12, top: drag.ghost.y + 12 }}
           aria-hidden="true"
         >
-          {ghost.label}
+          {drag.ghost.label}
         </div>
       ) : null}
       <ContextMenu
@@ -2223,7 +1368,7 @@ export function FileManager({
         }
         confirmLabel={t("Delete")}
         tone="danger"
-        onConfirm={() => void remove(pendingDelete)}
+        onConfirm={() => remove(pendingDelete)}
       />
       <Dialog
         open={!!conflict}

@@ -88,6 +88,8 @@ export function useTouchPress({
   const state = useRef<{
     timer: ReturnType<typeof setTimeout> | null;
     start: { x: number; y: number } | null;
+    /** The pointer of the press; other pointers (a mouse) are ignored. */
+    pointer: number;
     path: string | null;
     pressed: boolean;
     dragging: boolean;
@@ -95,6 +97,7 @@ export function useTouchPress({
   }>({
     timer: null,
     start: null,
+    pointer: -1,
     path: null,
     pressed: false,
     dragging: false,
@@ -140,6 +143,7 @@ export function useTouchPress({
       const current = state.current;
       current.consumeClick = false;
       current.path = path;
+      current.pointer = event.pointerId;
       current.start = { x: event.clientX, y: event.clientY };
       const { clientX, clientY } = event;
       current.timer = setTimeout(() => {
@@ -151,7 +155,7 @@ export function useTouchPress({
     },
     onPointerMove(event: React.PointerEvent) {
       const current = state.current;
-      if (!current.start) return;
+      if (!current.start || event.pointerId !== current.pointer) return;
       const moved =
         Math.abs(event.clientX - current.start.x) > MOVE_SLOP_PX ||
         Math.abs(event.clientY - current.start.y) > MOVE_SLOP_PX;
@@ -174,6 +178,7 @@ export function useTouchPress({
     },
     onPointerUp(event: React.PointerEvent) {
       const current = state.current;
+      if (event.pointerId !== current.pointer) return;
       const drag =
         current.dragging && current.path
           ? { x: event.clientX, y: event.clientY, path: current.path }
@@ -182,7 +187,8 @@ export function useTouchPress({
       reset();
       if (wasPressed) callbacks.current.onDrop(drag);
     },
-    onPointerCancel() {
+    onPointerCancel(event: React.PointerEvent) {
+      if (event.pointerId !== state.current.pointer) return;
       const wasDragging = state.current.dragging;
       reset();
       if (wasDragging) callbacks.current.onDrop(null);
