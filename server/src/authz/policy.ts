@@ -169,6 +169,9 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // filesystem scope needs an instance admin, as for the methods above.
   "file.rename": write(r.files),
   "file.transfer": write(r.files),
+  // Undo tokens restore only into the workspace and scope that trashed them.
+  "file.trash": write(r.files),
+  "file.restore": write(r.files),
   "git.diff_summary": read(r.workspace),
   "git.diff_file": read(r.workspace),
   "git.pull": write(r.workspace),

@@ -30,6 +30,13 @@ export function fileOperations(
         "file.transfer",
         params,
       ),
+    trash: (paths: string[]) =>
+      call<{
+        method: "freedesktop" | "macos" | "thyra";
+        items: Array<{ path: string; token: string }>;
+      }>("file.trash", { paths }),
+    restore: (tokens: string[]) =>
+      call<{ paths: string[] }>("file.restore", { tokens }),
   };
 }
 

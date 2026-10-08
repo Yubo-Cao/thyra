@@ -30,6 +30,9 @@ export type FileMenuActions = {
   paste?: (folder: string) => void;
   create?: (kind: "file" | "directory", folder: string) => void;
   upload?: (folder: string) => void;
+  /** Move to the host's trash (Undo restores). */
+  trash?: (entries: FileExplorerEntry[]) => void;
+  /** Delete permanently, after a confirmation. */
   remove?: (entries: FileExplorerEntry[]) => void;
 };
 
@@ -126,18 +129,23 @@ export function selectionMenu(
             },
         ),
         ...item(
-          actions.remove && {
-            id: "delete",
+          actions.trash && {
+            id: "trash",
             label:
               entries.length > 1
-                ? t("Delete {count} items", { count: entries.length })
-                : single?.type === "symlink"
-                  ? t("Delete symlink")
-                  : directory
-                    ? t("Delete directory")
-                    : t("Delete file"),
+                ? t("Move {count} items to trash", { count: entries.length })
+                : t("Move to trash"),
             danger: true,
             shortcut: "Delete",
+            onAction: () => actions.trash?.(entries),
+          },
+        ),
+        ...item(
+          actions.remove && {
+            id: "delete",
+            label: t("Delete permanently"),
+            danger: true,
+            shortcut: "Shift+Delete",
             onAction: () => actions.remove?.(entries),
           },
         ),

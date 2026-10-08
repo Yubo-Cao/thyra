@@ -3,6 +3,9 @@ import {
   ArrowUpNarrowWide,
   ChevronDown,
   ChevronRight,
+  ClipboardPaste,
+  Copy,
+  Download,
   Ellipsis,
   Eye,
   EyeOff,
@@ -10,7 +13,11 @@ import {
   FolderPlus,
   LayoutGrid,
   List,
+  Pencil,
+  Scissors,
+  Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -55,8 +62,11 @@ import { Menu } from "../ui/Menu";
 import { SearchField } from "../ui/SearchField";
 import { TextField } from "../ui/TextField";
 import { Token } from "../ui/Token";
-import { useLongPress } from "../useLongPress";
+import { keepFocus } from "../ui/keepFocus";
+import { toast } from "../ui/toastQueue";
+import { type DroppedFile, droppedFiles, useTouchPress } from "./fileDrop";
 import {
+  type FileClipboard,
   clipboardPathsFor,
   setFileClipboard,
   useFileClipboard,
@@ -145,6 +155,13 @@ type TransferRequest = {
   destination: string;
   mode: "move" | "copy";
 };
+
+/** The rows being dragged, readable during dragover (dataTransfer is not). */
+let activeDrag: FileClipboard | null = null;
+const DRAG_TYPE = "application/x-thyra-files";
+const HOVER_OPEN_MS = 700;
+const copyModifier = (event: { ctrlKey: boolean; altKey: boolean }) =>
+  modifierKey === "Cmd" ? event.altKey : event.ctrlKey;
 
 const VIEW_KEY = "fileManagerView";
 const SORT_KEY = "fileManagerSort";
@@ -305,8 +322,19 @@ export function FileManager({
   const uploadFolder = useRef("");
   const contextRef = useRef(0);
   const typeahead = useRef({ text: "", at: 0 });
-  const pressedPath = useRef<string | null>(null);
   const pointerType = useRef("mouse");
+  const hoverOpen = useRef<{
+    path: string;
+    since: number;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const dragDepth = useRef(0);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [ghost, setGhost] = useState<{
+    x: number;
+    y: number;
+    label: string;
+  } | null>(null);
   const { children, expanded, search: filter, error } = cache;
   const listKey = (path: string) =>
     filesystem ? normalizeFilesystemPath(path) : path;
@@ -506,6 +534,11 @@ export function FileManager({
     setFocused(path);
   };
 
+  // Touch selection mode ends with its last selected row.
+  useEffect(() => {
+    if (selectionMode && !selection.paths.size) setSelectionMode(false);
+  }, [selectionMode, selection.paths.size]);
+
   const toggleFolder = (path: string, open?: boolean) => {
     const next = new Set(expanded);
     const opening = open ?? !next.has(path);
@@ -699,6 +732,35 @@ export function FileManager({
     afterChange([folder], { paths });
   };
 
+  /** Upload an OS drop, creating its folders first. */
+  const uploadDropped = async (folder: string, files: DroppedFile[]) => {
+    const token = contextRef.current;
+    const made = new Set<string>();
+    const groups = new Map<string, File[]>();
+    for (const { folders, file } of files) {
+      let path = folder;
+      for (const name of folders) {
+        path = joinPath(path, name);
+        if (made.has(path)) continue;
+        made.add(path);
+        try {
+          await createExplorerEntry(client, workspaceId, path, "directory");
+        } catch (reason) {
+          if (!isConflictError(reason)) {
+            if (isCurrent(token)) {
+              notifyError(t("Cannot create folder"), reason);
+            }
+            return;
+          }
+        }
+      }
+      if (file) groups.set(path, [...(groups.get(path) ?? []), file]);
+    }
+    if (!isCurrent(token)) return;
+    if (made.size) afterChange([folder]);
+    for (const [path, list] of groups) await uploadFiles(path, list);
+  };
+
   /** Create `a/b/c.txt` inside a folder, making missing folders on the way. */
   const createEntry = async (
     kind: "file" | "directory",
@@ -885,6 +947,63 @@ export function FileManager({
     });
   };
 
+  const undoTrash = async (tokens: string[], folders: string[]) => {
+    const token = contextRef.current;
+    try {
+      const { paths } = await ops.restore(tokens);
+      if (!isCurrent(token)) return;
+      afterChange(folders, { paths });
+      setSelection({ paths: new Set(paths), anchor: paths[0] ?? null });
+    } catch (reason) {
+      if (isCurrent(token)) notifyError(t("Undo failed"), reason);
+    }
+  };
+
+  /** Move to the host's trash, with an Undo toast. */
+  const trashEntries = async (list: FileExplorerEntry[]) => {
+    const token = contextRef.current;
+    const paths = list.map((entry) => entry.path);
+    if (!paths.length) return;
+    markBusy(paths, true);
+    try {
+      const { items, method } = await ops.trash(paths);
+      if (!isCurrent(token)) return;
+      const folders = paths.map((path) => parentPath(path, scope));
+      select(null);
+      setSelectionMode(false);
+      afterChange(folders, { paths, removed: true });
+      const name = baseName(items[0]?.path ?? "");
+      const count = items.length;
+      const title =
+        method === "thyra"
+          ? count === 1
+            ? t("Moved {name} to the Thyra trash folder", { name })
+            : t("Moved {count} items to the Thyra trash folder", { count })
+          : count === 1
+            ? t("Moved {name} to the trash", { name })
+            : t("Moved {count} items to the trash", { count });
+      toast.show(
+        {
+          title,
+          tone: "neutral",
+          action: {
+            label: t("Undo"),
+            onAction: () =>
+              void undoTrash(
+                items.map((item) => item.token),
+                folders,
+              ),
+          },
+        },
+        { timeout: 10000 },
+      );
+    } catch (reason) {
+      if (isCurrent(token)) notifyError(t("Move to trash failed"), reason);
+    } finally {
+      if (isCurrent(token)) markBusy(paths, false);
+    }
+  };
+
   /** The folder a paste or new entry targets for the current selection. */
   const targetFolder = (list: FileExplorerEntry[] = selected) => {
     const first = list[0];
@@ -979,6 +1098,7 @@ export function FileManager({
             uploadFolder.current = folder;
             uploadRef.current?.click();
           },
+          trash: (list) => void trashEntries(list),
           remove: (list) => setPendingDelete(list),
         }),
   };
@@ -1023,8 +1143,135 @@ export function FileManager({
     setMenu({ x, y, entries: inSelection ? selected : [entry] });
   };
 
-  const longPress = useLongPress((x, y) => {
-    openMenuAt(pressedPath.current, x, y);
+  /**
+   * Hovering a folder during a drag opens it after a moment (expands it in
+   * the list, enters it in the grid). Elapsed time is checked on every
+   * dragover as well as by a timer, since drag events can outlive timers
+   * scheduled from inside them.
+   */
+  const hoverTarget = (path: string | null) => {
+    const current = hoverOpen.current;
+    if (current && current.path === path) {
+      if (performance.now() - current.since >= HOVER_OPEN_MS) openHovered();
+      return;
+    }
+    if (current) clearTimeout(current.timer);
+    hoverOpen.current = null;
+    const entry = path ? entries.get(path) : undefined;
+    if (!path || !entry || !isDirectoryEntry(entry)) return;
+    if (view === "list" && expanded.has(path)) return;
+    hoverOpen.current = {
+      path,
+      since: performance.now(),
+      timer: setTimeout(openHovered, HOVER_OPEN_MS),
+    };
+  };
+  const openHovered = () => {
+    const current = hoverOpen.current;
+    if (!current) return;
+    clearTimeout(current.timer);
+    hoverOpen.current = { ...current, since: Number.POSITIVE_INFINITY };
+    if (view === "list") toggleFolder(current.path, true);
+    else void navigate(current.path);
+  };
+
+  /** Whether the dragged paths may drop into a folder. */
+  const canDropInto = (folder: string, paths: string[]) =>
+    !paths.some((path) => isWithin(folder, path));
+
+  const dragSource = (paths: string[]): FileClipboard => ({
+    mode: "cut",
+    connectionId: client.connectionId,
+    workspaceId,
+    filesystem,
+    root: rootPath,
+    paths,
+  });
+
+  const dropDragged = (
+    source: FileClipboard,
+    folder: string,
+    copy: boolean,
+  ) => {
+    const paths = clipboardPathsFor(source, {
+      connectionId: client.connectionId,
+      workspaceId,
+      filesystem,
+      root: rootPath,
+    });
+    if (!paths) {
+      store.notify({
+        kind: "error",
+        message: t("Cannot move here"),
+        detail: t(
+          "Items from another workspace paste only in Filesystem mode.",
+        ),
+      });
+      return;
+    }
+    if (!canDropInto(folder, paths)) return;
+    void transfer({
+      paths,
+      destination: folder,
+      mode: copy ? "copy" : "move",
+    });
+  };
+
+  const touch = useTouchPress({
+    onLongPress(path, x, y) {
+      const entry = path ? entries.get(path) : undefined;
+      if (!entry) {
+        openMenuAt(null, x, y);
+        return;
+      }
+      // Long-press selects; the action bar holds the commands.
+      navigator.vibrate?.(10);
+      setSelectionMode(true);
+      if (!selection.paths.has(entry.path)) {
+        select(entry.path, { toggle: selectionMode });
+      }
+    },
+    onDragMove({ x, y, path }) {
+      if (readOnly) return;
+      const paths = selection.paths.has(path) ? [...selection.paths] : [path];
+      setGhost({
+        x,
+        y,
+        label:
+          paths.length === 1
+            ? baseName(paths[0]!)
+            : t("{count} items", { count: paths.length }),
+      });
+      // Scroll when the finger nears the list's top or bottom edge.
+      const box = bodyRef.current?.getBoundingClientRect();
+      if (box && (y < box.top + 32 || y > box.bottom - 32)) {
+        bodyRef.current?.scrollBy({ top: y < box.top + 32 ? -24 : 24 });
+      }
+      const under = document
+        .elementFromPoint(x, y)
+        ?.closest<HTMLElement>("[data-file-path]")?.dataset.filePath;
+      const folder =
+        under !== undefined
+          ? dropFolder({ target: rowElement(under) })
+          : bodyRef.current?.contains(document.elementFromPoint(x, y))
+            ? here
+            : null;
+      setDropTarget(
+        folder !== null && canDropInto(folder, paths) ? folder : null,
+      );
+      hoverTarget(under ?? null);
+    },
+    onDrop(drag) {
+      setGhost(null);
+      hoverTarget(null);
+      const folder = dropTarget;
+      setDropTarget(null);
+      if (!drag || folder === null || readOnly) return;
+      const paths = selection.paths.has(drag.path)
+        ? [...selection.paths]
+        : [drag.path];
+      dropDragged(dragSource(paths), folder, false);
+    },
   });
 
   // --- Events (delegated from the body) ----------------------------------
@@ -1035,16 +1282,17 @@ export function FileManager({
     )?.dataset.filePath ?? null;
 
   const pressHandlers = {
-    ...longPress.handlers,
     onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
       pointerType.current = event.pointerType;
-      pressedPath.current = pathFromEvent(event);
-      longPress.handlers.onPointerDown(event);
+      touch.onPointerDown(event, pathFromEvent(event));
     },
+    onPointerMove: touch.onPointerMove,
+    onPointerUp: touch.onPointerUp,
+    onPointerCancel: touch.onPointerCancel,
   };
 
   const onBodyClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (longPress.consumeClick(event)) return;
+    if (touch.consumeClick()) return;
     const entry = entries.get(pathFromEvent(event) ?? "");
     if (!entry) {
       if (event.target === event.currentTarget) select(null);
@@ -1067,6 +1315,11 @@ export function FileManager({
     if (target.closest(".file-twisty")) {
       select(entry.path);
       toggleFolder(entry.path);
+      return;
+    }
+    // In touch selection mode a tap adds or removes the row.
+    if (selectionMode) {
+      select(entry.path, { toggle: true });
       return;
     }
     // Touch opens folders in the grid with one tap; a mouse selects first.
@@ -1138,9 +1391,15 @@ export function FileManager({
     } else if (key === "F2" && actions.rename) {
       handled();
       actions.rename(entry);
-    } else if (key === "Delete" && actions.remove) {
+    } else if (key === "Delete" && shiftKey && actions.remove) {
       handled();
       actions.remove(targets);
+    } else if (
+      (key === "Delete" || (event.metaKey && key === "Backspace")) &&
+      actions.trash
+    ) {
+      handled();
+      actions.trash(targets);
     } else if (mod && lower === "a") {
       handled();
       setSelection({
@@ -1220,6 +1479,84 @@ export function FileManager({
 
   const isFileDrag = (event: React.DragEvent) =>
     !readOnly && Array.from(event.dataTransfer.types).includes("Files");
+  const isRowDrag = (event: React.DragEvent) =>
+    !readOnly && Array.from(event.dataTransfer.types).includes(DRAG_TYPE);
+
+  const onDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+    const path = pathFromEvent(event);
+    const entry = path ? entries.get(path) : undefined;
+    // Touch drags use the long-press gesture instead of native drag.
+    if (!entry || pointerType.current !== "mouse" || editing) {
+      event.preventDefault();
+      return;
+    }
+    const list = selection.paths.has(entry.path) ? selected : [entry];
+    if (!selection.paths.has(entry.path)) select(entry.path);
+    activeDrag = dragSource(list.map((item) => item.path));
+    const transfer = event.dataTransfer;
+    transfer.effectAllowed = readOnly ? "copy" : "copyMove";
+    transfer.setData(DRAG_TYPE, JSON.stringify(activeDrag));
+    transfer.setData(
+      "text/plain",
+      list.map((item) => hostPathOf(rootPath, item.path)).join("\n"),
+    );
+    // Chromium saves a dragged file to the desktop from DownloadURL.
+    if (list.length === 1) {
+      const url = fileUrl("/file/download", { path: entry.path });
+      const name = isDirectoryEntry(entry)
+        ? `${entry.name}.tar.gz`
+        : entry.name;
+      transfer.setData(
+        "DownloadURL",
+        `application/octet-stream:${name}:${url}`,
+      );
+    } else {
+      const badge = document.createElement("div");
+      badge.className = "file-manager-drag-badge";
+      badge.textContent = t("{count} items", { count: list.length });
+      document.body.append(badge);
+      transfer.setDragImage(badge, -8, -8);
+      setTimeout(() => badge.remove(), 0);
+    }
+  };
+
+  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    const rowDrag = isRowDrag(event);
+    if (!rowDrag && !isFileDrag(event)) return;
+    const folder = dropFolder(event);
+    hoverTarget(pathFromEvent(event));
+    if (rowDrag && activeDrag && !canDropInto(folder, activeDrag.paths)) {
+      event.dataTransfer.dropEffect = "none";
+      setDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect =
+      rowDrag && !copyModifier(event) ? "move" : "copy";
+    setDropTarget(folder);
+  };
+
+  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    dragDepth.current = 0;
+    const folder = dropFolder(event);
+    setDropTarget(null);
+    hoverTarget(null);
+    if (isRowDrag(event)) {
+      event.preventDefault();
+      let source: FileClipboard | null = activeDrag;
+      try {
+        source = JSON.parse(event.dataTransfer.getData(DRAG_TYPE));
+      } catch {}
+      activeDrag = null;
+      if (source) dropDragged(source, folder, copyModifier(event));
+      return;
+    }
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    void droppedFiles(event.dataTransfer).then((files) =>
+      uploadDropped(folder, files),
+    );
+  };
 
   const dropFolder = (event: { target: EventTarget | null }) => {
     const entry = entries.get(pathFromEvent(event) ?? "");
@@ -1331,6 +1668,7 @@ export function FileManager({
         aria-selected={isSelected}
         aria-expanded={view === "list" && folder ? isOpen : undefined}
         aria-current={path === activePath ? "true" : undefined}
+        draggable={!renaming}
         title={entry.ignored ? t("{path} · Ignored by Git", { path }) : path}
         style={indent(depth)}
         onFocus={(event) => {
@@ -1555,30 +1893,30 @@ export function FileManager({
         onKeyDown={onBodyKeyDown}
         onContextMenu={(event) => {
           event.preventDefault();
+          // Touch long-press is handled by the press gesture instead.
+          if (pointerType.current !== "mouse") return;
           openMenuAt(pathFromEvent(event), event.clientX, event.clientY);
         }}
-        onDragOver={(event) => {
-          if (!isFileDrag(event)) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "copy";
-          setDropTarget(dropFolder(event));
+        onDragStart={onDragStart}
+        onDragEnd={() => {
+          activeDrag = null;
+          dragDepth.current = 0;
+          setDropTarget(null);
+          hoverTarget(null);
         }}
-        onDragLeave={(event) => {
-          if (
-            !event.currentTarget.contains(event.relatedTarget as Node | null)
-          ) {
+        onDragOver={onDragOver}
+        onDragEnter={() => {
+          dragDepth.current += 1;
+        }}
+        onDragLeave={() => {
+          // Enter/leave pairs nest per row; zero means the drag left the body.
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) {
             setDropTarget(null);
+            hoverTarget(null);
           }
         }}
-        onDrop={(event) => {
-          if (!isFileDrag(event)) return;
-          event.preventDefault();
-          setDropTarget(null);
-          void uploadFiles(
-            dropFolder(event),
-            Array.from(event.dataTransfer.files),
-          );
-        }}
+        onDrop={onDrop}
         {...pressHandlers}
       >
         {createRow(here, 0)}
@@ -1594,6 +1932,101 @@ export function FileManager({
           </div>
         ) : null}
       </div>
+      {selectionMode || selected.length > 1 ? (
+        <div
+          className="ui-bar file-manager-selection-bar"
+          role="toolbar"
+          aria-label={t("Selection")}
+        >
+          <Token tone="accent">
+            {t("{count} selected", { count: selected.length })}
+          </Token>
+          <span className="ui-bar-spacer" />
+          {actions.cut ? (
+            <IconButton
+              label={t("Cut")}
+              disabled={!selected.length}
+              onMouseDown={keepFocus}
+              onClick={() => actions.cut?.(selected)}
+              icon={<Scissors size={15} />}
+            />
+          ) : null}
+          {actions.copy ? (
+            <IconButton
+              label={t("Copy")}
+              disabled={!selected.length}
+              onMouseDown={keepFocus}
+              onClick={() => actions.copy?.(selected)}
+              icon={<Copy size={15} />}
+            />
+          ) : null}
+          {actions.paste ? (
+            <IconButton
+              label={t("Paste")}
+              onMouseDown={keepFocus}
+              onClick={() => actions.paste?.(targetFolder())}
+              icon={<ClipboardPaste size={15} />}
+            />
+          ) : null}
+          {actions.rename && selected.length === 1 ? (
+            <IconButton
+              label={t("Rename")}
+              onMouseDown={keepFocus}
+              onClick={() => {
+                setSelectionMode(false);
+                actions.rename?.(selected[0]!);
+              }}
+              icon={<Pencil size={15} />}
+            />
+          ) : null}
+          {selected.length === 1 ? (
+            <IconButton
+              label={t("Download")}
+              onMouseDown={keepFocus}
+              onClick={() => download(selected[0]!)}
+              icon={<Download size={15} />}
+            />
+          ) : null}
+          {actions.trash ? (
+            <IconButton
+              label={t("Move to trash")}
+              tone="danger"
+              disabled={!selected.length}
+              onMouseDown={keepFocus}
+              onClick={() => actions.trash?.(selected)}
+              icon={<Trash2 size={15} />}
+            />
+          ) : null}
+          <IconButton
+            label={t("More actions")}
+            disabled={!selected.length}
+            onMouseDown={keepFocus}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setMenu({ x: rect.left, y: rect.top, entries: selected });
+            }}
+            icon={<Ellipsis size={15} />}
+          />
+          <IconButton
+            label={t("Done")}
+            onMouseDown={keepFocus}
+            onClick={() => {
+              setSelectionMode(false);
+              select(null);
+            }}
+            icon={<X size={15} />}
+          />
+        </div>
+      ) : null}
+      {ghost ? (
+        <div
+          className="file-manager-drag-badge is-touch"
+          style={{ left: ghost.x + 12, top: ghost.y + 12 }}
+          aria-hidden="true"
+        >
+          {ghost.label}
+        </div>
+      ) : null}
       <ContextMenu
         position={menu ? { x: menu.x, y: menu.y } : null}
         onClose={() => setMenu(null)}

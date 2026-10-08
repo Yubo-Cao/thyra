@@ -16,6 +16,8 @@ import { copyTextFromUserGesture } from "../terminalClipboard";
 import { listenForTaskNotificationActivation } from "../taskNotifications";
 import { noticeToastsPanel } from "./lazySurfaces";
 import { useShallow } from "zustand/react/shallow";
+import { useStore } from "zustand";
+import { toastController } from "../components/ui/toastQueue";
 
 const NoticeToasts = noticeToastsPanel.Component;
 
@@ -69,8 +71,13 @@ export function NoticeHost({
     },
     [onOpenTarget],
   );
+  // Direct toast.show calls (Undo after a delete) also open the region.
+  const toastRequested = useStore(toastController.requested);
   return (
-    <Latched open={!!notice || updateAvailable} fallback={null}>
+    <Latched
+      open={!!notice || updateAvailable || toastRequested}
+      fallback={null}
+    >
       <NoticeToasts onNoticeAction={handleNoticeAction} />
     </Latched>
   );

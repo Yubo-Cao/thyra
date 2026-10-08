@@ -311,3 +311,27 @@
   padding-inline: 4px;
   font-size: inherit;
 }
+
+/* Count badge: the drag image of a multi-row drag, and the touch-drag ghost. */
+.file-manager-drag-badge {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  z-index: 1000;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: var(--ui-font-size-xs);
+  font-weight: 600;
+  pointer-events: none;
+}
+.file-manager-drag-badge.is-touch {
+  top: auto;
+  left: auto;
+}
+.file-manager-selection-bar {
+  gap: 2px;
+  padding: 0 4px 0 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}

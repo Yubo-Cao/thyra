@@ -240,6 +240,19 @@ that another fetch could change.
   the folder's empty space). Viewers and share-link guests browse, preview and
   download only. Files outside the checkout preview and download like
   workspace files.
+- **Delete** (or Cmd+Backspace) moves the selection to the host's trash with an
+  **Undo** toast: the freedesktop.org trash on Linux and the BSDs (restorable
+  from the desktop's trash too), `~/.Trash` on macOS, and a Thyra trash folder
+  elsewhere, over SSH as well. Shift+Delete deletes permanently after a
+  confirmation.
+- Drag rows onto a folder to move them; hold Ctrl (Option on macOS) to copy.
+  Hovering a folder while dragging expands it (or opens it in the grid). Drop
+  files or whole folders from the desktop to upload them; in Chromium, drag a
+  file out to the desktop to download it.
+- On touch screens a long-press selects a row and shows a selection bar (cut,
+  copy, paste, rename, download, trash and the full menu); further taps add or
+  remove rows, and moving the finger after the long-press drags the selection
+  onto a folder.
 - Text previews provide highlighting, line numbers, search, and refresh.
   Markdown has a Preview/Source switch with the active mode highlighted;
   Mermaid fences and `.mmd`/`.mermaid` files
@@ -258,9 +271,8 @@ that another fetch could change.
   files and prompt before closing the editor or the page.
 - Preview images (including SVG), PDFs, and local Markdown images with zoom/Fit.
   Unsupported binaries are download-only; decoding depends on the browser.
-- Upload by dragging onto a checkout directory; download files or workspace
-  `.tar.gz` directories; copy paths or delete with confirmation via right-click
-  or long-press. Upload/delete stay checkout-scoped. Operations work over SSH.
+- Download files, or directories as `.tar.gz`. Workspace operations stay
+  inside the checkout; every operation works over SSH.
 
 ![Expanded file explorer rendering a README with a Mermaid diagram and a table, in the light theme](docs/images/thyra-desktop-files.png)
 

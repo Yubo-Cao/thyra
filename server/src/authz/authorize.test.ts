@@ -42,6 +42,8 @@ const RPC_MATRIX: Record<string, string> = {
   "file.mkdir": "admin owner editor",
   "file.rename": "admin owner editor",
   "file.transfer": "admin owner editor",
+  "file.trash": "admin owner editor",
+  "file.restore": "admin owner editor",
   "file.read": "admin owner editor viewer guest",
   "file.resolve": "admin owner editor viewer guest",
   "file.write": "admin owner editor",
@@ -253,6 +255,8 @@ describe("authorize", () => {
       "file.write",
       "file.rename",
       "file.transfer",
+      "file.trash",
+      "file.restore",
     ]) {
       const params = { workspace_id: "w1", scope: "filesystem", path: "/" };
       expect((await request("owner", method, params)).allowed).toBe(false);

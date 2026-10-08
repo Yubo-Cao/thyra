@@ -56,6 +56,7 @@ import {
   TRANSFER_MAX_PATHS,
   createFileOperations,
 } from "./file-manager";
+import { createTrash, createTrashRegistry } from "./file-trash";
 import {
   sharedThumbnailService,
   snapThumbnailSize,
@@ -81,6 +82,8 @@ export function createFileHandlers({
 }) {
   const remoteHomes = new Map<string, Promise<string>>();
   const operations = createFileOperations();
+  const trash = createTrash();
+  const trashed = createTrashRegistry();
 
   /** Home of the runtime user on the host that owns the files. */
   async function hostHome(host: string | undefined) {
@@ -322,6 +325,38 @@ export function createFileHandlers({
         path: scope.toScope(item.path),
       })),
     });
+  }
+
+  async function trashEntries(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.trash");
+    const entries = await trash.trash(
+      scope.host,
+      await scopePaths(scope, params.paths),
+      scope.protectedPaths,
+    );
+    const context = {
+      host: scope.host,
+      workspaceId: scope.workspaceId,
+      filesystem: scope.filesystem,
+    };
+    return scopeReply(scope, {
+      method: entries[0]?.method ?? "freedesktop",
+      items: entries.map((entry) => ({
+        path: scope.toScope(entry.original),
+        token: trashed.add(entry, context),
+      })),
+    });
+  }
+
+  async function restoreEntries(params: Record<string, unknown>) {
+    const scope = await fileScope(params, "file.restore");
+    const entries = trashed.take(params.tokens, {
+      host: scope.host,
+      workspaceId: scope.workspaceId,
+      filesystem: scope.filesystem,
+    });
+    const paths = await trash.restore(scope.host, entries);
+    return scopeReply(scope, { paths: paths.map(scope.toScope) });
   }
 
   function joinFilesystemPath(root: string, name: string) {
@@ -783,6 +818,8 @@ export function createFileHandlers({
     fileRpc: {
       "file.rename": renameEntry,
       "file.transfer": transferEntries,
+      "file.trash": trashEntries,
+      "file.restore": restoreEntries,
     } as Record<string, (params: Record<string, unknown>) => Promise<unknown>>,
 
     uploadWorkspaceFile: uploadFile,

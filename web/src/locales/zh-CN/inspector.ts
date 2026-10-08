@@ -315,4 +315,21 @@ export default {
   "The connection changed.": "连接已更改。",
   "The destination already has an item with the same name. Replace it, or keep both by giving the moved items a new name.":
     "目标位置已有同名项目。可以替换它，或为移动的项目改名以保留两者。",
+  "Cannot move here": "无法移动到这里",
+  "{count} items": "{count} 项",
+  "{count} selected": "已选择 {count} 项",
+  "Delete permanently": "永久删除",
+  "More actions": "更多操作",
+  "Move {count} items to trash": "将 {count} 项移到回收站",
+  "Move to trash": "移到回收站",
+  "Move to trash failed": "移到回收站失败",
+  "Moved {name} to the trash": "已将 {name} 移到回收站",
+  "Moved {count} items to the trash": "已将 {count} 项移到回收站",
+  "Moved {name} to the Thyra trash folder":
+    "已将 {name} 移到 Thyra 回收站文件夹",
+  "Moved {count} items to the Thyra trash folder":
+    "已将 {count} 项移到 Thyra 回收站文件夹",
+  Selection: "选择",
+  Undo: "撤销",
+  "Undo failed": "撤销失败",
 } satisfies Record<string, string>;

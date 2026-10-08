@@ -396,6 +396,17 @@ copied as links, and `rename` makes `name copy.ext` (copies) or `name (2).ext`
 (moves). Local hosts use `node:fs` (a cross-device move copies, then removes);
 SSH hosts run one script per request with `mv`/`cp -RPp`.
 
+`file.trash` (`paths`) moves entries to the host's trash and answers an opaque
+`token` per entry; `file.restore` (`tokens`) moves them back, refusing when the
+original path exists again. Tokens live in the bridge's memory for a day and
+restore only through the connection runtime, workspace and scope that trashed
+them. Linux and BSD hosts use the freedesktop.org trash: the home trash
+(`$XDG_DATA_HOME/Trash`) on the same device, otherwise `$topdir/.Trash-$uid` on
+the file's mount (falling back to a cross-device move into the home trash),
+with a `.trashinfo` written first with `O_EXCL` and removed again if the move
+fails. macOS uses `~/.Trash` and other hosts `$XDG_DATA_HOME/thyra/trash`
+(`%LOCALAPPDATA%\thyra\trash` for a Windows bridge).
+
 `GET .../file/thumbnail` (`workspace_id`, `path`, `scope`, `size`, `mtime`,
 `bytes`) returns a WebP of at most 64, 128 or 256 px, or `204` when the file
 has none. Raster images (PNG, JPEG, WebP, GIF, BMP) decode in the bridge with

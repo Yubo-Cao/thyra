@@ -76,6 +76,7 @@ test("workspace-scope file-manager calls cannot leave the checkout", async () =>
         "file.transfer",
         { paths: ["src/a.txt"], destination: path, mode: "move" },
       ],
+      ["file.trash", { paths: [path] }],
     ] as const) {
       await expect(call(method, params)).rejects.toThrow(
         "invalid file explorer path",
@@ -95,10 +96,38 @@ test("workspace-scope file-manager calls cannot leave the checkout", async () =>
   await expect(
     call("file.transfer", { paths: [""], destination: "src", mode: "move" }),
   ).rejects.toThrow();
+  await expect(call("file.trash", { paths: ["."] })).rejects.toThrow();
   await expect(
     call("file.rename", { path: "src/a.txt", name: "../../escape" }),
   ).rejects.toThrow("invalid file name");
   expect(await readdir(outside)).toEqual(["secret.txt"]);
+});
+
+test("trash returns tokens that undo only in the same workspace", async () => {
+  const { fileRpc } = handlers();
+  const trashed = (await fileRpc["file.trash"]!({
+    workspace_id: "w1",
+    paths: ["src/a.txt"],
+  })) as { items: Array<{ path: string; token: string }>; method: string };
+  expect(trashed.items[0]?.path).toBe("src/a.txt");
+  expect(await readdir(join(workspace, "src"))).toEqual([]);
+  const token = trashed.items[0]!.token;
+  await expect(
+    fileRpc["file.restore"]!({ workspace_id: "w2", tokens: [token] }),
+  ).rejects.toThrow("can no longer be undone");
+  await expect(
+    fileRpc["file.restore"]!({
+      workspace_id: "w1",
+      scope: "filesystem",
+      tokens: [token],
+    }),
+  ).rejects.toThrow("can no longer be undone");
+  const restored = (await fileRpc["file.restore"]!({
+    workspace_id: "w1",
+    tokens: [token],
+  })) as { paths: string[] };
+  expect(restored.paths).toEqual(["src/a.txt"]);
+  expect(await readFile(join(workspace, "src/a.txt"), "utf8")).toBe("a");
 });
 
 test("thumbnail paths cannot leave the checkout", async () => {
