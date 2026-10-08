@@ -901,4 +901,90 @@ describe("terminal touch link lookup", () => {
     finish();
     expect(await failed).toBeNull();
   });
+  test.each([
+    [
+      "/home/yubo/data/My Project/file name.ts:12",
+      "/home/yubo/data/My Project/file name.ts",
+    ],
+    ["open '/tmp/My Project/a b.txt' now", "/tmp/My Project/a b.txt"],
+    ["'file name.ts'  other.txt", "file name.ts"],
+    ["⏺ Edit(src/foo bar.ts)", "src/foo bar.ts"],
+    ["• Edited src/foo bar.ts (+3 -1)", "src/foo bar.ts"],
+    ["src/foo bar.ts:12:5", "src/foo bar.ts"],
+  ])("links the existing spaced path in %j", async (row, path) => {
+    const f = fixture([row], 60);
+    f.existing.add(path);
+    registerTerminalLinkProvider(
+      f.term,
+      (target) => f.previewed.push(target),
+      f.resolve,
+    );
+    const links = await f.links(1);
+    expect(links.map((link) => link.text)).toEqual([path]);
+    const start = row.indexOf(path) + 1;
+    expect(links[0]!.range).toEqual({
+      start: { x: start, y: 1 },
+      end: { x: start + path.length - 1, y: 1 },
+    });
+    links[0]!.activate({ preventDefault() {} } as MouseEvent, path);
+    expect(f.previewed).toEqual([path]);
+  });
+
+  test("a spaced path that does not exist links none of its words", async () => {
+    const f = fixture(["/data/My Project/file name.ts"], 60);
+    registerTerminalLinkProvider(f.term, () => {}, f.resolve);
+    expect(await f.links(1)).toEqual([]);
+    expect(f.requests.flat()).toContain("/data/My Project/file name.ts");
+    expect(f.requests.flat()).toContain("/data/My");
+  });
+
+  test("an absolute path followed by prose stays a link without lookups", async () => {
+    const f = fixture(["see /tmp/a.ts for more details."], 60);
+    registerTerminalLinkProvider(f.term, () => {}, f.resolve);
+    expect((await f.links(1)).map((link) => link.text)).toEqual(["/tmp/a.ts"]);
+    expect(f.requests).toEqual([]);
+  });
+  test("a link stays clickable through newer lookups and repaints beside it", async () => {
+    const f = fixture(
+      ["see /tmp/a.ts", "4711", "url https://example.com/x"],
+      30,
+    );
+    f.existing.add("/tmp/a.ts");
+    registerTerminalLinkProvider(
+      f.term,
+      (path) => f.previewed.push(path),
+      f.resolve,
+      () => true,
+    );
+    const [file] = await f.links(1);
+    const [web] = await f.links(3);
+    expect(file?.text).toBe("/tmp/a.ts");
+    expect(web?.text).toBe("https://example.com/x");
+    // A spinner repaints the joined row; the hover looks the row up again.
+    f.lines[1]!.text = "4712";
+    await f.links(1);
+    file!.activate({ preventDefault() {} } as MouseEvent, file!.text);
+    expect(f.previewed).toEqual(["/tmp/a.ts"]);
+    const opened: string[] = [];
+    const previous = getShortcutSnapshot().preferences.active;
+    selectShortcutPreset("linux");
+    const global = globalThis as { window?: unknown };
+    const saved = global.window;
+    global.window = {
+      open: (target: string) => opened.push(target),
+      addEventListener() {},
+    };
+    try {
+      const click = { preventDefault() {}, ctrlKey: true } as MouseEvent;
+      web!.activate(click, web!.text);
+      expect(opened).toEqual(["https://example.com/x"]);
+      // The link's own row changed: the stale link does nothing.
+      f.lines[0]!.text = "see /tmp/b.ts";
+      file!.activate({ preventDefault() {} } as MouseEvent, file!.text);
+      expect(f.previewed).toEqual(["/tmp/a.ts"]);
+    } finally {
+      global.window = saved;
+      selectShortcutPreset(previous);
+    }
+  });
 });

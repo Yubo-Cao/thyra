@@ -98,7 +98,9 @@ The browser only chooses an agent, never the command text.
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; click file/directory paths
-  to preview them directly in the Inspector. Dragging selects without opening.
+  to preview them directly in the Inspector, including paths with spaces when
+  quoted, bracketed (`Edit(src/foo bar.ts)`) or followed by `:line:col`, once
+  the file exists. Dragging selects without opening.
   Touch uses long-press, then **Open link** or
   **File actions**. Nothing opens on hover or ordinary touch.
 

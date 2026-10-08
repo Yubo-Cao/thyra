@@ -215,9 +215,15 @@ Local detection scans soft-wrapped text with cell coordinates. File detection
 also considers bounded, indented continuations because endpoint cell repaints
 lack soft-wrap metadata; inferred paths must resolve within the pane's workspace.
 Blank lines separate contexts. Local URL detection never guesses missing tails.
+Paths with spaces or Windows separators come from context: quotes, brackets, or
+a path start extended over single spaces. They and any word-split prefix of them
+link only after `file.resolve` finds the file.
 Unicode prose punctuation can delimit paths. Resolved local files are validated
 against connection/pane scope and the displayed text, so unrelated repaints do
 not retire their actions. Remote link metadata still requires the exact frame.
+A click checks only the link's own rows. A repaint keeps the hovered link and
+re-evaluates it at most every 200 ms, after the previous lookup answers. Scrolls
+and resizes drop it, and rows without a hovered link are never looked up again.
 
 Endpoint repaints carry an opaque `link_frame` identity, stable across identical,
 cursor-only, and focus-only surfaces. Content, hyperlink, viewport/scroll, input,

@@ -8,9 +8,9 @@
  *   bun scripts/capture-screenshots.ts --serve --port 8831   # elsewhere
  *   bun scripts/check-terminal-render.ts --url http://127.0.0.1:8831/
  *
- * Crisp text: at pixel ratios 1.5 and 2 (and a 110% interface scale) every
+ * Crisp text: at pixel ratios 1.25 (125% Windows scaling), 1.5 and 2 (and a 110% interface scale) every
  * terminal canvas's backing store is exactly its CSS size times the pixel
- * ratio and sits on no extra scroll layer, so the compositor shows it 1:1
+ * ratio, starts on a whole device pixel and sits on no extra scroll layer, so the compositor shows it 1:1
  * instead of resampling it; after a pixel ratio change it follows.
  * Scrolling: 30 wheel notches over a pane with Herdr scrollback send 30
  * `terminal.scroll` requests and Herdr answers with frames, without a link
@@ -77,18 +77,24 @@ function blurryCanvases(page: any): Promise<string[]> {
         const width = rect.width * dpr;
         const height = rect.height * dpr;
         const layered = canvas.closest(".restty-native-scroll-root");
+        const left = rect.left * dpr;
+        const top = rect.top * dpr;
+        const offGrid =
+          Math.abs(left - Math.round(left)) > 0.05 ||
+          Math.abs(top - Math.round(top)) > 0.05;
         return Math.abs(width - canvas.width) > 0.05 ||
           Math.abs(height - canvas.height) > 0.05 ||
-          layered
+          layered ||
+          offGrid
           ? [
-              `${width}x${height} device px shows ${canvas.width}x${canvas.height}${layered ? " on a scroll layer" : ""}`,
+              `${width}x${height} device px at ${left},${top} shows ${canvas.width}x${canvas.height}${layered ? " on a scroll layer" : ""}`,
             ]
           : [];
       });
   }, SCREEN);
 }
 
-for (const [dpr, uiScale] of [[1.5], [2], [2, 110]] as const) {
+for (const [dpr, uiScale] of [[1.25], [1.5], [2], [2, 110]] as const) {
   const { context, page } = await open(dpr, uiScale);
   const blurry = await blurryCanvases(page);
   check(

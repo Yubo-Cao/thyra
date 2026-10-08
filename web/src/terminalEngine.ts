@@ -978,7 +978,30 @@ export class TerminalEngine {
     const cell = this.cellSize();
     this.screen.style.width = `${cols * cell.width}px`;
     this.screen.style.height = `${rows * cell.height}px`;
+    this.alignScreen();
   }
+
+  /**
+   * Nudges the canvas onto whole device pixels: at fractional pixel ratios
+   * (125% Windows scaling) a layout offset like 294 CSS px lands at 367.5
+   * device px, and the compositor would resample the whole canvas. A scaled
+   * (followed) grid is resampled anyway and stays where it is.
+   */
+  private alignScreen = () => {
+    if (this.disposed) return;
+    const style = this.screen.style;
+    style.removeProperty("translate");
+    const rect = this.screen.getBoundingClientRect();
+    const width = this.screen.offsetWidth;
+    if (!width || Math.abs(rect.width / width - 1) > 1e-3) return;
+    const dpr = window.devicePixelRatio || 1;
+    const snap = (value: number) =>
+      (Math.round(value * dpr) - value * dpr) / dpr;
+    const dx = snap(rect.left);
+    const dy = snap(rect.top);
+    if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4)
+      style.translate = `${dx}px ${dy}px`;
+  };
 
   /** Refits when the pixel ratio changes (another display, page zoom). */
   private watchPixelRatio() {
@@ -1028,13 +1051,13 @@ export class TerminalEngine {
   }
 
   /**
-   * Repaints and drops the hovered link; as in xterm, links are looked up
-   * again on the next pointer move, never per repaint (each lookup may cost
-   * Herdr a `terminal.link.resolve`).
+   * Repaints; as in xterm, only a hovered link is looked up again (each
+   * lookup may cost Herdr a `terminal.link.resolve`), and it stays usable
+   * until that lookup answers.
    */
   refresh() {
     this.host?.requestRender();
-    this.links.refresh();
+    this.links.repaint();
   }
 
   /** Like xterm's: sends text as a paste, bracketed when the app asked. */
@@ -1201,6 +1224,22 @@ export class TerminalEngine {
       if (this.keyHandler && this.keyHandler(event) === false)
         event.stopPropagation();
     };
+    // Layout moves the canvas off the device-pixel grid; move it back.
+    let alignQueued = false;
+    const queueAlign = () => {
+      if (alignQueued) return;
+      alignQueued = true;
+      requestAnimationFrame(() => {
+        alignQueued = false;
+        this.alignScreen();
+      });
+    };
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(queueAlign);
+      observer.observe(this.element);
+      signal.addEventListener("abort", () => observer.disconnect());
+    }
+    window.addEventListener("resize", queueAlign, { signal });
     this.element.addEventListener("keydown", onKey, capture);
     this.element.addEventListener("keyup", onKey, capture);
     this.screen.addEventListener(

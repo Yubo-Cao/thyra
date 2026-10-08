@@ -11,6 +11,7 @@ import {
 } from "./terminalLinks";
 import {
   findTerminalFileLinkCandidates,
+  findTerminalSpacedFileLinkCandidates,
   MAX_CANDIDATES_PER_LINE,
   type TerminalFileLinkCandidate,
   type TextRange,
@@ -194,6 +195,38 @@ export function registerTerminalLinkProvider(
       JSON.stringify(readLinkContext(term, bufferLineNumber, infer)) ===
         snapshot;
     const isFrameCurrent = () => isCurrent() && upstream?.state() === state;
+    // A click needs only the link's own rows unchanged: newer lookups (a
+    // hover re-evaluation) and repaints of rows beside it keep it usable.
+    const rowText = (y: number) => {
+      const line = activeBuffer.getLine(y - 1);
+      if (!line) return null;
+      const { text, wrapped } = lineTextWithCells(line, columnCount, y);
+      return `${wrapped ? 1 : 0}${text}`;
+    };
+    const shownRows = new Map<number, string | null>();
+    for (const cell of cells)
+      if (!shownRows.has(cell.start.y))
+        shownRows.set(cell.start.y, rowText(cell.start.y));
+    const viewCurrent = () =>
+      !(
+        disposed ||
+        term.buffer.active !== activeBuffer ||
+        term.cols !== columnCount ||
+        term.rows !== rowCount ||
+        activeBuffer.viewportY !== viewport ||
+        inferContinuations() !== infer ||
+        // A frame still being written leaves the displayed rows, which the
+        // caller compares, on screen; only another pane or connection ends it.
+        (upstream?.scope
+          ? upstream.scope() !== scope
+          : upstream?.state() !== state)
+      );
+    const isShown = (range: CellSpan) => {
+      if (!viewCurrent()) return false;
+      for (let y = range.start.y; y <= range.end.y; y++)
+        if (!shownRows.has(y) || rowText(y) !== shownRows.get(y)) return false;
+      return true;
+    };
     const hover = () => {
       // A stale link rereads the row now that it is hovered again.
       if (!isCurrent())
@@ -229,7 +262,7 @@ export function registerTerminalLinkProvider(
           target: { kind: "url", value: match.url },
           activate(event, raw) {
             event.preventDefault();
-            if (!isCurrent() || !terminalLinkModifierMatches(event)) return;
+            if (!isShown(range) || !terminalLinkModifierMatches(event)) return;
             const url = sanitizeTerminalHttpUrl(raw);
             if (url) {
               term.clearSelection?.();
@@ -239,18 +272,26 @@ export function registerTerminalLinkProvider(
         });
       }
     }
-    const candidates: Array<TerminalFileLinkCandidate & { inferred: boolean }> =
-      [];
+    const candidates: Array<
+      TerminalFileLinkCandidate & { inferred: boolean; speculative: boolean }
+    > = [];
     if (onPreviewPath) {
       // Exclude whole URLs as well as the individual row forms so a wrapped
       // URL's path fragment never becomes a local file link.
       const excluded = findTerminalHttpLinks(text);
       const add = (part: TextRange) => {
-        for (const match of findTerminalFileLinkCandidates(
-          text.slice(part.start, part.end),
-        )) {
+        const slice = text.slice(part.start, part.end);
+        for (const [match, speculative] of [
+          ...findTerminalFileLinkCandidates(slice).map(
+            (match) => [match, false] as const,
+          ),
+          ...findTerminalSpacedFileLinkCandidates(slice).map(
+            (match) => [match, true] as const,
+          ),
+        ]) {
           const candidate = {
             ...match,
+            speculative,
             start: part.start + match.start,
             end: part.start + match.end,
           };
@@ -295,37 +336,55 @@ export function registerTerminalLinkProvider(
     // speculative join does not resolve. Validate ambiguous absolute fragments
     // too, instead of making a known partial path immediately clickable.
     candidates.sort((a, b) => b.end - b.start - (a.end - a.start));
+    // Spaced paths exist only if the server finds them; a word-split prefix
+    // of one (`/data/My` in `/data/My Project/a.ts`) must resolve as well.
     const needsResolution = (candidate: (typeof candidates)[number]) =>
       !candidate.absolute ||
       candidate.inferred ||
-      candidates.some((other) => other.inferred && overlaps(candidate, other));
+      candidate.speculative ||
+      candidates.some(
+        (other) =>
+          (other.inferred || other.speculative) && overlaps(candidate, other),
+      );
     const pending = candidates.filter(needsResolution);
     const finish = (resolved = new Map<string, string>()) => {
       if (disposed) {
         if (touch) callback(undefined);
         return;
       }
-      if (!isCurrent()) {
+      // Rows beside a link may repaint during the lookup (a spinner on the
+      // next row of a joined context); deliver the links whose rows did not.
+      if (!viewCurrent()) {
         callback(undefined);
         return;
       }
+      links.splice(
+        0,
+        links.length,
+        ...links.filter((link) => isShown(link.range)),
+      );
       const accepted: TextRange[] = [];
       for (const candidate of candidates) {
         const path = needsResolution(candidate)
           ? resolved.get(candidate.path)
           : candidate.path;
-        if (!path || accepted.some((span) => overlaps(candidate, span)))
+        const range = rangeFor(candidate)!;
+        if (
+          !path ||
+          !isShown(range) ||
+          accepted.some((span) => overlaps(candidate, span))
+        )
           continue;
         accepted.push(candidate);
         links.push({
-          range: rangeFor(candidate)!,
+          range,
           hover,
           text: candidate.path,
           target: { kind: "file", value: path },
           activate(event) {
             event.preventDefault();
             if (
-              isCurrent() &&
+              isShown(range) &&
               !term.hasSelection?.() &&
               !event.shiftKey &&
               !event.altKey
@@ -514,7 +573,7 @@ export function registerTerminalLinkProvider(
       const resolved = new Map<string, string>();
       // Contexts can exceed the per-line cache and server batch limit.
       for (let i = 0; i < paths.length; i += MAX_CANDIDATES_PER_LINE) {
-        if (!isCurrent()) break;
+        if (!viewCurrent()) break;
         const batch = await resolvePaths(
           paths.slice(i, i + MAX_CANDIDATES_PER_LINE),
         );

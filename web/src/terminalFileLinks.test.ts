@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   findTerminalFileLinkCandidates,
+  findTerminalSpacedFileLinkCandidates,
   TerminalFileResolutionCache,
 } from "./terminalFileLinks";
 
@@ -53,6 +54,55 @@ describe("terminal file links", () => {
     expect(findTerminalFileLinkCandidates("prefix:src/app.tsx")).toEqual([]);
     expect(findTerminalFileLinkCandidates("../outside/file.txt")).toEqual([]);
     expect(findTerminalFileLinkCandidates("~/outside/file.txt")).toEqual([]);
+  });
+
+  test.each([
+    [
+      "/home/yubo/data/My Project/file name.ts:12",
+      [
+        "/home/yubo/data/My Project/file",
+        "/home/yubo/data/My Project/file name.ts",
+      ],
+    ],
+    [
+      `cat "/home/yubo/data/My Project/file name.ts"`,
+      [
+        "/home/yubo/data/My Project/file name.ts",
+        "/home/yubo/data/My Project/file",
+      ],
+    ],
+    [
+      "'file name.ts'  other.txt  'third one.md'",
+      ["file name.ts", "third one.md"],
+    ],
+    ["⏺ Edit(src/foo bar.ts)", ["src/foo bar.ts"]],
+    ["⏺ Read(/srv/My Docs/notes.md:3:7)", ["/srv/My Docs/notes.md"]],
+    ["• Edited src/foo bar.ts (+3 -1)", ["src/foo bar.ts"]],
+    ["src/foo bar.ts:12:5", ["src/foo bar.ts"]],
+    [
+      "C:\\Users\\Me\\My Project\\a.ts:3",
+      ["C:\\Users\\Me\\My", "C:\\Users\\Me\\My Project\\a.ts"],
+    ],
+    ["see src/app.ts for more details.", []],
+    ["don't stop, it's fine", []],
+    ["'../secret file.txt' and '~/x y.md'", []],
+  ])("reads spaced paths from context in %j", (text, paths) => {
+    expect(
+      findTerminalSpacedFileLinkCandidates(text).map(({ path }) => path),
+    ).toEqual(paths);
+  });
+
+  test("keeps spaced candidates out of URLs and marks absolute ones", () => {
+    const text = "https://x.test/a b.ts '/tmp/a b.md' 'D:/w x.txt'";
+    expect(
+      findTerminalSpacedFileLinkCandidates(text, [{ start: 0, end: 18 }]).map(
+        ({ path, absolute, start }) => ({ path, absolute, start }),
+      ),
+    ).toEqual([
+      { path: "/tmp/a b.md", absolute: true, start: 23 },
+      { path: "D:/w x.txt", absolute: true, start: 37 },
+      { path: "D:/w", absolute: true, start: 37 },
+    ]);
   });
 
   test("caches positive and negative workspace resolutions", async () => {
