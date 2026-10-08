@@ -3,10 +3,6 @@ import type { ResolvedTheme } from "./appearance";
 import { msg, t } from "./i18n";
 
 export const TERMINAL_THEME_SELECTION_STORAGE_KEY = "terminalThemeSelection.v1";
-export const CUSTOM_TERMINAL_THEMES_STORAGE_KEY = "customTerminalThemes.v1";
-export const MAX_CUSTOM_TERMINAL_THEMES = 24;
-export const MAX_TERMINAL_THEME_NAME_LENGTH = 40;
-export const CUSTOM_TERMINAL_THEME_SELECTION_ALPHA = 0.3;
 
 // Dark keeps the historical palette exactly: only background, foreground,
 // cursor, and selection are overridden; ANSI colors stay at xterm's defaults
@@ -47,12 +43,11 @@ export type TerminalThemeDefinition = {
   id: string;
   name: string;
   variant: ResolvedTheme;
-  builtin: boolean;
   theme: TerminalTheme;
 };
 
 export function terminalThemeName(theme: TerminalThemeDefinition): string {
-  return theme.builtin ? t(theme.name) : theme.name;
+  return t(theme.name);
 }
 
 export type TerminalThemeSelection = {
@@ -62,25 +57,22 @@ export type TerminalThemeSelection = {
 
 export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
   {
-    // Persisted preset IDs stay stable for existing theme selections/exports.
+    // Persisted preset IDs stay stable for existing theme selections.
     id: "herdr-dark",
     name: msg("Thyra Dark"),
     variant: "dark",
-    builtin: true,
     theme: DARK_TERMINAL_THEME,
   },
   {
     id: "herdr-light",
     name: msg("Thyra Light"),
     variant: "light",
-    builtin: true,
     theme: LIGHT_TERMINAL_THEME,
   },
   {
     id: "solarized-dark",
     name: "Solarized Dark",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#002b36",
       foreground: "#839496",
@@ -109,7 +101,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "dracula",
     name: "Dracula",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#282a36",
       foreground: "#f8f8f2",
@@ -138,7 +129,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "one-dark",
     name: "One Dark",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#282c34",
       foreground: "#abb2bf",
@@ -167,7 +157,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "nord",
     name: "Nord",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#2e3440",
       foreground: "#d8dee9",
@@ -196,7 +185,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "tokyo-night",
     name: "Tokyo Night",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#1a1b26",
       foreground: "#c0caf5",
@@ -225,7 +213,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "catppuccin-mocha",
     name: "Catppuccin Mocha",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#1e1e2e",
       foreground: "#cdd6f4",
@@ -254,7 +241,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "github-dark",
     name: "GitHub Dark",
     variant: "dark",
-    builtin: true,
     theme: {
       background: "#0d1117",
       foreground: "#e6edf3",
@@ -283,7 +269,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "solarized-light",
     name: "Solarized Light",
     variant: "light",
-    builtin: true,
     theme: {
       background: "#fdf6e3",
       foreground: "#657b83",
@@ -312,7 +297,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "github-light",
     name: "GitHub Light",
     variant: "light",
-    builtin: true,
     theme: {
       background: "#ffffff",
       foreground: "#1f2328",
@@ -341,7 +325,6 @@ export const TERMINAL_THEME_PRESETS: readonly TerminalThemeDefinition[] = [
     id: "one-light",
     name: "One Light",
     variant: "light",
-    builtin: true,
     theme: {
       background: "#fafafa",
       foreground: "#383a42",
@@ -387,30 +370,6 @@ export const TERMINAL_ANSI_COLOR_KEYS = [
   "brightWhite",
 ] as const;
 
-export const TERMINAL_BASE_COLOR_KEYS = [
-  "background",
-  "foreground",
-  "cursor",
-  "cursorAccent",
-  "selectionBackground",
-] as const;
-
-export type TerminalThemeColorKey =
-  | (typeof TERMINAL_BASE_COLOR_KEYS)[number]
-  | (typeof TERMINAL_ANSI_COLOR_KEYS)[number];
-
-const TERMINAL_THEME_COLOR_KEYS: readonly TerminalThemeColorKey[] = [
-  ...TERMINAL_BASE_COLOR_KEYS,
-  ...TERMINAL_ANSI_COLOR_KEYS,
-];
-
-export type CustomTerminalTheme = {
-  id: string;
-  name: string;
-  variant: ResolvedTheme;
-  colors: Partial<Record<TerminalThemeColorKey, string>>;
-};
-
 const presetById = new Map(
   TERMINAL_THEME_PRESETS.map((preset) => [preset.id, preset]),
 );
@@ -423,141 +382,19 @@ export function terminalThemeFor(resolvedTheme: ResolvedTheme): TerminalTheme {
   return resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
 }
 
-export function normalizeTerminalColor(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().toLowerCase();
-  if (/^#[0-9a-f]{3}$/.test(trimmed)) {
-    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
-  }
-  if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(trimmed)) return trimmed;
-  return null;
+/** Built-in themes for one appearance mode. */
+export function terminalThemesFor(
+  variant: ResolvedTheme,
+): TerminalThemeDefinition[] {
+  return TERMINAL_THEME_PRESETS.filter((preset) => preset.variant === variant);
 }
 
-export function hexToRgba(hex: string, alpha: number): string {
-  const normalized = normalizeTerminalColor(hex);
-  if (!normalized) return hex;
-  const red = Number.parseInt(normalized.slice(1, 3), 16);
-  const green = Number.parseInt(normalized.slice(3, 5), 16);
-  const blue = Number.parseInt(normalized.slice(5, 7), 16);
-  return `rgba(${red},${green},${blue},${alpha})`;
-}
-
-// Native color inputs and most palette sources work in hex; rgba() presets keep
-// only their RGB channels when a user duplicates them into a custom theme.
-export function terminalColorToHex(value: string | undefined): string {
-  if (!value) return "";
-  const hex = normalizeTerminalColor(value);
-  if (hex) return hex.slice(0, 7);
-  const rgba = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/.exec(
-    value.trim(),
-  );
-  if (!rgba) return "";
-  const channel = (raw: string) =>
-    Math.min(255, Number.parseInt(raw, 10)).toString(16).padStart(2, "0");
-  return `#${channel(rgba[1])}${channel(rgba[2])}${channel(rgba[3])}`;
-}
-
-export function customTerminalThemeToTheme(
-  custom: CustomTerminalTheme,
-): TerminalTheme {
-  const theme: TerminalTheme = {};
-  for (const key of TERMINAL_THEME_COLOR_KEYS) {
-    const value = custom.colors[key];
-    if (!value) continue;
-    theme[key] =
-      key === "selectionBackground"
-        ? hexToRgba(value, CUSTOM_TERMINAL_THEME_SELECTION_ALPHA)
-        : value;
-  }
-  return theme;
-}
-
-function normalizeThemeName(value: unknown): string {
-  if (typeof value !== "string") return t("Custom theme");
-  const clipped = Array.from(value.trim())
-    .slice(0, MAX_TERMINAL_THEME_NAME_LENGTH)
-    .join("");
-  return clipped || t("Custom theme");
-}
-
-function normalizeCustomThemeId(
-  value: unknown,
-  index: number,
-  usedIds: Set<string>,
-): string {
-  const requested =
-    typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value)
-      ? value
-      : `custom-theme-${index + 1}`;
-  let id = requested;
-  let suffix = 2;
-  while (usedIds.has(id) || presetById.has(id)) {
-    id = `${requested}-${suffix}`;
-    suffix += 1;
-  }
-  usedIds.add(id);
-  return id;
-}
-
-export function normalizeCustomTerminalTheme(
-  value: unknown,
-  index: number,
-  usedIds: Set<string>,
-): CustomTerminalTheme | null {
-  if (!value || typeof value !== "object") return null;
-  const raw = value as Record<string, unknown>;
-  const rawColors =
-    raw.colors && typeof raw.colors === "object"
-      ? (raw.colors as Record<string, unknown>)
-      : null;
-  if (!rawColors) return null;
-  const colors: Partial<Record<TerminalThemeColorKey, string>> = {};
-  for (const key of TERMINAL_THEME_COLOR_KEYS) {
-    const color = normalizeTerminalColor(rawColors[key]);
-    if (color) colors[key] = color;
-  }
-  // A theme without background and foreground cannot render legibly.
-  if (!colors.background || !colors.foreground) return null;
-  return {
-    id: normalizeCustomThemeId(raw.id, index, usedIds),
-    name: normalizeThemeName(raw.name),
-    variant: raw.variant === "light" ? "light" : "dark",
-    colors,
-  };
-}
-
-export function normalizeCustomTerminalThemes(
-  value: unknown,
-): CustomTerminalTheme[] {
-  if (!Array.isArray(value)) return [];
-  const usedIds = new Set<string>();
-  const themes: CustomTerminalTheme[] = [];
-  for (
-    let index = 0;
-    index < Math.min(value.length, MAX_CUSTOM_TERMINAL_THEMES);
-    index += 1
-  ) {
-    const theme = normalizeCustomTerminalTheme(value[index], index, usedIds);
-    if (theme) themes.push(theme);
-  }
-  return themes;
-}
-
-export function parseCustomTerminalThemes(
-  raw: string | null,
-): CustomTerminalTheme[] {
-  if (!raw) return [];
-  try {
-    return normalizeCustomTerminalThemes(JSON.parse(raw));
-  } catch {
-    return [];
-  }
-}
-
-export function serializeCustomTerminalThemes(
-  themes: CustomTerminalTheme[],
-): string {
-  return JSON.stringify(normalizeCustomTerminalThemes(themes));
+// Anything but a built-in theme of the matching mode (e.g. a removed custom
+// theme) falls back to that mode's default.
+function selectedThemeId(value: unknown, variant: ResolvedTheme): string {
+  return typeof value === "string" && presetById.get(value)?.variant === variant
+    ? value
+    : defaultTerminalThemeId(variant);
 }
 
 export function normalizeTerminalThemeSelection(
@@ -568,14 +405,8 @@ export function normalizeTerminalThemeSelection(
       ? (value as Record<string, unknown>)
       : {};
   return {
-    dark:
-      typeof raw.dark === "string" && raw.dark
-        ? raw.dark
-        : defaultTerminalThemeId("dark"),
-    light:
-      typeof raw.light === "string" && raw.light
-        ? raw.light
-        : defaultTerminalThemeId("light"),
+    dark: selectedThemeId(raw.dark, "dark"),
+    light: selectedThemeId(raw.light, "light"),
   };
 }
 
@@ -596,48 +427,26 @@ export function serializeTerminalThemeSelection(
   return JSON.stringify(normalizeTerminalThemeSelection(selection));
 }
 
-export function terminalThemeById(
-  id: string,
-  customThemes: CustomTerminalTheme[],
-): TerminalThemeDefinition | null {
-  const preset = presetById.get(id);
-  if (preset) return preset;
-  const custom = customThemes.find((theme) => theme.id === id);
-  if (!custom) return null;
-  return {
-    id: custom.id,
-    name: custom.name,
-    variant: custom.variant,
-    builtin: false,
-    theme: customTerminalThemeToTheme(custom),
-  };
-}
-
 export function resolveTerminalThemeDefinition(
   resolvedTheme: ResolvedTheme,
   selection: TerminalThemeSelection,
-  customThemes: CustomTerminalTheme[],
 ): TerminalThemeDefinition {
-  const selected = terminalThemeById(selection[resolvedTheme], customThemes);
-  if (selected) return selected;
-  const fallback = presetById.get(defaultTerminalThemeId(resolvedTheme));
-  if (fallback) return fallback;
-  return {
-    id: defaultTerminalThemeId(resolvedTheme),
-    name: resolvedTheme === "light" ? msg("Thyra Light") : msg("Thyra Dark"),
-    variant: resolvedTheme,
-    builtin: true,
-    theme: terminalThemeFor(resolvedTheme),
-  };
+  const id = selectedThemeId(selection[resolvedTheme], resolvedTheme);
+  return (
+    presetById.get(id) ?? {
+      id,
+      name: resolvedTheme === "light" ? msg("Thyra Light") : msg("Thyra Dark"),
+      variant: resolvedTheme,
+      theme: terminalThemeFor(resolvedTheme),
+    }
+  );
 }
 
 export function resolveTerminalTheme(
   resolvedTheme: ResolvedTheme,
   selection: TerminalThemeSelection,
-  customThemes: CustomTerminalTheme[],
 ): TerminalTheme {
-  return resolveTerminalThemeDefinition(resolvedTheme, selection, customThemes)
-    .theme;
+  return resolveTerminalThemeDefinition(resolvedTheme, selection).theme;
 }
 
 function normalizedHex(value: string | undefined): string | null {

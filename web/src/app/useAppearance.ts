@@ -24,11 +24,8 @@ import {
   serializeMobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
 import {
-  CUSTOM_TERMINAL_THEMES_STORAGE_KEY,
-  parseCustomTerminalThemes,
   parseTerminalThemeSelection,
   resolveTerminalTheme,
-  serializeCustomTerminalThemes,
   serializeTerminalThemeSelection,
   TERMINAL_THEME_SELECTION_STORAGE_KEY,
   terminalHostThemeReport,
@@ -131,19 +128,9 @@ export function useAppearance(
     parseTerminalThemeSelection,
     serializeTerminalThemeSelection,
   );
-  const [customTerminalThemes, setCustomTerminalThemes] = useStoredState(
-    CUSTOM_TERMINAL_THEMES_STORAGE_KEY,
-    parseCustomTerminalThemes,
-    serializeCustomTerminalThemes,
-  );
   const terminalTheme = useMemo(
-    () =>
-      resolveTerminalTheme(
-        resolvedTheme,
-        terminalThemeSelection,
-        customTerminalThemes,
-      ),
-    [resolvedTheme, terminalThemeSelection, customTerminalThemes],
+    () => resolveTerminalTheme(resolvedTheme, terminalThemeSelection),
+    [resolvedTheme, terminalThemeSelection],
   );
 
   useEffect(() => {
@@ -236,7 +223,6 @@ export function useAppearance(
     mobileTerminalShortcuts,
     mobileTerminalSideShortcuts,
     terminalThemeSelection,
-    customTerminalThemes,
     onThemeChange: setTheme,
     onAccentColorChange: setAccentColor,
     onUiScaleChange: setUiScale,
@@ -244,7 +230,6 @@ export function useAppearance(
     onMobileTerminalShortcutsChange: setMobileTerminalShortcuts,
     onMobileTerminalSideShortcutsChange: setMobileTerminalSideShortcuts,
     onTerminalThemeSelectionChange: setTerminalThemeSelection,
-    onCustomTerminalThemesChange: setCustomTerminalThemes,
   };
   return { configuration, terminalTheme };
 }

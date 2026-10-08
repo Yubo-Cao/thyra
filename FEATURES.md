@@ -328,7 +328,7 @@ Scope and wrapping persist per browser. Refresh reloads the list and the shown d
   A device that types without displaying the pane opens the composer with voice input and the shortcut keys, and previews the pane scaled to fit at one frame per second.
   The lines button switches that preview to the pane's last lines as text, which uses no terminal frames at all.
   Every device that does not size the pane mirrors the displaying device's size, scaled down to fit.
-- Choose light/dark/system appearance, accents, built-in/custom terminal themes,
+- Choose light/dark/system appearance, accents, built-in terminal themes,
   and UI text size (80%–150%). Preferences stay in this browser.
 - The interface is available in English and Simplified Chinese. **Language**
   under **Configuration > Appearance** defaults to **Auto**, which follows the

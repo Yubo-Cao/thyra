@@ -63,7 +63,6 @@ import {
 } from "../mobileTerminalShortcuts";
 import { store, useStoreSelector } from "../store";
 import {
-  type CustomTerminalTheme,
   resolveTerminalThemeDefinition,
   terminalThemeName,
   type TerminalThemeSelection,
@@ -129,7 +128,6 @@ export type ConfigurationProps = {
   mobileTerminalShortcuts: MobileTerminalShortcutRows;
   mobileTerminalSideShortcuts: MobileTerminalSideShortcuts;
   terminalThemeSelection: TerminalThemeSelection;
-  customTerminalThemes: CustomTerminalTheme[];
   onThemeChange: (theme: Theme) => void;
   onAccentColorChange: (accentColor: AccentColor) => void;
   onUiScaleChange: (scale: number) => void;
@@ -139,7 +137,6 @@ export type ConfigurationProps = {
     shortcuts: MobileTerminalSideShortcuts,
   ) => void;
   onTerminalThemeSelectionChange: (selection: TerminalThemeSelection) => void;
-  onCustomTerminalThemesChange: (themes: CustomTerminalTheme[]) => void;
 };
 const tabs = [
   "Appearance",
@@ -376,14 +373,12 @@ export function ConfigurationDialog({
             resolveTerminalThemeDefinition(
               "dark",
               props.terminalThemeSelection,
-              props.customTerminalThemes,
             ),
           ),
           light: terminalThemeName(
             resolveTerminalThemeDefinition(
               "light",
               props.terminalThemeSelection,
-              props.customTerminalThemes,
             ),
           ),
         })}
@@ -638,9 +633,7 @@ export function ConfigurationDialog({
           <TerminalThemeDialog
             open
             selection={props.terminalThemeSelection}
-            customThemes={props.customTerminalThemes}
             onSelectionChange={props.onTerminalThemeSelectionChange}
-            onCustomThemesChange={props.onCustomTerminalThemesChange}
             onClose={closeDetail}
           />
         ) : null}
