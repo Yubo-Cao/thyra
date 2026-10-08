@@ -266,7 +266,7 @@ export function TerminalComposer({
     }
   };
 
-  const keepTextareaFocus = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const keepTextareaFocus = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.currentTarget.blur();
   };
@@ -318,7 +318,7 @@ export function TerminalComposer({
                       aria-label={t("Send {key}", {
                         key: option ? t(option.label) : shortcut.label,
                       })}
-                      onPointerDown={keepTextareaFocus}
+                      onMouseDown={keepTextareaFocus}
                       disabled={!!shortcutDisabledReason?.(shortcut)}
                       title={
                         shortcutDisabledReason?.(shortcut) ??
@@ -397,7 +397,7 @@ export function TerminalComposer({
             size="md"
             label={t("Close composer")}
             icon={<X size={15} />}
-            onPointerDown={keepTextareaFocus}
+            onMouseDown={keepTextareaFocus}
             onClick={onClose}
           />
           {hasShortcuts ? (
@@ -414,7 +414,7 @@ export function TerminalComposer({
               }
               icon={<Keyboard size={15} />}
               aria-expanded={shortcutsOpen}
-              onPointerDown={keepTextareaFocus}
+              onMouseDown={keepTextareaFocus}
               onClick={() => {
                 const open = !shortcutsOpen;
                 thyraLocalStorage.setItem(
@@ -430,7 +430,7 @@ export function TerminalComposer({
             label={t("Add an image")}
             icon={<ImagePlus size={15} />}
             disabled={busy}
-            onPointerDown={keepTextareaFocus}
+            onMouseDown={keepTextareaFocus}
             onClick={() => fileInputRef.current?.click()}
           />
           <IconButton
@@ -448,7 +448,7 @@ export function TerminalComposer({
               voice.state.phase === "stopping" ||
               voice.state.phase === "tidying"
             }
-            onPointerDown={keepTextareaFocus}
+            onMouseDown={keepTextareaFocus}
             onClick={voice.toggle}
           />
           <IconButton
@@ -457,7 +457,7 @@ export function TerminalComposer({
             icon={<CircleHelp size={15} />}
             aria-haspopup="dialog"
             aria-expanded={helpOpen}
-            onPointerDown={keepTextareaFocus}
+            onMouseDown={keepTextareaFocus}
             onClick={() => setHelpOpen(true)}
           />
           <span className="terminal-composer-hint">
@@ -483,7 +483,7 @@ export function TerminalComposer({
             title={t("Insert into the terminal without executing")}
             aria-label={t("Insert draft into the terminal")}
             disabled={submitDisabled}
-            onPointerDown={keepTextareaFocus}
+            onMouseDown={keepTextareaFocus}
             onClick={() => void submit(false)}
           >
             <CornerDownRight size={14} />
@@ -498,7 +498,7 @@ export function TerminalComposer({
             )}
             aria-label={t("Send draft to the terminal")}
             disabled={submitDisabled}
-            onPointerDown={keepTextareaFocus}
+            onMouseDown={keepTextareaFocus}
             onClick={() => void submit(true)}
           >
             <CornerDownLeft size={14} />

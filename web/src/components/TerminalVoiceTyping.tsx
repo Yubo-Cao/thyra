@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   type CSSProperties,
-  type PointerEvent,
+  type MouseEvent,
   useCallback,
   useEffect,
   useRef,
@@ -225,7 +225,7 @@ export function useTerminalVoiceTyping({
   };
 }
 
-const keepTerminalFocus = (event: PointerEvent<HTMLButtonElement>) =>
+const keepTerminalFocus = (event: MouseEvent<HTMLButtonElement>) =>
   event.preventDefault();
 
 function statusLabel(voice: TerminalVoiceTyping) {
@@ -272,7 +272,7 @@ export function TerminalVoiceButton({
       aria-label={label}
       aria-pressed={voice.recording}
       disabled={busy || (!!disabledReason && !voice.active)}
-      onPointerDown={keepTerminalFocus}
+      onMouseDown={keepTerminalFocus}
       onClick={voice.toggle}
     >
       {busy ? (
@@ -318,7 +318,7 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
           label={t("Discard this dictation")}
           icon={<X size={15} />}
           disabled={voice.inserting}
-          onPointerDown={keepTerminalFocus}
+          onMouseDown={keepTerminalFocus}
           onClick={voice.cancel}
         />
       </div>
@@ -342,7 +342,7 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
           size="md"
           title={t("Type into the terminal without pressing Enter")}
           disabled={committing}
-          onPointerDown={keepTerminalFocus}
+          onMouseDown={keepTerminalFocus}
           onClick={() => voice.finish(false)}
         >
           <CornerDownRight size={14} />
@@ -353,7 +353,7 @@ export function TerminalVoicePanel({ voice }: { voice: TerminalVoiceTyping }) {
           size="md"
           title={t("Type into the terminal and press Enter")}
           disabled={committing}
-          onPointerDown={keepTerminalFocus}
+          onMouseDown={keepTerminalFocus}
           onClick={() => voice.finish(true)}
         >
           <CornerDownLeft size={14} />

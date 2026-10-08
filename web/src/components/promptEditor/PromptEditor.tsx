@@ -1,3 +1,4 @@
+import { keepFocus } from "../ui/keepFocus";
 import {
   type EditorSpan,
   measureTerminal,
@@ -626,7 +627,7 @@ export function PromptEditor({
             tooltip={false}
             icon={<CornerDownLeft size={12} />}
             disabled={busy || !text.trim()}
-            onMouseDown={(event) => event.preventDefault()}
+            onMouseDown={keepFocus}
             onClick={() => void send()}
           />
         ) : null}
@@ -639,7 +640,7 @@ export function PromptEditor({
           tooltip={false}
           aria-pressed={preview}
           icon={preview ? <PenLine size={12} /> : <Eye size={12} />}
-          onMouseDown={(event) => event.preventDefault()}
+          onMouseDown={keepFocus}
           onClick={togglePreview}
         />
         <IconButton
@@ -647,7 +648,7 @@ export function PromptEditor({
           label={shortcutTitle(t("Hide prompt editor"), "promptEditor.toggle")}
           tooltip={false}
           icon={<X size={12} />}
-          onMouseDown={(event) => event.preventDefault()}
+          onMouseDown={keepFocus}
           onClick={onClose}
         />
       </div>

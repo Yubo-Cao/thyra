@@ -1,3 +1,4 @@
+import { keepFocus } from "./keepFocus";
 import { File, Folder, GitBranch, History, Terminal } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { ShellCompletion } from "../../../../shared/shell";
@@ -46,7 +47,7 @@ export function ShellSuggestions({
             role="option"
             aria-selected={index === selected}
             tabIndex={-1}
-            onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={keepFocus}
             onClick={() => onSelect(index)}
           >
             <Icon size={14} />

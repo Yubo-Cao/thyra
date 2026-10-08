@@ -1,3 +1,4 @@
+import { keepFocus } from "../components/ui/keepFocus";
 import {
   useCallback,
   useEffect,
@@ -246,7 +247,7 @@ export function PaneJumpOverlay({ paneJump }: { paneJump: PaneJump }) {
               role="option"
               aria-selected={index === selectedIndex}
               onPointerEnter={() => onSelectIndex(index)}
-              onPointerDown={(event) => event.preventDefault()}
+              onMouseDown={keepFocus}
               onClick={() => onCommit(index)}
             >
               {entry.agent ? (

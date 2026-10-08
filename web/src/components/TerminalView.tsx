@@ -1,3 +1,4 @@
+import { keepFocus } from "./ui/keepFocus";
 import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
@@ -1044,7 +1045,7 @@ export function TerminalView({
                     !!terminalAttachError ||
                     control.access.viewOnly
                   }
-                  onPointerDown={(event) => event.preventDefault()}
+                  onMouseDown={keepFocus}
                   onClick={() => {
                     const term = refs.term.current;
                     if (

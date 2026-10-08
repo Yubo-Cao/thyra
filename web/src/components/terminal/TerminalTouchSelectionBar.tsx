@@ -1,3 +1,4 @@
+import { keepFocus } from "../ui/keepFocus";
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../../i18n";
@@ -51,7 +52,7 @@ export function TerminalTouchSelectionBar({
       >
         <Button
           variant="secondary"
-          onPointerDown={(event) => event.preventDefault()}
+          onMouseDown={keepFocus}
           onClick={() => {
             const text = refs.term.current
               ? terminalSelectedText(refs.term.current)
@@ -84,7 +85,7 @@ export function TerminalTouchSelectionBar({
         {touchLink ? (
           <Button
             variant="secondary"
-            onPointerDown={(event) => event.preventDefault()}
+            onMouseDown={keepFocus}
             onClick={(event) => {
               if (!touchLink.current()) {
                 onTouchLinkChange(null);

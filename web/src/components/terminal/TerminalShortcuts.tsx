@@ -1,7 +1,7 @@
 import { Grid2X2 } from "lucide-react";
 import {
   type CSSProperties,
-  type PointerEvent,
+  type MouseEvent,
   useCallback,
   useRef,
   useState,
@@ -141,7 +141,7 @@ export function terminalShortcutActions(
         ? store.terminalScrollReason(terminalId)
         : null;
   // Shortcut buttons never take focus, nor leave the device keyboard up.
-  const preventFocus = (e: PointerEvent<HTMLButtonElement>) => {
+  const preventFocus = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     blurTerminalInput();
     e.currentTarget.blur();
@@ -172,7 +172,7 @@ function ShortcutKey({
       disabled={!!reason}
       title={reason ?? key}
       aria-label={side ? t("Run {key}", { key }) : t("Send {key}", { key })}
-      onPointerDown={preventFocus}
+      onMouseDown={preventFocus}
       onClick={() => run(shortcut)}
       {...(modifier
         ? {
@@ -242,7 +242,7 @@ export function TerminalShortcutGrid({
         }
         icon={<Grid2X2 size={17} />}
         aria-expanded={open}
-        onPointerDown={shortcuts.preventFocus}
+        onMouseDown={shortcuts.preventFocus}
         onClick={onToggle}
       />
       <div className="terminal-mobile-keys-panel">
