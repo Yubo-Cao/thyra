@@ -46,8 +46,12 @@ function installBrowserGlobals(webSocket: typeof WebSocket) {
   globalThis.WebSocket = webSocket;
 }
 
-function createTestBridge(connectTimeoutMs = 5, reconnectDelayMs = 1000) {
-  const bridge = new Bridge(connectTimeoutMs, reconnectDelayMs);
+function createTestBridge(
+  connectTimeoutMs = 5,
+  reconnectDelayMs = 1000,
+  probeOnConnect = false,
+) {
+  const bridge = new Bridge(connectTimeoutMs, reconnectDelayMs, probeOnConnect);
   testBridges.push(bridge);
   return bridge;
 }
@@ -329,6 +333,40 @@ describe("bridge connection lifecycle", () => {
 
     expect(statuses).toEqual(["disconnected", "connecting", "disconnected"]);
     expect(bridge.status).toBe("disconnected");
+  });
+
+  test("measures a round trip as soon as the connection opens", async () => {
+    class ManualWebSocket extends HangingWebSocket {
+      static instance: ManualWebSocket;
+      sent: string[] = [];
+
+      constructor() {
+        super();
+        ManualWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = ManualWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+
+      send(raw = "") {
+        this.sent.push(raw);
+      }
+    }
+    installBrowserGlobals(ManualWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(5, 1000, true);
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ManualWebSocket.instance);
+
+    const ping = JSON.parse(ManualWebSocket.instance.sent[0]);
+    expect(ping.method).toBe("bridge.ping");
+    expect(bridge.recentRoundTrips).toEqual([]);
+    ManualWebSocket.instance.onmessage?.({
+      data: JSON.stringify({ id: ping.id, result: {} }),
+    } as MessageEvent);
+    await Bun.sleep(1);
+    expect(bridge.recentRoundTrips).toHaveLength(1);
   });
 
   test("allows a long-running RPC to rely on connection lifetime", async () => {

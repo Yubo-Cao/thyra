@@ -427,6 +427,8 @@ export class Bridge {
   constructor(
     private readonly connectTimeoutMs = CONNECT_TIMEOUT_MS,
     private readonly reconnectDelayMs = 1500,
+    /** Probe the round trip as soon as each connection opens. */
+    private readonly probeOnConnect = true,
   ) {}
 
   get status() {
@@ -678,6 +680,9 @@ export class Bridge {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
       this.runHeartbeatProbe();
     }, HEARTBEAT_INTERVAL_MS);
+    // A first round trip right away, so latency-driven choices (the local
+    // editors' Auto mode) need not wait a whole interval after a connect.
+    if (this.probeOnConnect) this.runHeartbeatProbe();
   }
 
   readonly recentRoundTrips: number[] = [];
