@@ -22,7 +22,6 @@
   right: var(--prompt-editor-cell);
   bottom: var(--prompt-editor-pad-bottom);
 }
-.prompt-editor[data-images] > .prompt-editor-body,
-.prompt-editor[data-images] > .prompt-editor-preview {
+.prompt-editor[data-images] > .prompt-editor-body {
   bottom: calc(var(--prompt-editor-pad-bottom) + 72px);
 }

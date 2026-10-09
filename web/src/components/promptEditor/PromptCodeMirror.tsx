@@ -24,7 +24,7 @@ import {
 } from "@codemirror/view";
 import { useLayoutEffect, useRef } from "react";
 import { t } from "../../i18n";
-import { livePreview } from "./livePreview";
+import { livePreview, webImageUrl } from "./livePreview";
 import type {
   PromptEditorFont,
   PromptEditorSurface,
@@ -105,6 +105,7 @@ export function PromptCodeMirror({
   onPasteFiles,
   onContentHeight,
   onCompositionChange,
+  imageUrl,
 }: PromptEditorSurfaceProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -115,6 +116,7 @@ export function PromptCodeMirror({
     onPasteFiles,
     onContentHeight,
     onCompositionChange,
+    imageUrl,
   });
   latest.current = {
     onChange,
@@ -122,6 +124,7 @@ export function PromptCodeMirror({
     onPasteFiles,
     onContentHeight,
     onCompositionChange,
+    imageUrl,
   };
 
   useLayoutEffect(() => {
@@ -212,7 +215,10 @@ export function PromptCodeMirror({
             autocorrect: "off",
             spellcheck: "false",
           }),
-          livePreview(),
+          livePreview(
+            (source) =>
+              latest.current.imageUrl?.(source) ?? webImageUrl(source),
+          ),
           surfaceTheme,
           fontCompartment.current.of(fontTheme(font)),
           EditorView.updateListener.of((update) => {

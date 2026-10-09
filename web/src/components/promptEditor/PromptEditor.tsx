@@ -6,7 +6,7 @@ import {
   useEditorSpan,
 } from "./metrics";
 import type { TerminalEngine, TerminalTheme } from "../../terminalEngine";
-import { CornerDownLeft, Eye, PenLine, X } from "lucide-react";
+import { CornerDownLeft, X } from "lucide-react";
 import {
   type CSSProperties,
   type RefObject,
@@ -15,7 +15,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { flushSync } from "react-dom";
 import type { AgentKind } from "../../agentKind";
 import { t } from "../../i18n";
 import { richEditorLoadPolicy } from "../../idlePrefetch";
@@ -32,7 +31,6 @@ import { promptEditorKeyAction } from "../../promptEditorKeys";
 import {
   getShortcutSnapshot,
   shortcutLabel,
-  shortcutMatches,
   shortcutTitle,
 } from "../../shortcutPreferences";
 import { editorMayTakeFocus } from "../../localEditorPolicy";
@@ -50,6 +48,7 @@ import {
 import { useTerminalComposerDraft } from "../../useTerminalComposerDraft";
 import { LazyBoundary } from "../LazyBoundary";
 import { IconButton } from "../ui/IconButton";
+import type { ImageUrlResolver } from "./livePreview";
 import { PromptTextarea } from "./PromptTextarea";
 import type {
   PromptEditorFont,
@@ -62,11 +61,7 @@ import { ComposerImages, useComposerImages } from "../ComposerImages";
 const promptRichPanel = lazyPanel("prompt-editor-rich", () =>
   import("./PromptCodeMirror").then((module) => module.PromptCodeMirror),
 );
-const markdownPreviewPanel = lazyPanel("prompt-editor-preview", () =>
-  import("../markdown").then((module) => module.MarkdownPreview),
-);
 const PromptCodeMirror = promptRichPanel.Component;
-const MarkdownPreview = markdownPreviewPanel.Component;
 
 // Frames can arrive at display rate; the agent's box moves far less often.
 const SCAN_INTERVAL_MS = 100;
@@ -109,6 +104,8 @@ export type PromptEditorProps = {
   enterSends: boolean;
   /** The pane shows a text preview instead of the screen: dock at the bottom. */
   dockOnly: boolean;
+  /** Where local Markdown images in the draft load from. */
+  imageUrl?: ImageUrlResolver;
   controlRef: RefObject<PromptEditorControl | null>;
   onSubmit: (text: string) => Promise<void>;
   onForward: (data: string) => void;
@@ -226,6 +223,7 @@ export function PromptEditor({
   enterSends,
   focusAllowed,
   dockOnly,
+  imageUrl,
   controlRef,
   onSubmit,
   onForward,
@@ -246,9 +244,6 @@ export function PromptEditor({
   });
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
   const [contentHeight, setContentHeight] = useState(0);
-  const [preview, setPreview] = useState(false);
-  const previewRef = useRef(preview);
-  previewRef.current = preview;
   const [composing, setComposing] = useState(false);
   const composingRef = useRef(false);
   const boxSeen = useRef(false);
@@ -346,9 +341,6 @@ export function PromptEditor({
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (hidden) {
-      // The editor comes back editing: a surface under the preview cannot
-      // take focus.
-      setPreview(false);
       if (root?.contains(document.activeElement)) {
         handedToTerminal.current = true;
         onFocusTerminal();
@@ -390,9 +382,7 @@ export function PromptEditor({
     controlRef.current = {
       focus: () => {
         if (hidden || !surfaceRef.current) return false;
-        // Show the surface before focusing it; a hidden one cannot take focus.
-        if (previewRef.current) flushSync(() => setPreview(false));
-        surfaceRef.current?.focus();
+        surfaceRef.current.focus();
         // False sends the caller on to the terminal rather than leave the
         // keyboard with nothing.
         const focused = document.activeElement;
@@ -451,18 +441,7 @@ export function PromptEditor({
       );
     }
   };
-  const togglePreview = () => {
-    setPreview((open) => {
-      if (open) requestAnimationFrame(() => surfaceRef.current?.focus());
-      else requestAnimationFrame(() => rootRef.current?.focus());
-      return !open;
-    });
-  };
-  const onKey = (event: KeyboardEvent, empty: boolean, previewing = false) => {
-    if (shortcutMatches(event, "composer.preview")) {
-      togglePreview();
-      return true;
-    }
+  const onKey = (event: KeyboardEvent, empty: boolean) => {
     const action = promptEditorKeyAction(event, {
       empty,
       applicationCursor: term.modes.applicationCursorKeysMode,
@@ -470,8 +449,7 @@ export function PromptEditor({
       enterSends,
       selection: selection.current,
     });
-    // The preview has no caret to break a line at.
-    if (!action || (previewing && action.type === "newline")) return false;
+    if (!action) return false;
     if (action.type === "send") void send();
     else if (action.type === "newline") surfaceRef.current?.insertText("\n");
     else if (action.type === "forward") onForward(action.data);
@@ -522,11 +500,8 @@ export function PromptEditor({
     },
     onKey,
     onPasteFiles,
-    // A hidden surface (under the preview) measures at zero width: keep the
-    // height it had.
-    onContentHeight: (height) => {
-      if (!previewRef.current) setContentHeight(height);
-    },
+    onContentHeight: setContentHeight,
+    imageUrl,
     onUse: () => setUsed(true),
     onCompositionChange: (active) => {
       composingRef.current = active;
@@ -581,33 +556,14 @@ export function PromptEditor({
       role="group"
       aria-label={t("Prompt editor")}
       data-mode={placement.mode}
-      data-preview={preview || undefined}
       data-images={images.length > 0 || undefined}
       hidden={!visible}
       style={style}
-      tabIndex={-1}
-      onKeyDown={(event) => {
-        // Keys that reach the frame itself come from the Markdown preview.
-        if (event.target !== event.currentTarget) return;
-        if (
-          shortcutMatches(event.nativeEvent, "composer.preview") ||
-          event.key === "Escape"
-        ) {
-          event.preventDefault();
-          togglePreview();
-          return;
-        }
-        // Send, paging and a question's choice keys work from the preview.
-        if (
-          onKey(event.nativeEvent, !readTerminalComposerDraft(draftKey), true)
-        )
-          event.preventDefault();
-      }}
     >
       <span className="prompt-editor-marker" aria-hidden="true">
         {marker}
       </span>
-      <div className="prompt-editor-body" hidden={preview}>
+      <div className="prompt-editor-body">
         {rich ? (
           <LazyBoundary>
             <PromptCodeMirror {...surfaceProps} />
@@ -616,13 +572,6 @@ export function PromptEditor({
           <PromptTextarea {...surfaceProps} />
         )}
       </div>
-      {preview ? (
-        <div className="prompt-editor-preview">
-          <LazyBoundary>
-            <MarkdownPreview text={text || t("Nothing to preview")} breaks />
-          </LazyBoundary>
-        </div>
-      ) : null}
       <ComposerImages images={images} />
       <div className="prompt-editor-actions">
         <span
@@ -650,18 +599,6 @@ export function PromptEditor({
             onClick={() => void send()}
           />
         ) : null}
-        <IconButton
-          className="prompt-editor-action"
-          label={shortcutTitle(
-            preview ? t("Edit the prompt") : t("Preview Markdown"),
-            "composer.preview",
-          )}
-          tooltip={false}
-          aria-pressed={preview}
-          icon={preview ? <PenLine size={12} /> : <Eye size={12} />}
-          onMouseDown={keepFocus}
-          onClick={togglePreview}
-        />
         <IconButton
           className="prompt-editor-action"
           label={shortcutTitle(t("Hide prompt editor"), "promptEditor.toggle")}

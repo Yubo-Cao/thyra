@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { livePreview, livePreviewDecorations } from "./livePreview";
+import { linkAt, livePreview, livePreviewDecorations } from "./livePreview";
 
 /** The text the decorations hide (replace without a widget) or swap. */
 function rendered(doc: string, cursor: number | null) {
@@ -70,5 +70,51 @@ describe("live preview", () => {
     const state = EditorState.create({ doc, extensions: livePreview() });
     livePreviewDecorations(state, [{ from: 0, to: doc.length }], false);
     expect(state.doc.toString()).toBe(doc);
+  });
+
+  test("an image renders off its line and resolves its source", () => {
+    const doc = "see ![shot](./a.png) and ![](/tmp/b.png)\nnext";
+    const images = (cursor: number | null) => {
+      const state = EditorState.create({
+        doc,
+        selection: EditorSelection.single(cursor ?? 0),
+        extensions: livePreview((source) =>
+          source.startsWith("/") ? `/file?path=${source}` : null,
+        ),
+      });
+      ensureSyntaxTree(state, doc.length, 5000);
+      const found: { text: string; src: string; alt: string }[] = [];
+      livePreviewDecorations(
+        state,
+        [{ from: 0, to: doc.length }],
+        cursor !== null,
+      ).between(0, doc.length, (from, to, value) => {
+        const widget = value.spec.widget as
+          | { src?: string; alt?: string }
+          | undefined;
+        if (widget?.src)
+          found.push({
+            text: doc.slice(from, to),
+            src: widget.src,
+            alt: widget.alt ?? "",
+          });
+      });
+      return found;
+    };
+    // A source the resolver refuses keeps its Markdown.
+    expect(images(doc.length)).toEqual([
+      { text: "![](/tmp/b.png)", src: "/file?path=/tmp/b.png", alt: "" },
+    ]);
+    expect(images(2)).toEqual([]);
+  });
+
+  test("finds the web address of the link under the pointer", () => {
+    const doc = "a [site](https://x.dev) <https://y.dev> [f](./f.md)";
+    const state = EditorState.create({ doc, extensions: livePreview() });
+    ensureSyntaxTree(state, doc.length, 5000);
+    expect(linkAt(state, doc.indexOf("site"))).toBe("https://x.dev");
+    expect(linkAt(state, doc.indexOf("y.dev"))).toBe("https://y.dev");
+    expect(linkAt(state, doc.indexOf("[f]") + 1)).toBeNull();
+    expect(linkAt(state, 0)).toBeNull();
   });
 });

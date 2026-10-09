@@ -2,6 +2,10 @@ import { keepFocus } from "./ui/keepFocus";
 import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
+import {
+  resolveWorkspaceMarkdownPath,
+  workspaceFileUrl,
+} from "../workspaceFileUrl";
 import { shortcutMatches } from "../shortcutPreferences";
 import type { TerminalEngine, TerminalTheme } from "../terminalEngine";
 import { Keyboard } from "lucide-react";
@@ -587,6 +591,21 @@ export function TerminalView({
     }
     term.focus();
   }, [coarsePointer, focusAllowed, openTerminalInput, refs]);
+  // The draft's Markdown images resolve against the pane's directory.
+  const workspaceId = pane?.workspace_id;
+  const paneCwd = pane?.cwd;
+  const promptImageUrl = useCallback(
+    (source: string) => {
+      if (!workspaceId || !paneCwd) return null;
+      const path = resolveWorkspaceMarkdownPath(source, `${paneCwd}/prompt.md`);
+      return path
+        ? workspaceFileUrl(connectionClient, workspaceId, path, {
+            inline: true,
+          })
+        : null;
+    },
+    [connectionClient, paneCwd, workspaceId],
+  );
   const setPromptEditorOpen = useCallback(
     (open: boolean) => {
       if (!open && refs.promptEditor.current?.hasFocus()) focusTerminal();
@@ -948,6 +967,7 @@ export function TerminalView({
                 focusAllowed={focusAllowed}
                 enterSends={!coarsePointer || keyboardKind === "hardware"}
                 dockOnly={framesPaused}
+                imageUrl={promptImageUrl}
                 controlRef={refs.promptEditor}
                 onSubmit={(text) => submitTerminalComposer(text, true)}
                 onForward={(data) => {

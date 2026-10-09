@@ -118,11 +118,6 @@ const descriptions: Description[] = [
     msg("Terminal composer"),
   ],
   [
-    "composer.preview",
-    msg("Preview the prompt editor draft as Markdown"),
-    msg("Terminal composer"),
-  ],
-  [
     "promptEditor.toggle",
     msg("Show or hide the prompt editor of an agent pane"),
     msg("Terminal composer"),

@@ -268,8 +268,6 @@ export default {
   "Paste text or images": "粘贴文本或图片",
   "Open links or preview workspace paths": "打开链接或预览工作区路径",
   "Send the terminal composer draft": "发送终端输入框草稿",
-  "Preview the prompt editor draft as Markdown":
-    "以 Markdown 预览提示词编辑器草稿",
   "Show or hide the prompt editor of an agent pane":
     "显示或隐藏 Agent 窗格的提示词编辑器",
   "Move focus between the terminal and its prompt editor":

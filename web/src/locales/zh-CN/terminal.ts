@@ -164,9 +164,6 @@ export default {
   "Show prompt editor": "显示提示词编辑器",
   "Hide prompt editor": "隐藏提示词编辑器",
   "Write a prompt for the agent": "为 Agent 编写提示词",
-  "Preview Markdown": "预览 Markdown",
-  "Edit the prompt": "编辑提示词",
-  "Nothing to preview": "没有可预览的内容",
 
   // Voice typing
   "Cleanup failed; typing the raw dictation. {error}":

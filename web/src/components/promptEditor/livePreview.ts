@@ -9,7 +9,12 @@ import {
   syntaxTree,
 } from "@codemirror/language";
 import { markdownLanguage } from "@codemirror/lang-markdown";
-import type { EditorState, Extension, Range } from "@codemirror/state";
+import {
+  type EditorState,
+  type Extension,
+  Facet,
+  type Range,
+} from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -23,11 +28,22 @@ import { type MarkdownParser, parseCode } from "@lezer/markdown";
 
 /**
  * Typora-style live preview for the prompt editor: Markdown renders as it is
- * typed (bold, italic, code, headings, lists, links, fenced code with
+ * typed (bold, italic, code, headings, lists, links, images, fenced code with
  * highlighting), and its markers show only on the lines the selection is on.
  * Decorations never touch the document, so the draft stays the exact text
  * typed.
  */
+
+/** Where an image's source loads from; null leaves its Markdown showing. */
+export type ImageUrlResolver = (source: string) => string | null;
+
+/** Without a resolver, only web and inline images load. */
+export const webImageUrl: ImageUrlResolver = (source) =>
+  /^(?:https?:|data:image\/)/i.test(source) ? source : null;
+
+const imageUrlResolver = Facet.define<ImageUrlResolver, ImageUrlResolver>({
+  combine: (values) => values[0] ?? webImageUrl,
+});
 
 // Fenced code languages, each downloaded the first time a fence names it.
 const legacy =
@@ -195,6 +211,39 @@ class BulletWidget extends WidgetType {
   }
 }
 
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly src: string,
+    readonly alt: string,
+  ) {
+    super();
+  }
+  eq(other: ImageWidget) {
+    return other.src === this.src && other.alt === this.alt;
+  }
+  toDOM(view: EditorView) {
+    const image = document.createElement("img");
+    image.className = "prompt-md-image";
+    image.alt = this.alt;
+    image.title = this.alt;
+    image.draggable = false;
+    // The line grows once the size is known.
+    image.addEventListener("load", () => view.requestMeasure());
+    image.addEventListener("error", () => {
+      const alt = document.createElement("span");
+      alt.className = "prompt-md-faint";
+      alt.textContent = `[${this.alt || this.src}]`;
+      image.replaceWith(alt);
+      view.requestMeasure();
+    });
+    image.src = this.src;
+    return image;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
 const hide = Decoration.replace({});
 const bullet = Decoration.replace({ widget: new BulletWidget() });
 const codeLine = Decoration.line({ class: "prompt-md-code-line" });
@@ -260,6 +309,21 @@ export function livePreviewDecorations(
           )
             if (child.name === "CodeMark" || child.name === "CodeInfo")
               ranges.push(faint.range(child.from, child.to));
+          return false;
+        }
+        if (name === "Image") {
+          if (touches(node.from, node.to)) return;
+          const url = node.node.getChild("URL");
+          const marks = node.node.getChildren("LinkMark");
+          const source = url && state.doc.sliceString(url.from, url.to);
+          const resolved = source && state.facet(imageUrlResolver)(source);
+          if (!resolved || marks.length < 2) return;
+          const alt = state.doc.sliceString(marks[0]!.to, marks[1]!.from);
+          ranges.push(
+            Decoration.replace({
+              widget: new ImageWidget(resolved, alt),
+            }).range(node.from, node.to),
+          );
           return false;
         }
         if (name === "InlineCode") {
@@ -328,7 +392,44 @@ const livePreviewPlugin = ViewPlugin.fromClass(
   { decorations: (plugin) => plugin.decorations },
 );
 
+/** The http(s) address of the link or autolink at `pos`, if any. */
+export function linkAt(state: EditorState, pos: number): string | null {
+  for (
+    let node = syntaxTree(state).resolveInner(pos, 1).node as
+      | ReturnType<typeof syntaxTree>["topNode"]
+      | null;
+    node;
+    node = node.parent
+  ) {
+    if (node.name !== "Link" && node.name !== "Autolink" && node.name !== "URL")
+      continue;
+    const url = node.name === "URL" ? node : node.getChild("URL");
+    const href = url && state.doc.sliceString(url.from, url.to);
+    return href && /^https?:\/\//i.test(href) ? href : null;
+  }
+  return null;
+}
+
+// Ctrl/Cmd+click opens a link; a plain click places the caret to edit it.
+const openLinks = EditorView.domEventHandlers({
+  mousedown: (event, view) => {
+    if (event.button !== 0 || !(event.ctrlKey || event.metaKey)) return false;
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    const href = pos === null ? null : linkAt(view.state, pos);
+    if (!href) return false;
+    event.preventDefault();
+    window.open(href, "_blank", "noopener,noreferrer");
+    return true;
+  },
+});
+
 const livePreviewTheme = EditorView.baseTheme({
+  ".prompt-md-image": {
+    display: "inline-block",
+    maxWidth: "100%",
+    maxHeight: "12em",
+    verticalAlign: "bottom",
+  },
   ".prompt-md-code": {
     backgroundColor: `color-mix(in srgb, ${color("fg")} 10%, transparent)`,
   },
@@ -339,8 +440,10 @@ const livePreviewTheme = EditorView.baseTheme({
 });
 
 /** Markdown with live preview: the language, highlighting and decorations. */
-export function livePreview(): Extension {
+export function livePreview(imageUrl?: ImageUrlResolver): Extension {
   return [
+    imageUrl ? imageUrlResolver.of(imageUrl) : [],
+    openLinks,
     promptMarkdown,
     syntaxHighlighting(markdownStyle),
     livePreviewPlugin,
