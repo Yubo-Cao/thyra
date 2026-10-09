@@ -1,5 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
+  composerImageUrl,
   readComposerImages,
   subscribeComposerImages,
   type ComposerImage,
@@ -13,23 +14,6 @@ export function useComposerImages(draftKey: string) {
   );
 }
 
-function Thumbnail({ image }: { image: ComposerImage }) {
-  const [url, setUrl] = useState<string>();
-  useEffect(() => {
-    const next = URL.createObjectURL(image.file);
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [image.file]);
-  return (
-    <img
-      src={url}
-      alt={image.file.name}
-      title={image.path ?? image.file.name}
-      data-uploading={!image.path || undefined}
-    />
-  );
-}
-
 export function ComposerImages({
   images,
 }: {
@@ -39,7 +23,13 @@ export function ComposerImages({
   return (
     <div className="composer-images">
       {images.map((image) => (
-        <Thumbnail key={image.id} image={image} />
+        <img
+          key={image.id}
+          src={composerImageUrl(image)}
+          alt={image.file.name}
+          title={image.path ?? image.file.name}
+          data-uploading={!image.path || undefined}
+        />
       ))}
     </div>
   );

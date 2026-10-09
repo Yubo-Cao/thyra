@@ -105,7 +105,7 @@ export function PromptCodeMirror({
   onPasteFiles,
   onContentHeight,
   onCompositionChange,
-  imageUrl,
+  images,
 }: PromptEditorSurfaceProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -116,7 +116,7 @@ export function PromptCodeMirror({
     onPasteFiles,
     onContentHeight,
     onCompositionChange,
-    imageUrl,
+    images,
   });
   latest.current = {
     onChange,
@@ -124,7 +124,7 @@ export function PromptCodeMirror({
     onPasteFiles,
     onContentHeight,
     onCompositionChange,
-    imageUrl,
+    images,
   };
 
   useLayoutEffect(() => {
@@ -215,10 +215,11 @@ export function PromptCodeMirror({
             autocorrect: "off",
             spellcheck: "false",
           }),
-          livePreview(
-            (source) =>
-              latest.current.imageUrl?.(source) ?? webImageUrl(source),
-          ),
+          livePreview({
+            url: (source) =>
+              latest.current.images?.url(source) ?? webImageUrl(source),
+            pasted: (ref) => latest.current.images?.pasted(ref) ?? null,
+          }),
           surfaceTheme,
           fontCompartment.current.of(fontTheme(font)),
           EditorView.updateListener.of((update) => {

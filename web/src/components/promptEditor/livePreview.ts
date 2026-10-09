@@ -34,16 +34,31 @@ import { type MarkdownParser, parseCode } from "@lezer/markdown";
  * typed.
  */
 
-/** Where an image's source loads from; null leaves its Markdown showing. */
-export type ImageUrlResolver = (source: string) => string | null;
+/** Where the draft's images load from; null leaves their text showing. */
+export type PromptImages = {
+  /** A Markdown image's source, or an image path written out. */
+  url(source: string): string | null;
+  /** The Nth image pasted into the draft (`[Image #N]`). */
+  pasted(ref: number): string | null;
+};
 
 /** Without a resolver, only web and inline images load. */
-export const webImageUrl: ImageUrlResolver = (source) =>
+export const webImageUrl = (source: string) =>
   /^(?:https?:|data:image\/)/i.test(source) ? source : null;
 
-const imageUrlResolver = Facet.define<ImageUrlResolver, ImageUrlResolver>({
-  combine: (values) => values[0] ?? webImageUrl,
+const promptImages = Facet.define<PromptImages, PromptImages>({
+  combine: (values) => values[0] ?? { url: webImageUrl, pasted: () => null },
 });
+
+// Claude Code's `[Image #2]` and Codex's `[image 2 ...]`, as pasted images
+// show in their boxes; and an image file path on its own.
+const IMAGE_TOKEN = /\[image #?(\d+)[^\]\n]*\]/gi;
+const IMAGE_PATH =
+  /(^|\s)((?:\.{1,2})?\/[^\s]*\.(?:png|jpe?g|gif|webp|bmp|avif))(?=$|[\s,;:!?)]|\.(?:\s|$))/gi;
+// Placeholders in code stay as written, and paths in links too (Markdown
+// reads a placeholder's brackets as a link).
+const CODE_NODES = new Set(["InlineCode", "FencedCode", "CodeBlock"]);
+const LINK_NODES = new Set([...CODE_NODES, "Link", "Image", "Autolink"]);
 
 // Fenced code languages, each downloaded the first time a fence names it.
 const legacy =
@@ -311,12 +326,20 @@ export function livePreviewDecorations(
               ranges.push(faint.range(child.from, child.to));
           return false;
         }
+        // A pasted image's placeholder is no link (pastedImages draws it).
+        if (
+          name === "Link" &&
+          /^\[image #?\d+[^\]\n]*\]$/i.test(
+            state.doc.sliceString(node.from, node.to),
+          )
+        )
+          return false;
         if (name === "Image") {
           if (touches(node.from, node.to)) return;
           const url = node.node.getChild("URL");
           const marks = node.node.getChildren("LinkMark");
           const source = url && state.doc.sliceString(url.from, url.to);
-          const resolved = source && state.facet(imageUrlResolver)(source);
+          const resolved = source && state.facet(promptImages).url(source);
           if (!resolved || marks.length < 2) return;
           const alt = state.doc.sliceString(marks[0]!.to, marks[1]!.from);
           ranges.push(
@@ -361,7 +384,64 @@ export function livePreviewDecorations(
         }
       },
     });
+  pastedImages(state, visible, edited, tree, ranges);
   return Decoration.set(ranges, true);
+}
+
+/** `[Image #N]` placeholders and bare image paths, off the edited lines. */
+function pastedImages(
+  state: EditorState,
+  visible: readonly { from: number; to: number }[],
+  edited: Set<number>,
+  tree: ReturnType<typeof syntaxTree>,
+  ranges: Range<Decoration>[],
+) {
+  const images = state.facet(promptImages);
+  const inside = (pos: number, names: Set<string>) => {
+    for (
+      let node = tree.resolveInner(pos, 1).node as typeof tree.topNode | null;
+      node;
+      node = node.parent
+    )
+      if (names.has(node.name)) return true;
+    return false;
+  };
+  const add = (
+    from: number,
+    to: number,
+    src: string | null,
+    alt: string,
+    literal: Set<string>,
+  ) => {
+    if (src && !inside(from, literal))
+      ranges.push(
+        Decoration.replace({ widget: new ImageWidget(src, alt) }).range(
+          from,
+          to,
+        ),
+      );
+  };
+  for (const { from, to } of visible)
+    for (let pos = from; pos <= to; ) {
+      const line = state.doc.lineAt(pos);
+      pos = line.to + 1;
+      if (edited.has(line.number)) continue;
+      for (const match of line.text.matchAll(IMAGE_TOKEN)) {
+        const start = line.from + match.index;
+        add(
+          start,
+          start + match[0].length,
+          images.pasted(Number(match[1])),
+          match[0],
+          CODE_NODES,
+        );
+      }
+      for (const match of line.text.matchAll(IMAGE_PATH)) {
+        const start = line.from + match.index + match[1]!.length;
+        const path = match[2]!;
+        add(start, start + path.length, images.url(path), path, LINK_NODES);
+      }
+    }
 }
 
 const livePreviewPlugin = ViewPlugin.fromClass(
@@ -440,9 +520,9 @@ const livePreviewTheme = EditorView.baseTheme({
 });
 
 /** Markdown with live preview: the language, highlighting and decorations. */
-export function livePreview(imageUrl?: ImageUrlResolver): Extension {
+export function livePreview(images?: PromptImages): Extension {
   return [
-    imageUrl ? imageUrlResolver.of(imageUrl) : [],
+    images ? promptImages.of(images) : [],
     openLinks,
     promptMarkdown,
     syntaxHighlighting(markdownStyle),

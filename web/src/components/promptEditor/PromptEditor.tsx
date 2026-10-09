@@ -38,6 +38,10 @@ import { useStartupSettled } from "../../startupGate";
 import {
   clipboardImageFiles,
   insertIntoTerminalComposerDraft,
+  composerImageInDraft,
+  composerImageToken,
+  composerImageUrl,
+  readComposerImages,
   readTerminalComposerDraft,
   readTerminalComposerSelection,
   submitTerminalComposerDraft,
@@ -48,7 +52,7 @@ import {
 import { useTerminalComposerDraft } from "../../useTerminalComposerDraft";
 import { LazyBoundary } from "../LazyBoundary";
 import { IconButton } from "../ui/IconButton";
-import type { ImageUrlResolver } from "./livePreview";
+import type { PromptImages } from "./livePreview";
 import { PromptTextarea } from "./PromptTextarea";
 import type {
   PromptEditorFont,
@@ -105,7 +109,7 @@ export type PromptEditorProps = {
   /** The pane shows a text preview instead of the screen: dock at the bottom. */
   dockOnly: boolean;
   /** Where local Markdown images in the draft load from. */
-  imageUrl?: ImageUrlResolver;
+  imageUrl?: (source: string) => string | null;
   controlRef: RefObject<PromptEditorControl | null>;
   onSubmit: (text: string) => Promise<void>;
   onForward: (data: string) => void;
@@ -326,14 +330,6 @@ export function PromptEditor({
   }, [agent, agentStatus, dockOnly, term]);
 
   const hidden = placement.mode === "hidden";
-  const frame =
-    metrics &&
-    promptEditorFrame(
-      placement,
-      metrics.rows,
-      Math.max(1, Math.ceil(contentHeight / metrics.rowHeight - 0.01)),
-      images.length ? Math.ceil(IMAGE_STRIP_HEIGHT / metrics.rowHeight) : 0,
-    );
 
   // A menu took the agent's box: hand its keys to the terminal, and take
   // them back when the box returns if the terminal still has them.
@@ -463,12 +459,13 @@ export function PromptEditor({
       draftKey,
       images,
       onUploadImage,
-      (key, path) => {
+      // A placeholder, as in Claude Code; the path replaces it on send.
+      (key, _path, image) => {
         const selection =
           key === draftKey ? surfaceRef.current?.selection() : null;
         insertIntoTerminalComposerDraft(
           key,
-          path,
+          composerImageToken(image.ref),
           selection?.start,
           selection?.end,
         );
@@ -479,6 +476,34 @@ export function PromptEditor({
       ),
     );
     return true;
+  };
+
+  // The rich surface shows pasted images in the text; the strip keeps the
+  // ones still uploading (and all of them under the plain textarea).
+  const strip = images.filter((image) =>
+    rich ? image.path === null : composerImageInDraft(image, text),
+  );
+  const frame =
+    metrics &&
+    promptEditorFrame(
+      placement,
+      metrics.rows,
+      Math.max(1, Math.ceil(contentHeight / metrics.rowHeight - 0.01)),
+      strip.length ? Math.ceil(IMAGE_STRIP_HEIGHT / metrics.rowHeight) : 0,
+    );
+  const promptImages: PromptImages = {
+    url: (source) => {
+      const pasted = readComposerImages(draftKey).find(
+        (image) => image.path === source,
+      );
+      return pasted ? composerImageUrl(pasted) : (imageUrl?.(source) ?? null);
+    },
+    pasted: (ref) => {
+      const pasted = readComposerImages(draftKey).find(
+        (image) => image.ref === ref,
+      );
+      return pasted ? composerImageUrl(pasted) : null;
+    },
   };
 
   const font: PromptEditorFont = {
@@ -501,7 +526,7 @@ export function PromptEditor({
     onKey,
     onPasteFiles,
     onContentHeight: setContentHeight,
-    imageUrl,
+    images: promptImages,
     onUse: () => setUsed(true),
     onCompositionChange: (active) => {
       composingRef.current = active;
@@ -556,7 +581,7 @@ export function PromptEditor({
       role="group"
       aria-label={t("Prompt editor")}
       data-mode={placement.mode}
-      data-images={images.length > 0 || undefined}
+      data-images={strip.length > 0 || undefined}
       hidden={!visible}
       style={style}
     >
@@ -572,7 +597,7 @@ export function PromptEditor({
           <PromptTextarea {...surfaceProps} />
         )}
       </div>
-      <ComposerImages images={images} />
+      <ComposerImages images={strip} />
       <div className="prompt-editor-actions">
         <span
           className="prompt-editor-hint"

@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { ImageUrlResolver } from "./livePreview";
+import type { PromptImages } from "./livePreview";
 
 /** A text range as string offsets into the draft. */
 export type PromptEditorSelection = { start: number; end: number };
@@ -45,8 +45,8 @@ export type PromptEditorSurfaceProps = {
   onPasteFiles(data: DataTransfer | null): boolean;
   onContentHeight(pixels: number): void;
   onCompositionChange(composing: boolean): void;
-  /** Where local Markdown images load from; null leaves web images to load. */
-  imageUrl?: ImageUrlResolver;
+  /** Where the draft's images load from; the rich surface renders them. */
+  images?: PromptImages;
   /** The user clicked or typed into the surface (loads Monaco on demand). */
   onUse?(): void;
 };

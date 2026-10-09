@@ -27,6 +27,7 @@ import {
   replaceTerminalComposerDraftRange,
   submitTerminalComposerDraft,
   uploadTerminalComposerImages,
+  composerImageInDraft,
   writeTerminalComposerDraft,
   writeTerminalComposerSelection,
 } from "../terminalComposer";
@@ -378,7 +379,9 @@ export function TerminalComposer({
             }
           }}
         />
-        <ComposerImages images={images} />
+        <ComposerImages
+          images={images.filter((image) => composerImageInDraft(image, text))}
+        />
         <input
           ref={fileInputRef}
           type="file"

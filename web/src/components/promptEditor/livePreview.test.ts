@@ -78,9 +78,11 @@ describe("live preview", () => {
       const state = EditorState.create({
         doc,
         selection: EditorSelection.single(cursor ?? 0),
-        extensions: livePreview((source) =>
-          source.startsWith("/") ? `/file?path=${source}` : null,
-        ),
+        extensions: livePreview({
+          url: (source) =>
+            source.startsWith("/") ? `/file?path=${source}` : null,
+          pasted: () => null,
+        }),
       });
       ensureSyntaxTree(state, doc.length, 5000);
       const found: { text: string; src: string; alt: string }[] = [];
@@ -116,5 +118,43 @@ describe("live preview", () => {
     expect(linkAt(state, doc.indexOf("y.dev"))).toBe("https://y.dev");
     expect(linkAt(state, doc.indexOf("[f]") + 1)).toBeNull();
     expect(linkAt(state, 0)).toBeNull();
+  });
+
+  test("pasted placeholders and bare image paths render off their line", () => {
+    const doc =
+      "a [Image #1] b [image 2 PNG 10x10] c [Image #7]\nsee /tmp/x.png, `/tmp/y.png` and ./z.png.\nend";
+    const state = (cursor: number | null) => {
+      const created = EditorState.create({
+        doc,
+        selection: EditorSelection.single(cursor ?? 0),
+        extensions: livePreview({
+          url: (source) => `url:${source}`,
+          pasted: (ref) => (ref < 5 ? `blob:${ref}` : null),
+        }),
+      });
+      ensureSyntaxTree(created, doc.length, 5000);
+      const found: string[] = [];
+      livePreviewDecorations(
+        created,
+        [{ from: 0, to: doc.length }],
+        cursor !== null,
+      ).between(0, doc.length, (from, to, value) => {
+        const widget = value.spec.widget as { src?: string } | undefined;
+        if (widget?.src) found.push(`${doc.slice(from, to)}=${widget.src}`);
+      });
+      return found.sort();
+    };
+    // Unknown placeholders and paths in code stay as written.
+    expect(state(doc.length)).toEqual([
+      "./z.png=url:./z.png",
+      "/tmp/x.png=url:/tmp/x.png",
+      "[Image #1]=blob:1",
+      "[image 2 PNG 10x10]=blob:2",
+    ]);
+    // The line being edited shows its text.
+    expect(state(1)).toEqual([
+      "./z.png=url:./z.png",
+      "/tmp/x.png=url:/tmp/x.png",
+    ]);
   });
 });

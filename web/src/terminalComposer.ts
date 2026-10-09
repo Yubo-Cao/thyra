@@ -25,7 +25,13 @@ const submissionListeners = new Map<
 >();
 const pendingUploads = new Map<string, number>();
 const uploadListeners = new Map<string, Set<TerminalComposerUploadListener>>();
-export type ComposerImage = { id: string; file: File; path: string | null };
+/** A pasted image: `ref` numbers it in the draft, `path` once uploaded. */
+export type ComposerImage = {
+  id: string;
+  file: File;
+  path: string | null;
+  ref: number;
+};
 const imagesByDraft = new Map<string, ComposerImage[]>();
 const imageListeners = new Map<string, Set<() => void>>();
 const NO_IMAGES: readonly ComposerImage[] = [];
@@ -42,9 +48,60 @@ export function subscribeComposerImages(key: string, listener: () => void) {
   };
 }
 function setComposerImages(key: string, images: readonly ComposerImage[]) {
+  for (const image of imagesByDraft.get(key) ?? [])
+    if (!images.some((kept) => kept.file === image.file))
+      revokeComposerImageUrl(image.file);
   if (images.length) imagesByDraft.set(key, [...images]);
   else imagesByDraft.delete(key);
   for (const listener of imageListeners.get(key) ?? []) listener();
+}
+
+const imageUrls = new Map<File, string>();
+/** A local URL for a pasted image's file, kept while the draft holds it. */
+export function composerImageUrl(image: ComposerImage): string {
+  let url = imageUrls.get(image.file);
+  if (!url) {
+    url = URL.createObjectURL(image.file);
+    imageUrls.set(image.file, url);
+  }
+  return url;
+}
+function revokeComposerImageUrl(file: File) {
+  const url = imageUrls.get(file);
+  if (!url) return;
+  imageUrls.delete(file);
+  URL.revokeObjectURL(url);
+}
+
+/** How a draft names its Nth pasted image, as Claude Code does. */
+export function composerImageToken(ref: number): string {
+  return `[Image #${ref}]`;
+}
+/** Claude Code's `[Image #2]` and Codex's `[image 2 ...]` placeholders. */
+export const COMPOSER_IMAGE_TOKEN = /\[image #?(\d+)[^\]\n]*\]/gi;
+
+/**
+ * Whether the text still shows a pasted image. Images stay with the draft
+ * until it is sent or cleared, so undoing a deletion brings them back.
+ */
+export function composerImageInDraft(image: ComposerImage, text: string) {
+  return (
+    image.path === null ||
+    text.includes(image.path) ||
+    text.includes(composerImageToken(image.ref))
+  );
+}
+
+/** The draft as sent: each pasted image's placeholder becomes its path. */
+export function expandComposerImageTokens(
+  text: string,
+  images: readonly ComposerImage[],
+): string {
+  return text.replace(
+    COMPOSER_IMAGE_TOKEN,
+    (token, ref: string) =>
+      images.find((image) => image.ref === Number(ref))?.path ?? token,
+  );
 }
 
 function notifyTerminalComposerDraft(key: string, text: string): void {
@@ -123,12 +180,6 @@ export function writeTerminalComposerDraft(key: string, text: string): void {
   if (!terminalComposerDraftKeyIsActive(key)) return;
   if (drafts.get(key) === text) return;
   drafts.set(key, text);
-  setComposerImages(
-    key,
-    readComposerImages(key).filter(
-      (image) => image.path === null || text.includes(image.path),
-    ),
-  );
   notifyTerminalComposerDraft(key, text);
 }
 
@@ -321,7 +372,13 @@ export async function submitTerminalComposerDraft(
   const sentImages = readComposerImages(key);
   writeTerminalComposerDraft(key, rest);
   try {
-    await send(draft);
+    await send(expandComposerImageTokens(draft, sentImages));
+    setComposerImages(
+      key,
+      readComposerImages(key).filter((image) =>
+        composerImageInDraft(image, readTerminalComposerDraft(key)),
+      ),
+    );
     return true;
   } catch (error) {
     writeTerminalComposerDraft(
@@ -371,12 +428,18 @@ export async function uploadTerminalComposerImages(
   key: string,
   files: readonly File[],
   upload: (file: File) => Promise<string>,
-  insertPath: (key: string, path: string) => void,
+  insertPath: (key: string, path: string, image: ComposerImage) => void,
 ): Promise<void> {
   const images = terminalComposerImageFiles(files);
   if (images.length === 0 || !beginTerminalComposerUpload(key)) return;
+  let ref = Math.max(0, ...readComposerImages(key).map((image) => image.ref));
   const pending = images.map(
-    (file) => ({ id: crypto.randomUUID(), file, path: null }) as ComposerImage,
+    (file): ComposerImage => ({
+      id: crypto.randomUUID(),
+      file,
+      path: null,
+      ref: ++ref,
+    }),
   );
   setComposerImages(key, [...readComposerImages(key), ...pending]);
   try {
@@ -389,13 +452,13 @@ export async function uploadTerminalComposerImages(
         !readComposerImages(key).some((item) => item.id === image.id)
       )
         continue;
-      insertPath(key, path);
       setComposerImages(
         key,
         readComposerImages(key).map((item) =>
           item.id === image.id ? { ...item, path } : item,
         ),
       );
+      insertPath(key, path, { ...image, path });
     }
   } finally {
     setComposerImages(
