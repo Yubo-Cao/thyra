@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import type { AgentKind } from "../../agentKind";
 import { t } from "../../i18n";
 import { richEditorLoadPolicy } from "../../idlePrefetch";
@@ -345,6 +346,9 @@ export function PromptEditor({
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (hidden) {
+      // The editor comes back editing: a surface under the preview cannot
+      // take focus.
+      setPreview(false);
       if (root?.contains(document.activeElement)) {
         handedToTerminal.current = true;
         onFocusTerminal();
@@ -386,9 +390,17 @@ export function PromptEditor({
     controlRef.current = {
       focus: () => {
         if (hidden || !surfaceRef.current) return false;
-        setPreview(false);
-        surfaceRef.current.focus();
-        return true;
+        // Show the surface before focusing it; a hidden one cannot take focus.
+        if (previewRef.current) flushSync(() => setPreview(false));
+        surfaceRef.current?.focus();
+        // False sends the caller on to the terminal rather than leave the
+        // keyboard with nothing.
+        const focused = document.activeElement;
+        return (
+          !!focused &&
+          focused !== rootRef.current &&
+          !!rootRef.current?.contains(focused)
+        );
       },
       hasFocus: () => !!rootRef.current?.contains(document.activeElement),
       visible: () => !hidden,
@@ -446,7 +458,7 @@ export function PromptEditor({
       return !open;
     });
   };
-  const onKey = (event: KeyboardEvent, empty: boolean) => {
+  const onKey = (event: KeyboardEvent, empty: boolean, previewing = false) => {
     if (shortcutMatches(event, "composer.preview")) {
       togglePreview();
       return true;
@@ -458,7 +470,8 @@ export function PromptEditor({
       enterSends,
       selection: selection.current,
     });
-    if (!action) return false;
+    // The preview has no caret to break a line at.
+    if (!action || (previewing && action.type === "newline")) return false;
     if (action.type === "send") void send();
     else if (action.type === "newline") surfaceRef.current?.insertText("\n");
     else if (action.type === "forward") onForward(action.data);
@@ -582,7 +595,13 @@ export function PromptEditor({
         ) {
           event.preventDefault();
           togglePreview();
+          return;
         }
+        // Send, paging and a question's choice keys work from the preview.
+        if (
+          onKey(event.nativeEvent, !readTerminalComposerDraft(draftKey), true)
+        )
+          event.preventDefault();
       }}
     >
       <span className="prompt-editor-marker" aria-hidden="true">

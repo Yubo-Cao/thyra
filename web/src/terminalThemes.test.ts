@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { parseTerminalColor, resttyTheme } from "./terminalEngine";
+import {
+  parseTerminalColor,
+  resttyTheme,
+  themePreedit,
+} from "./terminalEngine";
 import {
   TERMINAL_THEME_PRESETS,
   defaultTerminalThemeId,
@@ -141,4 +145,26 @@ test("Thyra's own theme backgrounds are recognized in Herdr's appearance", () =>
   expect(isTerminalThemeBackground("#123456")).toBe(false);
   expect(isTerminalThemeBackground("unknown")).toBe(false);
   expect(isTerminalThemeBackground(null)).toBe(false);
+});
+
+test("paints composition text in the theme's colours", () => {
+  const blank = () => [0, 0, 0, 0] as [number, number, number, number];
+  const preedit = {
+    bg: blank(),
+    activeBg: blank(),
+    fg: blank(),
+    underline: blank(),
+    caret: blank(),
+  };
+  const fg = preedit.fg;
+  themePreedit(
+    { background: "#ffffff", foreground: "#000000", cursor: "#ff0000" },
+    preedit,
+  );
+  // Updated in place: the renderer holds these arrays.
+  expect(preedit.fg).toBe(fg);
+  expect(preedit.fg).toEqual([0, 0, 0, 1]);
+  expect(preedit.bg[0]).toBeCloseTo(0.88);
+  expect(preedit.caret).toEqual([1, 0, 0, 1]);
+  expect(preedit.underline).toEqual([0, 0, 0, 0.7]);
 });

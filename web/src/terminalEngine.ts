@@ -299,7 +299,40 @@ type ResttyModule = typeof import("restty/internal/runtime");
 type EngineModules = {
   createRuntime: ResttyModule["createResttyRuntime"];
   session: ReturnType<ResttyModule["createResttyRuntimeSession"]>;
+  preedit: PreeditColors;
 };
+type Rgba = [number, number, number, number];
+/** restty's composition colours: shared arrays both renderers read per frame. */
+type PreeditColors = {
+  bg: Rgba;
+  activeBg: Rgba;
+  fg: Rgba;
+  underline: Rgba;
+  caret: Rgba;
+};
+
+/**
+ * Paints IME and dictation preedit (the "ghost" text before it commits) in
+ * the theme's colours; restty ships fixed dark-theme ones.
+ */
+export function themePreedit(theme: TerminalTheme, target: PreeditColors) {
+  const rgba = (value: string | undefined, fallback: Rgba): Rgba => {
+    const color = parseTerminalColor(value);
+    return color
+      ? [color.r / 255, color.g / 255, color.b / 255, (color.a ?? 255) / 255]
+      : fallback;
+  };
+  const mix = (a: Rgba, b: Rgba, amount: number): Rgba =>
+    a.map((channel, index) => channel + (b[index]! - channel) * amount) as Rgba;
+  const bg = rgba(theme.background, [0, 0, 0, 1]);
+  const fg = rgba(theme.foreground, [1, 1, 1, 1]);
+  const set = (into: Rgba, value: Rgba) => into.splice(0, 4, ...value);
+  set(target.fg, fg);
+  set(target.bg, mix(bg, fg, 0.12));
+  set(target.activeBg, rgba(theme.selectionBackground, mix(bg, fg, 0.3)));
+  set(target.underline, [fg[0], fg[1], fg[2], 0.7]);
+  set(target.caret, rgba(theme.cursor, fg));
+}
 let engineModules: Promise<EngineModules> | null = null;
 
 /** The WASM core, compiled while it streams in (vite.restty.ts ships it). */
@@ -318,13 +351,23 @@ export function loadTerminalEngine(): Promise<EngineModules> {
   engineModules ??= (async () => {
     const core = compileTerminalCore();
     core.catch(() => {});
-    const restty = await import("restty/internal/runtime");
+    const [restty, internal] = await Promise.all([
+      import("restty/internal/runtime"),
+      import("restty/internal"),
+    ]);
     const createSession = restty.createResttyRuntimeSession as (options: {
       wasmModule: () => Promise<WebAssembly.Module>;
     }) => EngineModules["session"];
     return {
       createRuntime: restty.createResttyRuntime,
       session: createSession({ wasmModule: () => core }),
+      preedit: {
+        bg: internal.PREEDIT_BG as unknown as Rgba,
+        activeBg: internal.PREEDIT_ACTIVE_BG as unknown as Rgba,
+        fg: internal.PREEDIT_FG as unknown as Rgba,
+        underline: internal.PREEDIT_UL as unknown as Rgba,
+        caret: internal.PREEDIT_CARET as unknown as Rgba,
+      },
     };
   })();
   return engineModules;
@@ -596,7 +639,7 @@ export class TerminalEngine {
   }
 
   private async start() {
-    const [{ createRuntime, session }, fonts] = await Promise.all([
+    const [{ createRuntime, session, preedit }, fonts] = await Promise.all([
       loadTerminalEngine(),
       engineFonts(this.opts.fontPreset, false),
     ]);
@@ -669,6 +712,12 @@ export class TerminalEngine {
     if (this.disposed) return;
     // The engine reads the input from here on.
     this.preEngineInput.abort();
+    // The preedit colours are shared by every pane: the composing one sets them.
+    this.textarea.addEventListener(
+      "compositionstart",
+      () => themePreedit(this.opts.theme, preedit),
+      { signal: this.abort.signal },
+    );
     runtime.io.connectPty("");
     this.transportCallbacks?.onData?.(GRAPHEME_CLUSTERING);
     if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
