@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { TerminalEngine } from "../../terminalEngine";
-import { measureTerminal } from "./metrics";
+import { liftOffset, measureTerminal } from "./metrics";
 
 test("prompt width is clipped to the visible pane and coordinates undo ancestor zoom", () => {
   const term = {
@@ -30,4 +30,13 @@ test("prompt width is clipped to the visible pane and coordinates undo ancestor 
     cellWidth: 5,
     fontSize: 14,
   });
+});
+
+test("the terminal lifts by whole device pixels", () => {
+  expect(liftOffset(3, 17, 1)).toBe(51);
+  // 22 device pixels a row at 125%.
+  expect(liftOffset(4, 17.6, 1.25) * 1.25).toBe(88);
+  // A follow scale's fractional rows still land on the pixel grid.
+  expect(liftOffset(2, 10.3, 2) * 2).toBe(41);
+  expect(liftOffset(0, 17, 1)).toBe(0);
 });

@@ -1,5 +1,5 @@
 import type { TerminalEngine } from "../../terminalEngine";
-import { useLayoutEffect } from "react";
+import { type RefObject, useLayoutEffect } from "react";
 export type TerminalMetrics = {
   left: number;
   top: number;
@@ -55,4 +55,44 @@ export function useEditorSpan(
     [bottom, onChange, top],
   );
   useLayoutEffect(() => () => onChange(null), [onChange]);
+}
+
+/**
+ * How far to move the terminal up for `rows` of its rows, `rowHeight`
+ * viewport pixels each: whole device pixels, since a fractional move
+ * resamples (and blurs) the canvas. A row is a whole number of them.
+ */
+export function liftOffset(rows: number, rowHeight: number, ratio: number) {
+  if (rows <= 0 || rowHeight <= 0) return 0;
+  return Math.round(rows * rowHeight * ratio) / ratio;
+}
+
+/**
+ * Moves the terminal up by `rows` rows while a local editor grows above the
+ * agent's box, so the newest output shows above the editor rather than
+ * under it. The pane keeps its size: the agent neither reflows nor sees
+ * the move. `lifted` holds the rows moved, to measure the grid unmoved.
+ */
+export function useTerminalLift(
+  term: TerminalEngine,
+  rows: number,
+  rowHeight: number,
+  lifted: RefObject<number>,
+) {
+  useLayoutEffect(() => {
+    if (rows <= 0) return;
+    const element = term.element;
+    const previous = element.style.translate;
+    const offset = liftOffset(
+      rows,
+      term.rows ? term.screenBounds().height / term.rows : 0,
+      window.devicePixelRatio || 1,
+    );
+    element.style.translate = `0 ${-offset}px`;
+    lifted.current = rows;
+    return () => {
+      element.style.translate = previous;
+      lifted.current = 0;
+    };
+  }, [lifted, rowHeight, rows, term]);
 }

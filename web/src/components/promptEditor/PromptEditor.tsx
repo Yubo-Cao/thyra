@@ -4,6 +4,7 @@ import {
   measureTerminal,
   type TerminalMetrics,
   useEditorSpan,
+  useTerminalLift,
 } from "./metrics";
 import type { TerminalEngine, TerminalTheme } from "../../terminalEngine";
 import { CornerDownLeft, X } from "lucide-react";
@@ -214,8 +215,9 @@ function sendKeys() {
  * links every keystroke into the agent's box would wait for a round trip and
  * a repaint. The terminal grid is scanned as frames arrive to find the box;
  * the editor covers it in the terminal's font and colours, grows upward with
- * the draft, hides while the agent shows a menu or dialog (so keys reach it),
- * and docks at the bottom for agents without a detector.
+ * the draft (lifting the terminal so the newest output stays above it),
+ * hides while the agent shows a menu or dialog (so keys reach it), and docks
+ * at the bottom for agents without a detector.
  */
 export function PromptEditor({
   draftKey,
@@ -252,6 +254,8 @@ export function PromptEditor({
   const [composing, setComposing] = useState(false);
   const composingRef = useRef(false);
   const boxSeen = useRef(false);
+  // Terminal rows moved up for the editor (useTerminalLift).
+  const lifted = useRef(0);
   const sentAt = useRef(Number.NEGATIVE_INFINITY);
   // The pane asks for a choice: an empty draft passes choice keys to it.
   const selection = useRef(false);
@@ -305,6 +309,8 @@ export function PromptEditor({
         term,
         rootRef.current?.parentElement ?? null,
       );
+      // The grid where it sits unmoved: the editor keeps to its rows.
+      if (measured) measured.top += lifted.current * measured.rowHeight;
       setMetrics((current) =>
         sameMetrics(current, measured) ? current : measured,
       );
@@ -489,7 +495,9 @@ export function PromptEditor({
     promptEditorFrame(
       placement,
       metrics.rows,
-      Math.max(1, Math.ceil(contentHeight / metrics.rowHeight - 0.01)),
+      // The textarea's scrollHeight rounds to whole pixels: 17 for one
+      // 16.8px row (at 125%) is still one line, not two.
+      Math.max(1, Math.ceil((contentHeight - 1) / metrics.rowHeight)),
       strip.length ? Math.ceil(IMAGE_STRIP_HEIGHT / metrics.rowHeight) : 0,
     );
   const promptImages: PromptImages = {
@@ -558,6 +566,13 @@ export function PromptEditor({
           fontFamily: font.family,
         } as CSSProperties)
       : undefined;
+  // Rows grown above the agent's box push its newest output up, not under.
+  useTerminalLift(
+    term,
+    visible && frame && !dockOnly ? frame.lift : 0,
+    metrics?.rowHeight ?? 0,
+    lifted,
+  );
   useEditorSpan(
     visible && metrics && frame ? (style?.top as number) : null,
     frame && metrics ? frame.rows * metrics.rowHeight : 0,

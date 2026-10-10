@@ -186,6 +186,7 @@ describe("editor frame", () => {
       rows: 3,
       padTop: 1,
       padBottom: 1,
+      lift: 0,
     });
   });
 
@@ -195,12 +196,18 @@ describe("editor frame", () => {
       rows: 7,
       padTop: 1,
       padBottom: 1,
+      lift: 4,
     });
   });
 
   test("growth stops at 30% of a short pane", () => {
     expect(promptEditorFrame(claudeBox, 30, 50)?.rows).toBe(9);
     expect(promptEditorFrame(claudeBox, 30, 50)?.top).toBe(20);
+  });
+
+  test("the terminal lifts by the rows grown above the box", () => {
+    expect(promptEditorFrame(claudeBox, 30, 50)?.lift).toBe(6);
+    expect(promptEditorFrame({ mode: "dock" }, 24, 4)?.lift).toBe(3);
   });
 
   test("growth stops at eight lines in a tall pane", () => {
@@ -213,6 +220,7 @@ describe("editor frame", () => {
       rows: 10,
       padTop: 1,
       padBottom: 1,
+      lift: 7,
     });
   });
 
@@ -232,7 +240,7 @@ describe("editor frame", () => {
         10,
         1,
       ),
-    ).toEqual({ top: 8, rows: 2, padTop: 0, padBottom: 1 });
+    ).toEqual({ top: 8, rows: 2, padTop: 0, padBottom: 1, lift: 1 });
   });
 
   test("docking uses the bottom rows; hidden has no frame", () => {
@@ -241,6 +249,7 @@ describe("editor frame", () => {
       rows: 3,
       padTop: 1,
       padBottom: 1,
+      lift: 0,
     });
     expect(promptEditorFrame({ mode: "hidden" }, 24, 1)).toBeNull();
   });

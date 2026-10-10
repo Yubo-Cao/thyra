@@ -244,6 +244,12 @@ export type PromptEditorFrame = {
   padTop: number;
   /** Rows below the text: the agent's bottom rule, holding the send hint. */
   padBottom: number;
+  /**
+   * Rows the editor grew into above the agent's box (or the dock). The
+   * terminal moves up by as many, so the agent's newest output stays in
+   * view just above the editor instead of under it.
+   */
+  lift: number;
 };
 
 // The editor grows with its draft to this many text lines, and never past
@@ -286,7 +292,8 @@ export function promptEditorFrame(
     Math.max(regionRows, Math.min(Math.max(1, textRows), maxText) + chrome),
     region.bottom + 1,
   );
-  return { top: region.bottom + 1 - rows, rows, padTop, padBottom };
+  const top = region.bottom + 1 - rows;
+  return { top, rows, padTop, padBottom, lift: region.top - top };
 }
 
 export type PromptEditorPlacement =
