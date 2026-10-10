@@ -129,3 +129,21 @@
   min-height: var(--prompt-editor-row);
   padding: 0;
 }
+
+/* A draft image at full size (livePreview's image viewer). */
+.prompt-md-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.72);
+  cursor: zoom-out;
+}
+
+.prompt-md-viewer img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+}

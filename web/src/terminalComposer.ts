@@ -1,3 +1,4 @@
+import { thyraLocalStorage } from "./browserStorage";
 import { t } from "./i18n";
 import { prepareTerminalPasteText } from "./terminalPaste";
 
@@ -57,8 +58,8 @@ function setComposerImages(key: string, images: readonly ComposerImage[]) {
 }
 
 const imageUrls = new Map<File, string>();
-/** A local URL for a pasted image's file, kept while the draft holds it. */
-export function composerImageUrl(image: ComposerImage): string {
+/** A local URL for a pasted image's file. */
+export function composerImageUrl(image: { file: File }): string {
   let url = imageUrls.get(image.file);
   if (!url) {
     url = URL.createObjectURL(image.file);
@@ -92,15 +93,121 @@ export function composerImageInDraft(image: ComposerImage, text: string) {
   );
 }
 
+/** An image pasted into a pane, numbered as the pane's agent numbers it. */
+export type PastedImage = { ref: number; path: string | null; file?: File };
+
+// Uploads per pane, oldest first, so a placeholder still finds its image
+// after a send, a recalled prompt or a reload. Files stay for this page only.
+const HISTORY_STORAGE_KEY = "pastedImages";
+const HISTORY_PER_PANE = 30;
+const HISTORY_PANES = 30;
+let pastedHistory: Map<string, PastedImage[]> | null = null;
+
+/** The pane a draft key belongs to, across reconnects. */
+function historyKey(key: string): string {
+  try {
+    const [connection, , pane] = JSON.parse(key) as unknown[];
+    return JSON.stringify([connection, pane]);
+  } catch {
+    return key;
+  }
+}
+
+function readHistory(): Map<string, PastedImage[]> {
+  if (pastedHistory) return pastedHistory;
+  pastedHistory = new Map();
+  try {
+    const saved = JSON.parse(
+      thyraLocalStorage.getItem(HISTORY_STORAGE_KEY) ?? "{}",
+    ) as Record<string, { ref: number; path: string }[]>;
+    for (const [pane, images] of Object.entries(saved))
+      if (Array.isArray(images))
+        pastedHistory.set(
+          pane,
+          images.filter(
+            (image) =>
+              Number.isInteger(image?.ref) && typeof image.path === "string",
+          ),
+        );
+  } catch {
+    /* A damaged entry only loses the history. */
+  }
+  return pastedHistory;
+}
+
+function rememberPastedImage(key: string, image: PastedImage) {
+  const history = readHistory();
+  const pane = historyKey(key);
+  const images = [
+    ...(history.get(pane) ?? []).filter((item) => item.ref !== image.ref),
+    image,
+  ].slice(-HISTORY_PER_PANE);
+  history.delete(pane);
+  history.set(pane, images);
+  while (history.size > HISTORY_PANES)
+    history.delete(history.keys().next().value!);
+  const saved: Record<string, { ref: number; path: string | null }[]> = {};
+  for (const [name, items] of history)
+    saved[name] = items.map(({ ref, path }) => ({ ref, path }));
+  thyraLocalStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(saved));
+}
+
+/** Images pasted into the draft's pane, oldest first. */
+export function pastedImageHistory(key: string): readonly PastedImage[] {
+  return readHistory().get(historyKey(key)) ?? [];
+}
+
+/** Test hook: forgets the in-memory history so storage is read again. */
+export function resetPastedImageHistory() {
+  pastedHistory = null;
+}
+
+/**
+ * The images the text's placeholders name: the draft's own, then earlier
+ * pastes in the pane with that number. Any still unknown (an agent that
+ * numbered them itself, a cleared history) take the pane's latest pastes,
+ * in order: `[Image #1] [Image #2]` with no match are the last two.
+ */
+export function resolveComposerImages(
+  key: string,
+  text: string,
+): Map<number, PastedImage> {
+  const refs = [
+    ...new Set(
+      [...text.matchAll(COMPOSER_IMAGE_TOKEN)].map((match) => Number(match[1])),
+    ),
+  ].sort((a, b) => a - b);
+  const own = readComposerImages(key);
+  const history = pastedImageHistory(key);
+  const resolved = new Map<number, PastedImage>();
+  const unknown: number[] = [];
+  for (const ref of refs) {
+    const image =
+      own.find((item) => item.ref === ref) ??
+      history.find((item) => item.ref === ref);
+    if (image) resolved.set(ref, image);
+    else unknown.push(ref);
+  }
+  if (unknown.length) {
+    const used = new Set([...resolved.values()].map((image) => image.path));
+    const latest = history
+      .filter((image) => !used.has(image.path))
+      .slice(-unknown.length);
+    unknown
+      .slice(unknown.length - latest.length)
+      .forEach((ref, index) => resolved.set(ref, latest[index]!));
+  }
+  return resolved;
+}
+
 /** The draft as sent: each pasted image's placeholder becomes its path. */
 export function expandComposerImageTokens(
   text: string,
-  images: readonly ComposerImage[],
+  images: ReadonlyMap<number, PastedImage>,
 ): string {
   return text.replace(
     COMPOSER_IMAGE_TOKEN,
-    (token, ref: string) =>
-      images.find((image) => image.ref === Number(ref))?.path ?? token,
+    (token, ref: string) => images.get(Number(ref))?.path ?? token,
   );
 }
 
@@ -370,9 +477,13 @@ export async function submitTerminalComposerDraft(
     ? current.slice(draft.length)
     : current;
   const sentImages = readComposerImages(key);
+  const sent = expandComposerImageTokens(
+    draft,
+    resolveComposerImages(key, draft),
+  );
   writeTerminalComposerDraft(key, rest);
   try {
-    await send(expandComposerImageTokens(draft, sentImages));
+    await send(sent);
     setComposerImages(
       key,
       readComposerImages(key).filter((image) =>
@@ -432,7 +543,12 @@ export async function uploadTerminalComposerImages(
 ): Promise<void> {
   const images = terminalComposerImageFiles(files);
   if (images.length === 0 || !beginTerminalComposerUpload(key)) return;
-  let ref = Math.max(0, ...readComposerImages(key).map((image) => image.ref));
+  // Numbered on from the pane's earlier pastes, as its agent numbers them.
+  let ref = Math.max(
+    0,
+    ...readComposerImages(key).map((image) => image.ref),
+    ...pastedImageHistory(key).map((image) => image.ref),
+  );
   const pending = images.map(
     (file): ComposerImage => ({
       id: crypto.randomUUID(),
@@ -458,6 +574,7 @@ export async function uploadTerminalComposerImages(
           item.id === image.id ? { ...item, path } : item,
         ),
       );
+      rememberPastedImage(key, { ref: image.ref, path, file: image.file });
       insertPath(key, path, { ...image, path });
     }
   } finally {

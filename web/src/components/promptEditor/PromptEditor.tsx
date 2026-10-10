@@ -42,6 +42,7 @@ import {
   composerImageToken,
   composerImageUrl,
   readComposerImages,
+  resolveComposerImages,
   readTerminalComposerDraft,
   readTerminalComposerSelection,
   submitTerminalComposerDraft,
@@ -498,11 +499,10 @@ export function PromptEditor({
       );
       return pasted ? composerImageUrl(pasted) : (imageUrl?.(source) ?? null);
     },
-    pasted: (ref) => {
-      const pasted = readComposerImages(draftKey).find(
-        (image) => image.ref === ref,
-      );
-      return pasted ? composerImageUrl(pasted) : null;
+    pasted: (ref, doc) => {
+      const pasted = resolveComposerImages(draftKey, doc).get(ref);
+      if (pasted?.file) return composerImageUrl({ file: pasted.file });
+      return pasted?.path ? (imageUrl?.(pasted.path) ?? null) : null;
     },
   };
 

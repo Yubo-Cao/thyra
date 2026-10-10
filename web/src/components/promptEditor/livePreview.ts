@@ -38,8 +38,8 @@ import { type MarkdownParser, parseCode } from "@lezer/markdown";
 export type PromptImages = {
   /** A Markdown image's source, or an image path written out. */
   url(source: string): string | null;
-  /** The Nth image pasted into the draft (`[Image #N]`). */
-  pasted(ref: number): string | null;
+  /** The image a draft's `[Image #N]` names (the whole text decides). */
+  pasted(ref: number, doc: string): string | null;
 };
 
 /** Without a resolver, only web and inline images load. */
@@ -242,6 +242,11 @@ class ImageWidget extends WidgetType {
     image.alt = this.alt;
     image.title = this.alt;
     image.draggable = false;
+    // A click opens it full size and leaves the caret where it was.
+    image.addEventListener("mousedown", (event) => event.preventDefault());
+    image.addEventListener("click", () =>
+      openImageViewer(this.src, this.alt, view),
+    );
     // The line grows once the size is known.
     image.addEventListener("load", () => view.requestMeasure());
     image.addEventListener("error", () => {
@@ -254,9 +259,37 @@ class ImageWidget extends WidgetType {
     image.src = this.src;
     return image;
   }
-  ignoreEvent() {
-    return false;
+  ignoreEvent(event: Event) {
+    return event.type === "mousedown" || event.type === "click";
   }
+}
+
+/** The image full size over the page; a click or Esc closes it. */
+function openImageViewer(src: string, alt: string, view: EditorView) {
+  const refocus = view.hasFocus;
+  const viewer = document.createElement("div");
+  viewer.className = "prompt-md-viewer";
+  viewer.setAttribute("role", "dialog");
+  viewer.setAttribute("aria-label", alt);
+  const image = document.createElement("img");
+  image.src = src;
+  image.alt = alt;
+  viewer.append(image);
+  const close = () => {
+    viewer.remove();
+    window.removeEventListener("keydown", onKey, true);
+    if (refocus) view.focus();
+  };
+  // Esc must not reach the agent too.
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  };
+  viewer.addEventListener("click", close);
+  window.addEventListener("keydown", onKey, true);
+  document.body.append(viewer);
 }
 
 const hide = Decoration.replace({});
@@ -421,6 +454,7 @@ function pastedImages(
         ),
       );
   };
+  const doc = state.doc.toString();
   for (const { from, to } of visible)
     for (let pos = from; pos <= to; ) {
       const line = state.doc.lineAt(pos);
@@ -431,7 +465,7 @@ function pastedImages(
         add(
           start,
           start + match[0].length,
-          images.pasted(Number(match[1])),
+          images.pasted(Number(match[1]), doc),
           match[0],
           CODE_NODES,
         );
@@ -504,11 +538,13 @@ const openLinks = EditorView.domEventHandlers({
 });
 
 const livePreviewTheme = EditorView.baseTheme({
+  // Six terminal rows tall at most; a click shows it full size.
   ".prompt-md-image": {
     display: "inline-block",
     maxWidth: "100%",
-    maxHeight: "12em",
+    maxHeight: "calc(6 * var(--prompt-editor-row, 1.3em))",
     verticalAlign: "bottom",
+    cursor: "zoom-in",
   },
   ".prompt-md-code": {
     backgroundColor: `color-mix(in srgb, ${color("fg")} 10%, transparent)`,

@@ -218,7 +218,8 @@ export function PromptCodeMirror({
           livePreview({
             url: (source) =>
               latest.current.images?.url(source) ?? webImageUrl(source),
-            pasted: (ref) => latest.current.images?.pasted(ref) ?? null,
+            pasted: (ref, doc) =>
+              latest.current.images?.pasted(ref, doc) ?? null,
           }),
           surfaceTheme,
           fontCompartment.current.of(fontTheme(font)),
