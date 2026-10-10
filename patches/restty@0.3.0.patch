@@ -1,4 +1,10 @@
+diff --git a/node_modules/restty/.bun-tag-13ff525da2f0a7ab b/.bun-tag-13ff525da2f0a7ab
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-1da53985077d5c64 b/.bun-tag-1da53985077d5c64
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/restty/.bun-tag-275375df6c20dc14 b/.bun-tag-275375df6c20dc14
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/node_modules/restty/.bun-tag-5a2d109e5dde7691 b/.bun-tag-5a2d109e5dde7691
@@ -52,7 +58,7 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059e7e7eead 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..3ce0a6dddf5a4d4e90fee38e79dafb1b8d0ce1ae 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
 @@ -1428,7 +1428,7 @@ function createInputHandler2(options = {}) {
@@ -64,7 +70,45 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      positionToCell,
      positionToPixel: positionToPixel ?? undefined,
      getWheelCellMetrics: options.getWheelCellMetrics
-@@ -34342,7 +34342,8 @@ function createResttyFontResourceStore(options = {}) {
+@@ -9046,6 +9046,37 @@ function syncImeInputTypography(imeInput, fontSizePt, fontFamily = DEFAULT_IME_F
+   imeInput.style.fontWeight = "400";
+   imeInput.style.letterSpacing = "0";
+ }
++function layoutPreeditCells(text, opts) {
++  // One grapheme per cell (two when wide), each in the font that has it, as
++  // the grid lays out its cells; one font for the whole string can lack some.
++  const { pick, fonts, scaleByFont, primaryScale, shape, note, cellW } = opts;
++  const segmenter = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
++  const parts = segmenter ? Array.from(segmenter.segment(text), (part) => part.segment) : Array.from(text);
++  const cells = [];
++  let x = 0;
++  let index = 0;
++  for (const part of parts) {
++    const fontIndex = pick(part, 1);
++    const entry = fonts[fontIndex] ?? fonts[0];
++    const scale = scaleByFont[fontIndex] ?? primaryScale;
++    const shaped = note(entry, part, shape(entry, part));
++    const span = shaped.advance * scale > cellW * 1.5 ? 2 : 1;
++    cells.push({ index, x, span, fontIndex, scale, shaped });
++    x += span * cellW;
++    index += part.length;
++  }
++  return {
++    cells,
++    width: x,
++    offsetAt: (at) => {
++      let offset = 0;
++      for (const cell of cells)
++        if (cell.index < at)
++          offset = cell.x + cell.span * cellW;
++      return offset;
++    }
++  };
++}
+ var PREEDIT_BG2 = [0.16, 0.16, 0.2, 1];
+ var PREEDIT_ACTIVE_BG2 = [0.3, 0.32, 0.42, 1];
+ var PREEDIT_FG2 = [0.95, 0.95, 0.98, 1];
+@@ -34342,7 +34373,8 @@ function createResttyFontResourceStore(options = {}) {
          const parsedFace = parsedFaces[faceIndex];
          faces.push({
            font: parsedFace.font,
@@ -74,7 +118,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
          });
        }
      }
-@@ -34366,7 +34367,7 @@ function createResttyFontResourceStore(options = {}) {
+@@ -34366,7 +34398,7 @@ function createResttyFontResourceStore(options = {}) {
  }
  
  // src/runtime/core/session.ts
@@ -83,7 +127,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    let wasmPromise = null;
    let webgpuCorePromise = null;
    const wasmLogListeners = new Set;
-@@ -34379,7 +34380,7 @@ function createResttyRuntimeSession2() {
+@@ -34379,7 +34411,7 @@ function createResttyRuntimeSession2() {
    return {
      getWasm: () => {
        if (!wasmPromise) {
@@ -92,7 +136,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        }
        return wasmPromise;
      },
-@@ -45620,6 +45621,182 @@ function getBuiltinTheme2(name) {
+@@ -45620,6 +45652,182 @@ function getBuiltinTheme2(name) {
    parsedThemeCache.set(name, parsed);
    return parsed;
  }
@@ -275,7 +319,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
  // src/runtime/fonts/atlas-builder.ts
  function buildFontAtlasIfNeeded(params) {
    const {
-@@ -45760,6 +45937,21 @@ function buildFontAtlasIfNeeded(params) {
+@@ -45760,6 +45968,21 @@ function buildFontAtlasIfNeeded(params) {
      });
      atlas = result?.atlas ?? null;
    }
@@ -297,7 +341,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    if (!atlas) {
      atlas = buildAtlas(entry.font, [...union], {
        fontSize: effectiveFontSizePx,
-@@ -45775,7 +45967,7 @@ function buildFontAtlasIfNeeded(params) {
+@@ -45775,7 +45998,7 @@ function buildFontAtlasIfNeeded(params) {
    if (!atlas || !atlas.bitmap?.width || !atlas.bitmap?.rows) {
      return { rebuilt: false, atlas: null, rgba: null, preferNearest: false };
    }
@@ -306,7 +350,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    atlas.colorGlyphs = colorGlyphs;
    let rgba = atlasBitmapToRGBA(atlas);
    if (!rgba) {
-@@ -47447,6 +47639,7 @@ function createShaderStageRuntime(options) {
+@@ -47447,6 +47670,7 @@ function createShaderStageRuntime(options) {
  }
  
  // src/runtime/create-runtime/font-runtime/color-glyph-atlas.ts
@@ -314,7 +358,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
  var COLOR_EMOJI_FONT_STACK = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","EmojiOne Color","Twemoji Mozilla",sans-serif';
  function createColorGlyphAtlasHelpers(options) {
    const { pixelModeRgba, atlasToRGBA } = options;
-@@ -47463,6 +47656,8 @@ function createColorGlyphAtlasHelpers(options) {
+@@ -47463,6 +47687,8 @@ function createColorGlyphAtlasHelpers(options) {
      return colorGlyphCtx;
    }
    function resolveColorGlyphFontCss(entry, fontSize) {
@@ -323,7 +367,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      const label = String(entry.label ?? "").split("(")[0].trim().replace(/"/g, "\\\"");
      const families = [];
      if (label && !/openmoji/i.test(label)) {
-@@ -47588,7 +47783,7 @@ function createColorGlyphAtlasHelpers(options) {
+@@ -47588,7 +47814,7 @@ function createColorGlyphAtlasHelpers(options) {
          glyphs: glyphMetrics,
          glyphsByWidth: new Map,
          fontSize,
@@ -332,7 +376,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        },
        constrainedGlyphWidths: null
      };
-@@ -48059,7 +48254,7 @@ function createPointerAuxHandlers(options) {
+@@ -48059,7 +48285,7 @@ function createPointerAuxHandlers(options) {
      }
    };
    const onWheel = (event) => {
@@ -341,7 +385,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        if (inputHandler.sendMouseEvent("wheel", event)) {
          event.preventDefault();
          return;
-@@ -48071,7 +48266,7 @@ function createPointerAuxHandlers(options) {
+@@ -48071,7 +48297,7 @@ function createPointerAuxHandlers(options) {
      event.preventDefault();
    };
    const onContextMenu = (event) => {
@@ -350,7 +394,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        event.preventDefault();
    };
    const onPointerLeave = () => {
-@@ -48181,7 +48376,7 @@ function createPointerUpHandler(options) {
+@@ -48181,7 +48407,7 @@ function createPointerUpHandler(options) {
          markNeedsRender();
        }
      } else {
@@ -359,7 +403,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
          event.preventDefault();
          return;
        }
-@@ -48205,7 +48400,7 @@ function createPointerUpHandler(options) {
+@@ -48205,7 +48431,7 @@ function createPointerUpHandler(options) {
        }
      }
      if (!selectionState.active && event.button === 0 && linkState.hoverUri) {
@@ -368,7 +412,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      }
    };
  }
-@@ -48305,7 +48500,7 @@ function bindPointerEvents(options) {
+@@ -48305,7 +48531,7 @@ function bindPointerEvents(options) {
    };
    canvas.style.touchAction = touchSelectionMode === "long-press" || touchSelectionMode === "drag" ? "none" : "pan-y pinch-zoom";
    const onPointerDown = (event) => {
@@ -377,7 +421,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        clearPendingDesktopSelection();
        event.preventDefault();
        canvas.setPointerCapture?.(event.pointerId);
-@@ -48408,7 +48603,7 @@ function bindPointerEvents(options) {
+@@ -48408,7 +48634,7 @@ function bindPointerEvents(options) {
        markNeedsRender();
        return;
      }
@@ -386,7 +430,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        event.preventDefault();
        return;
      }
-@@ -48836,7 +49031,7 @@ function createScrollbarRuntime(options) {
+@@ -48836,7 +49062,7 @@ function createScrollbarRuntime(options) {
    let pendingPrecisionScrollPx = 0;
    const hasCoarsePointer = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(any-pointer: coarse)").matches;
    const hasTouchPoints = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
@@ -395,7 +439,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      canvas: getCanvas(),
      getGridState,
      noteScrollActivity: () => {
-@@ -49075,6 +49270,7 @@ function createRuntimeInteraction(options) {
+@@ -49075,6 +49301,7 @@ function createRuntimeInteraction(options) {
      return true;
    };
    const scrollbarRuntime = createScrollbarRuntime({
@@ -403,7 +447,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      scrollbarState,
      selectionState,
      linkState,
-@@ -50397,11 +50593,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
+@@ -50397,11 +50624,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
    const factor = primaryMetric / primary.unitsPerEm / (fallbackMetric / fallback.unitsPerEm);
    return Number.isFinite(factor) && factor > 0 ? factor : 1;
  }
@@ -420,17 +464,96 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    if (fallback.icWidth > 0) {
      return normalizedMetricFactor(icWidth(primary), primary, fallback.icWidth, fallback);
    }
-@@ -51310,8 +51511,7 @@ function populateWebGLOverlays(ctx) {
+@@ -51297,28 +51529,25 @@ function populateWebGLOverlays(ctx) {
+   } = deps;
+   if (cursor && imeState.preedit) {
+     const preeditText = imeState.preedit;
+-    const preeditFontIndex = pickFontIndexForText(preeditText, 1);
+-    const preeditEntry = fontState.fonts[preeditFontIndex] ?? fontState.fonts[0];
+-    const preeditScale = scaleByFont[preeditFontIndex] ?? primaryScale;
+     const preeditRow = cursorImeAnchor?.row ?? cursorCell?.row ?? cursor.row;
+     const preeditCol = cursorImeAnchor?.col ?? cursorCell?.col ?? cursor.col;
+     const maxPreeditWidthPx = Math.max(cellW, (cols - preeditCol) * cellW);
+-    const fittedPreedit = fitTextTailToWidth(preeditText, maxPreeditWidthPx, (value) => {
+-      if (!value)
+-        return 0;
+-      return shapeClusterWithFont(preeditEntry, value).advance * preeditScale;
++    const preeditLayout = (value) => layoutPreeditCells(value, {
++      pick: pickFontIndexForText,
++      fonts: fontState.fonts,
++      scaleByFont: scaleByFont,
++      primaryScale,
++      shape: shapeClusterWithFont,
++      note: noteColorGlyphText,
++      cellW
      });
++    const fittedPreedit = fitTextTailToWidth(preeditText, maxPreeditWidthPx, (value) => value ? preeditLayout(value).width : 0);
      const visiblePreeditText = fittedPreedit.text;
-     if (!visiblePreeditText) {} else {
+-    if (!visiblePreeditText) {} else {
 -      const shaped = shapeClusterWithFont(preeditEntry, visiblePreeditText);
 -      noteColorGlyphText(preeditEntry, visiblePreeditText, shaped);
-+      const shaped = noteColorGlyphText(preeditEntry, visiblePreeditText, shapeClusterWithFont(preeditEntry, visiblePreeditText));
-       const glyphSet = getGlyphSet(preeditFontIndex);
-       for (const glyph of shaped.glyphs)
-         glyphSet.add(glyph.glyphId);
-@@ -51878,10 +52078,9 @@ function populateWebGLSceneData(ctx) {
+-      const glyphSet = getGlyphSet(preeditFontIndex);
+-      for (const glyph of shaped.glyphs)
+-        glyphSet.add(glyph.glyphId);
++    if (visiblePreeditText) {
++      const layout = preeditLayout(visiblePreeditText);
+       const baseY = preeditRow * cellH + yPad + baselineOffset;
+       const x = preeditCol * cellW;
+-      const advancePx = shaped.advance * preeditScale;
+-      const widthPx = Math.max(cellW, Math.min(maxPreeditWidthPx, Math.max(fittedPreedit.widthPx, advancePx)));
++      const widthPx = Math.max(cellW, Math.min(maxPreeditWidthPx, layout.width));
+       const rowY = preeditRow * cellH;
+       pushRect(bgData, x, rowY, widthPx, cellH, PREEDIT_BG);
+       const thickness = underlineThicknessPx;
+@@ -51330,27 +51559,32 @@ function populateWebGLOverlays(ctx) {
+       const selStart = Math.max(0, Math.min(visiblePreeditText.length, rawSelStart - selectionOffset));
+       const selEnd = Math.max(selStart, Math.min(visiblePreeditText.length, rawSelEnd - selectionOffset));
+       if (selEnd > selStart) {
+-        const leftWidth = shapeClusterWithFont(preeditEntry, visiblePreeditText.slice(0, selStart)).advance * preeditScale;
+-        const selWidth = shapeClusterWithFont(preeditEntry, visiblePreeditText.slice(selStart, selEnd)).advance * preeditScale;
++        const leftWidth = layout.offsetAt(selStart);
++        const selWidth = layout.offsetAt(selEnd) - leftWidth;
+         pushRect(bgData, x + leftWidth, rowY, selWidth, cellH, PREEDIT_ACTIVE_BG);
+         pushRect(underlineData, x + leftWidth, underlineBaseY, selWidth, thickness, PREEDIT_UL);
+       } else {
+         const caretWidth = Math.max(1, Math.floor(cellW * 0.1));
+-        const caretX = x + shapeClusterWithFont(preeditEntry, visiblePreeditText.slice(0, selStart)).advance * preeditScale;
++        const caretX = x + layout.offsetAt(selStart);
+         pushRect(cursorData, caretX, rowY + 2, caretWidth, cellH - 4, PREEDIT_CARET);
+       }
+-      getGlyphQueue(preeditFontIndex).push({
+-        x,
+-        baseY,
+-        xPad: 0,
+-        fg: PREEDIT_FG,
+-        bg: PREEDIT_BG,
+-        shaped,
+-        fontIndex: preeditFontIndex,
+-        scale: preeditScale,
+-        cellWidth: widthPx,
+-        symbolLike: false
+-      });
++      for (const cell of layout.cells) {
++        const glyphSet = getGlyphSet(cell.fontIndex);
++        for (const glyph of cell.shaped.glyphs)
++          glyphSet.add(glyph.glyphId);
++        getGlyphQueue(cell.fontIndex).push({
++          x: x + cell.x,
++          baseY,
++          xPad: 0,
++          fg: PREEDIT_FG,
++          bg: PREEDIT_BG,
++          shaped: cell.shaped,
++          fontIndex: cell.fontIndex,
++          scale: cell.scale,
++          cellWidth: cell.span * cellW,
++          symbolLike: false
++        });
++      }
+     }
+   }
+   const resizeAge = performance.now() - resizeState.lastAt;
+@@ -51878,10 +52112,9 @@ function populateWebGLSceneData(ctx) {
        }
        const fontIndex = pickFontIndexForText(text, baseSpan, stylePreferenceFromFlags(bold, italic));
        const fontEntry = fontState.fonts[fontIndex] ?? fontState.fonts[0];
@@ -442,7 +565,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        const glyphSet = getGlyphSet(fontIndex);
        for (const glyph of shaped.glyphs)
          glyphSet.add(glyph.glyphId);
-@@ -52406,10 +52605,9 @@ function collectWebGPUCellPass(params) {
+@@ -52406,10 +52639,9 @@ function collectWebGPUCellPass(params) {
        }
        const fontIndex = pickFontIndexForText(text, baseSpan, stylePreferenceFromFlags(bold, italic));
        const fontEntry = fontState.fonts[fontIndex] ?? fontState.fonts[0];
@@ -454,17 +577,95 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        const glyphSet = getGlyphSet(fontIndex);
        for (const glyph of shaped.glyphs)
          glyphSet.add(glyph.glyphId);
-@@ -53091,8 +53289,7 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+@@ -53078,28 +53310,25 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+   } = deps;
+   if (cursor && imeState.preedit) {
+     const preeditText = imeState.preedit;
+-    const preeditFontIndex = pickFontIndexForText(preeditText, 1);
+-    const preeditEntry = fontState.fonts[preeditFontIndex] ?? fontState.fonts[0];
+-    const preeditScale = frame.scaleByFont[preeditFontIndex] ?? primaryScale;
+     const preeditRow = cursorImeAnchor?.row ?? cursorCell?.row ?? cursor.row;
+     const preeditCol = cursorImeAnchor?.col ?? cursorCell?.col ?? cursor.col;
+     const maxPreeditWidthPx = Math.max(cellW, (cols - preeditCol) * cellW);
+-    const fittedPreedit = fitTextTailToWidth(preeditText, maxPreeditWidthPx, (value) => {
+-      if (!value)
+-        return 0;
+-      return shapeClusterWithFont(preeditEntry, value).advance * preeditScale;
++    const preeditLayout = (value) => layoutPreeditCells(value, {
++      pick: pickFontIndexForText,
++      fonts: fontState.fonts,
++      scaleByFont: frame.scaleByFont,
++      primaryScale,
++      shape: shapeClusterWithFont,
++      note: noteColorGlyphText,
++      cellW
      });
++    const fittedPreedit = fitTextTailToWidth(preeditText, maxPreeditWidthPx, (value) => value ? preeditLayout(value).width : 0);
      const visiblePreeditText = fittedPreedit.text;
      if (visiblePreeditText) {
 -      const shaped = shapeClusterWithFont(preeditEntry, visiblePreeditText);
 -      noteColorGlyphText(preeditEntry, visiblePreeditText, shaped);
-+      const shaped = noteColorGlyphText(preeditEntry, visiblePreeditText, shapeClusterWithFont(preeditEntry, visiblePreeditText));
-       const glyphSet = frame.getGlyphSet(preeditFontIndex);
-       for (const glyph of shaped.glyphs)
-         glyphSet.add(glyph.glyphId);
-@@ -53444,7 +53641,7 @@ function createFontRuntimeGridHelpers(options) {
+-      const glyphSet = frame.getGlyphSet(preeditFontIndex);
+-      for (const glyph of shaped.glyphs)
+-        glyphSet.add(glyph.glyphId);
++      const layout = preeditLayout(visiblePreeditText);
+       const baseY = preeditRow * cellH + yPad + baselineOffset;
+       const x = preeditCol * cellW;
+-      const advancePx = shaped.advance * preeditScale;
+-      const widthPx = Math.max(cellW, Math.min(maxPreeditWidthPx, Math.max(fittedPreedit.widthPx, advancePx)));
++      const widthPx = Math.max(cellW, Math.min(maxPreeditWidthPx, layout.width));
+       const rowY = preeditRow * cellH;
+       pushRect(frame.bgData, x, rowY, widthPx, cellH, PREEDIT_BG);
+       const thickness = underlineThicknessPx;
+@@ -53111,27 +53340,32 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+       const selStart = Math.max(0, Math.min(visiblePreeditText.length, rawSelStart - selectionOffset));
+       const selEnd = Math.max(selStart, Math.min(visiblePreeditText.length, rawSelEnd - selectionOffset));
+       if (selEnd > selStart) {
+-        const leftWidth = shapeClusterWithFont(preeditEntry, visiblePreeditText.slice(0, selStart)).advance * preeditScale;
+-        const selWidth = shapeClusterWithFont(preeditEntry, visiblePreeditText.slice(selStart, selEnd)).advance * preeditScale;
++        const leftWidth = layout.offsetAt(selStart);
++        const selWidth = layout.offsetAt(selEnd) - leftWidth;
+         pushRect(frame.bgData, x + leftWidth, rowY, selWidth, cellH, PREEDIT_ACTIVE_BG);
+         pushRect(frame.underlineData, x + leftWidth, underlineBaseY, selWidth, thickness, PREEDIT_UL);
+       } else {
+         const caretWidth = Math.max(1, Math.floor(cellW * 0.1));
+-        const caretX = x + shapeClusterWithFont(preeditEntry, visiblePreeditText.slice(0, selStart)).advance * preeditScale;
++        const caretX = x + layout.offsetAt(selStart);
+         pushRect(frame.cursorData, caretX, rowY + 2, caretWidth, cellH - 4, PREEDIT_CARET);
+       }
+-      frame.getGlyphQueue(preeditFontIndex).push({
+-        x,
+-        baseY,
+-        xPad: 0,
+-        fg: PREEDIT_FG,
+-        bg: PREEDIT_BG,
+-        shaped,
+-        fontIndex: preeditFontIndex,
+-        scale: preeditScale,
+-        cellWidth: widthPx,
+-        symbolLike: false
+-      });
++      for (const cell of layout.cells) {
++        const glyphSet = frame.getGlyphSet(cell.fontIndex);
++        for (const glyph of cell.shaped.glyphs)
++          glyphSet.add(glyph.glyphId);
++        frame.getGlyphQueue(cell.fontIndex).push({
++          x: x + cell.x,
++          baseY,
++          xPad: 0,
++          fg: PREEDIT_FG,
++          bg: PREEDIT_BG,
++          shaped: cell.shaped,
++          fontIndex: cell.fontIndex,
++          scale: cell.scale,
++          cellWidth: cell.span * cellW,
++          symbolLike: false
++        });
++      }
+     }
+   }
+   const resizeAge = performance.now() - resizeState.lastAt;
+@@ -53444,7 +53678,7 @@ function createFontRuntimeGridHelpers(options) {
      const advanceUnits = glyphId !== undefined && glyphId !== null ? primary.font.advanceWidth(glyphId) : shapeClusterWithFont(primary, "M").advance;
      const cellW = Math.max(1, Math.round(advanceUnits * scale));
      const lineHeight = fontHeightUnits2(primary.font) * scale;
@@ -473,7 +674,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      const baselineOffset = primary.font.ascender * scale;
      const yPad = Math.max(0, (cellH - lineHeight) * 0.5);
      return { cellW, cellH, fontSizePx, scale, lineHeight, baselineOffset, yPad };
-@@ -53565,14 +53762,17 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53565,14 +53799,17 @@ function createFontRuntimeTextHelpers(options) {
      return shaped;
    }
    function noteColorGlyphText(entry, text, shaped) {
@@ -494,7 +695,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    }
    function fontHasGlyph(entry, ch, probeCoverage) {
      const glyphId = entry.font.glyphIdForChar(ch);
-@@ -53668,8 +53868,12 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53668,8 +53905,12 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -508,7 +709,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        const result = tryIndex(emojiIndex);
        if (result !== null)
          return result;
-@@ -53679,7 +53883,7 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53679,7 +53920,7 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -517,7 +718,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      if (firstIndex >= 0) {
        setBoundedMap(fontState.fontPickCache, cacheKey, firstIndex, fontPickCacheLimit);
        return firstIndex;
-@@ -54994,6 +55198,7 @@ function createResttyRuntime2(options) {
+@@ -54994,6 +55235,7 @@ function createResttyRuntime2(options) {
    const autoResize = terminal.autoResize ?? true;
    const showResizeOverlay = terminal.showResizeOverlay ?? true;
    const forwardTerminalReplies = terminal.forwardTerminalReplies ?? true;
@@ -525,7 +726,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    const touchSelectionMode = normalizeTouchSelectionMode(terminal.touchSelectionMode);
    const touchSelectionLongPressMs = clampFiniteNumber(terminal.touchSelectionLongPressMs, 450, 120, 2000, true);
    const touchSelectionMoveThresholdPx = clampFiniteNumber(terminal.touchSelectionMoveThresholdPx, 10, 1, 64);
-@@ -55175,6 +55380,7 @@ function createResttyRuntime2(options) {
+@@ -55175,6 +55417,7 @@ function createResttyRuntime2(options) {
    let lastRenderState = null;
    const runtimeInteraction = createRuntimeInteraction({
      attachCanvasEvents,
@@ -533,7 +734,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      touchSelectionMode,
      touchSelectionLongPressMs,
      touchSelectionMoveThresholdPx,
-@@ -55249,6 +55455,10 @@ function createResttyRuntime2(options) {
+@@ -55249,6 +55492,10 @@ function createResttyRuntime2(options) {
    inputHandler = createInputHandler2({
      getCursorPosition: resolveCursorForCpr,
      sendReply: (data) => {
@@ -544,7 +745,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
        ptyTransport.sendInput(data);
      },
      positionToCell,
-@@ -55278,14 +55488,8 @@ function createResttyRuntime2(options) {
+@@ -55278,14 +55525,8 @@ function createResttyRuntime2(options) {
        const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
        return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
      },
@@ -561,7 +762,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      getKittyKeyboardFlags: () => {
        if (!wasm || !wasmHandle)
          return 0;
-@@ -55332,9 +55536,11 @@ function createResttyRuntime2(options) {
+@@ -55332,9 +55573,11 @@ function createResttyRuntime2(options) {
        getLastKeydownSeq: () => lastKeydownSeq,
        getLastKeydownSeqAt: () => lastKeydownSeqAt,
        keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
@@ -574,7 +775,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
    bindCanvasEvents();
    const fontState = {
      font: null,
-@@ -55628,6 +55834,8 @@ function createResttyRuntime2(options) {
+@@ -55628,6 +55871,8 @@ function createResttyRuntime2(options) {
            const face = fontLease.faces[i];
            entries.push(createFontEntry2(face.font, face.label));
          }
@@ -583,7 +784,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
          if (!entries.length) {
            throw new Error("Unable to parse any loaded font source.");
          }
-@@ -55828,6 +56036,8 @@ function createResttyRuntime2(options) {
+@@ -55828,6 +56073,8 @@ function createResttyRuntime2(options) {
      },
      set lastRenderState(value) {
        lastRenderState = value;
@@ -592,7 +793,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      }
    });
    const readRuntimeControllerState = () => ({
-@@ -55923,7 +56133,7 @@ function createResttyRuntime2(options) {
+@@ -55923,7 +56170,7 @@ function createResttyRuntime2(options) {
        maxScrollback: terminal.maxScrollback
      }
    });
@@ -601,7 +802,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..304a5355f070b0a6e50122cdecc02059
      terminal: {
        setFontSize: applyFontSize,
        setLigatures,
-@@ -55950,6 +56160,62 @@ function createResttyRuntime2(options) {
+@@ -55950,6 +56197,62 @@ function createResttyRuntime2(options) {
        getShaderStages
      }
    });

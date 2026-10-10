@@ -111,6 +111,9 @@
   background: var(--terminal-canvas-background, var(--terminal-bg));
   pointer-events: none;
 }
+.terminal-engine-preview-cursor {
+  position: absolute;
+}
 .terminal-engine-wide {
   display: inline-block;
   width: calc(2 * var(--terminal-cell-width));

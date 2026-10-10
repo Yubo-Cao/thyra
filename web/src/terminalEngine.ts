@@ -269,6 +269,8 @@ export type TerminalTextRun = { text: string; style: TerminalTextStyle };
 /** Styled text of Herdr's repaints (and of plain streams) before restty runs. */
 export class TerminalTextScreen {
   lines: TerminalTextRun[][] = [[]];
+  /** Where the screen's cursor is, in cells, and whether it shows. */
+  cursor = { row: 0, col: 0, visible: true };
   private row = 0;
   private style: TerminalTextStyle = {};
 
@@ -283,16 +285,24 @@ export class TerminalTextScreen {
           if (line === "\n" || line === "\r\n") {
             this.moveTo(this.row + 1);
             this.lines[this.row] = [];
-          } else if (line !== "\r" && line)
+          } else if (line === "\r") this.cursor.col = 0;
+          else if (line) {
             this.append(line.replace(/[\x00-\x1f]/g, ""));
+            this.cursor.col = this.rowCells(this.row);
+          }
         }
       } else if (final === "m") {
         this.style = sgrStyle(this.style, params);
       } else if (final === "H" || final === "f") {
-        this.moveTo(Number(params.split(";")[0] || 1) - 1);
+        const [row = "", col = ""] = params.split(";");
+        this.moveTo(Number(row || 1) - 1);
+        this.cursor.col = Math.max(0, Number(col || 1) - 1);
+      } else if ((final === "h" || final === "l") && params === "?25") {
+        this.cursor.visible = final === "h";
       } else if (final === "J" && params === "2") {
         this.lines = [[]];
         this.row = 0;
+        this.cursor.row = this.cursor.col = 0;
       } else if (final === "K" && params === "2") {
         this.lines[this.row] = [];
       }
@@ -308,7 +318,17 @@ export class TerminalTextScreen {
 
   private moveTo(row: number) {
     this.row = Math.max(0, Math.min(row, 500));
+    this.cursor.row = this.row;
+    this.cursor.col = 0;
     while (this.lines.length <= this.row) this.lines.push([]);
+  }
+
+  /** The cells a row's text takes (wide characters take two). */
+  private rowCells(row: number) {
+    let cells = 0;
+    for (const char of this.rowText(row))
+      cells += WIDE_CHARACTER.test(char) ? 2 : 1;
+    return cells;
   }
 
   rowText(row: number) {
@@ -852,6 +872,12 @@ export class TerminalEngine {
       () => themePreedit(this.opts.theme, preedit),
       { signal: this.abort.signal },
     );
+    // Dictated or composed text (CJK, accents) loads its fonts like output.
+    this.textarea.addEventListener(
+      "compositionupdate",
+      (event) => noteScreenText((event as CompositionEvent).data ?? ""),
+      { signal: this.abort.signal },
+    );
     runtime.io.connectPty("");
     this.transportCallbacks?.onData?.(GRAPHEME_CLUSTERING);
     if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
@@ -1067,6 +1093,21 @@ export class TerminalEngine {
         }
         nodes.push(span);
       }
+    }
+    // The cursor as the engine draws it focused: a block in the theme's colour.
+    const { cursor } = this.textScreen;
+    if (cursor.visible) {
+      const block = doc.createElement("span");
+      block.className = "terminal-engine-preview-cursor";
+      const cell = this.cellSize();
+      Object.assign(block.style, {
+        left: `${cursor.col * cell.width}px`,
+        top: `${cursor.row * cell.height}px`,
+        width: `${cell.width}px`,
+        height: `${cell.height}px`,
+        background: this.opts.theme.cursor || "currentColor",
+      });
+      nodes.push(block);
     }
     preview.replaceChildren(...nodes);
   }

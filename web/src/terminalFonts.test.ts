@@ -141,3 +141,15 @@ test("a preset's faces wait for the network unless already loaded", async () => 
   expect(await terminalPresetFontData("fira-code", false)).toEqual([]);
   expect(await terminalPresetFontData("", true)).toEqual([]);
 });
+
+test("the text preview follows the screen's cursor", () => {
+  const screen = new TerminalTextScreen();
+  screen.write("$ ls\r\nab你");
+  expect(screen.cursor).toEqual({ row: 1, col: 4, visible: true });
+  screen.write("\x1b[3;7H");
+  expect(screen.cursor).toEqual({ row: 2, col: 6, visible: true });
+  screen.write("\x1b[?25l");
+  expect(screen.cursor.visible).toBe(false);
+  screen.write("\x1b[2J\x1b[?25h");
+  expect(screen.cursor).toEqual({ row: 0, col: 0, visible: true });
+});
