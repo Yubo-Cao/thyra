@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { TERMINAL_FONT_OPTIONS } from "./appearance";
-import { TerminalTextScreen } from "./terminalEngine";
+import {
+  sgrStyle,
+  TerminalTextScreen,
+  terminalPaletteColor,
+  terminalTextCss,
+} from "./terminalEngine";
 import {
   parseTerminalFontChunks,
   sortTerminalFontChunks,
@@ -74,6 +79,46 @@ test("the text preview follows full repaints, row updates and plain streams", ()
   expect(screen.text).toBe("one\nTWO");
   screen.write("\r\nthree\r\n");
   expect(screen.text).toBe("one\nTWO\nthree\n");
+});
+
+test("the text preview keeps SGR runs per row, as the grid colours them", () => {
+  const screen = new TerminalTextScreen();
+  screen.write("\x1b[H\x1b[2J\x1b[1;31mred\x1b[22m plain\x1b[0m end");
+  expect(screen.lines[0]!.map((run) => [run.text, run.style])).toEqual([
+    ["red", { bold: true, fg: 1 }],
+    [" plain", { bold: false, faint: false, fg: 1 }],
+    [" end", {}],
+  ]);
+  expect(screen.rowText(0)).toBe("red plain end");
+  expect(sgrStyle({}, "38;5;196;48;2;1;2;3")).toEqual({
+    fg: 196,
+    bg: "rgb(1, 2, 3)",
+  });
+  expect(sgrStyle({}, "38:2::4:5:6;4:0;93")).toEqual({
+    fg: 11,
+    underline: false,
+  });
+});
+
+test("preview runs paint with the theme's palette and restty's emphasis", () => {
+  const theme = { foreground: "#eee", background: "#111", red: "#f00" };
+  expect(terminalPaletteColor(1, theme)).toBe("#f00");
+  expect(terminalPaletteColor(2, theme)).toBe("#4e9a06");
+  expect(terminalPaletteColor(196, theme)).toBe("rgb(255, 0, 0)");
+  expect(terminalPaletteColor(244, theme)).toBe("rgb(128, 128, 128)");
+  expect(terminalTextCss({}, theme)).toBeNull();
+  expect(terminalTextCss({ fg: 1, bg: "rgb(1, 2, 3)" }, theme)).toEqual({
+    color: "#f00",
+    background: "rgb(1, 2, 3)",
+  });
+  expect(terminalTextCss({ inverse: true, faint: true }, theme)).toEqual({
+    color: "color-mix(in srgb, #111 60%, transparent)",
+    background: "#eee",
+  });
+  expect(terminalTextCss({ bold: true }, {})).toEqual({
+    color: "color-mix(in srgb, var(--terminal-fg) 82%, white)",
+    fontWeight: "bold",
+  });
 });
 
 test("every font preset ships its files, regular first", () => {

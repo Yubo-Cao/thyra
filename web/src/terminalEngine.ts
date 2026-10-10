@@ -254,45 +254,158 @@ export function resttyTheme(theme: TerminalTheme) {
   };
 }
 
-/** Plain text of Herdr's repaints (and of plain streams) before restty runs. */
+/** SGR attributes the text preview paints: palette indexes or CSS colours. */
+export type TerminalTextStyle = {
+  fg?: number | string;
+  bg?: number | string;
+  bold?: boolean;
+  faint?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  inverse?: boolean;
+};
+export type TerminalTextRun = { text: string; style: TerminalTextStyle };
+
+/** Styled text of Herdr's repaints (and of plain streams) before restty runs. */
 export class TerminalTextScreen {
-  rows: string[] = [""];
+  lines: TerminalTextRun[][] = [[]];
   private row = 0;
+  private style: TerminalTextStyle = {};
 
   write(text: string) {
     // CSI (with its parameters), OSC/DCS/APC strings, other escapes, text.
     const tokens =
-      /\x1b\[([0-9;?]*)([ -/]*[@-~])|\x1b[\]P_^][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b.|([^\x1b]+)/g;
+      /\x1b\[([0-9;:?]*)([ -/]*[@-~])|\x1b[\]P_^][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b.|([^\x1b]+)/g;
     for (const match of text.matchAll(tokens)) {
       const [, params = "", final, plain] = match;
       if (plain !== undefined) {
         for (const line of plain.split(/(\r?\n|\r)/)) {
           if (line === "\n" || line === "\r\n") {
             this.moveTo(this.row + 1);
-            this.rows[this.row] = "";
+            this.lines[this.row] = [];
           } else if (line !== "\r" && line)
-            this.rows[this.row] =
-              (this.rows[this.row] ?? "") + line.replace(/[\x00-\x1f]/g, "");
+            this.append(line.replace(/[\x00-\x1f]/g, ""));
         }
+      } else if (final === "m") {
+        this.style = sgrStyle(this.style, params);
       } else if (final === "H" || final === "f") {
         this.moveTo(Number(params.split(";")[0] || 1) - 1);
       } else if (final === "J" && params === "2") {
-        this.rows = [""];
+        this.lines = [[]];
         this.row = 0;
       } else if (final === "K" && params === "2") {
-        this.rows[this.row] = "";
+        this.lines[this.row] = [];
       }
     }
   }
 
+  private append(text: string) {
+    const line = (this.lines[this.row] ??= []);
+    const last = line[line.length - 1];
+    if (last?.style === this.style) last.text += text;
+    else if (text) line.push({ text, style: this.style });
+  }
+
   private moveTo(row: number) {
     this.row = Math.max(0, Math.min(row, 500));
-    while (this.rows.length <= this.row) this.rows.push("");
+    while (this.lines.length <= this.row) this.lines.push([]);
+  }
+
+  rowText(row: number) {
+    return (this.lines[row] ?? []).map((run) => run.text).join("");
   }
 
   get text() {
-    return this.rows.join("\n");
+    return this.lines.map((_, row) => this.rowText(row)).join("\n");
   }
+}
+
+/** Applies an SGR sequence's parameters; each change is a new style object. */
+export function sgrStyle(
+  current: TerminalTextStyle,
+  params: string,
+): TerminalTextStyle {
+  let style = { ...current };
+  const codes = (params || "0").split(";");
+  for (let index = 0; index < codes.length; index++) {
+    // Colon sub-parameters (38:2::r:g:b) carry the whole colour in one code.
+    const sub = codes[index]!.split(":").map(Number);
+    const code = sub[0]!;
+    if (code === 38 || code === 48) {
+      const color =
+        sub.length > 1
+          ? sub
+          : [code, ...codes.slice(index + 1, index + 5).map(Number)];
+      let value: number | string | undefined;
+      if (color[1] === 5) {
+        value = color[2];
+        if (sub.length === 1) index += 2;
+      } else if (color[1] === 2) {
+        const [r = 0, g = 0, b = 0] = color.slice(-3);
+        value = `rgb(${r}, ${g}, ${b})`;
+        if (sub.length === 1) index += 4;
+      }
+      if (code === 38) style.fg = value;
+      else style.bg = value;
+    } else if (code === 0) style = {};
+    else if (code === 1) style.bold = true;
+    else if (code === 2) style.faint = true;
+    else if (code === 3) style.italic = true;
+    else if (code === 4) style.underline = sub[1] !== 0;
+    else if (code === 7) style.inverse = true;
+    else if (code === 22) style.bold = style.faint = false;
+    else if (code === 23) style.italic = false;
+    else if (code === 24) style.underline = false;
+    else if (code === 27) style.inverse = false;
+    else if (code >= 30 && code <= 37) style.fg = code - 30;
+    else if (code === 39) style.fg = undefined;
+    else if (code >= 40 && code <= 47) style.bg = code - 40;
+    else if (code === 49) style.bg = undefined;
+    else if (code >= 90 && code <= 97) style.fg = code - 82;
+    else if (code >= 100 && code <= 107) style.bg = code - 92;
+  }
+  return style;
+}
+
+/** A palette entry as CSS: the theme's 16, then xterm's cube and greys. */
+export function terminalPaletteColor(index: number, theme: TerminalTheme) {
+  if (index < 16) return theme[ANSI_KEYS[index]!] ?? DEFAULT_ANSI[index]!;
+  if (index < 232) {
+    const level = (step: number) => (step ? 55 + step * 40 : 0);
+    const cube = index - 16;
+    return `rgb(${level(Math.floor(cube / 36))}, ${level(Math.floor(cube / 6) % 6)}, ${level(cube % 6)})`;
+  }
+  const grey = 8 + (index - 232) * 10;
+  return `rgb(${grey}, ${grey}, ${grey})`;
+}
+
+/** Inline CSS that paints a preview run as restty does; null if plain. */
+export function terminalTextCss(
+  style: TerminalTextStyle,
+  theme: TerminalTheme,
+): Partial<CSSStyleDeclaration> | null {
+  const color = (value: number | string | undefined, fallback: string) =>
+    value === undefined
+      ? fallback
+      : typeof value === "number"
+        ? terminalPaletteColor(value, theme)
+        : value;
+  const fg = color(style.fg, theme.foreground || "var(--terminal-fg)");
+  const bg = color(style.bg, theme.background || "var(--terminal-bg)");
+  let foreground = style.inverse ? bg : fg;
+  const background = style.inverse ? fg : bg;
+  const css: Partial<CSSStyleDeclaration> = {};
+  // restty lifts bold toward white and fades faint text.
+  if (style.bold) foreground = `color-mix(in srgb, ${foreground} 82%, white)`;
+  if (style.faint)
+    foreground = `color-mix(in srgb, ${foreground} 60%, transparent)`;
+  if (style.fg !== undefined || style.inverse || style.bold || style.faint)
+    css.color = foreground;
+  if (style.bg !== undefined || style.inverse) css.background = background;
+  if (style.bold) css.fontWeight = "bold";
+  if (style.italic) css.fontStyle = "italic";
+  if (style.underline) css.textDecoration = "underline";
+  return Object.keys(css).length ? css : null;
 }
 
 type ResttyModule = typeof import("restty/internal/runtime");
@@ -485,6 +598,20 @@ async function engineFonts(preset: string, coverage: boolean) {
   return [...faces, ...data];
 }
 
+// East Asian wide and emoji blocks; one capture so split() keeps them.
+const WIDE_CHARACTER =
+  /([\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua000-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1f64f}\u{1f900}-\u{1f9ff}\u{20000}-\u{3fffd}])/u;
+
+let measure: CanvasRenderingContext2D | null | undefined;
+
+/** The advance of a font's "0" as DOM text draws it now (0 if unknown). */
+function textAdvance(doc: Document, font: string) {
+  measure ??= doc.createElement("canvas").getContext("2d");
+  if (!measure) return 0;
+  measure.font = font;
+  return measure.measureText("0".repeat(20)).width / 20;
+}
+
 /** `localStorage["thyra:glyphRaster"] = "system"` rasterizes with Canvas2D. */
 function systemGlyphRaster() {
   try {
@@ -511,6 +638,8 @@ export class TerminalEngine {
   private preview: HTMLPreElement | null;
   private textScreen = new TerminalTextScreen();
   private previewQueued = false;
+  // The engine can draw everything the preview shows: its next frame swaps.
+  private previewDone = false;
   private transportCallbacks: { onData?: (data: string) => void } | null = null;
   private disposed = false;
   private abort = new AbortController();
@@ -600,6 +729,9 @@ export class TerminalEngine {
     addTerminalFontStylesheets();
     this.applyThemeColors();
     this.stylePreview();
+    doc.fonts?.addEventListener("loadingdone", this.stylePreview, {
+      signal: this.abort.signal,
+    });
     ({ cols: this.cols, rows: this.rows } = this.proposeSize());
     const estimate = this.cellSize();
     this.metrics = `${estimate.width}x${estimate.height}`;
@@ -696,6 +828,8 @@ export class TerminalEngine {
     const rendered = new Promise<void>((resolve) => (firstRender = resolve));
     this.host.onRender(() => {
       firstRender();
+      // Swaps inside the frame that draws the screen the preview showed.
+      if (this.previewDone) this.removePreview();
       this.rendered();
       // Not every pixel ratio change reports a media query change.
       if (this.host?.grid().dpr !== window.devicePixelRatio)
@@ -723,6 +857,7 @@ export class TerminalEngine {
     if (this.fixedSize) this.resize(this.fixedSize.cols, this.fixedSize.rows);
     else this.fit();
     this.checkMetrics();
+    this.stylePreview();
     this.watchPixelRatio();
     const pending = this.pending;
     this.pending = "";
@@ -730,12 +865,18 @@ export class TerminalEngine {
     this.writeEmitter.fire();
     await rendered;
     // Characters beyond the core slices keep the text preview up until
-    // their fonts are in; plain screens swap at once.
+    // their fonts are in; plain screens swap at once, before this frame shows.
     const lateSlices = unresolved
       ? startLateFonts().then(this.reloadFonts)
       : null;
     void startLateFonts();
+    if (!lateSlices) return this.removePreview();
     await lateSlices;
+    this.previewDone = true;
+    this.host?.requestRender();
+  }
+
+  private removePreview() {
     this.preview?.remove();
     this.preview = null;
   }
@@ -863,10 +1004,10 @@ export class TerminalEngine {
 
   write(text: string, callback?: () => void) {
     if (this.disposed) return;
-    if (this.transportCallbacks) {
-      this.transportCallbacks.onData?.(text);
-    } else {
-      this.pending += text;
+    if (this.transportCallbacks) this.transportCallbacks.onData?.(text);
+    else this.pending += text;
+    // The preview covers the canvas until the swap, so it stays live.
+    if (this.preview) {
       this.textScreen.write(text);
       this.queuePreview();
     }
@@ -896,8 +1037,38 @@ export class TerminalEngine {
     this.previewQueued = true;
     requestAnimationFrame(() => {
       this.previewQueued = false;
-      if (this.preview) this.preview.textContent = this.textScreen.text;
+      if (this.preview) this.paintPreview(this.preview);
     });
+  }
+
+  private paintPreview(preview: HTMLPreElement) {
+    const doc = preview.ownerDocument;
+    const nodes: (Node | string)[] = [];
+    for (const [row, line] of this.textScreen.lines.entries()) {
+      if (row) nodes.push("\n");
+      for (const run of line) {
+        const css = terminalTextCss(run.style, this.opts.theme);
+        const parts = run.text.split(WIDE_CHARACTER);
+        if (!css && parts.length === 1) {
+          nodes.push(run.text);
+          continue;
+        }
+        const span = doc.createElement("span");
+        if (css) Object.assign(span.style, css);
+        // Wide characters take two cells, as on the grid.
+        for (const [index, part] of parts.entries()) {
+          if (!(index % 2)) span.append(part);
+          else {
+            const wide = doc.createElement("span");
+            wide.className = "terminal-engine-wide";
+            wide.textContent = part;
+            span.append(wide);
+          }
+        }
+        nodes.push(span);
+      }
+    }
+    preview.replaceChildren(...nodes);
   }
 
   /** Clears the screen and modes. */
@@ -916,6 +1087,7 @@ export class TerminalEngine {
     this.stylePreview();
     if (options.theme && options.theme !== previous.theme) {
       this.applyThemeColors();
+      this.queuePreview();
       runtime?.terminal.applyTheme(resttyTheme(options.theme) as never);
     }
     if (!runtime) return;
@@ -939,14 +1111,23 @@ export class TerminalEngine {
     }
   }
 
-  private stylePreview() {
+  /**
+   * Lays the preview on the grid's cells: whatever face the browser has for
+   * it yet (the fallback until the terminal font loads), spaced to the
+   * cell width, so the swap moves no text.
+   */
+  private stylePreview = () => {
     if (!this.preview) return;
+    const font = `${this.opts.fontSize}px ${this.cssFontFamily}`;
+    const cell = this.cellSize();
+    const advance = textAdvance(this.preview.ownerDocument, font);
     Object.assign(this.preview.style, {
-      fontFamily: this.cssFontFamily,
-      fontSize: `${this.opts.fontSize}px`,
-      lineHeight: `${this.cellSize().height}px`,
+      font,
+      lineHeight: `${cell.height}px`,
+      letterSpacing: advance ? `${cell.width - advance}px` : "",
     });
-  }
+    this.preview.style.setProperty("--terminal-cell-width", `${cell.width}px`);
+  };
 
   private applyThemeColors() {
     const { background = "", foreground = "" } = this.opts.theme;
@@ -1194,7 +1375,7 @@ export class TerminalEngine {
       if (row < 0 || row >= this.rows) return undefined;
       const screen = state();
       if (!screen)
-        return textLine([...(this.textScreen.rows[row] ?? "")], this.cols);
+        return textLine([...this.textScreen.rowText(row)], this.cols);
       return row < screen.rows ? stateLine(screen, row) : undefined;
     };
     const rows = () => this.rows;

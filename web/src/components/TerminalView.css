@@ -97,7 +97,10 @@
   resize: none;
 }
 
-/* The latest screen as text until the GPU terminal draws its first frame. */
+/*
+ * The latest screen as text until the GPU terminal can draw it. Opaque, so
+ * the canvas's blank and partly drawn frames stay hidden until the swap.
+ */
 .terminal-engine-preview {
   position: absolute;
   inset: 4px 0 4px 4px;
@@ -105,7 +108,13 @@
   overflow: hidden;
   white-space: pre;
   color: var(--terminal-canvas-foreground, var(--terminal-fg));
+  background: var(--terminal-canvas-background, var(--terminal-bg));
   pointer-events: none;
+}
+.terminal-engine-wide {
+  display: inline-block;
+  width: calc(2 * var(--terminal-cell-width));
+  letter-spacing: 0;
 }
 
 /* The hovered link's underline. */
