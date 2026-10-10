@@ -154,6 +154,7 @@ keeping cell measurements, IME, selection, and mouse input in viewport CSS pixel
 Popover positioning likewise cancels zoom and reapplies it to content.
 
 Terminals render with restty (libghostty-vt in WASM, drawn with WebGPU or WebGL2, text shaped with ligatures) behind `web/src/terminalEngine.ts`; `patches/restty@*.patch` exposes the internals Thyra uses and disables terminal clipboard reads and replies.
+Coding ligatures shape a run of same-styled punctuation cells once with the font each cell picks, and are used only when they keep one cell-wide glyph per character, so every glyph stays on its cell; runs end at the cursor, the selection and a font-slice change, and `TerminalEngine`'s `ligatures` option turns them off.
 The engine loads in parallel with the first attach: its JavaScript (about 0.24 MiB Brotli) and its WASM core, which the build ships as a fingerprinted `.wasm` asset (`web/vite.restty.ts`, about 0.26 MiB Brotli) that compiles while it streams; the service worker precaches both.
 Until it draws, the latest screen shows as text in the bundled font and already takes input: hardware keys go through the semantic key path, paste through Thyra's handler, and on-screen keyboard or IME text through the byte path.
 That preview keeps the SGR colours and emphasis and is spaced to the grid's cells; it covers the canvas and goes inside the frame where the engine first draws everything it shows, so the swap neither blanks nor moves the text.

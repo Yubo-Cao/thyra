@@ -60,6 +60,8 @@ export type TerminalEngineOptions = {
   disableStdin: boolean;
   /** Lines kept above the screen; Herdr owns live history, so 0 there. */
   scrollback: number;
+  /** Joins coding ligatures (`->`, `===`, runs of `-`) across cells. */
+  ligatures: boolean;
 };
 
 type Cell = { row: number; col: number };
@@ -711,6 +713,7 @@ export class TerminalEngine {
       theme: {},
       disableStdin: false,
       scrollback: 0,
+      ligatures: true,
       ...options,
     };
     const doc = parent.ownerDocument;
@@ -818,6 +821,7 @@ export class TerminalEngine {
         fontSize: this.opts.fontSize,
         fontSizeMode: "em",
         fonts,
+        ligatures: this.opts.ligatures,
         theme: resttyTheme(this.opts.theme),
         autoResize: false,
         showResizeOverlay: false,
