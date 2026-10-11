@@ -285,7 +285,9 @@ export function createWebPushService(
           target,
         }),
         {
-          TTL: 300,
+          // A sleeping phone may wait a while for delivery; an alert this
+          // old is still worth seeing.
+          TTL: 1800,
           urgency: "high",
           timeout: 10_000,
           vapidDetails: {

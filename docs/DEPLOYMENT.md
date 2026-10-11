@@ -589,8 +589,12 @@ is needed. Devices must reach their provider and Thyra when opening an alert.
 The bridge and relevant Herdr runtimes must stay connected. It observes
 `working -> blocked` and `working -> done/idle` without open browsers; startup
 snapshots are silent. Delivery is best-effort: OS/Focus settings, outages, expired
-subscriptions, or stopped runtimes can prevent it. Messages expire after five
+subscriptions, or stopped runtimes can prevent it. Messages expire after 30
 minutes, with no durable replay; HTTP 404/410 removes expired subscriptions.
+When the browser replaces a subscription, the service worker registers the new
+one with the last saved preferences; opening Thyra with permission granted also
+restores a subscription the browser dropped. Alerts carry the Thyra icon and a
+monochrome status-bar badge, and a repeat alert for the same pane sounds again.
 
 Turning notifications off revokes on the server before browser unsubscribe.
 If revocation fails, reconnect/retry or revoke OS/browser permission immediately;

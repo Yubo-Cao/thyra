@@ -8,6 +8,10 @@
 // deletes every other "thyra-" cache.
 const SHELL_CACHE = "thyra-shell-v1";
 const ASSET_CACHE = "thyra-assets-v1";
+// The task notification preferences the page last registered for push, so a
+// subscription the browser replaces can be registered again without a page.
+const PUSH_CACHE = "thyra-push-v1";
+const PUSH_PREFERENCES_KEY = "/__thyra/push-preferences";
 const CACHE_PREFIX = "thyra-";
 const SHELL_KEY = "/";
 const MANIFEST_URL = "/thyra-assets.json";
@@ -27,7 +31,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      const keep = new Set([SHELL_CACHE, ASSET_CACHE]);
+      const keep = new Set([SHELL_CACHE, ASSET_CACHE, PUSH_CACHE]);
       for (const name of await caches.keys()) {
         if (name.startsWith(CACHE_PREFIX) && !keep.has(name)) {
           await caches.delete(name);
@@ -418,17 +422,85 @@ self.addEventListener("push", (event) => {
           ? message.title
           : "Thyra agent update",
         {
+          ...TASK_NOTIFICATION_LOOK,
           body:
             typeof message?.body === "string"
               ? message.body
               : "Open Thyra to check your agents.",
           tag: typeof message?.tag === "string" ? message.tag : "thyra-task",
+          timestamp: Date.now(),
           data: valid
             ? { type: "thyra:task-notification-activate", target }
             : null,
         },
       );
     })(),
+  );
+});
+
+// Keep in sync with TASK_NOTIFICATION_LOOK in taskNotifications.ts. A repeat
+// alert for the same pane replaces the old one and still sounds (renotify).
+const TASK_NOTIFICATION_LOOK = {
+  icon: "/thyra-icon-192.png",
+  badge: "/thyra-badge-96.png",
+  renotify: true,
+};
+
+async function pushRequest(method, body) {
+  const response = await fetch("/api/notifications/push", {
+    method,
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-Thyra-Push": "1" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!response.ok) throw new Error(`push registration ${response.status}`);
+  return response.json();
+}
+
+function base64UrlBytes(value) {
+  return Uint8Array.from(
+    self.atob(value.replace(/-/g, "+").replace(/_/g, "/")),
+    (char) => char.charCodeAt(0),
+  );
+}
+
+// Browsers rotate or expire subscriptions on their own; register the new one
+// so background delivery survives without the page being opened.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      const stored = await caches
+        .open(PUSH_CACHE)
+        .then((cache) => cache.match(PUSH_PREFERENCES_KEY))
+        .then((response) => response?.json())
+        .catch(() => undefined);
+      if (
+        typeof stored?.completed !== "boolean" ||
+        typeof stored?.blocked !== "boolean"
+      )
+        return;
+      const old = event.oldSubscription;
+      if (old?.endpoint)
+        await pushRequest("DELETE", { endpoint: old.endpoint }).catch(() => {});
+      let subscription =
+        event.newSubscription ??
+        (await self.registration.pushManager.getSubscription());
+      if (!subscription) {
+        const config = await pushRequest("GET");
+        if (!config.available || !config.publicKey) return;
+        subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlBytes(config.publicKey),
+        });
+      }
+      await pushRequest("POST", {
+        subscription: subscription.toJSON(),
+        preferences: {
+          completed: stored.completed,
+          blocked: stored.blocked,
+        },
+      });
+    })().catch(() => {}),
   );
 });
 

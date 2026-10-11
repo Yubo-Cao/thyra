@@ -26,13 +26,41 @@ async function pushRequest(method: "GET" | "POST" | "DELETE", body?: unknown) {
   }>;
 }
 
+// Mirrors PUSH_CACHE in task-notifications-sw.js: the worker re-registers a
+// subscription the browser replaces with these preferences.
+const PUSH_CACHE = "thyra-push-v1";
+const PUSH_PREFERENCES_KEY = "/__thyra/push-preferences";
+
+async function rememberPushPreferences(
+  preferences: TaskNotificationPreferences | null,
+) {
+  try {
+    const cache = await caches.open(PUSH_CACHE);
+    if (preferences)
+      await cache.put(
+        PUSH_PREFERENCES_KEY,
+        new Response(JSON.stringify(preferences), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    else await cache.delete(PUSH_PREFERENCES_KEY);
+  } catch {
+    // Without the copy the page still re-registers on its next load.
+  }
+}
+
 let updates: Promise<unknown> = Promise.resolve();
 
-/** Serialize subscription changes so a late enable cannot undo a device revocation. */
+/**
+ * Serialize subscription changes so a late enable cannot undo a device
+ * revocation. `allowSubscribe` creates a missing subscription: `true` from the
+ * enabling gesture, `"quiet"` on page load (a subscription the browser
+ * dropped comes back; a browser that refuses without a gesture stays local).
+ */
 export function syncTaskPush(
   enabled: boolean,
   preferences: TaskNotificationPreferences,
-  allowSubscribe = false,
+  allowSubscribe: boolean | "quiet" = false,
 ): Promise<"push" | "local"> {
   const task = updates
     .catch(() => {})
@@ -65,6 +93,7 @@ export function syncTaskPush(
               ),
             );
         }
+        await rememberPushPreferences(null);
         return "local" as const;
       }
       const config = await pushRequest("GET");
@@ -94,11 +123,15 @@ export function syncTaskPush(
       }
       let created = false;
       if (!subscription && allowSubscribe) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey,
-        });
-        created = true;
+        try {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey,
+          });
+          created = true;
+        } catch (error) {
+          if (allowSubscribe !== "quiet") throw error;
+        }
       }
       if (!subscription) return "local" as const;
       try {
@@ -110,6 +143,7 @@ export function syncTaskPush(
         if (created) await subscription.unsubscribe();
         throw error;
       }
+      await rememberPushPreferences(preferences);
       return "push" as const;
     });
   updates = task;

@@ -5,6 +5,14 @@ export const TASK_NOTIFICATION_ACTIVATE_EVENT =
 export const NOTIFICATION_WORKER = "/task-notifications-sw.js";
 const NOTIFICATION_HASH = "#thyra-task=";
 
+// Keep in sync with TASK_NOTIFICATION_LOOK in task-notifications-sw.js. A
+// repeat alert for the same pane replaces the old one and still sounds.
+export const TASK_NOTIFICATION_LOOK = {
+  icon: "/thyra-icon-192.png",
+  badge: "/thyra-badge-96.png",
+  renotify: true,
+} as const;
+
 export interface TaskNotificationTarget {
   connectionId: string;
   runtimeGeneration: number;
@@ -114,6 +122,12 @@ export async function showTaskNotification(
 ): Promise<void> {
   const registration = await prepareTaskNotifications();
   if (!isCurrent()) return;
+  // `renotify` and `timestamp` are standard but missing from lib.dom.
+  options = {
+    ...TASK_NOTIFICATION_LOOK,
+    timestamp: Date.now(),
+    ...options,
+  } as NotificationOptions;
   if (registration) {
     await registration.showNotification(title, {
       ...options,

@@ -76,7 +76,7 @@ export function readPublicCookie(req: Request, name: string): string | null {
 export function isPublicStaticAsset(pathname: string): boolean {
   return (
     /^\/assets(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$/.test(pathname) ||
-    /^\/thyra-(?:icon|mark)(?:-\d+)?\.(?:png|svg)$/.test(pathname) ||
+    /^\/thyra-(?:icon|mark|badge)(?:-\d+)?\.(?:png|svg)$/.test(pathname) ||
     pathname === "/favicon.ico" ||
     pathname === "/manifest.json"
   );

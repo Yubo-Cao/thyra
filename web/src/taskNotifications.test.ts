@@ -82,6 +82,10 @@ describe("task notification transport", () => {
         );
         expect(register).not.toHaveBeenCalled();
         expect(active.showNotification).toHaveBeenCalledWith("Completed", {
+          icon: "/thyra-icon-192.png",
+          badge: "/thyra-badge-96.png",
+          renotify: true,
+          timestamp: expect.any(Number),
           body: "Agent",
           tag: "task",
           data: { type: TASK_NOTIFICATION_ACTIVATE_EVENT, target },
@@ -133,6 +137,10 @@ describe("task notification transport", () => {
         () => true,
       );
       expect(Notification).toHaveBeenCalledWith("Completed", {
+        icon: "/thyra-icon-192.png",
+        badge: "/thyra-badge-96.png",
+        renotify: true,
+        timestamp: expect.any(Number),
         body: "Agent",
         tag: "task",
       });
@@ -487,6 +495,10 @@ describe("notification service worker clicks", () => {
     });
     await pending;
     expect(showNotification).toHaveBeenCalledWith(message.title, {
+      icon: "/thyra-icon-192.png",
+      badge: "/thyra-badge-96.png",
+      renotify: true,
+      timestamp: expect.any(Number),
       body: message.body,
       tag: message.tag,
       data: { type: TASK_NOTIFICATION_ACTIVATE_EVENT, target },
@@ -507,6 +519,59 @@ describe("notification service worker clicks", () => {
       { data: null },
     ]);
   });
+  test("registers a replaced push subscription with the stored preferences", async () => {
+    const listeners: Record<string, (event: any) => void> = {};
+    const requests: { method: string; body: unknown }[] = [];
+    const preferences = { completed: true, blocked: false };
+    const fresh = { toJSON: () => ({ endpoint: "https://push.example/new" }) };
+    runInNewContext(
+      await readFile(
+        new URL("../public/task-notifications-sw.js", import.meta.url),
+        "utf8",
+      ),
+      {
+        URL,
+        caches: {
+          open: async () => ({
+            match: async () => new Response(JSON.stringify(preferences)),
+          }),
+        },
+        fetch: async (_url: string, init: RequestInit) => {
+          requests.push({
+            method: init.method ?? "GET",
+            body: JSON.parse(String(init.body)),
+          });
+          return new Response("{}");
+        },
+        self: {
+          addEventListener: (name: string, handler: (event: any) => void) => {
+            listeners[name] = handler;
+          },
+          registration: { pushManager: { getSubscription: async () => null } },
+        },
+      },
+    );
+    let pending: Promise<void> | undefined;
+    listeners.pushsubscriptionchange({
+      oldSubscription: { endpoint: "https://push.example/old" },
+      newSubscription: fresh,
+      waitUntil: (value: Promise<void>) => {
+        pending = value;
+      },
+    });
+    await pending;
+    expect(requests).toEqual([
+      { method: "DELETE", body: { endpoint: "https://push.example/old" } },
+      {
+        method: "POST",
+        body: {
+          subscription: { endpoint: "https://push.example/new" },
+          preferences,
+        },
+      },
+    ]);
+  });
+
   test("focuses an app window or opens a same-origin pane link", async () => {
     const listeners: Record<string, (event: any) => void> = {};
     const postMessage = mock();
@@ -541,6 +606,7 @@ describe("notification service worker clicks", () => {
       "message",
       "notificationclick",
       "push",
+      "pushsubscriptionchange",
     ]);
     const close = mock();
     let pending: Promise<void> | undefined;

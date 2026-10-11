@@ -309,9 +309,11 @@ export async function restoreTaskNotifications() {
   try {
     if (state.taskNotificationsEnabled) await prepareTaskNotifications();
     if (version !== taskNotificationPreferenceVersion) return;
+    // Restore a subscription the browser dropped while the page was closed.
     const transport = await syncTaskPush(
       state.taskNotificationsEnabled,
       state.taskNotificationPreferences,
+      notificationPermission() === "granted" ? "quiet" : false,
     );
     if (version === taskNotificationPreferenceVersion) {
       storeTaskNotificationTransport(transport);

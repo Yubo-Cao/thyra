@@ -153,6 +153,7 @@ describe("public static assets", () => {
     ["/thyra-icon-192.png", true],
     ["/thyra-icon.svg", true],
     ["/thyra-mark-48.png", true],
+    ["/thyra-badge-96.png", true],
     ["/favicon.ico", true],
     ["/manifest.json", true],
     ["/", false],

@@ -222,7 +222,7 @@ test("completion and blocked preferences, stale runtimes and expired endpoints a
   const f = fixture(async (subscription, payload, options) => {
     calls.push({ endpoint: subscription.endpoint, payload: String(payload) });
     expect(options).toMatchObject({
-      TTL: 300,
+      TTL: 1800,
       timeout: 10000,
       urgency: "high",
     });
