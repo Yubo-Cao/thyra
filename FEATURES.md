@@ -369,6 +369,10 @@ Scope and wrapping persist per browser. Refresh reloads the list and the shown d
   input-required/completed alerts. **Background push** works without an active
   page; **Active page only** does not. Delivery is best-effort.
   [Web Push setup and revocation](docs/DEPLOYMENT.md#web-push-notifications).
+- **Watch** an agent (bell in its pane header, or **Watch** in its sidebar
+  menu) to hear a chime when it finishes (rising) or needs input (repeated),
+  plus its toast, even while it is in view or task notifications are off.
+  Watched agents show a bell in the sidebar; the choice is kept per browser.
 - The collaborator popover shows where each person is looking ("Viewing:
   workspace › tab › pane") with **Jump** and **Follow**; clicking an avatar on
   a pane row or tab also offers **Follow**. Following moves your view with the most

@@ -12,6 +12,7 @@ import {
 import { __storeTesting, store } from "./store";
 import { emptyServerSessionState } from "./store/core";
 import { bridge, type ConnectionClient } from "./api";
+import { setPaneWatched } from "./paneWatch";
 
 const origin = "https://thyra.example";
 const target = {
@@ -312,6 +313,92 @@ describe("task notification transport", () => {
       );
     },
   );
+
+  test("a watched pane chimes and toasts with notifications off", async () => {
+    const tones: number[] = [];
+    class FakeAudioContext {
+      state = "running";
+      currentTime = 0;
+      destination = {};
+      async resume() {}
+      createGain() {
+        const ramp = () => {};
+        return {
+          gain: {
+            setValueAtTime: ramp,
+            exponentialRampToValueAtTime: ramp,
+          },
+          connect: (next: unknown) => next,
+        };
+      }
+      createOscillator() {
+        const tone = {
+          type: "",
+          frequency: { value: 0 },
+          connect: (next: unknown) => next,
+          start: () => tones.push(tone.frequency.value),
+          stop() {},
+        };
+        return tone;
+      }
+    }
+    await withBrowser({ AudioContext: FakeAudioContext }, async () => {
+      const previousConnection = bridge.connection;
+      const pane = {
+        pane_id: "p-watched",
+        workspace_id: "w1",
+        terminal_id: "t1",
+        tab_id: "tab1",
+        focused: false,
+        agent: "Agent",
+        agent_status: "working",
+        revision: 1,
+      };
+      bridge.connection = (() =>
+        ({
+          connectionId: "alpha",
+          generation: 10,
+          isCurrent: () => true,
+          call: async (method: string) =>
+            method === "pane.list" ? { panes: [{ ...pane }] } : {},
+        }) as ConnectionClient) as typeof bridge.connection;
+      __storeTesting.replaceState({
+        ...store.get(),
+        ...emptyServerSessionState(1),
+        status: "connected",
+        connectionPaused: false,
+        activeConnectionId: "alpha",
+        connectionGeneration: 10,
+        connections: [
+          {
+            id: "alpha",
+            label: "Alpha",
+            source: "test",
+            is_default: true,
+            state: "ready",
+            generation: 1,
+          },
+        ],
+        notice: null,
+        taskNotificationsEnabled: false,
+      });
+      setPaneWatched("alpha", "p-watched", true);
+      try {
+        await store.refresh();
+        pane.agent_status = "done";
+        await store.refresh();
+        for (let index = 0; index < 10; index++) await Promise.resolve();
+        expect(tones).toEqual([660, 990]);
+        expect(store.get().notice).toMatchObject({
+          kind: "success",
+          message: "Task completed",
+        });
+      } finally {
+        setPaneWatched("alpha", "p-watched", false);
+        bridge.connection = previousConnection;
+      }
+    });
+  });
 
   test("requests permission in the gesture and cannot re-enable after a later disable", async () => {
     const permission = Promise.withResolvers<NotificationPermission>();

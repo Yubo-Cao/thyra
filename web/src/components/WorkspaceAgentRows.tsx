@@ -1,3 +1,4 @@
+import { BellRing } from "lucide-react";
 import { useRef } from "react";
 import { useLongPress } from "./useLongPress";
 import {
@@ -9,6 +10,7 @@ import { useWorkspaceCan } from "../capabilities";
 import { store, useStoreSelector } from "../store";
 import type { Pane } from "../types";
 import { formatMemoryLimit, shortId } from "../utils";
+import { setPaneWatched, usePaneWatched } from "../paneWatch";
 import { agentStatusText } from "../agentOrder";
 import { t } from "../i18n";
 import {
@@ -82,6 +84,8 @@ export function AgentRow({
         candidate.workspace_id === pane.workspace_id,
     ),
   );
+  const connectionId = useStoreSelector((state) => state.activeConnectionId);
+  const watched = usePaneWatched(connectionId, pane.pane_id);
   const tabLabel = customTabLabel(tab?.label);
   const openMenu = (x: number, y: number) => {
     onOpenMenu(x, y);
@@ -225,6 +229,13 @@ export function AgentRow({
             </Token>
           ) : null}
           <PanePresence paneIds={[pane.pane_id]} />
+          {watched ? (
+            <BellRing
+              className="agent-row-watched"
+              size={12}
+              aria-label={t("Watched")}
+            />
+          ) : null}
           {showPaneId ? (
             <Token code className="agent-row-id" title={pane.pane_id}>
               {shortId(pane.pane_id)}
@@ -267,6 +278,8 @@ export function AgentContextMenu({
   if (state) lastPaneRef.current = state.pane;
   const pane = lastPaneRef.current;
   const canEdit = useWorkspaceCan(pane?.workspace_id, "edit");
+  const connectionId = useStoreSelector((state) => state.activeConnectionId);
+  const watched = usePaneWatched(connectionId, pane?.pane_id ?? "");
   if (!pane) return null;
 
   const paneName = paneDisplayName(pane);
@@ -305,6 +318,19 @@ export function AgentContextMenu({
               id: "review-changes",
               label: t("Review workspace changes"),
               onAction: () => onReviewChanges?.(pane),
+            },
+          ],
+        },
+        {
+          title: t("Notifications"),
+          items: [
+            {
+              id: "watch-pane",
+              label: watched
+                ? t("Stop watching")
+                : t("Watch: chime when it finishes"),
+              onAction: () =>
+                setPaneWatched(connectionId, pane.pane_id, !watched),
             },
           ],
         },

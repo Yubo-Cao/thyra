@@ -1,5 +1,7 @@
 import {
   AlignLeft,
+  Bell,
+  BellRing,
   Columns2,
   Eye,
   EyeOff,
@@ -19,7 +21,8 @@ import type { PointerEvent } from "react";
 import { agentStatusText } from "../../agentOrder";
 import { t } from "../../i18n";
 import { shortcutTitle } from "../../shortcutPreferences";
-import { store } from "../../store";
+import { setPaneWatched, usePaneWatched } from "../../paneWatch";
+import { store, useStoreSelector } from "../../store";
 import { copyTextFromUserGesture } from "../../terminalClipboard";
 import type { Pane } from "../../types";
 import type { usePaneControl } from "../../usePaneControl";
@@ -95,6 +98,8 @@ export function TerminalPaneHeader({
   const foreignDisplay = !!access.display && !access.display.mine;
   const displayName = access.display?.name ?? t("another device");
   const pinnedHere = access.display?.mine === true && access.display.pinned;
+  const connectionId = useStoreSelector((state) => state.activeConnectionId);
+  const watched = usePaneWatched(connectionId, pane.pane_id);
   const scrollReason =
     endpointAvailable && store.terminalScrollReason(pane.terminal_id);
   return (
@@ -285,6 +290,22 @@ export function TerminalPaneHeader({
           aria-label={t("Pane actions")}
           style={access.readOnly ? { display: "none" } : undefined}
         >
+          {pane.agent ? (
+            <IconButton
+              className="terminal-pane-action"
+              aria-pressed={watched}
+              label={
+                watched
+                  ? t("Stop watching this agent")
+                  : t("Watch this agent: chime when it finishes or needs input")
+              }
+              onPointerDown={preventPaneActionFocus}
+              onClick={() =>
+                setPaneWatched(connectionId, pane.pane_id, !watched)
+              }
+              icon={watched ? <BellRing size={14} /> : <Bell size={14} />}
+            />
+          ) : null}
           {promptEditor ? (
             <IconButton
               className="terminal-pane-action"

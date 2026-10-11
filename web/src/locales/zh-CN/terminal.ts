@@ -162,6 +162,9 @@ export default {
   "Could not confirm shell input": "无法确认 Shell 输入",
   "Search history: {query}": "搜索历史：{query}",
   "Show prompt editor": "显示提示词编辑器",
+  "Stop watching this agent": "取消特别关注此 agent",
+  "Watch this agent: chime when it finishes or needs input":
+    "特别关注此 agent：完成或需要输入时响铃提醒",
   "Hide prompt editor": "隐藏提示词编辑器",
   "Write a prompt for the agent": "为 Agent 编写提示词",
 

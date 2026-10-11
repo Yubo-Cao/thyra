@@ -219,3 +219,8 @@
     margin-inline-start: auto;
   }
 }
+
+.agent-row-watched {
+  flex: none;
+  color: var(--accent);
+}

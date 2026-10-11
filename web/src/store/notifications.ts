@@ -1,6 +1,7 @@
 // Task notifications: detect agents that finished or need input, raise a toast
 // and (when enabled) a browser notification, and own the device preference.
 import { t } from "../i18n";
+import { paneWatched, playTaskChime } from "../paneWatch";
 import {
   isTaskNotificationTarget,
   prepareTaskNotifications,
@@ -204,11 +205,23 @@ export function taskNotificationTargetFromNotice(
   return isTaskNotificationTarget(target) ? target : null;
 }
 
-function notifyTaskCompleted(pane: Pane, workspaces: Workspace[], tabs: Tab[]) {
+function taskChimeKind(pane: Pane) {
+  return pane.agent_status === "blocked" ? "blocked" : "completed";
+}
+
+function notifyTaskCompleted(
+  pane: Pane,
+  workspaces: Workspace[],
+  tabs: Tab[],
+  watched: boolean,
+) {
   const blocked = pane.agent_status === "blocked";
+  // A watched pane always chimes and toasts; others follow the preferences.
+  if (watched) playTaskChime(taskChimeKind(pane));
   if (
-    !state.taskNotificationsEnabled ||
-    !state.taskNotificationPreferences[blocked ? "blocked" : "completed"]
+    !watched &&
+    (!state.taskNotificationsEnabled ||
+      !state.taskNotificationPreferences[blocked ? "blocked" : "completed"])
   )
     return;
   const runtimeGeneration = state.serverRuntimeGeneration;
@@ -257,7 +270,10 @@ function activePaneIdForTaskNotifications(snapshot: State) {
   );
 }
 
-/** Notify about panes that finished outside the pane the user is watching. */
+/**
+ * Notify about panes that finished outside the pane the user is looking at,
+ * and about watched panes wherever they are.
+ */
 export function notifyCompletedTasks(
   lease: StoreConnectionLease,
   completed: Pane[],
@@ -268,8 +284,13 @@ export function notifyCompletedTasks(
   const activePaneId = activePaneIdForTaskNotifications(state);
   for (const pane of completed) {
     if (!leaseIsCurrent(lease)) return;
-    if (pane.pane_id === activePaneId) continue;
-    notifyTaskCompleted(pane, workspaces, tabs);
+    const watched = paneWatched(lease.connectionId, pane.pane_id);
+    if (pane.pane_id === activePaneId) {
+      // The pane is in view: a watched one only chimes.
+      if (watched) playTaskChime(taskChimeKind(pane));
+      continue;
+    }
+    notifyTaskCompleted(pane, workspaces, tabs, watched);
   }
 }
 

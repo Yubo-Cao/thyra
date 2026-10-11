@@ -4,6 +4,7 @@
 // Layering (each module imports only from those above it):
 //   preferences -> core -> notifications -> refresh -> actions -> updates
 //   -> connection -> navigation -> workspaces, worktrees, git
+import { reloadWatchedPanes } from "../paneWatch";
 import { bridge, type ConnectionSummary } from "../api";
 import { prepareAppUpdate, servesOtherBuild } from "../appServiceWorker";
 import { hostCapable } from "../capabilities";
@@ -81,6 +82,7 @@ function init() {
   window.addEventListener("storage", (event) => {
     if (taskNotificationStorageChanged(event))
       reloadTaskNotificationPreferences();
+    reloadWatchedPanes(event);
   });
   bridge.onHello((hello) => {
     handleHello(hello.default_connection_id);
