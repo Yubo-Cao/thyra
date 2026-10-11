@@ -352,6 +352,11 @@ type RpcRequest = ConnectionRpcRequest;
 
 const clientIdentity = createIdentityServiceFromEnv<ServerWebSocket<unknown>>({
   secureCookies: Boolean(config.tls),
+  // Pictures of people without an account, beside the accounts' pictures.
+  avatars: {
+    save: (bytes, image) => avatarFiles.save(bytes, image),
+    remove: (name) => avatarFiles.remove(name),
+  },
   logger: logger.child("identity"),
 });
 const tailnetAuth = parseTailnetAuthMode(
@@ -441,6 +446,10 @@ const oauthFlows = createOAuthFlowStore(accountStore);
 const invites = createInviteStore(accountStore);
 const avatarFiles = createAvatarFiles(
   join(dirname(defaultDatabasePath()), "avatars"),
+  {
+    inUse: (name) =>
+      accountStore.avatarInUse(name) || clientIdentity.avatarInUse(name),
+  },
 );
 const tailnetSsoCodes = createSsoCodeStore(accountStore);
 /** Tailnet sign-in, when the public listener has a tailnet listener to ask. */
@@ -684,8 +693,7 @@ const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
 const clients = new Set<ServerWebSocket<unknown>>();
 /**
  * The collaboration service holding each browser socket's presence, so a
- * closed page leaves at once instead of lingering until its lease expires
- * (and followers stop following it).
+ * closed page leaves at once instead of lingering until its lease expires.
  */
 const socketPresence = new Map<
   ServerWebSocket<unknown>,
@@ -2809,10 +2817,13 @@ function main() {
         authProviders.email ? "email" : "",
         authProviders.github ? "github" : "",
         authProviders.google ? "google" : "",
+        authProviders.microsoft ? "microsoft" : "",
+        authProviders.oidc ? "oidc" : "",
       ]
         .filter(Boolean)
         .join(",") || "none",
     signup: authProviders.signup,
+    signup_domains: authProviders.signupDomains.join(",") || undefined,
   });
   if (accountStore.userCount() === 0 && tailnetAuth.mode === "off") {
     logger.warn(

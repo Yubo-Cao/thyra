@@ -585,10 +585,8 @@ Browsers group presence by person and list each person's devices ("Yubo · iphon
 Sidebar pane rows and the phone tab sheet show one avatar per person looking at the pane (this page excluded, hidden pages ignored, real Herdr TUI clients included) and mark the holder of the pane's layout claim with an accent ring and keyboard badge.
 These are derived in the browser from the presence snapshot, which the bridge already forwards at most once per second, so they add no traffic.
 
-Focus changes skip that throttle: when a page's workspace, tab, pane, visibility, or follow target changes, the bridge sends a `collaboration.focus` event with only those ids at once, and browsers patch their latest snapshot.
-The bridge also keeps what Herdr's API does not carry: `following` (the presence key a page follows, stripped before the call reaches Herdr) and `active_at_unix_ms` (last focus change, typing, or return to the page), and overlays both, with the latest forwarded focus, on every snapshot it sends, so a throttled snapshot never moves anyone back.
-A person's focus is that of their visible page with the latest `active_at_unix_ms`; the collaboration popover shows it ("Viewing: workspace › tab › pane") with Jump and Follow.
-Following moves this page to that focus whenever it changes and ends when the user navigates (any `store` focus action outside `navigateProgrammatically`), presses Escape, switches connection, or the person has had no live page for three seconds.
+Focus changes skip that throttle: when a page's workspace, tab, pane, or visibility changes, the bridge sends a `collaboration.focus` event with only those ids at once, and browsers patch their latest snapshot.
+The bridge overlays the latest forwarded focus on every snapshot it sends, so a throttled snapshot never moves an avatar back.
 A closed socket leaves its participants at once instead of waiting for the 45-second lease, unless the page already reconnected on another socket.
 
 Pane claims are exclusive per pane, not per Herdr session. The bridge shares one
@@ -653,6 +651,7 @@ The bridge resolves every WebSocket to a device and a person when it upgrades an
   Hints are the User-Agent, User-Agent Client Hints where offered, screen size, time zone, language, and display mode; there is no canvas, audio, or font fingerprinting.
 
 The bridge replaces the name and color of each `collaboration.update` it forwards to Herdr with the resolved profile: a custom name stored on the server for the person (or device), else the Tailscale display name, else the page's device-based default.
+A person's picture is the account's; without an account (direct local use), `bridge.identity_profile` takes `avatar` (base64 WebP or JPEG, checked like account pictures, or null to remove) and stores the file beside the account pictures; else the Tailscale profile picture.
 Browser-stored names from earlier versions are migrated once on connect.
 Presence snapshots sent to browsers gain opaque `person_id`/`device_id` fields and one `people` and one `devices` table; they never contain client addresses, cookie values, or other people's logins, and a page learns its own login only from `bridge.identity`.
 Herdr TUI participants are labelled `Herdr TUI` on the Herdr host.
@@ -749,8 +748,9 @@ A live share-link guest cookie yields a `guest` principal (see share links below
 A session whose privilege epoch is older than its user's is rotated to a new id on its next request.
 `requireLogin(req, access)` returns the principal and cookie headers, or the login redirect/401, for listeners that require an account.
 Passkey registration and login (`server/src/auth/passkeys.ts`, `@simplewebauthn/server`) use discoverable credentials; the relying party is the effective host name, and challenges are single-use and held in memory for five minutes.
-**Sign-in providers.** `server/src/auth/providers.ts` turns email (Resend), GitHub and Google on from their variables (and `auth-providers.env`); `sign-in-routes.ts` serves the email code and link, OAuth start, callback, confirmation and poll, and invitation routes, and `sign-in.ts` maps a verified identity to an account (by subject; by verified address only when both sides are verified; otherwise "no access" or, with `THYRA_SIGNUP=open`, a new member).
+**Sign-in providers.** `server/src/auth/providers.ts` turns email (Resend), GitHub, Google, Microsoft and one generic OpenID Connect provider on from their variables (and `auth-providers.env`); `sign-in-routes.ts` serves the email code and link, OAuth start, callback, confirmation and poll, and invitation routes, and `sign-in.ts` maps a verified identity to an account (by subject; by verified address only when both sides are verified; otherwise "no access" or a new member, with `THYRA_SIGNUP=open` or a verified address in `THYRA_SIGNUP_DOMAINS`).
 OAuth goes through arctic's `OAuth2Client` with PKCE; a flow is a row keyed by its state, the starting page holds its poll secret and pairing number, a callback with the flow cookie signs that browser in, and one without asks first and leaves the session for the poll.
+Google, Microsoft and OIDC identities come from the OpenID Connect userinfo endpoint; an address counts as verified only with `email_verified: true` (Microsoft never sends it). The OIDC provider's endpoints come from its issuer's discovery document (cached for an hour, never downgraded from HTTPS), and its subjects are stored as `<issuer>#<sub>`, so another issuer never matches them.
 `account-routes.ts` serves the account page: profile, avatar (WebP or JPEG up to 256x256 and 128 KiB, stored under its SHA-256 in `avatars/` beside the database and served with an immutable cache), sign-in methods with last-method protection, other sessions, and invitations by email.
 A profile change closes the account's sockets with 4003 so presence picks up the new name and picture.
 The login and enrollment pages are small server-rendered documents outside the application bundle; their strings travel in a JSON data block and their logic is the same-origin `/auth/passkey.js`, so they need no inline script under the public listener's CSP.
@@ -768,7 +768,7 @@ The login and enrollment pages are small server-rendered documents outside the a
 | `share_links` | public id, SHA-256 of the link secret, connection, workspace, optional pane, role (`viewer` only), label, creator, expiry, max uses, uses, revocation time |
 | `guest_sessions` | SHA-256 of a guest cookie value, public id, link, user agent, created/last seen/expiry (the link's) |
 | `email_codes` | mailed sign-in and verification codes: SHA-256 of the 6-digit code and of the link secret, address, purpose, attempts, expiry (10 minutes), use |
-| `oauth_flows` | GitHub/Google flows in progress: SHA-256 of state and poll secret, PKCE verifier, intent (`login`/`link`), pairing number, status and result |
+| `oauth_flows` | GitHub/Google/Microsoft/OIDC flows in progress: SHA-256 of state and poll secret, PKCE verifier, intent (`login`/`link`), pairing number, status and result |
 | `invites` | SHA-256 of invitation secrets, invited account, address, expiry (7 days) |
 | `tailnet_sso_codes` | SHA-256 of single-use tailnet sign-in codes, user, PKCE challenge, return origin, expiry (60 seconds) |
 | `audit_log` | account, session, passkey, grant and share-link changes (bounded) |

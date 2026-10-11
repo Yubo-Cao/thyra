@@ -60,7 +60,7 @@ export function createCollaborationService(args: {
   }) => void;
   /** Applied to snapshots returned by the Herdr collaboration API. */
   filterSnapshot?: <T>(snapshot: T) => T;
-  /** Bridge-side focus, activity and follow state of browser participants. */
+  /** Bridge-side focus and activity of browser participants. */
   presence?: PresenceFocusTracker;
   /** A participant's focus changed; announce it without waiting. */
   onFocus?: (focus: PresenceFocus) => void;
@@ -247,12 +247,11 @@ export function createCollaborationService(args: {
       args.presence?.forget(params.participant_id);
     if (method !== "collaboration.update" || !args.presence)
       return presentResult(await forward(method, params));
-    const { herdrParams, commit } = args.presence.prepare(params);
-    // Announce before Herdr answers: followers wait for exactly this.
-    const { changed, rollback } = commit();
+    // Announce before Herdr answers: pane avatars move at once.
+    const { changed, rollback } = args.presence.prepare(params).commit();
     if (changed) args.onFocus?.(changed);
     try {
-      return presentResult(await forward(method, herdrParams));
+      return presentResult(await forward(method, params));
     } catch (error) {
       rollback();
       throw error;

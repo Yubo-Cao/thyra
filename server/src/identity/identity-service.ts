@@ -1,4 +1,10 @@
 import { createHmac, randomBytes } from "node:crypto";
+import {
+  AVATAR_MAX_BYTES,
+  type AvatarImage,
+  avatarUrl,
+  inspectAvatar,
+} from "../accounts/avatars";
 import { parseCookie } from "../utils/request";
 import { type Logger, silentLogger } from "../utils/logger";
 import { resolveClientAddress, type TrustedProxies } from "./client-address";
@@ -141,15 +147,24 @@ export type SelfIdentityView = ReturnType<typeof selfIdentityView>;
 
 export type IdentityService = ReturnType<typeof createIdentityService>;
 
-export function createIdentityService<Socket extends object>(args: {
+export type IdentityServiceArgs = {
   store: IdentityStore;
   whois: TailscaleWhois;
   trustedProxies: TrustedProxies;
   /** Native TLS: device cookies are always `Secure`. */
   secureCookies?: boolean;
+  /** Where pictures of people without an account are kept. */
+  avatars?: {
+    save(bytes: Uint8Array, image: AvatarImage): string;
+    remove(name: string): void;
+  };
   now?: () => number;
   logger?: Logger;
-}) {
+};
+
+export function createIdentityService<Socket extends object>(
+  args: IdentityServiceArgs,
+) {
   const now = args.now ?? Date.now;
   const logger = args.logger ?? silentLogger;
   const sessions = new Map<Socket, Session>();
@@ -243,6 +258,14 @@ export function createIdentityService<Socket extends object>(args: {
       : profiles.find((profile) => profile.displayName)?.displayName;
     const color =
       profiles.find((profile) => profile.color)?.color ?? colorFor(personKey);
+    // An account's picture is set on its account page; a picture saved here
+    // is for people without one (direct local use).
+    const picture =
+      context.account?.avatarUrl ??
+      (context.account
+        ? undefined
+        : avatarUrl(profiles.find((profile) => profile.avatar)?.avatar)) ??
+      tailscale?.user?.avatarUrl;
     const os = tailscale?.os ?? session.hints.os;
     const identity: ResolvedIdentity = {
       personKey,
@@ -265,11 +288,7 @@ export function createIdentityService<Socket extends object>(args: {
             ? "device-hints"
             : "cookie",
       ...(os ? { os } : {}),
-      ...((context.account?.avatarUrl ?? tailscale?.user?.avatarUrl)
-        ? {
-            avatarUrl: context.account?.avatarUrl ?? tailscale?.user?.avatarUrl,
-          }
-        : {}),
+      ...(picture ? { avatarUrl: picture } : {}),
       ...(tailscale?.user ? { login: tailscale.user.login } : {}),
     };
     session.latest = identity;
@@ -303,8 +322,23 @@ export function createIdentityService<Socket extends object>(args: {
         displayName: identity.displayName,
         customName: identity.customName,
         color: identity.color,
+        avatarUrl: identity.avatarUrl,
       };
     }
+  }
+
+  /** A base64 WebP or JPEG picture from the page, saved; its file name. */
+  function savePicture(value: unknown): string {
+    if (!args.avatars) throw new Error("pictures are unavailable");
+    if (
+      typeof value !== "string" ||
+      value.length > Math.ceil(AVATAR_MAX_BYTES / 3) * 4
+    )
+      throw new Error("image too large (128 KiB at most)");
+    const bytes = new Uint8Array(Buffer.from(value, "base64"));
+    const checked = inspectAvatar(bytes);
+    if (!checked.ok) throw new Error(checked.error);
+    return args.avatars.save(bytes, checked.image);
   }
 
   function pruneParticipants() {
@@ -443,8 +477,10 @@ export function createIdentityService<Socket extends object>(args: {
       const legacyName = cleanName(legacy?.display_name);
       let migrated = false;
       if (legacyName && !identity.customName) {
+        const avatar = args.store.profile(identity.personKey)?.avatar;
         args.store.setProfile(identity.personKey, {
           displayName: legacyName,
+          ...(avatar ? { avatar } : {}),
           ...(cleanColor(legacy?.color)
             ? { color: cleanColor(legacy?.color) }
             : {}),
@@ -466,15 +502,32 @@ export function createIdentityService<Socket extends object>(args: {
       if (!existing?.displayName) return;
       args.store.setProfile(personKey, {
         ...(existing.color ? { color: existing.color } : {}),
+        ...(existing.avatar ? { avatar: existing.avatar } : {}),
       });
       invalidatePerson(personKey);
     },
 
-    /** `bridge.identity_profile`: set or clear the custom display name. */
+    /** Whether a person's profile shows this picture file. */
+    avatarInUse(avatar: string): boolean {
+      return args.store.avatarInUse(avatar);
+    },
+
+    /**
+     * `bridge.identity_profile`: set or clear the custom display name, and,
+     * without an account, the picture (`avatar`: base64, or null to remove).
+     */
     async updateProfile(socket: Socket, params: Record<string, unknown> = {}) {
       const current = await resolve(socket);
       if (!current) throw new Error("identity unavailable for this client");
       const existing = args.store.profile(current.personKey);
+      let avatar = existing?.avatar;
+      if (params.avatar !== undefined) {
+        if (sessions.get(socket)?.context.account)
+          throw new Error(
+            "set your picture under Configuration > Account instead",
+          );
+        avatar = params.avatar ? savePicture(params.avatar) : undefined;
+      }
       const displayName =
         params.display_name === undefined
           ? existing?.displayName
@@ -486,7 +539,10 @@ export function createIdentityService<Socket extends object>(args: {
       args.store.setProfile(current.personKey, {
         ...(displayName ? { displayName } : {}),
         ...(color ? { color } : {}),
+        ...(avatar ? { avatar } : {}),
       });
+      if (existing?.avatar && existing.avatar !== avatar)
+        args.avatars?.remove(existing.avatar);
       invalidatePerson(current.personKey);
       const identity = (await resolve(socket)) ?? current;
       refreshParticipants(identity);

@@ -1,6 +1,5 @@
 import { bridge, type ConnectionClient, type HerdrEventMsg } from "./api";
 import { thyraLocalStorage } from "./browserStorage";
-import { followTarget } from "./followState";
 import { t } from "./i18n";
 import type { State } from "./store";
 
@@ -21,22 +20,12 @@ export type CollaborationParticipant = {
   /** Opaque bridge-assigned ids; keys of the snapshot's people/devices. */
   person_id?: string;
   device_id?: string;
-  /** Bridge-stamped: last focus change, typing, or return to the page. */
-  active_at_unix_ms?: number;
-  /** Presence key (person id or `participant:<id>`) this page follows. */
-  following?: string;
 };
 
 /** A `collaboration.focus` event: one participant moved (ids only). */
 export type CollaborationFocus = Pick<
   CollaborationParticipant,
-  | "participant_id"
-  | "workspace_id"
-  | "tab_id"
-  | "pane_id"
-  | "activity"
-  | "following"
-  | "active_at_unix_ms"
+  "participant_id" | "workspace_id" | "tab_id" | "pane_id" | "activity"
 >;
 
 /** How the bridge recognized a device (see docs/ARCHITECTURE.md). */
@@ -369,6 +358,25 @@ export async function saveCollaborationDisplayName(displayName: string) {
   };
 }
 
+function base64(bytes: Uint8Array) {
+  let text = "";
+  for (let index = 0; index < bytes.length; index += 0x8000)
+    text += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(text);
+}
+
+/**
+ * Store this person's picture on the bridge (null removes it). Only for
+ * people without an account; an account's picture is the account's.
+ */
+export async function saveCollaborationAvatar(picture: Blob | null) {
+  const avatar = picture
+    ? base64(new Uint8Array(await picture.arrayBuffer()))
+    : null;
+  const result = await bridge.call("bridge.identity_profile", { avatar });
+  applySelfIdentity(result?.identity);
+}
+
 function parseSnapshot(result: unknown): CollaborationSnapshot | null {
   if (!result || typeof result !== "object") return null;
   const snapshot = (result as { snapshot?: unknown }).snapshot;
@@ -480,8 +488,6 @@ export function applyCollaborationFocus(
     workspace_id: focus.workspace_id,
     tab_id: focus.tab_id,
     pane_id: focus.pane_id,
-    following: focus.following,
-    active_at_unix_ms: focus.active_at_unix_ms ?? previous.active_at_unix_ms,
   };
   const participants = [...snapshot.participants];
   participants[index] = participant;
@@ -503,11 +509,7 @@ function parseFocus(value: unknown): CollaborationFocus | null {
     workspace_id: id(focus.workspace_id),
     tab_id: id(focus.tab_id),
     pane_id: id(focus.pane_id),
-    following: id(focus.following),
     activity,
-    ...(typeof focus.active_at_unix_ms === "number"
-      ? { active_at_unix_ms: focus.active_at_unix_ms }
-      : {}),
   };
 }
 
@@ -608,7 +610,6 @@ export function collaborationPresenceParams(
     activity: document.visibilityState === "hidden" ? "away" : "active",
     surface: "web",
     typing,
-    ...(followTarget() ? { following: followTarget()?.key } : {}),
     ...(workspaceId ? { workspace_id: workspaceId } : {}),
     ...(tabId ? { tab_id: tabId } : {}),
     ...(paneId ? { pane_id: paneId } : {}),

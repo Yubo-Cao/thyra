@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { AVATAR_FILE_PATTERN } from "../accounts/avatars";
 import { assertSafeDataPath, defaultDataFile } from "../config/data-paths";
 import { type Logger, silentLogger } from "../utils/logger";
 import type { DeviceHints } from "./device-hints";
@@ -32,6 +33,8 @@ export type DeviceRecord = {
 export type ProfileRecord = {
   displayName?: string;
   color?: string;
+  /** Picture file in the account database's `avatars/` (content hash). */
+  avatar?: string;
   updatedAt: number;
 };
 
@@ -119,6 +122,10 @@ function normalize(raw: unknown, now: number): IdentityData {
       ...(typeof record.color === "string" &&
       /^#[0-9a-f]{6}$/i.test(record.color)
         ? { color: record.color }
+        : {}),
+      ...(typeof record.avatar === "string" &&
+      AVATAR_FILE_PATTERN.test(record.avatar)
+        ? { avatar: record.avatar }
         : {}),
       updatedAt: numberOr(record.updatedAt, now),
     };
@@ -245,6 +252,12 @@ export function createIdentityStore(
     setProfile(key: string, profile: Omit<ProfileRecord, "updatedAt">) {
       data.profiles[key] = { ...profile, updatedAt: now() };
       changed(true);
+    },
+    /** Whether any profile shows this picture file. */
+    avatarInUse(avatar: string): boolean {
+      return Object.values(data.profiles).some(
+        (profile) => profile.avatar === avatar,
+      );
     },
     flush,
   };

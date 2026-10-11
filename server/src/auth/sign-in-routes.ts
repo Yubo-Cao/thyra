@@ -27,6 +27,7 @@ import {
   fetchIdentity,
   type OAuthFlow,
   type OAuthFlowStore,
+  resolveProvider,
 } from "./oauth";
 import {
   type PageLocale,
@@ -40,20 +41,21 @@ import type { Authenticator, Principal } from "./principal";
 import {
   type AuthProviders,
   type OAuthProviderConfig,
-  type OAuthProviderId,
+  oauthProvider,
   providerFlags,
 } from "./providers";
 import {
   type ExternalIdentity,
   type InviteStore,
+  PROVIDER_LABELS,
   resolveIdentity,
   type SignInError,
   type SignInOutcome,
 } from "./sign-in";
 
 /**
- * Login routes for the optional providers: email codes and links, GitHub
- * and Google, and invitation links. They run on whichever listener serves
+ * Login routes for the optional providers: email codes and links, GitHub,
+ * Google, Microsoft and OpenID Connect, and invitation links. They run on whichever listener serves
  * them (sessions use that listener's cookie); the public listener is the
  * usual one. State-changing routes are JSON POSTs, which the listeners
  * accept only with this origin's `Origin` header (a CORS preflight stops
@@ -161,10 +163,14 @@ export function createSignInRoutes(args: {
   }
 
   function providerConfig(url: URL): OAuthProviderConfig | null {
-    const id = url.pathname.split("/")[3] as OAuthProviderId | undefined;
-    if (id !== "github" && id !== "google") return null;
-    return args.providers[id];
+    return oauthProvider(args.providers, url.pathname.split("/")[3]);
   }
+
+  /** What pages call a provider: "Google", or the OIDC button's name. */
+  const providerName = (id: string) =>
+    oauthProvider(args.providers, id)?.label ??
+    PROVIDER_LABELS[id as keyof typeof PROVIDER_LABELS] ??
+    id;
 
   const redirectUri = (access: RequestAccess, provider: OAuthProviderConfig) =>
     `${access.ownOrigin}/auth/oauth/${provider.id}/callback`;
@@ -178,6 +184,7 @@ export function createSignInRoutes(args: {
       : null;
     const outcome = resolveIdentity(args.store, identity, {
       signup: args.providers.signup,
+      signupDomains: args.providers.signupDomains,
       linkUserId: options.linkUserId,
       inviteUserId: invite?.user.id ?? null,
     });
@@ -279,10 +286,23 @@ export function createSignInRoutes(args: {
     access: RequestAccess,
     principal: Principal | null,
   ) {
-    const provider = providerConfig(url);
-    if (!provider) return json({ error: "not configured" }, 404);
+    const configured = providerConfig(url);
+    if (!configured) return json({ error: "not configured" }, 404);
     if (!oauthCapableOrigin(access.ownOrigin))
       throw new RequestError("sign-in with this provider needs HTTPS");
+    let provider: OAuthProviderConfig;
+    try {
+      provider = await resolveProvider(configured, args.fetch);
+    } catch (error) {
+      logger.warn("OIDC discovery failed", {
+        provider: configured.id,
+        error: (error as Error).message,
+      });
+      throw new RequestError(
+        `${configured.label} is unreachable; try again later`,
+        502,
+      );
+    }
     const body = await readJsonObject(req, MAX_BODY_BYTES);
     const intent = body.intent === "link" ? "link" : "login";
     if (intent === "link" && principal?.kind !== "user")
@@ -331,7 +351,7 @@ export function createSignInRoutes(args: {
   ) {
     const response = htmlPage(req, (locale) =>
       renderSignInResultPage(locale, {
-        provider: flow?.provider ?? null,
+        provider: flow ? providerName(flow.provider) : null,
         ...outcome,
       }),
     );
@@ -376,7 +396,7 @@ export function createSignInRoutes(args: {
     let identity: ExternalIdentity;
     try {
       identity = await fetchIdentity(
-        provider,
+        await resolveProvider(provider, args.fetch),
         redirectUri(access, provider),
         code,
         flow.verifier,
@@ -409,7 +429,7 @@ export function createSignInRoutes(args: {
           flow: flow.id,
           confirm: token,
           pairing: flow.pairing,
-          provider: flow.provider,
+          provider: providerName(flow.provider),
           label: identity.label,
           intent: flow.intent,
         }),
@@ -516,6 +536,7 @@ export function createSignInRoutes(args: {
           status: "unknown",
           label: result.label ?? "",
           provider: flow.provider,
+          provider_name: providerName(flow.provider),
         });
       default:
         return json({ status: "failed", error: result.error ?? "failed" });

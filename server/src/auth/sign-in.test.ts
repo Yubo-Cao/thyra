@@ -24,7 +24,12 @@ import {
 import { createOAuthFlowStore } from "./oauth";
 import { createPasskeyService } from "./passkeys";
 import { createAuthenticator, type Principal } from "./principal";
-import { loadAuthProviders, providerEnvironment } from "./providers";
+import {
+  loadAuthProviders,
+  type OAuthProviderId,
+  providerEnvironment,
+} from "./providers";
+import { renderLoginPage } from "./pages";
 import { createAuthRoutes } from "./routes";
 import { createInviteStore } from "./sign-in";
 import { createSignInRoutes } from "./sign-in-routes";
@@ -381,7 +386,7 @@ describe("email sign-in", () => {
 /** Start an OAuth flow and follow the stub provider back to the callback. */
 async function oauthRoundTrip(
   ctx: Ctx,
-  provider: "github" | "google",
+  provider: OAuthProviderId,
   options: { intent?: "login" | "link"; cookie?: string; invite?: string } = {},
 ) {
   const started = await ctx.call("POST", `/auth/oauth/${provider}/start`, {
@@ -614,6 +619,114 @@ describe("GitHub and Google sign-in", () => {
   });
 });
 
+describe("Microsoft and OpenID Connect sign-in", () => {
+  /** Follow a login round trip to its callback response. */
+  async function login(ctx: Ctx, provider: OAuthProviderId) {
+    const trip = await oauthRoundTrip(ctx, provider);
+    return ctx.call("GET", `${trip.callback.pathname}${trip.callback.search}`, {
+      cookie: trip.flowCookie,
+    });
+  }
+
+  test("Microsoft addresses are never verified, so they never link by email", async () => {
+    const ctx = setup({ THYRA_SIGNUP_DOMAINS: "contoso.example" });
+    await signedIn(ctx, "person@contoso.example");
+    const page = await login(ctx, "microsoft");
+    expect(await page.text()).toContain(
+      "Signed in as person@contoso.example via Microsoft",
+    );
+    expect(ctx.store.findIdentity("microsoft", "ms-sub-1")).toBeNull();
+    expect(stub.failures).toEqual([]);
+  });
+
+  test("a linked Microsoft identity signs in by its subject", async () => {
+    const ctx = setup();
+    const { user, cookie } = await signedIn(ctx);
+    const link = await oauthRoundTrip(ctx, "microsoft", {
+      intent: "link",
+      cookie,
+    });
+    expect(new URL(link.start.url).searchParams.get("prompt")).toBe(
+      "select_account",
+    );
+    await ctx.call("GET", `${link.callback.pathname}${link.callback.search}`, {
+      cookie: `${cookie}; ${link.flowCookie}`,
+    });
+    expect(ctx.store.findIdentity("microsoft", "ms-sub-1")?.id).toBe(user.id);
+    const done = await login(ctx, "microsoft");
+    expect(done.status).toBe(303);
+    const principal = await ctx.principalOf(ctx.cookieOf(done));
+    expect(principal?.kind === "user" && principal.user.id).toBe(user.id);
+  });
+
+  test("OIDC endpoints come from discovery and identities are bound to the issuer", async () => {
+    const ctx = setup();
+    const before = stub.state.discoveries;
+    const trip = await oauthRoundTrip(ctx, "oidc");
+    expect(new URL(trip.start.url).pathname).toBe("/issuer/authorize");
+    expect(new URL(trip.start.url).searchParams.get("scope")).toBe(
+      "openid email profile",
+    );
+    const page = await ctx.call(
+      "GET",
+      `${trip.callback.pathname}${trip.callback.search}`,
+      { cookie: trip.flowCookie },
+    );
+    // Invite-only: a verified address outside the sign-up domains waits.
+    expect(await page.text()).toContain(
+      "Signed in as staff@corp.example via Corp SSO",
+    );
+    // Discovery is cached across the start and the callback.
+    expect(stub.state.discoveries - before).toBeLessThanOrEqual(1);
+    expect(stub.failures).toEqual([]);
+  });
+
+  test("sign-up domains admit verified addresses as members", async () => {
+    const ctx = setup({ THYRA_SIGNUP_DOMAINS: "@Corp.Example, example.org" });
+    const done = await login(ctx, "oidc");
+    expect(done.status).toBe(303);
+    const principal = await ctx.principalOf(ctx.cookieOf(done));
+    expect(principal?.kind === "user" && principal.user.role).toBe("member");
+    expect(principal?.kind === "user" && principal.user.displayName).toBe(
+      "Sam Staff",
+    );
+    const identity = ctx.store.findIdentity(
+      "oidc",
+      `${stub.base}/issuer#oidc-sub-1`,
+    );
+    expect(identity?.role).toBe("member");
+
+    // An unverified address in the domain is still unknown.
+    stub.state.oidc.email_verified = false;
+    stub.state.oidc.sub = "oidc-sub-2";
+    try {
+      const page = await login(ctx, "oidc");
+      expect(await page.text()).toContain("Ask the owner for access");
+    } finally {
+      stub.state.oidc.email_verified = true;
+      stub.state.oidc.sub = "oidc-sub-1";
+    }
+  });
+
+  test("the login page offers every configured provider", () => {
+    const html = renderLoginPage("en", null, {
+      email: false,
+      github: true,
+      google: true,
+      microsoft: true,
+      oidc: true,
+      oidc_name: 'Okta <"corp">',
+    });
+    expect(html).toContain('data-provider="microsoft"');
+    expect(html).toContain("Continue with Microsoft");
+    expect(html).toContain(
+      'data-provider="oidc" data-name="Okta &lt;&quot;corp&quot;&gt;"',
+    );
+    expect(html).toContain("Continue with Okta &lt;&quot;corp&quot;&gt;");
+    expect(html).toContain("Choose how to sign in.");
+  });
+});
+
 describe("invitations", () => {
   test("invite by email creates a pending account with a grant and mails a link", async () => {
     const ctx = setup();
@@ -686,6 +799,9 @@ describe("the account page", () => {
       email: true,
       github: true,
       google: true,
+      microsoft: true,
+      oidc: true,
+      oidc_name: "Corp SSO",
     });
     const last = await ctx.call("POST", "/api/auth/identities/remove", {
       body: { provider: "email", subject: "owner@example.com" },
@@ -857,6 +973,23 @@ describe("avatar validation", () => {
     );
     expect(inspectAvatar(new Uint8Array()).ok).toBe(false);
   });
+
+  test("keeps a file that something else still shows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "thyra-avatars-"));
+    dirs.push(dir);
+    const shown = new Set<string>();
+    const files = createAvatarFiles(dir, { inUse: (name) => shown.has(name) });
+    const image = webp(64, 64);
+    const checked = inspectAvatar(image);
+    if (!checked.ok) throw new Error(checked.error);
+    const name = files.save(image, checked.image);
+    shown.add(name);
+    files.remove(name);
+    expect(files.read(name)).not.toBeNull();
+    shown.delete(name);
+    files.remove(name);
+    expect(files.read(name)).toBeNull();
+  });
 });
 
 describe("provider configuration", () => {
@@ -906,5 +1039,54 @@ describe("provider configuration", () => {
     expect(real.email?.endpoint).toBe("https://api.resend.com/emails");
     expect(real.warnings.join()).toContain("THYRA_TEST_RESEND_URL");
     expect(real.google?.tokenUrl).toBe("https://oauth2.googleapis.com/token");
+  });
+
+  test("configures Microsoft, OIDC and sign-up domains", () => {
+    const loaded = loadAuthProviders({
+      THYRA_MICROSOFT_CLIENT_ID: "m",
+      THYRA_MICROSOFT_CLIENT_SECRET: "s",
+      THYRA_MICROSOFT_TENANT: "contoso.onmicrosoft.com",
+      THYRA_OIDC_ISSUER: "https://id.example.com/realms/corp/",
+      THYRA_OIDC_CLIENT_ID: "o",
+      THYRA_OIDC_CLIENT_SECRET: "s",
+      THYRA_OIDC_NAME: "Keycloak",
+      THYRA_OIDC_SCOPES: "email profile groups",
+      THYRA_SIGNUP_DOMAINS: "Example.com, @corp.example, not a domain,,",
+    });
+    expect(loaded.microsoft?.authorizeUrl).toBe(
+      "https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/authorize",
+    );
+    expect(loaded.microsoft?.avatarHosts).toBeNull();
+    expect(loaded.oidc?.issuer).toBe("https://id.example.com/realms/corp");
+    expect(loaded.oidc?.label).toBe("Keycloak");
+    expect(loaded.oidc?.scopes).toEqual([
+      "openid",
+      "email",
+      "profile",
+      "groups",
+    ]);
+    expect(loaded.signupDomains).toEqual(["example.com", "corp.example"]);
+    expect(loaded.warnings.join()).toContain('"not a domain"');
+
+    const refused = loadAuthProviders({
+      THYRA_MICROSOFT_CLIENT_ID: "m",
+      THYRA_MICROSOFT_CLIENT_SECRET: "s",
+      THYRA_MICROSOFT_TENANT: "../evil",
+      THYRA_OIDC_ISSUER: "http://id.example.com",
+      THYRA_OIDC_CLIENT_ID: "o",
+      THYRA_OIDC_CLIENT_SECRET: "s",
+    });
+    expect(refused.microsoft?.tokenUrl).toBe(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    );
+    expect(refused.oidc).toBeNull();
+    expect(refused.warnings.join()).toContain("THYRA_MICROSOFT_TENANT");
+    expect(refused.warnings.join()).toContain("THYRA_OIDC_ISSUER");
+    expect(
+      loadAuthProviders({ THYRA_OIDC_ISSUER: "https://id.example.com" })
+        .warnings,
+    ).toEqual([
+      "OIDC sign-in needs THYRA_OIDC_CLIENT_ID and THYRA_OIDC_CLIENT_SECRET; it stays off",
+    ]);
   });
 });

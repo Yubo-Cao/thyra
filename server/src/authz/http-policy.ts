@@ -72,7 +72,7 @@ export const HTTP_POLICY = {
   "sso.callback": { class: "write", scope: "public" },
   "sso.redeem": { class: "write", scope: "public" },
   // Optional sign-in providers (auth/sign-in-routes.ts): email codes and
-  // links, GitHub and Google, and invitation links. Rate-limited per client;
+  // links, GitHub, Google, Microsoft and OIDC, and invitation links. Rate-limited per client;
   // POSTs need this origin's Origin header.
   "email.start": { class: "write", scope: "public" },
   "email.verify": { class: "write", scope: "public" },
@@ -250,8 +250,9 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/herdr/setup": { POST: "herdr.setup" },
 };
 
-/** GitHub and Google sign-in: start (POST) and the provider's return (GET). */
-const OAUTH_PATH = /^\/auth\/oauth\/(?:github|google)\/(start|callback)$/;
+/** OAuth and OIDC sign-in: start (POST) and the provider's return (GET). */
+const OAUTH_PATH =
+  /^\/auth\/oauth\/(?:github|google|microsoft|oidc)\/(start|callback)$/;
 /** An uploaded profile picture, named by its content hash. */
 const AVATAR_PATH = /^\/avatars\/[0-9a-f]{64}\.(?:webp|jpg)$/;
 

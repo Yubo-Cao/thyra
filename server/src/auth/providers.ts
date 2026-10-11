@@ -6,16 +6,28 @@
  * - Email (Resend): `THYRA_RESEND_API_KEY` and `THYRA_EMAIL_FROM`.
  * - GitHub: `THYRA_GITHUB_CLIENT_ID` and `THYRA_GITHUB_CLIENT_SECRET`.
  * - Google: `THYRA_GOOGLE_CLIENT_ID` and `THYRA_GOOGLE_CLIENT_SECRET`.
+ * - Microsoft (personal, work and school accounts):
+ *   `THYRA_MICROSOFT_CLIENT_ID` and `THYRA_MICROSOFT_CLIENT_SECRET`, and
+ *   optionally `THYRA_MICROSOFT_TENANT` (default `common`).
+ * - Any other OpenID Connect provider (Okta, Auth0, Keycloak, Authentik,
+ *   GitLab, ...): `THYRA_OIDC_ISSUER`, `THYRA_OIDC_CLIENT_ID` and
+ *   `THYRA_OIDC_CLIENT_SECRET`; `THYRA_OIDC_NAME` labels its button
+ *   (default "SSO") and `THYRA_OIDC_SCOPES` overrides `openid email profile`.
+ *   Its endpoints come from the issuer's discovery document.
  * - `THYRA_SIGNUP`: `invite` (default; unknown identities get no account)
  *   or `open` (they become members without grants).
+ * - `THYRA_SIGNUP_DOMAINS`: comma-separated email domains; an unknown
+ *   identity whose verified address is in one becomes a member without
+ *   grants even when sign-up is invite-only.
  *
  * The server reads that file too (`providerEnvironment`); variables already
  * in the environment win.
  *
- * `THYRA_TEST_RESEND_URL`, `THYRA_TEST_GITHUB_URL` and
- * `THYRA_TEST_GOOGLE_URL` point a provider at a local stub server; they are
- * accepted only for loopback HTTP(S) URLs, so they can never redirect real
- * credentials elsewhere.
+ * `THYRA_TEST_RESEND_URL`, `THYRA_TEST_GITHUB_URL`, `THYRA_TEST_GOOGLE_URL`
+ * and `THYRA_TEST_MICROSOFT_URL` point a provider at a local stub server;
+ * they are accepted only for loopback HTTP(S) URLs, so they can never
+ * redirect real credentials elsewhere. The OIDC issuer must be HTTPS, or
+ * HTTP on loopback.
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -59,28 +71,50 @@ export type EmailConfig = {
   endpoint: string;
 };
 
-export type OAuthProviderId = "github" | "google";
+export const OAUTH_PROVIDER_IDS = [
+  "github",
+  "google",
+  "microsoft",
+  "oidc",
+] as const;
+
+export type OAuthProviderId = (typeof OAUTH_PROVIDER_IDS)[number];
+
+export function isOAuthProviderId(value: unknown): value is OAuthProviderId {
+  return OAUTH_PROVIDER_IDS.includes(value as OAuthProviderId);
+}
 
 export type OAuthProviderConfig = {
   id: OAuthProviderId;
+  /** What buttons and pages call it: "Google", or `THYRA_OIDC_NAME`. */
+  label: string;
   clientId: string;
   clientSecret: string;
   authorizeUrl: string;
   tokenUrl: string;
-  /** GitHub `/user` or Google's OpenID Connect userinfo. */
+  /** GitHub `/user`, or the OpenID Connect userinfo endpoint. */
   userUrl: string;
   /** GitHub `/user/emails` (primary and verified flags). */
   emailsUrl?: string;
+  /**
+   * An OpenID Connect issuer whose discovery document supplies the three
+   * endpoints above (left empty until then); identities are bound to it.
+   */
+  issuer?: string;
   scopes: string[];
-  /** Hosts profile pictures may be imported from. */
-  avatarHosts: RegExp;
+  /** Hosts profile pictures may be imported from; null: none. */
+  avatarHosts: RegExp | null;
 };
 
 export type AuthProviders = {
   email: EmailConfig | null;
   github: OAuthProviderConfig | null;
   google: OAuthProviderConfig | null;
+  microsoft: OAuthProviderConfig | null;
+  oidc: OAuthProviderConfig | null;
   signup: SignupPolicy;
+  /** Verified email domains that may sign up whatever `signup` says. */
+  signupDomains: string[];
   warnings: string[];
 };
 
@@ -121,6 +155,42 @@ function pair(
   return null;
 }
 
+/** An issuer URL without a trailing slash: HTTPS, or HTTP on loopback. */
+function issuerUrl(value: string, warnings: string[]): string | null {
+  try {
+    const url = new URL(value);
+    const loopback =
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "[::1]";
+    if (
+      !url.search &&
+      !url.hash &&
+      (url.protocol === "https:" || (url.protocol === "http:" && loopback))
+    )
+      return url.href.replace(/\/+$/, "");
+  } catch {}
+  warnings.push(
+    "ignoring THYRA_OIDC_ISSUER: it must be an https:// URL without a query; OIDC sign-in stays off",
+  );
+  return null;
+}
+
+function signupDomains(env: Env, warnings: string[]): string[] {
+  const domains: string[] = [];
+  for (const entry of (env.THYRA_SIGNUP_DOMAINS ?? "").split(",")) {
+    const domain = entry.trim().toLowerCase().replace(/^@/, "");
+    if (!domain) continue;
+    if (/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(domain))
+      domains.push(domain);
+    else
+      warnings.push(
+        `ignoring THYRA_SIGNUP_DOMAINS entry ${JSON.stringify(entry.trim())}: not a domain name`,
+      );
+  }
+  return [...new Set(domains)];
+}
+
 export function loadAuthProviders(env: Env = process.env): AuthProviders {
   const warnings: string[] = [];
   const signupText = env.THYRA_SIGNUP?.trim().toLowerCase() || "invite";
@@ -158,6 +228,7 @@ export function loadAuthProviders(env: Env = process.env): AuthProviders {
     const base = testBase(env, "THYRA_TEST_GITHUB_URL", warnings);
     github = {
       id: "github",
+      label: "GitHub",
       clientId: githubKeys.id,
       clientSecret: githubKeys.secret,
       authorizeUrl: `${base ?? "https://github.com"}/login/oauth/authorize`,
@@ -183,6 +254,7 @@ export function loadAuthProviders(env: Env = process.env): AuthProviders {
     const base = testBase(env, "THYRA_TEST_GOOGLE_URL", warnings);
     google = {
       id: "google",
+      label: "Google",
       clientId: googleKeys.id,
       clientSecret: googleKeys.secret,
       authorizeUrl: base
@@ -198,7 +270,93 @@ export function loadAuthProviders(env: Env = process.env): AuthProviders {
         : /^[a-z0-9-]+\.googleusercontent\.com$/,
     };
   }
-  return { email, github, google, signup, warnings };
+
+  let microsoft: OAuthProviderConfig | null = null;
+  const microsoftKeys = pair(
+    env,
+    "THYRA_MICROSOFT_CLIENT_ID",
+    "THYRA_MICROSOFT_CLIENT_SECRET",
+    "Microsoft",
+    warnings,
+  );
+  if (microsoftKeys) {
+    const base = testBase(env, "THYRA_TEST_MICROSOFT_URL", warnings);
+    let tenant = env.THYRA_MICROSOFT_TENANT?.trim() || "common";
+    if (!/^[A-Za-z0-9.-]{1,100}$/.test(tenant)) {
+      warnings.push(
+        "ignoring THYRA_MICROSOFT_TENANT: expected a tenant id, a domain, common, organizations or consumers",
+      );
+      tenant = "common";
+    }
+    const login = `${base ?? "https://login.microsoftonline.com"}/${tenant}/oauth2/v2.0`;
+    microsoft = {
+      id: "microsoft",
+      label: "Microsoft",
+      clientId: microsoftKeys.id,
+      clientSecret: microsoftKeys.secret,
+      authorizeUrl: `${login}/authorize`,
+      tokenUrl: `${login}/token`,
+      userUrl: `${base ?? "https://graph.microsoft.com"}/oidc/userinfo`,
+      scopes: ["openid", "email", "profile"],
+      // Its pictures need the access token; upload one instead.
+      avatarHosts: null,
+    };
+  }
+
+  let oidc: OAuthProviderConfig | null = null;
+  const oidcKeys = pair(
+    env,
+    "THYRA_OIDC_CLIENT_ID",
+    "THYRA_OIDC_CLIENT_SECRET",
+    "OIDC",
+    warnings,
+  );
+  const issuerText = env.THYRA_OIDC_ISSUER?.trim();
+  if (oidcKeys && !issuerText)
+    warnings.push("OIDC sign-in needs THYRA_OIDC_ISSUER; it stays off");
+  else if (issuerText && !oidcKeys && !env.THYRA_OIDC_CLIENT_ID?.trim())
+    warnings.push(
+      "OIDC sign-in needs THYRA_OIDC_CLIENT_ID and THYRA_OIDC_CLIENT_SECRET; it stays off",
+    );
+  const issuer =
+    oidcKeys && issuerText ? issuerUrl(issuerText, warnings) : null;
+  if (oidcKeys && issuer) {
+    const scopes = (env.THYRA_OIDC_SCOPES?.trim() || "openid email profile")
+      .split(/[\s,]+/)
+      .filter(Boolean);
+    if (!scopes.includes("openid")) scopes.unshift("openid");
+    oidc = {
+      id: "oidc",
+      label: env.THYRA_OIDC_NAME?.trim().slice(0, 40) || "SSO",
+      clientId: oidcKeys.id,
+      clientSecret: oidcKeys.secret,
+      authorizeUrl: "",
+      tokenUrl: "",
+      userUrl: "",
+      issuer,
+      scopes,
+      avatarHosts: null,
+    };
+  }
+
+  return {
+    email,
+    github,
+    google,
+    microsoft,
+    oidc,
+    signup,
+    signupDomains: signupDomains(env, warnings),
+    warnings,
+  };
+}
+
+/** The configured OAuth or OpenID Connect provider with this id. */
+export function oauthProvider(
+  providers: AuthProviders,
+  id: unknown,
+): OAuthProviderConfig | null {
+  return isOAuthProviderId(id) ? providers[id] : null;
 }
 
 /** Which providers the login page and account page may offer. */
@@ -207,5 +365,11 @@ export function providerFlags(providers: AuthProviders) {
     email: Boolean(providers.email),
     github: Boolean(providers.github),
     google: Boolean(providers.google),
+    microsoft: Boolean(providers.microsoft),
+    oidc: Boolean(providers.oidc),
+    /** The OIDC provider's button name. */
+    oidc_name: providers.oidc?.label ?? "SSO",
   };
 }
+
+export type ProviderFlags = ReturnType<typeof providerFlags>;

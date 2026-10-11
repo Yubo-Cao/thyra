@@ -107,8 +107,14 @@ export function inspectAvatar(
 
 export type AvatarFiles = ReturnType<typeof createAvatarFiles>;
 
-/** Avatar files in `<data>/avatars`, named by content hash. */
-export function createAvatarFiles(dir: string) {
+/**
+ * Avatar files in `<data>/avatars`, named by content hash. `inUse` keeps a
+ * file another account or profile still shows when one of them drops it.
+ */
+export function createAvatarFiles(
+  dir: string,
+  options: { inUse?: (name: string) => boolean } = {},
+) {
   return {
     dir,
     save(bytes: Uint8Array, image: AvatarImage): string {
@@ -127,7 +133,7 @@ export function createAvatarFiles(dir: string) {
       }
     },
     remove(name: string) {
-      if (AVATAR_FILE_PATTERN.test(name))
+      if (AVATAR_FILE_PATTERN.test(name) && !options.inUse?.(name))
         rmSync(join(dir, name), { force: true });
     },
   };

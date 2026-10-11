@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AvatarImage } from "../accounts/avatars";
 import { parseTrustedProxies } from "./client-address";
 import {
   createIdentityService,
@@ -42,11 +43,35 @@ const WHOIS: Record<string, unknown> = {
   },
 };
 
+/** A minimal lossless WebP header of a given size. */
+function webp(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(40);
+  const view = new DataView(bytes.buffer);
+  bytes.set(new TextEncoder().encode("RIFF"), 0);
+  view.setUint32(4, 32, true);
+  bytes.set(new TextEncoder().encode("WEBPVP8L"), 8);
+  view.setUint32(16, 20, true);
+  bytes[20] = 0x2f;
+  view.setUint32(21, ((height - 1) << 14) | (width - 1), true);
+  return bytes;
+}
+
 function harness(options: { whois?: boolean; path?: string } = {}) {
   let clock = 1_000_000;
   const now = () => clock;
   const whoisCalls: string[] = [];
+  const saved: { name: string; image: AvatarImage }[] = [];
+  const removed: string[] = [];
   const service = createIdentityService<object>({
+    avatars: {
+      save(bytes, image) {
+        const name = `${String(saved.length).padStart(64, "0")}.webp`;
+        saved.push({ name, image });
+        expect(bytes.length).toBeGreaterThan(0);
+        return name;
+      },
+      remove: (name) => removed.push(name),
+    },
     store: createIdentityStore({ path: options.path ?? null, now }),
     whois: createTailscaleWhois({
       backend:
@@ -82,6 +107,8 @@ function harness(options: { whois?: boolean; path?: string } = {}) {
     service,
     connect,
     whoisCalls,
+    saved,
+    removed,
     advance: (ms: number) => {
       clock += ms;
     },
@@ -381,6 +408,77 @@ describe("server-side profiles", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  test("people without an account set, replace and remove their picture", async () => {
+    const { service, connect, saved, removed } = harness({ whois: false });
+    const local = connect({ peer: "127.0.0.1" });
+    await service.hello(local.socket, {});
+    await present(service, local.socket, "web-local");
+    const picture = Buffer.from(webp(256, 256)).toString("base64");
+    const first = await service.updateProfile(local.socket, {
+      avatar: picture,
+    });
+    expect(first.identity.avatar_url).toBe(`/avatars/${saved[0]!.name}`);
+    expect(saved[0]!.image).toEqual({
+      type: "image/webp",
+      width: 256,
+      height: 256,
+    });
+    expect(service.avatarInUse(saved[0]!.name)).toBe(true);
+    // Presence shows it to everyone, and a later name change keeps it.
+    const snapshot = service.annotateSnapshot({
+      participants: [{ participant_id: "web-local", display_name: "x" }],
+    }) as Annotated;
+    expect(Object.values(snapshot.people ?? {})[0]?.avatar_url).toBe(
+      first.identity.avatar_url,
+    );
+    const renamed = await service.updateProfile(local.socket, {
+      display_name: "Host",
+    });
+    expect(renamed.identity.avatar_url).toBe(first.identity.avatar_url);
+
+    await service.updateProfile(local.socket, { avatar: picture });
+    expect(removed).toEqual([saved[0]!.name]);
+    const cleared = await service.updateProfile(local.socket, {
+      avatar: null,
+    });
+    expect(cleared.identity.avatar_url).toBeUndefined();
+    expect(removed).toEqual([saved[0]!.name, saved[1]!.name]);
+
+    await expect(
+      service.updateProfile(local.socket, {
+        avatar: Buffer.from(webp(512, 512)).toString("base64"),
+      }),
+    ).rejects.toThrow("256x256");
+    await expect(
+      service.updateProfile(local.socket, { avatar: "bm90IGFuIGltYWdl" }),
+    ).rejects.toThrow("WebP or JPEG");
+  });
+
+  test("an account's picture is set on the account, not here", async () => {
+    const { service } = harness({ whois: false });
+    const socket = {};
+    const upgrade = service.upgradeContext(
+      new Request("http://127.0.0.1:8822/ws"),
+      "198.51.100.9",
+    );
+    service.attach(socket, {
+      ...upgrade.context,
+      account: {
+        key: "user:alice",
+        displayName: "Alice",
+        avatarUrl: "/avatars/a.webp",
+      },
+    });
+    expect((await service.hello(socket, {})).identity.avatar_url).toBe(
+      "/avatars/a.webp",
+    );
+    await expect(
+      service.updateProfile(socket, {
+        avatar: Buffer.from(webp(64, 64)).toString("base64"),
+      }),
+    ).rejects.toThrow("Configuration > Account");
   });
 
   test("migrates a legacy browser profile once", async () => {

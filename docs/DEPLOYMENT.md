@@ -267,7 +267,10 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_RESEND_API_KEY`, `THYRA_EMAIL_FROM` | Email sign-in codes and invitations through Resend; see [sign-in providers](#sign-in-providers) |
 | `THYRA_GITHUB_CLIENT_ID`, `THYRA_GITHUB_CLIENT_SECRET` | "Continue with GitHub"; see [sign-in providers](#sign-in-providers) |
 | `THYRA_GOOGLE_CLIENT_ID`, `THYRA_GOOGLE_CLIENT_SECRET` | "Continue with Google"; see [sign-in providers](#sign-in-providers) |
+| `THYRA_MICROSOFT_CLIENT_ID`, `THYRA_MICROSOFT_CLIENT_SECRET`, `THYRA_MICROSOFT_TENANT` | "Continue with Microsoft" (tenant default `common`); see [sign-in providers](#sign-in-providers) |
+| `THYRA_OIDC_ISSUER`, `THYRA_OIDC_CLIENT_ID`, `THYRA_OIDC_CLIENT_SECRET`, `THYRA_OIDC_NAME`, `THYRA_OIDC_SCOPES` | Single sign-on through any OpenID Connect provider; see [sign-in providers](#sign-in-providers) |
 | `THYRA_SIGNUP=invite\|open` | Whether unknown verified identities get a member account (default `invite`: they do not) |
+| `THYRA_SIGNUP_DOMAINS` | Comma-separated email domains whose verified addresses get a member account even when sign-up is `invite` |
 | `THYRA_TAILNET_SSO_URL` | HTTPS origin of the tailnet listener (`https://dev.example.com`); tailnet devices then sign in to the public address automatically; see [tailnet sign-in](#tailnet-sign-in-on-the-public-address) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
@@ -316,7 +319,7 @@ Workspace owners share a workspace from its context menu (**Share workspace…**
 
 ### Sign-in providers
 
-Besides passkeys and tailnet login, Thyra can sign people in by email, GitHub and Google.
+Besides passkeys and tailnet login, Thyra can sign people in by email, GitHub, Google, Microsoft, and any OpenID Connect single sign-on (Okta, Auth0, Keycloak, Authentik, GitLab, Entra ID tenants and others).
 Each provider is off until its variables are set; put them in `~/.config/thyra/auth-providers.env` (mode `0600`), which the server reads at startup (a copy readable by others is ignored) and the systemd unit also loads with `EnvironmentFile=-%h/.config/thyra/auth-providers.env`:
 
 ```bash
@@ -327,6 +330,14 @@ THYRA_GITHUB_CLIENT_ID=...
 THYRA_GITHUB_CLIENT_SECRET=...
 THYRA_GOOGLE_CLIENT_ID=...
 THYRA_GOOGLE_CLIENT_SECRET=...
+THYRA_MICROSOFT_CLIENT_ID=...
+THYRA_MICROSOFT_CLIENT_SECRET=...
+THYRA_OIDC_ISSUER=https://login.example.com/realms/corp
+THYRA_OIDC_CLIENT_ID=...
+THYRA_OIDC_CLIENT_SECRET=...
+THYRA_OIDC_NAME="Example SSO"
+# Let anyone with a verified address at these domains in (as a member):
+THYRA_SIGNUP_DOMAINS=example.com
 ```
 
 - **Email** (Resend): verify the sending domain of `THYRA_EMAIL_FROM` in Resend (its SPF and DKIM records), then create an API key with sending access.
@@ -334,13 +345,19 @@ THYRA_GOOGLE_CLIENT_SECRET=...
   Every address gets the same answer; each address gets at most one message a minute, each client address ten every ten minutes, and five wrong codes end a message.
 - **GitHub**: create an OAuth app (GitHub **Settings > Developer settings > OAuth Apps**) with the callback URL `https://thyra.example.com/auth/oauth/github/callback`.
 - **Google**: create an OAuth client of type **Web application** in the Google Cloud console with the redirect URI `https://thyra.example.com/auth/oauth/google/callback` and the `openid`, `email` and `profile` scopes.
+  While the consent screen's publishing status is **Testing**, only its listed test users can sign in; publish it so everyone can.
+- **Microsoft**: register an application in Microsoft Entra ID (**App registrations > New registration**) with the **Web** redirect URI `https://thyra.example.com/auth/oauth/microsoft/callback`, then create a client secret under **Certificates & secrets**.
+  Choose the account types it accepts there and set `THYRA_MICROSOFT_TENANT` to match: `common` (default; work, school and personal accounts), `organizations`, `consumers`, or your tenant's id or domain.
+  Microsoft does not vouch for addresses, so its identities join existing accounts only by linking or invitation, never by address.
+- **OpenID Connect** (any other single sign-on): create a confidential web client with the redirect URI `https://thyra.example.com/auth/oauth/oidc/callback`, then set `THYRA_OIDC_ISSUER` to its issuer URL (the one serving `/.well-known/openid-configuration`; HTTPS), the client id and secret, and `THYRA_OIDC_NAME` for the button ("Continue with Example SSO"; default "SSO").
+  `THYRA_OIDC_SCOPES` replaces the default `openid email profile`. Addresses count as verified only when the provider sends `email_verified: true`.
 
 The callback host is the address people sign in on, normally `THYRA_PUBLIC_ORIGIN`; register one callback per address you use.
-Identities are linked by the provider's user id; a new GitHub or Google identity joins an existing account only when a signed-in person links it under **Configuration > Account**, when it arrives through an invitation, or when its address is verified (GitHub's primary verified address, Google's `email_verified`) and matches exactly one account's verified address.
-Anyone else who signs in gets "Signed in as … Ask the owner for access" and no account, unless `THYRA_SIGNUP=open` makes them members without grants.
+Identities are linked by the provider's user id; a new identity joins an existing account only when a signed-in person links it under **Configuration > Account**, when it arrives through an invitation, or when its address is verified (GitHub's primary verified address, `email_verified` for the others) and matches exactly one account's verified address.
+Anyone else who signs in gets "Signed in as … Ask the owner for access" and no account, unless `THYRA_SIGNUP=open` makes everyone, or `THYRA_SIGNUP_DOMAINS` makes people with a verified address at those domains, members without grants; owners then share workspaces with them.
 When the provider returns to a browser other than the one that started (an iOS Home Screen app opens it in Safari), that browser shows a 4-digit number and asks before finishing; the app, still polling, then signs in.
 
-**Configuration > Account** edits the display name and picture (cropped and scaled to 256 px in the browser, or imported from a linked GitHub or Google account), adds and removes passkeys, GitHub, Google and email addresses (never the last way to sign in), and lists sessions with their device, method and last activity, one of which or all others can be signed out.
+**Configuration > Account** edits the display name and picture (cropped and scaled to 256 px in the browser, or imported from a linked GitHub or Google account), adds and removes passkeys, linked providers and email addresses (never the last way to sign in), and lists sessions with their device, method and last activity, one of which or all others can be signed out.
 
 ### Read-only share links
 
@@ -354,7 +371,7 @@ thyra share revoke <link-id>
 ```
 
 A guest who opens the link sees only that workspace (or pane), may watch the terminals, browse their history (a local copy that moves no one else's view) and read agent status (and, for a whole-workspace link, its files and Git changes), and never types, resizes, takes control or changes anything.
-Guests appear to others as "Guest" plus the link's label and can follow them.
+Guests appear to others as "Guest" plus the link's label.
 The URL is shown once (only a digest is stored); `--expires` takes `30m` to `30d` (default `24h`), and revoking a link or its expiry disconnects its guests within a second.
 Links point at `THYRA_PUBLIC_ORIGIN` when the [public listener](#public-access-through-cloudflare-tunnel) is set (`--base-url` overrides it), since guests usually have no tailnet access; they also work on the primary listener.
 A browser already signed in (tailnet, passkey or local use) keeps its account and grants: the landing page offers **Open with my account** or **Open as guest**, and only the latter turns it into the guest until it chooses **Leave shared view** in the guest badge.
@@ -546,6 +563,7 @@ Purging is never needed: every build uses new file names.
 
 Thyra recognizes the same device, and with Tailscale the same person, across tabs, browsers, and the home screen app, so the collaborator list shows "Yubo · iphone, liveopt" instead of one entry per tab.
 A logged-in account is the person; custom display names are stored on the server per person (or per device for direct local use without Tailscale), so every device of that person shares one name.
+Everyone sets their picture in the collaborator popover: it is the account's picture when signed in, and is kept on the server beside the account pictures for direct local use.
 See [collaborator identity](./ARCHITECTURE.md#collaborator-identity) for the rules.
 
 - **Tailscale.** When a browser connects from a tailnet address, Thyra asks tailscaled who that node and its user are, through `/var/run/tailscale/tailscaled.sock` on Linux or the `tailscale` CLI elsewhere.

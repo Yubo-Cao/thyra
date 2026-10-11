@@ -1,5 +1,5 @@
 import "./CollaborationBar.css";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, ImageUp, Pencil, Trash2, X } from "lucide-react";
 import { AvatarGroup } from "./ui/AvatarGroup";
 import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
@@ -25,21 +25,14 @@ import {
   collaboratorGroups,
   collaboratorLabel,
   deviceSummary,
-  type PresenceSelf,
 } from "../collaborationGroups";
 import { bridge } from "../api";
-import { useFollowController } from "../followController";
-import { useFollowTarget } from "../followState";
 import { t } from "../i18n";
+import { saveProfilePicture } from "../profilePicture";
 import { store, useStoreSelector } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
 import { usePresenceSelf } from "../usePanePresence";
 import { usePrincipal } from "../principal";
-import {
-  FollowChip,
-  FollowersIndicator,
-  PersonFocusActions,
-} from "./CollaborationFollow";
 import { GuestBadge, GuestNote } from "./GuestBadge";
 
 const HEARTBEAT_MS = 12_000;
@@ -64,19 +57,8 @@ function matchDescription(
   return t("Recognized by this browser");
 }
 
-/** Each person with their devices, where they look, Jump and Follow. */
-function CollaboratorList({
-  people,
-  snapshot,
-  self,
-  onDone,
-}: {
-  people: Collaborator[];
-  snapshot: CollaborationSnapshot | null;
-  self: PresenceSelf;
-  /** Close the popover after Jump or Follow. */
-  onDone: () => void;
-}) {
+/** Each person with their picture and devices. */
+function CollaboratorList({ people }: { people: Collaborator[] }) {
   return (
     <ul className="collaboration-people">
       {people.map((person) => (
@@ -97,12 +79,6 @@ function CollaboratorList({
             <span className="collaboration-person-devices">
               {deviceSummary(person.devices)}
             </span>
-            <PersonFocusActions
-              person={person}
-              snapshot={snapshot}
-              self={self}
-              onDone={onDone}
-            />
           </span>
         </li>
       ))}
@@ -120,10 +96,12 @@ export function CollaborationBar() {
   const [name, setName] = useState(() => collaborationProfile().displayName);
   const profile = collaborationProfile();
   const refreshRef = useRef<() => void>(() => {});
-  const following = useFollowTarget();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [pictureBusy, setPictureBusy] = useState(false);
+  const [pictureError, setPictureError] = useState("");
+  const principal = usePrincipal();
   // Share-link guests have a fixed name ("Guest") and a read-only notice.
-  const share = usePrincipal()?.share;
-  useFollowController(client, self);
+  const share = principal?.share;
 
   useEffect(() => {
     startCollaborationIdentity();
@@ -172,15 +150,10 @@ export function CollaborationBar() {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [
-    client,
-    status,
-    // Followers are announced with presence, so the followed person sees them.
-    following?.key,
-  ]);
+  }, [client, status]);
 
   // Announce a new focus from the store update itself, not after React
-  // renders the switch: followers move sooner.
+  // renders the switch: pane avatars elsewhere move sooner.
   useEffect(() => {
     const focusKey = () => JSON.stringify(collaborationFocusIds(store.get()));
     let last = focusKey();
@@ -219,6 +192,21 @@ export function CollaborationBar() {
         },
         ...grouped,
       ];
+  const selfPicture = identity?.avatar_url ?? principal?.user?.avatar_url;
+  const savePicture = (file: Blob | null) => {
+    setPictureBusy(true);
+    setPictureError("");
+    saveProfilePicture(Boolean(principal?.user), file)
+      .then(() => refreshRef.current())
+      .catch((error: unknown) =>
+        setPictureError(
+          error instanceof Error && error.message
+            ? error.message
+            : t("Could not load that picture."),
+        ),
+      )
+      .finally(() => setPictureBusy(false));
+  };
   const submitName = (event: FormEvent) => {
     event.preventDefault();
     setOpen(false);
@@ -247,12 +235,7 @@ export function CollaborationBar() {
               aria-label={t("Live collaborators: {people}", { people: names })}
               data-tooltip={names}
             >
-              <AvatarGroup
-                people={people.map((person) => ({
-                  ...person,
-                  followed: person.key === following?.key,
-                }))}
-              />
+              <AvatarGroup people={people} />
             </Button>
           }
           aria-label={t("Live collaborators")}
@@ -265,6 +248,45 @@ export function CollaborationBar() {
               <GuestNote share={share} />
             ) : (
               <>
+                <div className="collaboration-picture">
+                  <Avatar
+                    className="collaboration-picture-avatar"
+                    name={profile.displayName}
+                    color={profile.color}
+                    src={selfPicture ?? undefined}
+                  />
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) savePicture(file);
+                    }}
+                  />
+                  <Button
+                    disabled={pictureBusy}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <ImageUp size={14} aria-hidden="true" />
+                    {t("Upload picture")}
+                  </Button>
+                  {selfPicture ? (
+                    <IconButton
+                      label={t("Remove picture")}
+                      icon={<Trash2 size={14} aria-hidden="true" />}
+                      disabled={pictureBusy}
+                      onClick={() => savePicture(null)}
+                    />
+                  ) : null}
+                </div>
+                {pictureError ? (
+                  <p className="collaboration-note" role="alert">
+                    {pictureError}
+                  </p>
+                ) : null}
                 <form className="collaboration-editor" onSubmit={submitName}>
                   <Pencil size={13} aria-hidden="true" />
                   <TextField
@@ -300,16 +322,9 @@ export function CollaborationBar() {
                 </p>
               </>
             )}
-            <CollaboratorList
-              people={people}
-              snapshot={snapshot}
-              self={self}
-              onDone={() => setOpen(false)}
-            />
+            <CollaboratorList people={people} />
           </div>
         </Popover>
-        <FollowersIndicator snapshot={snapshot} self={self} />
-        <FollowChip snapshot={snapshot} self={self} />
       </div>
     </>
   );

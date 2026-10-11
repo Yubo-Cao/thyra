@@ -373,12 +373,11 @@ Scope and wrapping persist per browser. Refresh reloads the list and the shown d
   menu) to hear a chime when it finishes (rising) or needs input (repeated),
   plus its toast, even while it is in view or task notifications are off.
   Watched agents show a bell in the sidebar; the choice is kept per browser.
-- The collaborator popover shows where each person is looking ("Viewing:
-  workspace › tab › pane") with **Jump** and **Follow**; clicking an avatar on
-  a pane row or tab also offers **Follow**. Following moves your view with the most
-  recently active device of that person, shows a **Following … Stop** chip,
-  and ends when you navigate yourself, press Escape, or they disconnect. The
-  person you follow sees a quiet indicator beside their avatars.
+- The avatars in the top bar show who is connected; their popover lists each
+  person with their picture and devices, and pane rows and tabs show the
+  avatars of the people looking at them. Set your own name and picture there
+  (**Upload picture**, **Remove picture**): signed-in people change their
+  account's picture, and direct local use keeps one on the server.
 - **Watch on one device, type on another.**
   The monitor button in a pane header (**Display on this device**) pins the pane's size to that device's screen, for example a tablet watching an agent; it stays pinned when the tablet sleeps or reloads.
   On another device, **Type here** takes input control and keeps the size on the pinned device; **Resize here** takes control and sizes the pane for this device instead.
@@ -401,6 +400,7 @@ Scope and wrapping persist per browser. Refresh reloads the list and the shown d
 
 **Direct local use of a loopback listener skips login.**
 Proxied and non-loopback access logs in with a passkey, except tailnet users recognized by Tailscale behind a local proxy, who get admin accounts.
+Configured [sign-in providers](docs/DEPLOYMENT.md#sign-in-providers) add **Continue with Google**, **Microsoft**, **GitHub**, your organization's OpenID Connect single sign-on, and emailed codes to the login page.
 Workspace owners share a workspace from its context menu (**Share workspace…**) as viewer, editor, or owner; viewers watch and browse history, and one writer at a time types into a pane (**Take control**).
 The same dialog's **Links** create anonymous read-only links to the workspace or one pane (copied once, 1 hour to 7 days, optional use limit, revocable); guests see a **Read-only** badge with **Leave shared view** and never type.
 Someone already signed in who opens a link keeps their own account unless they choose **Open as guest**.

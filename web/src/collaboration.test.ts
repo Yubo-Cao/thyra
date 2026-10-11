@@ -175,8 +175,6 @@ describe("collaboration focus events", () => {
           tab_id: "w2:t1",
           pane_id: "w2:p3",
           activity: "active",
-          following: "person-b",
-          active_at_unix_ms: 9_000,
         },
       },
     });
@@ -216,8 +214,6 @@ describe("collaboration focus events", () => {
       workspace_id: "w2",
       tab_id: "w2:t1",
       pane_id: "w2:p3",
-      following: "person-b",
-      active_at_unix_ms: 9_000,
       display_name: "Alice",
     });
   });
