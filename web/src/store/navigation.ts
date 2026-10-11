@@ -31,35 +31,6 @@ import {
 import { taskNotificationTargetIsCurrent } from "./notifications";
 import { refreshNow, scheduleRefresh } from "./refresh";
 
-const navigationListeners = new Set<() => void>();
-let programmaticNavigation = 0;
-
-/**
- * Called when the user moves this page's view (click, shortcut, command,
- * creation), not when `navigateProgrammatically` does; follow mode stops then.
- */
-export function onUserNavigation(listener: () => void) {
-  navigationListeners.add(listener);
-  return () => {
-    navigationListeners.delete(listener);
-  };
-}
-
-/** Run navigation actions that must not count as the user's own. */
-export function navigateProgrammatically<T>(run: () => T): T {
-  programmaticNavigation += 1;
-  try {
-    return run();
-  } finally {
-    programmaticNavigation -= 1;
-  }
-}
-
-function userNavigated() {
-  if (programmaticNavigation > 0) return;
-  navigationListeners.forEach((listener) => listener());
-}
-
 export function terminalNavigationLoading(s: State): boolean {
   return (
     s.status === "connected" &&
@@ -184,7 +155,6 @@ export function adoptBrowserTarget(
   result: unknown,
 ) {
   if (!leaseIsCurrent(lease) || !result || typeof result !== "object") return;
-  userNavigated();
   const target = result as {
     root_pane?: Partial<Pane>;
     pane?: Partial<Pane>;
@@ -209,7 +179,6 @@ export function adoptBrowserTarget(
 }
 
 function focusPane(paneId: string) {
-  userNavigated();
   const pane = state.panes.find((p) => p.pane_id === paneId);
   return pane
     ? navigateBrowser(pane.workspace_id, pane.tab_id, paneId)
@@ -261,7 +230,6 @@ export const navigationActions = {
   },
 
   focusWorkspace(workspaceId: string) {
-    userNavigated();
     return state.workspaces.some(
       (workspace) => workspace.workspace_id === workspaceId,
     )
@@ -270,7 +238,6 @@ export const navigationActions = {
   },
 
   focusTab(tabId: string) {
-    userNavigated();
     const tab = state.tabs.find((tab) => tab.tab_id === tabId);
     return tab ? navigateBrowser(tab.workspace_id, tabId) : Promise.resolve();
   },
@@ -281,13 +248,11 @@ export const navigationActions = {
     paneId: string,
     direction: "left" | "right" | "up" | "down",
   ) {
-    userNavigated();
     const target = browserPaneInDirection(state.layout, paneId, direction);
     return target ? focusPane(target) : Promise.resolve();
   },
 
   focusTaskNotificationTarget(target: TaskNotificationTarget) {
-    userNavigated();
     if (!taskNotificationTargetIsCurrent(state, target)) {
       return Promise.resolve(undefined);
     }

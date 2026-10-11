@@ -193,7 +193,7 @@ export function createAccountRoutes(args: {
     const loopback =
       source.hostname === "127.0.0.1" || source.hostname === "localhost";
     if (
-      !config.avatarHosts.test(source.hostname) ||
+      !config.avatarHosts?.test(source.hostname) ||
       (source.protocol !== "https:" &&
         !(loopback && source.protocol === "http:"))
     )

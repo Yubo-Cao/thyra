@@ -4,18 +4,19 @@ import {
   randomToken,
   type User,
 } from "../accounts/store";
-import type { SignupPolicy } from "./providers";
+import type { OAuthProviderId, SignupPolicy } from "./providers";
 
 /**
- * From a verified external identity (a mailed code, GitHub, Google) to an
- * account. Identities are matched by provider subject, never by email
- * alone; an email match links a new identity only when both sides are
- * verified (a mailed code, Google's `email_verified`, or GitHub's primary
- * verified address) and exactly one account holds that address.
+ * From a verified external identity (a mailed code, GitHub, Google,
+ * Microsoft, an OpenID Connect provider) to an account. Identities are
+ * matched by provider subject, never by email alone; an email match links a
+ * new identity only when both sides are verified (a mailed code,
+ * `email_verified`, or GitHub's primary verified address) and exactly one
+ * account holds that address.
  */
 
 export type ExternalIdentity = {
-  provider: "email" | "github" | "google";
+  provider: "email" | OAuthProviderId;
   subject: string;
   email: string | null;
   /** The provider confirmed `email` (see above). */
@@ -43,7 +44,19 @@ export const PROVIDER_LABELS: Record<ExternalIdentity["provider"], string> = {
   email: "Email",
   github: "GitHub",
   google: "Google",
+  microsoft: "Microsoft",
+  oidc: "SSO",
 };
+
+/** Whether a verified address is in one of the sign-up domains. */
+export function inSignupDomain(
+  identity: Pick<ExternalIdentity, "email" | "emailVerified">,
+  domains: readonly string[],
+): boolean {
+  if (!identity.emailVerified || !identity.email) return false;
+  const domain = identity.email.slice(identity.email.lastIndexOf("@") + 1);
+  return domains.includes(domain.toLowerCase());
+}
 
 function link(
   store: AccountStore,
@@ -72,12 +85,15 @@ function link(
  *   another account already has it).
  * - `inviteUserId`: an invitation's holder chose this method; it is linked
  *   to the invited account.
+ * - `signupDomains`: an unknown identity with a verified address in one of
+ *   them gets a member account even when `signup` is `invite`.
  */
 export function resolveIdentity(
   store: AccountStore,
   identity: ExternalIdentity,
   options: {
     signup: SignupPolicy;
+    signupDomains?: readonly string[];
     linkUserId?: string | null;
     inviteUserId?: string | null;
   },
@@ -128,7 +144,10 @@ export function resolveIdentity(
       }
     }
   }
-  if (options.signup === "open") {
+  if (
+    options.signup === "open" ||
+    inSignupDomain(identity, options.signupDomains ?? [])
+  ) {
     const user = store.db.transaction(() => {
       const created = store.createUser({
         name: store.uniqueName(

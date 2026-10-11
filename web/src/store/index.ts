@@ -57,8 +57,6 @@ export {
 } from "./core";
 export {
   endpointCreationReason,
-  navigateProgrammatically,
-  onUserNavigation,
   terminalNavigationLoading,
   useEndpointCreationReason,
 } from "./navigation";

@@ -7,6 +7,7 @@
  */
 
 import { escapeHtml } from "../utils/html";
+import type { ProviderFlags } from "./providers";
 import type { TailnetSsoLogin } from "./tailnet-sso";
 
 export const AUTH_SCRIPT_PATH = "/auth/passkey.js";
@@ -25,6 +26,8 @@ const STRINGS = {
     loginIntroMethods: "Choose how to sign in.",
     continueGoogle: "Continue with Google",
     continueGithub: "Continue with GitHub",
+    continueMicrosoft: "Continue with Microsoft",
+    continueWith: "Continue with {provider}",
     emailLabel: "Email",
     emailSend: "Email me a code",
     emailSending: "Sending...",
@@ -147,6 +150,8 @@ const STRINGS = {
     loginIntroMethods: "选择登录方式。",
     continueGoogle: "使用 Google 继续",
     continueGithub: "使用 GitHub 继续",
+    continueMicrosoft: "使用 Microsoft 继续",
+    continueWith: "使用 {provider} 继续",
     emailLabel: "邮箱",
     emailSend: "发送验证码",
     emailSending: "正在发送…",
@@ -375,7 +380,7 @@ if(data.page==='share'){
   return;
 }
 const fill=(text,values)=>text.replace(/\\{(\\w+)\\}/g,(m,k)=>values[k]!==undefined?values[k]:m);
-const NAMES={google:'Google',github:'GitHub',email:S.emailLabel};
+const NAMES={google:'Google',github:'GitHub',microsoft:'Microsoft',email:S.emailLabel};
 const $=(id)=>document.getElementById(id);
 const home=()=>location.replace('/');
 if(data.page==='result'){if(data.close)setTimeout(()=>{try{window.close();}catch{}},400);return;}
@@ -406,7 +411,7 @@ if(data.page==='confirm'){
   btn.onclick=answer(true);cancel.onclick=answer(false);
   return;
 }
-// GitHub and Google. A Home Screen app keeps this page open and polls,
+// OAuth and OIDC providers. A Home Screen app keeps this page open and polls,
 // since the provider may return in Safari; elsewhere it navigates.
 const pollFlow=(flow,secret,done)=>{
   const started=Date.now();
@@ -414,7 +419,7 @@ const pollFlow=(flow,secret,done)=>{
     let r=null;try{r=await post('/auth/oauth/poll',{flow,poll:secret});}catch{}
     const st=r&&r.data&&r.data.status;
     if(st==='done'){home();return;}
-    if(st==='unknown'){done(fill(S.unknownIdentity,{label:r.data.label,provider:NAMES[r.data.provider]||''}));return;}
+    if(st==='unknown'){done(fill(S.unknownIdentity,{label:r.data.label,provider:r.data.provider_name||NAMES[r.data.provider]||''}));return;}
     if(st==='failed'||st==='expired'||Date.now()-started>600000){done(S.oauthFailed);return;}
     setTimeout(tick,1500);
   };
@@ -422,7 +427,7 @@ const pollFlow=(flow,secret,done)=>{
 };
 const startOAuth=(provider,button,extra)=>async()=>{
   if(button.disabled)return;
-  button.disabled=true;show(fill(S.oauthRedirecting,{provider:NAMES[provider]}),false);
+  button.disabled=true;show(fill(S.oauthRedirecting,{provider:NAMES[provider]||button.dataset.name||provider}),false);
   const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
   // Opened now, while the click still counts as a user gesture.
   const popup=standalone?window.open('about:blank','thyra-oauth'):null;
@@ -695,22 +700,35 @@ export function renderShareEndedPage(locale: PageLocale): string {
   );
 }
 
-export type LoginProviders = {
-  email: boolean;
-  github: boolean;
-  google: boolean;
+export type LoginProviders = ProviderFlags;
+
+export const NO_PROVIDERS: LoginProviders = {
+  email: false,
+  github: false,
+  google: false,
+  microsoft: false,
+  oidc: false,
+  oidc_name: "SSO",
 };
 
 const PROVIDER_NAMES: Record<string, string> = {
   google: "Google",
   github: "GitHub",
+  microsoft: "Microsoft",
 };
 
-/** "Continue with Google/GitHub" buttons for the configured providers. */
+/** "Continue with ..." buttons for the configured providers. */
 function oauthButtons(s: Strings, providers: LoginProviders): string {
+  const oidcName = escapeHtml(providers.oidc_name);
   return [
+    providers.oidc
+      ? `    <button class="secondary" type="button" data-provider="oidc" data-name="${oidcName}">${s.continueWith.replace("{provider}", () => oidcName)}</button>\n`
+      : "",
     providers.google
       ? `    <button class="secondary" type="button" data-provider="google">${s.continueGoogle}</button>\n`
+      : "",
+    providers.microsoft
+      ? `    <button class="secondary" type="button" data-provider="microsoft">${s.continueMicrosoft}</button>\n`
       : "",
     providers.github
       ? `    <button class="secondary" type="button" data-provider="github">${s.continueGithub}</button>\n`
@@ -719,8 +737,9 @@ function oauthButtons(s: Strings, providers: LoginProviders): string {
 }
 
 /**
- * The login page: a passkey, then GitHub and Google (when configured), then
- * an emailed code (address, then the code; the mailed link works too). On
+ * The login page: a passkey, then OIDC, Google, Microsoft and GitHub (when
+ * configured), then an emailed code (address, then the code; the mailed
+ * link works too). On
  * the public listener with tailnet sign-in (`tailnet`), the page first asks
  * the tailnet listener for a code without showing any button (`silent`),
  * and reveals the choices when that fails. The page names neither tailnet
@@ -732,14 +751,19 @@ function oauthButtons(s: Strings, providers: LoginProviders): string {
 export function renderLoginPage(
   locale: PageLocale,
   tailnet: TailnetSsoLogin | null = null,
-  providers: LoginProviders = { email: false, github: false, google: false },
+  providers: LoginProviders = NO_PROVIDERS,
 ): string {
   const s = STRINGS[locale];
   const message = tailnet?.message
     ? s[`tailnet_${tailnet.message}` as const]
     : "";
   const silent = Boolean(tailnet?.silent);
-  const others = providers.email || providers.github || providers.google;
+  const others =
+    providers.email ||
+    providers.github ||
+    providers.google ||
+    providers.microsoft ||
+    providers.oidc;
   return page(
     locale,
     s.loginTitle,

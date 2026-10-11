@@ -1,7 +1,6 @@
 /**
- * Bridge-side presence that Herdr's collaboration API does not carry: when a
- * browser participant was last active and whom it follows. A change of focus
- * (workspace, tab, pane), activity, or follow target is announced at once as
+ * Where each browser participant looks, as the bridge last forwarded it. A
+ * change of focus (workspace, tab, pane) or activity is announced at once as
  * a small `collaboration.focus` event carrying only ids, while full presence
  * snapshots stay throttled (see COLLABORATION_FORWARD_INTERVAL_MS).
  */
@@ -12,37 +11,24 @@ export type PresenceFocus = {
   tab_id?: string;
   pane_id?: string;
   activity: string;
-  /** Presence key (person id, or `participant:<id>`) this page follows. */
-  following?: string;
-  /** Last focus change, typing, or return to the page. */
-  active_at_unix_ms: number;
 };
 
 type Entry = { focus: PresenceFocus; seenAt: number };
 
 /** Focus fields a snapshot takes from the bridge, present or absent. */
-const FOCUS_FIELDS = [
-  "workspace_id",
-  "tab_id",
-  "pane_id",
-  "following",
-] as const;
-
-/** Params only the bridge understands; never forwarded to Herdr. */
-const BRIDGE_ONLY_PARAMS = ["following"];
+const FOCUS_FIELDS = ["workspace_id", "tab_id", "pane_id"] as const;
 /** Longer than Herdr's 45 s participant lease. */
 const ENTRY_TTL_MS = 60_000;
 
 const optionalId = (value: unknown) =>
   typeof value === "string" && value && value.length <= 160 ? value : undefined;
 
-function focusKey(focus: Omit<PresenceFocus, "active_at_unix_ms">) {
+function focusKey(focus: PresenceFocus) {
   return JSON.stringify([
     focus.workspace_id ?? null,
     focus.tab_id ?? null,
     focus.pane_id ?? null,
     focus.activity,
-    focus.following ?? null,
   ]);
 }
 
@@ -60,13 +46,11 @@ export function createPresenceFocusTracker(
 
   return {
     /**
-     * Split a `collaboration.update` into Herdr's params and a `commit` that
-     * records it and returns the focus when it changed, plus a `rollback` for
-     * an update Herdr then rejects.
+     * A `commit` for a `collaboration.update` that records it and returns the
+     * focus when it changed, plus a `rollback` for an update Herdr then
+     * rejects.
      */
     prepare(params: Record<string, unknown>) {
-      const herdrParams = { ...params };
-      for (const key of BRIDGE_ONLY_PARAMS) delete herdrParams[key];
       const participantId = optionalId(params.participant_id);
       const commit = (): {
         changed: PresenceFocus | null;
@@ -78,8 +62,7 @@ export function createPresenceFocusTracker(
         const workspaceId = optionalId(params.workspace_id);
         const tabId = optionalId(params.tab_id);
         const paneId = optionalId(params.pane_id);
-        const following = optionalId(params.following);
-        const focus = {
+        const next: PresenceFocus = {
           participant_id: participantId,
           ...(workspaceId ? { workspace_id: workspaceId } : {}),
           ...(tabId ? { tab_id: tabId } : {}),
@@ -88,18 +71,10 @@ export function createPresenceFocusTracker(
             params.activity === "idle" || params.activity === "away"
               ? params.activity
               : "active",
-          ...(following ? { following } : {}),
         };
         const previousEntry = entries.get(participantId);
         const previous = previousEntry?.focus;
-        const changed = !previous || focusKey(previous) !== focusKey(focus);
-        const active =
-          !previous ||
-          (focus.activity === "active" && (changed || params.typing === true));
-        const next: PresenceFocus = {
-          ...focus,
-          active_at_unix_ms: active ? at : (previous?.active_at_unix_ms ?? at),
-        };
+        const changed = !previous || focusKey(previous) !== focusKey(next);
         const entry = { focus: next, seenAt: at };
         entries.set(participantId, entry);
         return {
@@ -111,7 +86,7 @@ export function createPresenceFocusTracker(
           },
         };
       };
-      return { herdrParams, commit };
+      return { commit };
     },
 
     forget(participantId: unknown) {
@@ -143,7 +118,6 @@ export function createPresenceFocusTracker(
         const next: Record<string, unknown> = {
           ...(participant as Record<string, unknown>),
           activity: focus.activity,
-          active_at_unix_ms: focus.active_at_unix_ms,
         };
         for (const field of FOCUS_FIELDS) {
           if (focus[field]) next[field] = focus[field];

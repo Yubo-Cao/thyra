@@ -34,10 +34,10 @@ Grant **editor** only to people you would give a shell account on the host.
   Code requests are rate-limited per tailnet address, failed redemptions per client address, and both are audited.
   Logging out on the public address stops the silent attempt in that browser until the next sign-in.
   The login page's HTML does not name the tailnet listener, and its **Sign in with tailnet** button appears only in a browser that signed in through the tailnet before or refused Chrome's local network prompt; the host is hidden from casual visitors, not secret, since every visitor's page fetches it for the silent attempt.
-- **Email, GitHub and Google** (optional; see [sign-in providers](docs/DEPLOYMENT.md#sign-in-providers)).
+- **Email, GitHub, Google, Microsoft and OpenID Connect** (optional; see [sign-in providers](docs/DEPLOYMENT.md#sign-in-providers)).
   A mailed 6-digit code and one-time link (10 minutes, single use, SHA-256 at rest, five wrong codes per message) prove an address; requests answer alike for every address, one message per address per minute and a per-client limit stop mail floods.
-  GitHub and Google use the authorization code flow with PKCE and a single-use state; identities are keyed by the provider's user id, and an address links a new identity to an existing account only when both are verified (GitHub's primary verified address, Google's `email_verified`).
-  Unknown identities get no account (`THYRA_SIGNUP=invite`, the default).
+  The OAuth and OpenID Connect providers use the authorization code flow with PKCE and a single-use state; identities are keyed by the provider's user id (OIDC: issuer and subject), and an address links a new identity to an existing account only when both are verified (GitHub's primary verified address, `email_verified` for the others; Microsoft's never are).
+  Unknown identities get no account (`THYRA_SIGNUP=invite`, the default), except verified addresses at the domains in `THYRA_SIGNUP_DOMAINS`, which become members without grants.
   A provider that returns to a browser without the flow's cookie cannot sign that browser in: it shows the flow's pairing number and asks before handing the session to the starting page, which alone holds the poll secret.
   Invitations (7 days, single use, SHA-256 at rest) are mailed by workspace owners and sign their holder in to the pending account.
   Linking, unlinking, sign-ins, refusals and revocations are audited; the last sign-in method of an account cannot be removed.

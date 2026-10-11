@@ -17,27 +17,18 @@ function update(overrides: Record<string, unknown> = {}) {
 }
 
 describe("presence focus tracker", () => {
-  test("announces focus, activity and follow changes, not heartbeats", () => {
-    let now = 1_000;
-    const tracker = createPresenceFocusTracker({ now: () => now });
-    const first = tracker.prepare(update({ following: "person-b" }));
-    expect(first.herdrParams).not.toHaveProperty("following");
-    expect(first.commit().changed).toEqual({
+  test("announces focus and activity changes, not heartbeats", () => {
+    const tracker = createPresenceFocusTracker({ now: () => 1_000 });
+    expect(tracker.prepare(update()).commit().changed).toEqual({
       participant_id: "web-a",
       workspace_id: "w1",
       tab_id: "w1:t1",
       pane_id: "w1:p1",
       activity: "active",
-      following: "person-b",
-      active_at_unix_ms: 1_000,
     });
-
-    now = 2_000;
     expect(
-      tracker.prepare(update({ following: "person-b" })).commit().changed,
+      tracker.prepare(update({ typing: true })).commit().changed,
     ).toBeNull();
-
-    now = 3_000;
     expect(
       tracker.prepare(update({ pane_id: "w1:p2" })).commit().changed,
     ).toEqual({
@@ -46,33 +37,11 @@ describe("presence focus tracker", () => {
       tab_id: "w1:t1",
       pane_id: "w1:p2",
       activity: "active",
-      active_at_unix_ms: 3_000,
     });
-
-    now = 4_000;
-    const away = tracker.prepare(
-      update({ pane_id: "w1:p2", activity: "away" }),
-    );
-    expect(away.commit().changed).toMatchObject({
-      activity: "away",
-      active_at_unix_ms: 3_000,
-    });
-  });
-
-  test("typing refreshes activity silently", () => {
-    let now = 1_000;
-    const tracker = createPresenceFocusTracker({ now: () => now });
-    tracker.prepare(update()).commit();
-    now = 5_000;
     expect(
-      tracker.prepare(update({ typing: true })).commit().changed,
-    ).toBeNull();
-    const snapshot = tracker.annotate({
-      participants: [{ participant_id: "web-a", pane_id: "w1:p1" }],
-    });
-    expect(snapshot.participants[0]).toMatchObject({
-      active_at_unix_ms: 5_000,
-    });
+      tracker.prepare(update({ pane_id: "w1:p2", activity: "away" })).commit()
+        .changed,
+    ).toMatchObject({ activity: "away" });
   });
 
   test("overlays the latest focus on an older snapshot", () => {
@@ -100,7 +69,6 @@ describe("presence focus tracker", () => {
       workspace_id: "w2",
       tab_id: "w2:t1",
       pane_id: "w2:p9",
-      active_at_unix_ms: 1_000,
     });
     expect(annotated.participants[1]).toBe(stale.participants[1]);
 
@@ -110,7 +78,7 @@ describe("presence focus tracker", () => {
 });
 
 describe("collaboration service focus events", () => {
-  test("sends a focus event per change at once and hides bridge-only params from Herdr", async () => {
+  test("sends a focus event per change at once", async () => {
     const herdrParams: Record<string, unknown>[] = [];
     const focus: unknown[] = [];
     const service = createCollaborationService({
@@ -129,22 +97,16 @@ describe("collaboration service focus events", () => {
       onFocus: (change) => focus.push(change),
     });
 
-    const result = await service.call(
-      "collaboration.update",
-      update({ following: "person-b" }),
-    );
-    await service.call(
-      "collaboration.update",
-      update({ following: "person-b" }),
-    );
+    const result = await service.call("collaboration.update", update());
+    await service.call("collaboration.update", update());
     await service.call("collaboration.update", update({ pane_id: "w1:p4" }));
 
-    expect(herdrParams.every((params) => !("following" in params))).toBe(true);
+    expect(herdrParams).toHaveLength(3);
     expect(focus).toHaveLength(2);
     expect(focus[1]).toMatchObject({ pane_id: "w1:p4" });
     expect(result.snapshot.participants[0]).toMatchObject({
-      following: "person-b",
-      active_at_unix_ms: 7,
+      pane_id: "w1:p1",
+      activity: "active",
     });
   });
 

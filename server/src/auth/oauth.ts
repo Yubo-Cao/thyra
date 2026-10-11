@@ -11,9 +11,9 @@ import type { OAuthProviderConfig } from "./providers";
 import type { ExternalIdentity } from "./sign-in";
 
 /**
- * GitHub and Google sign-in (authorization code with PKCE and state, through
- * arctic's generic `OAuth2Client`, so tests can point the endpoints at stub
- * servers) and the flows in progress.
+ * GitHub, Google, Microsoft and OpenID Connect sign-in (authorization code
+ * with PKCE and state, through arctic's generic `OAuth2Client`, so tests can
+ * point the endpoints at stub servers) and the flows in progress.
  *
  * A flow is a database row keyed by its state. The page that starts it
  * holds a poll secret and a 4-digit pairing number. When the provider
@@ -233,6 +233,72 @@ export function createOAuthFlowStore(store: AccountStore) {
   };
 }
 
+const DISCOVERY_TTL_MS = 60 * 60_000;
+const discovered = new Map<
+  string,
+  { at: number; endpoints: Promise<Record<string, string>> }
+>();
+
+/**
+ * The provider with its endpoints: an OpenID Connect issuer's come from its
+ * discovery document (cached for an hour; a failed fetch is retried).
+ */
+export async function resolveProvider(
+  provider: OAuthProviderConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<OAuthProviderConfig> {
+  const issuer = provider.issuer;
+  if (!issuer) return provider;
+  let cached = discovered.get(issuer);
+  if (!cached || Date.now() - cached.at > DISCOVERY_TTL_MS) {
+    const endpoints = (async () => {
+      const response = await fetchImpl(
+        `${issuer}/.well-known/openid-configuration`,
+        {
+          headers: { accept: "application/json", "user-agent": "Thyra" },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!response.ok)
+        throw new Error(`discovery request failed (${response.status})`);
+      const document = (await response.json()) as Record<string, unknown>;
+      const result: Record<string, string> = {};
+      for (const key of [
+        "authorization_endpoint",
+        "token_endpoint",
+        "userinfo_endpoint",
+      ]) {
+        const value = document[key];
+        let url: URL | null = null;
+        try {
+          url = typeof value === "string" ? new URL(value) : null;
+        } catch {}
+        // The issuer is HTTPS (or loopback HTTP); its endpoints may not
+        // downgrade.
+        if (
+          !url ||
+          (url.protocol !== "https:" && new URL(issuer).protocol === "https:")
+        )
+          throw new Error(`the discovery document has no valid ${key}`);
+        result[key] = url.href;
+      }
+      return result;
+    })();
+    cached = { at: Date.now(), endpoints };
+    discovered.set(issuer, cached);
+    endpoints.catch(() => {
+      if (discovered.get(issuer) === cached) discovered.delete(issuer);
+    });
+  }
+  const endpoints = await cached.endpoints;
+  return {
+    ...provider,
+    authorizeUrl: endpoints.authorization_endpoint!,
+    tokenUrl: endpoints.token_endpoint!,
+    userUrl: endpoints.userinfo_endpoint!,
+  };
+}
+
 /** The provider's authorization URL for a flow. */
 export function authorizationUrl(
   provider: OAuthProviderConfig,
@@ -252,7 +318,7 @@ export function authorizationUrl(
     verifier,
     provider.scopes,
   );
-  if (provider.id === "google")
+  if (provider.id === "google" || provider.id === "microsoft")
     url.searchParams.set("prompt", "select_account");
   return url.href;
 }
@@ -281,7 +347,9 @@ const text = (value: unknown, max = 200): string | null =>
 /**
  * Exchange the code (with the PKCE verifier) and read who signed in.
  * GitHub's address counts as verified only when it is the account's primary
- * address and GitHub marks it verified; Google's only with `email_verified`.
+ * address and GitHub marks it verified; an OpenID Connect provider's
+ * (Google, Microsoft, others) only with `email_verified: true`, which
+ * Microsoft never sends.
  */
 export async function fetchIdentity(
   provider: OAuthProviderConfig,
@@ -334,15 +402,22 @@ export async function fetchIdentity(
     unknown
   >;
   const sub = text(info.sub, 255);
-  if (!sub) throw new Error("Google returned no subject");
+  if (!sub) throw new Error(`${provider.label} returned no subject`);
   const email = text(info.email, 254)?.toLowerCase() ?? null;
+  const importable = provider.avatarHosts !== null;
   return {
-    provider: "google",
-    subject: sub,
+    provider: provider.id,
+    // Bound to the issuer, so pointing Thyra at another one never signs
+    // its users in to accounts linked under the first.
+    subject: provider.issuer ? `${provider.issuer}#${sub}` : sub,
     email,
     emailVerified: Boolean(email) && info.email_verified === true,
     displayName: text(info.name, 80),
-    avatarUrl: text(info.picture, 500),
-    label: email ?? "Google",
+    avatarUrl: importable ? text(info.picture, 500) : null,
+    label:
+      email ??
+      text(info.preferred_username, 254) ??
+      text(info.name, 80) ??
+      provider.label,
   };
 }

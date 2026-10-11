@@ -1,11 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 
 /**
- * Stub Resend, GitHub and Google servers on loopback, for tests and manual
- * end-to-end runs (`THYRA_TEST_RESEND_URL`, `THYRA_TEST_GITHUB_URL`,
- * `THYRA_TEST_GOOGLE_URL` all point at `base`). The authorize endpoints
- * approve at once and redirect back with a code; the token endpoints check
- * the client secret, the redirect URI and the PKCE verifier.
+ * Stub Resend, GitHub, Google, Microsoft and OpenID Connect servers on
+ * loopback, for tests and manual end-to-end runs (`THYRA_TEST_RESEND_URL`,
+ * `THYRA_TEST_GITHUB_URL`, `THYRA_TEST_GOOGLE_URL` and
+ * `THYRA_TEST_MICROSOFT_URL` point at `base`; `THYRA_OIDC_ISSUER` at
+ * `base/issuer`, whose discovery document names its endpoints). The
+ * authorize endpoints approve at once and redirect back with a code; the
+ * token endpoints check the client secret, the redirect URI and the PKCE
+ * verifier.
  */
 
 export type StubMail = {
@@ -27,13 +30,16 @@ export type GitHubProfile = {
 export type GoogleProfile = {
   sub: string;
   email: string | null;
-  email_verified: boolean;
+  email_verified?: boolean;
   name: string | null;
-  picture: string | null;
+  picture?: string | null;
+  preferred_username?: string;
 };
 
+type StubProvider = "github" | "google" | "microsoft" | "oidc";
+
 type Grant = {
-  provider: "github" | "google";
+  provider: StubProvider;
   challenge: string;
   redirectUri: string;
   profile: GitHubProfile | GoogleProfile;
@@ -70,13 +76,28 @@ export async function startStubProviders(
       name: "Pat Person",
       picture: "",
     } as GoogleProfile,
+    /** Microsoft's userinfo: never `email_verified`. */
+    microsoft: {
+      sub: "ms-sub-1",
+      email: "person@contoso.example",
+      name: "Mo Microsoft",
+    } as GoogleProfile,
+    oidc: {
+      sub: "oidc-sub-1",
+      email: "staff@corp.example",
+      email_verified: true,
+      name: "Sam Staff",
+      preferred_username: "sam",
+    } as GoogleProfile,
+    /** Discovery requests answered, per issuer. */
+    discoveries: 0,
     /** Answer the next Resend call with this status. */
     resendStatus: 200,
   };
 
   const json = (body: unknown, status = 200) => Response.json(body, { status });
 
-  function authorize(provider: "github" | "google", url: URL): Response {
+  function authorize(provider: StubProvider, url: URL): Response {
     const redirectUri = url.searchParams.get("redirect_uri") ?? "";
     const challenge = url.searchParams.get("code_challenge") ?? "";
     if (
@@ -128,12 +149,12 @@ export async function startStubProviders(
     });
   }
 
-  function profile(req: Request, kind: "github" | "emails" | "google") {
+  function profile(req: Request, kind: "github" | "emails" | "userinfo") {
     const grant = tokens.get(
       (req.headers.get("authorization") ?? "").replace(/^Bearer /, ""),
     );
     if (!grant) return json({ message: "Bad credentials" }, 401);
-    if (kind === "google") return json(grant.profile);
+    if (kind === "userinfo") return json(grant.profile);
     const github = grant.profile as GitHubProfile;
     if (kind === "emails") return json(github.emails);
     return json({
@@ -171,7 +192,24 @@ export async function startStubProviders(
         case "GET /user/emails":
           return profile(req, "emails");
         case "GET /v1/userinfo":
-          return profile(req, "google");
+        case "GET /oidc/userinfo":
+        case "GET /issuer/userinfo":
+          return profile(req, "userinfo");
+        case "GET /common/oauth2/v2.0/authorize":
+          return authorize("microsoft", url);
+        case "POST /common/oauth2/v2.0/token":
+        case "POST /issuer/token":
+          return token(req);
+        case "GET /issuer/.well-known/openid-configuration":
+          state.discoveries += 1;
+          return json({
+            issuer: `${base}/issuer`,
+            authorization_endpoint: `${base}/issuer/authorize`,
+            token_endpoint: `${base}/issuer/token`,
+            userinfo_endpoint: `${base}/issuer/userinfo`,
+          });
+        case "GET /issuer/authorize":
+          return authorize("oidc", url);
         case "GET /avatar.png":
           return new Response(PNG, {
             headers: { "content-type": "image/png" },
@@ -208,6 +246,13 @@ export async function startStubProviders(
         THYRA_GOOGLE_CLIENT_ID: "google-client",
         THYRA_GOOGLE_CLIENT_SECRET: clientSecret,
         THYRA_TEST_GOOGLE_URL: base,
+        THYRA_MICROSOFT_CLIENT_ID: "microsoft-client",
+        THYRA_MICROSOFT_CLIENT_SECRET: clientSecret,
+        THYRA_TEST_MICROSOFT_URL: base,
+        THYRA_OIDC_ISSUER: `${base}/issuer`,
+        THYRA_OIDC_CLIENT_ID: "oidc-client",
+        THYRA_OIDC_CLIENT_SECRET: clientSecret,
+        THYRA_OIDC_NAME: "Corp SSO",
       };
     },
     stop: () => server.stop(true),

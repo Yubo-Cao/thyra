@@ -17,6 +17,7 @@ import { type Logger, silentLogger } from "../utils/logger";
 import type { ShareLinkStore } from "../accounts/share-links";
 import {
   AUTH_SCRIPT,
+  NO_PROVIDERS,
   type PageLocale,
   pageLocale,
   renderEnrollPage,
@@ -94,7 +95,7 @@ export function createAuthRoutes(args: {
   onGuestsEnded?: (idHashes: string[]) => void;
   /** Tailnet sign-in: its routes, and the public login page's silent attempt. */
   tailnetSso?: TailnetSso | null;
-  /** Email, GitHub, Google and invitation sign-in (optional providers). */
+  /** Email, OAuth/OIDC and invitation sign-in (optional providers). */
   signIn?: SignInRoutes | null;
   /** The account page: profile, avatar, sign-in methods, invitations. */
   account?: AccountRoutes | null;
@@ -434,11 +435,7 @@ export function createAuthRoutes(args: {
           return json({
             ...principalView(principal),
             // Which sign-in providers are on (invitations need email).
-            providers: args.signIn?.flags() ?? {
-              email: false,
-              github: false,
-              google: false,
-            },
+            providers: args.signIn?.flags() ?? NO_PROVIDERS,
             passkeys:
               principal.kind === "user"
                 ? args.store.passkeysOf(principal.user.id).length

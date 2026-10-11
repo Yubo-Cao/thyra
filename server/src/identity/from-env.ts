@@ -1,6 +1,9 @@
 import { type Logger, silentLogger } from "../utils/logger";
 import { parseTrustedProxies } from "./client-address";
-import { createIdentityService } from "./identity-service";
+import {
+  createIdentityService,
+  type IdentityServiceArgs,
+} from "./identity-service";
 import { createIdentityStore, identityStorePath } from "./identity-store";
 import {
   createTailscaleWhois,
@@ -13,6 +16,7 @@ import {
  */
 export function createIdentityServiceFromEnv<Socket extends object>(args: {
   secureCookies: boolean;
+  avatars?: IdentityServiceArgs["avatars"];
   env?: Record<string, string | undefined>;
   logger?: Logger;
 }) {
@@ -44,6 +48,7 @@ export function createIdentityServiceFromEnv<Socket extends object>(args: {
     }),
     trustedProxies,
     secureCookies: args.secureCookies,
+    ...(args.avatars ? { avatars: args.avatars } : {}),
     logger,
   });
 }

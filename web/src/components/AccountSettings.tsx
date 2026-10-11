@@ -39,7 +39,15 @@ type Methods = {
   passkeys: PasskeyInfo[];
   identities: IdentityInfo[];
   method_count: number;
-  providers: { email: boolean; github: boolean; google: boolean };
+  providers: {
+    email: boolean;
+    github: boolean;
+    google: boolean;
+    microsoft?: boolean;
+    oidc?: boolean;
+    /** The OpenID Connect provider's name, e.g. "Okta". */
+    oidc_name?: string;
+  };
   can_link_oauth: boolean;
   tailnet_visible: boolean;
 };
@@ -113,11 +121,19 @@ function since(timestamp: number): string {
 const PROVIDER_NAMES: Record<string, string> = {
   github: "GitHub",
   google: "Google",
+  microsoft: "Microsoft",
+  oidc: "SSO",
   tailscale: "Tailscale",
 };
 
+const OAUTH_PROVIDERS = ["oidc", "google", "microsoft", "github"] as const;
+
 /** How a session signed in; the tailnet is named only to those who see it. */
-function methodLabel(method: string, tailnetVisible: boolean): string {
+function methodLabel(
+  method: string,
+  tailnetVisible: boolean,
+  oidcName = PROVIDER_NAMES.oidc!,
+): string {
   switch (method) {
     case "passkey":
     case "enrollment":
@@ -127,7 +143,10 @@ function methodLabel(method: string, tailnetVisible: boolean): string {
       return t("Email");
     case "github":
     case "google":
+    case "microsoft":
       return PROVIDER_NAMES[method]!;
+    case "oidc":
+      return oidcName;
     case "tailscale":
     case "tailnet-sso":
       return tailnetVisible ? "Tailscale" : t("Automatic");
@@ -415,8 +434,12 @@ export function AccountSettings() {
         </span>
       </Button>
 
-      {(["google", "github"] as const).map((provider) => {
+      {OAUTH_PROVIDERS.map((provider) => {
         const accounts = linked(provider);
+        const providerName =
+          provider === "oidc"
+            ? (methods?.providers.oidc_name ?? PROVIDER_NAMES.oidc!)
+            : PROVIDER_NAMES[provider]!;
         if (!methods?.providers[provider] && accounts.length === 0) return null;
         return (
           <div className="account-provider" key={provider}>
@@ -429,7 +452,7 @@ export function AccountSettings() {
                   <Link2 size={15} />
                 </span>
                 <div className="config-item-copy">
-                  <strong>{PROVIDER_NAMES[provider]}</strong>
+                  <strong>{providerName}</strong>
                   <span>{identity.label}</span>
                 </div>
                 <Button
@@ -454,11 +477,7 @@ export function AccountSettings() {
                 onClick={() => void linkProvider(provider)}
               >
                 <Link2 size={14} />
-                <span>
-                  {t("Link {provider}", {
-                    provider: PROVIDER_NAMES[provider]!,
-                  })}
-                </span>
+                <span>{t("Link {provider}", { provider: providerName })}</span>
               </Button>
             ) : null}
           </div>
@@ -603,6 +622,7 @@ export function AccountSettings() {
               {methodLabel(
                 session.auth_method,
                 Boolean(methods?.tailnet_visible),
+                methods?.providers.oidc_name,
               )}{" "}
               · {since(session.last_seen_at)}
             </span>
