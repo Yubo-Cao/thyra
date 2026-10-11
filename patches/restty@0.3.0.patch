@@ -61,7 +61,7 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c709b32245a 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15ebe72386e 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
 @@ -1428,7 +1428,7 @@ function createInputHandler2(options = {}) {
@@ -379,7 +379,226 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        },
        constrainedGlyphWidths: null
      };
-@@ -48059,7 +48285,7 @@ function createPointerAuxHandlers(options) {
+@@ -47900,7 +48126,33 @@ function bindImeEvents(options) {
+     getLastKeydownSeqAt,
+     keydownBeforeinputDedupeMs
+   } = bindOptions;
+-  let suppressNextInput = false;
++  // The input keeps the text it committed so an IME can reselect and replace
++  // it (voice input's cleanup pass, reconversion, autocorrect); each edit
++  // reaches the pty as backspaces over the changed tail plus its new text.
++  let synced = "";
++  let compositionBase = 0;
++  const backspace = inputHandler.encodeBeforeInput({ inputType: "deleteContentBackward" }) || "\x7F";
++  const clearInput = () => {
++    imeInput.value = "";
++    synced = "";
++  };
++  const resync = () => {
++    synced = imeInput.value;
++  };
++  const flushInput = () => {
++    const value = imeInput.value;
++    const edit = imeInputEdit(synced, value, backspace);
++    synced = value;
++    if (edit)
++      sendKeyInput(edit);
++    if (value.length > IME_INPUT_MAX_CHARS)
++      clearInput();
++  };
++  const syncCompositionSelection = () => {
++    syncImeSelection();
++    imeState.selectionStart = Math.max(0, imeState.selectionStart - compositionBase);
++    imeState.selectionEnd = Math.max(imeState.selectionStart, imeState.selectionEnd - compositionBase);
++  };
+   let lastNormalizedKeydownSeq = "";
+   let lastNormalizedKeydownSeqSource = "";
+   const getNormalizedLastKeydownSeq = () => {
+@@ -47916,26 +48168,42 @@ function bindImeEvents(options) {
+     lastNormalizedKeydownSeq = inputHandler.mapKeyForPty(source);
+     return lastNormalizedKeydownSeq;
+   };
++  const onKeyDown = (event) => {
++    // A real key moves on from the committed text; IME keys stay with it.
++    if (event.isComposing || imeState.composing || event.keyCode === 229)
++      return;
++    if (IME_INPUT_KEEP_KEYS.has(event.key))
++      return;
++    clearInput();
++  };
+   const onCompositionStart = (event) => {
+     imeState.composing = true;
+-    setPreedit(event.data || imeInput.value || "");
+-    requestAnimationFrame(syncImeSelection);
++    resync();
++    compositionBase = Math.min(imeInput.selectionStart ?? imeInput.value.length, imeInput.selectionEnd ?? imeInput.value.length);
++    setPreedit(event.data || "");
++    requestAnimationFrame(syncCompositionSelection);
+   };
+   const onCompositionUpdate = (event) => {
+-    setPreedit(event.data || imeInput.value || "");
+-    requestAnimationFrame(syncImeSelection);
++    setPreedit(event.data || "");
++    requestAnimationFrame(syncCompositionSelection);
+   };
+   const onCompositionEnd = (event) => {
+     imeState.composing = false;
+-    setPreedit("", true);
++    setPreedit("");
+     imeState.selectionStart = 0;
+     imeState.selectionEnd = 0;
+-    const text = event.data || imeInput.value || "";
+-    if (text && getWasmReady() && getWasmHandle()) {
+-      suppressNextInput = true;
+-      sendKeyInput(text);
++    compositionBase = 0;
++    if (!getWasmReady() || !getWasmHandle()) {
++      clearInput();
++      return;
+     }
+-    imeInput.value = "";
++    if (imeInput.value === synced && event.data) {
++      // The commit never reached the input; send what the event reports.
++      sendKeyInput(event.data);
++      clearInput();
++      return;
++    }
++    flushInput();
+   };
+   const onBeforeInput = (event) => {
+     if (!getWasmReady() || !getWasmHandle())
+@@ -47944,15 +48212,14 @@ function bindImeEvents(options) {
+       return;
+     if (event.inputType === "insertFromPaste") {
+       event.preventDefault();
+-      suppressNextInput = true;
+       const pasteText = event.dataTransfer?.getData("text/plain") || event.data || "";
+       if (pasteText) {
+         sendPasteText(pasteText);
+-        imeInput.value = "";
++        clearInput();
+         return;
+       }
+       sendPastePayloadFromDataTransfer(event.dataTransfer);
+-      imeInput.value = "";
++      clearInput();
+       return;
+     }
+     const text = inputHandler.encodeBeforeInput(event);
+@@ -47962,46 +48229,40 @@ function bindImeEvents(options) {
+       const now = performance.now();
+       if (normalizedLastKeydownSeq && normalizedText === normalizedLastKeydownSeq && now - getLastKeydownSeqAt() <= keydownBeforeinputDedupeMs) {
+         event.preventDefault();
+-        suppressNextInput = true;
+-        imeInput.value = "";
++        clearInput();
+         return;
+       }
+-      event.preventDefault();
+-      suppressNextInput = true;
+-      sendKeyInput(text);
+-      imeInput.value = "";
+     }
++    if (!text || imeInputEditsInPlace(event, imeInput)) {
++      // The browser edits the input; the input event sends the difference.
++      resync();
++      return;
++    }
++    event.preventDefault();
++    sendKeyInput(text);
++    clearInput();
+   };
+   const onInput = (event) => {
+     if (!getWasmReady() || !getWasmHandle())
+       return;
+     if (imeState.composing)
+       return;
+-    if (suppressNextInput) {
+-      suppressNextInput = false;
+-      imeInput.value = "";
+-      return;
+-    }
+-    const text = event.data || imeInput.value;
+-    if (text) {
+-      sendKeyInput(text);
+-      imeInput.value = "";
+-    }
++    flushInput();
+   };
+   const onPaste = (event) => {
+     if (!getWasmReady() || !getWasmHandle())
+       return;
+     event.preventDefault();
+-    suppressNextInput = true;
+     const text = event.clipboardData?.getData("text/plain") || "";
+     if (text) {
+       sendPasteText(text);
+-      imeInput.value = "";
++      clearInput();
+       return;
+     }
+     sendPastePayloadFromDataTransfer(event.clipboardData);
+-    imeInput.value = "";
++    clearInput();
+   };
++  imeInput.addEventListener("keydown", onKeyDown);
+   imeInput.addEventListener("compositionstart", onCompositionStart);
+   imeInput.addEventListener("compositionupdate", onCompositionUpdate);
+   imeInput.addEventListener("compositionend", onCompositionEnd);
+@@ -48009,6 +48270,7 @@ function bindImeEvents(options) {
+   imeInput.addEventListener("input", onInput);
+   imeInput.addEventListener("paste", onPaste);
+   cleanupCanvasFns.push(() => {
++    imeInput.removeEventListener("keydown", onKeyDown);
+     imeInput.removeEventListener("compositionstart", onCompositionStart);
+     imeInput.removeEventListener("compositionupdate", onCompositionUpdate);
+     imeInput.removeEventListener("compositionend", onCompositionEnd);
+@@ -48017,6 +48279,44 @@ function bindImeEvents(options) {
+     imeInput.removeEventListener("paste", onPaste);
+   });
+ }
++var IME_INPUT_MAX_CHARS = 4096;
++var IME_INPUT_KEEP_KEYS = new Set([
++  "Process",
++  "Unidentified",
++  "Dead",
++  "Shift",
++  "Control",
++  "Alt",
++  "AltGraph",
++  "Meta",
++  "CapsLock"
++]);
++function imeInputEditsInPlace(event, imeInput) {
++  const type = event.inputType;
++  if (type === "insertText" || type === "insertReplacementText" || type === "insertCompositionText")
++    return true;
++  if (type === "deleteContentBackward" || type === "deleteWordBackward" || type === "deleteSoftLineBackward" || type === "deleteHardLineBackward") {
++    const start = imeInput.selectionStart ?? 0;
++    const end = imeInput.selectionEnd ?? start;
++    return end > start || start > 0;
++  }
++  return false;
++}
++function imeInputEdit(before, after, backspace) {
++  let common = 0;
++  const limit = Math.min(before.length, after.length);
++  while (common < limit && before.charCodeAt(common) === after.charCodeAt(common))
++    common++;
++  if (common > 0 && common < before.length) {
++    const code = before.charCodeAt(common - 1);
++    if (code >= 55296 && code <= 56319)
++      common--;
++  }
++  let removed = 0;
++  for (const _ of before.slice(common))
++    removed++;
++  return backspace.repeat(removed) + after.slice(common);
++}
+ 
+ // src/runtime/create-runtime/interaction-runtime/bind-pointer-aux-handlers.ts
+ function createPointerAuxHandlers(options) {
+@@ -48059,7 +48359,7 @@ function createPointerAuxHandlers(options) {
      }
    };
    const onWheel = (event) => {
@@ -388,7 +607,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        if (inputHandler.sendMouseEvent("wheel", event)) {
          event.preventDefault();
          return;
-@@ -48071,7 +48297,7 @@ function createPointerAuxHandlers(options) {
+@@ -48071,7 +48371,7 @@ function createPointerAuxHandlers(options) {
      event.preventDefault();
    };
    const onContextMenu = (event) => {
@@ -397,7 +616,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        event.preventDefault();
    };
    const onPointerLeave = () => {
-@@ -48181,7 +48407,7 @@ function createPointerUpHandler(options) {
+@@ -48181,7 +48481,7 @@ function createPointerUpHandler(options) {
          markNeedsRender();
        }
      } else {
@@ -406,7 +625,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
          event.preventDefault();
          return;
        }
-@@ -48205,7 +48431,7 @@ function createPointerUpHandler(options) {
+@@ -48205,7 +48505,7 @@ function createPointerUpHandler(options) {
        }
      }
      if (!selectionState.active && event.button === 0 && linkState.hoverUri) {
@@ -415,7 +634,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      }
    };
  }
-@@ -48305,7 +48531,7 @@ function bindPointerEvents(options) {
+@@ -48305,7 +48605,7 @@ function bindPointerEvents(options) {
    };
    canvas.style.touchAction = touchSelectionMode === "long-press" || touchSelectionMode === "drag" ? "none" : "pan-y pinch-zoom";
    const onPointerDown = (event) => {
@@ -424,7 +643,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        clearPendingDesktopSelection();
        event.preventDefault();
        canvas.setPointerCapture?.(event.pointerId);
-@@ -48408,7 +48634,7 @@ function bindPointerEvents(options) {
+@@ -48408,7 +48708,7 @@ function bindPointerEvents(options) {
        markNeedsRender();
        return;
      }
@@ -433,7 +652,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        event.preventDefault();
        return;
      }
-@@ -48836,7 +49062,7 @@ function createScrollbarRuntime(options) {
+@@ -48836,7 +49136,7 @@ function createScrollbarRuntime(options) {
    let pendingPrecisionScrollPx = 0;
    const hasCoarsePointer = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(any-pointer: coarse)").matches;
    const hasTouchPoints = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
@@ -442,7 +661,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      canvas: getCanvas(),
      getGridState,
      noteScrollActivity: () => {
-@@ -49075,6 +49301,7 @@ function createRuntimeInteraction(options) {
+@@ -49075,6 +49375,7 @@ function createRuntimeInteraction(options) {
      return true;
    };
    const scrollbarRuntime = createScrollbarRuntime({
@@ -450,7 +669,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      scrollbarState,
      selectionState,
      linkState,
-@@ -50397,11 +50624,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
+@@ -50397,11 +50698,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
    const factor = primaryMetric / primary.unitsPerEm / (fallbackMetric / fallback.unitsPerEm);
    return Number.isFinite(factor) && factor > 0 ? factor : 1;
  }
@@ -467,7 +686,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
    if (fallback.icWidth > 0) {
      return normalizedMetricFactor(icWidth(primary), primary, fallback.icWidth, fallback);
    }
-@@ -51297,28 +51529,25 @@ function populateWebGLOverlays(ctx) {
+@@ -51297,28 +51603,25 @@ function populateWebGLOverlays(ctx) {
    } = deps;
    if (cursor && imeState.preedit) {
      const preeditText = imeState.preedit;
@@ -508,7 +727,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        const rowY = preeditRow * cellH;
        pushRect(bgData, x, rowY, widthPx, cellH, PREEDIT_BG);
        const thickness = underlineThicknessPx;
-@@ -51330,27 +51559,32 @@ function populateWebGLOverlays(ctx) {
+@@ -51330,27 +51633,32 @@ function populateWebGLOverlays(ctx) {
        const selStart = Math.max(0, Math.min(visiblePreeditText.length, rawSelStart - selectionOffset));
        const selEnd = Math.max(selStart, Math.min(visiblePreeditText.length, rawSelEnd - selectionOffset));
        if (selEnd > selStart) {
@@ -556,7 +775,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      }
    }
    const resizeAge = performance.now() - resizeState.lastAt;
-@@ -51463,7 +51697,6 @@ function searchHighlightForColumn(matches, startIndex, endIndex, col, cols) {
+@@ -51463,7 +51771,6 @@ function searchHighlightForColumn(matches, startIndex, endIndex, col, cols) {
  
  // src/runtime/create-runtime/ligature-runs.ts
  var PROGRAMMING_LIGATURE_CHARS = new Set(Array.from("!#%&*+-.:/<=>?@\\^|~"));
@@ -564,7 +783,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
  function bytesEqual(left, leftIndex, right, rightIndex) {
    if (!left || !right)
      return left === right;
-@@ -51500,11 +51733,19 @@ function resolveLigatureRun(options) {
+@@ -51500,11 +51807,19 @@ function resolveLigatureRun(options) {
      ulStyle,
      cursorBlock,
      cursorCell,
@@ -584,7 +803,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
    if (cursorBlock && cursorCell && row === cursorCell.row && col >= cursorCell.col && col < cursorCell.col + (cursorCell.wide ? 2 : 1)) {
      return null;
    }
-@@ -51512,7 +51753,7 @@ function resolveLigatureRun(options) {
+@@ -51512,7 +51827,7 @@ function resolveLigatureRun(options) {
    const indices = [idx];
    let text = cluster.text;
    let span = cluster.span;
@@ -593,7 +812,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      const nextCol = col + indices.length;
      const nextCluster = readCellCluster(nextIdx);
      if (!nextCluster || nextCluster.span !== 1 || !isLigatureRunText(nextCluster.text))
-@@ -51520,6 +51761,8 @@ function resolveLigatureRun(options) {
+@@ -51520,6 +51835,8 @@ function resolveLigatureRun(options) {
      if (cursorBlock && cursorCell && row === cursorCell.row && nextCol >= cursorCell.col && nextCol < cursorCell.col + (cursorCell.wide ? 2 : 1)) {
        break;
      }
@@ -602,7 +821,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      if (!valuesEqual(contentTags, idx, contentTags, nextIdx))
        break;
      if (!valuesEqual(styleFlags, idx, styleFlags, nextIdx))
-@@ -51540,34 +51783,12 @@ function resolveLigatureRun(options) {
+@@ -51540,34 +51857,12 @@ function resolveLigatureRun(options) {
    }
    return indices.length >= 2 ? { text, span, indices } : null;
  }
@@ -643,7 +862,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
  function resolveRenderableLigatureRun(options) {
    const {
      ligatureRun,
-@@ -51577,16 +51798,45 @@ function resolveRenderableLigatureRun(options) {
+@@ -51577,16 +51872,45 @@ function resolveRenderableLigatureRun(options) {
      shapeClusterWithFont,
      readCellCluster
    } = options;
@@ -698,7 +917,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
  }
  
  // src/runtime/create-runtime/render-tick-webgl-scene.ts
-@@ -51859,6 +52109,9 @@ function populateWebGLSceneData(ctx) {
+@@ -51859,6 +52183,9 @@ function populateWebGLSceneData(ctx) {
          ulStyle,
          cursorBlock,
          cursorCell,
@@ -708,7 +927,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
          readCellCluster
        }) : null;
        const renderableLigatureRun = ligatureRun ? resolveRenderableLigatureRun({
-@@ -51876,16 +52129,15 @@ function populateWebGLSceneData(ctx) {
+@@ -51876,16 +52203,15 @@ function populateWebGLSceneData(ctx) {
            mergedLigatureSkip[renderableLigatureRun.indices[i]] = 1;
          }
        }
@@ -728,7 +947,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        let cellSpan = baseSpan;
        const nerdConstraint = resolveSymbolConstraint(cp);
        const symbolLike = isRenderSymbolLike(cp) || !!nerdConstraint;
-@@ -52387,6 +52639,9 @@ function collectWebGPUCellPass(params) {
+@@ -52387,6 +52713,9 @@ function collectWebGPUCellPass(params) {
          ulStyle,
          cursorBlock,
          cursorCell,
@@ -738,7 +957,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
          readCellCluster
        }) : null;
        const renderableLigatureRun = ligatureRun ? resolveRenderableLigatureRun({
-@@ -52404,16 +52659,15 @@ function collectWebGPUCellPass(params) {
+@@ -52404,16 +52733,15 @@ function collectWebGPUCellPass(params) {
            mergedLigatureSkip[renderableLigatureRun.indices[i]] = 1;
          }
        }
@@ -758,7 +977,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        let cellSpan = baseSpan;
        const nerdConstraint = resolveSymbolConstraint(cp);
        const symbolLike = isRenderSymbolLike(cp) || !!nerdConstraint;
-@@ -53078,28 +53332,25 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+@@ -53078,28 +53406,25 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
    } = deps;
    if (cursor && imeState.preedit) {
      const preeditText = imeState.preedit;
@@ -798,7 +1017,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        const rowY = preeditRow * cellH;
        pushRect(frame.bgData, x, rowY, widthPx, cellH, PREEDIT_BG);
        const thickness = underlineThicknessPx;
-@@ -53111,27 +53362,32 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+@@ -53111,27 +53436,32 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
        const selStart = Math.max(0, Math.min(visiblePreeditText.length, rawSelStart - selectionOffset));
        const selEnd = Math.max(selStart, Math.min(visiblePreeditText.length, rawSelEnd - selectionOffset));
        if (selEnd > selStart) {
@@ -846,7 +1065,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      }
    }
    const resizeAge = performance.now() - resizeState.lastAt;
-@@ -53444,7 +53700,7 @@ function createFontRuntimeGridHelpers(options) {
+@@ -53444,7 +53774,7 @@ function createFontRuntimeGridHelpers(options) {
      const advanceUnits = glyphId !== undefined && glyphId !== null ? primary.font.advanceWidth(glyphId) : shapeClusterWithFont(primary, "M").advance;
      const cellW = Math.max(1, Math.round(advanceUnits * scale));
      const lineHeight = fontHeightUnits2(primary.font) * scale;
@@ -855,7 +1074,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      const baselineOffset = primary.font.ascender * scale;
      const yPad = Math.max(0, (cellH - lineHeight) * 0.5);
      return { cellW, cellH, fontSizePx, scale, lineHeight, baselineOffset, yPad };
-@@ -53565,14 +53821,17 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53565,14 +53895,17 @@ function createFontRuntimeTextHelpers(options) {
      return shaped;
    }
    function noteColorGlyphText(entry, text, shaped) {
@@ -876,7 +1095,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
    }
    function fontHasGlyph(entry, ch, probeCoverage) {
      const glyphId = entry.font.glyphIdForChar(ch);
-@@ -53668,8 +53927,12 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53668,8 +54001,12 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -890,7 +1109,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        const result = tryIndex(emojiIndex);
        if (result !== null)
          return result;
-@@ -53679,7 +53942,7 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53679,7 +54016,7 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -899,7 +1118,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      if (firstIndex >= 0) {
        setBoundedMap(fontState.fontPickCache, cacheKey, firstIndex, fontPickCacheLimit);
        return firstIndex;
-@@ -54994,6 +55257,7 @@ function createResttyRuntime2(options) {
+@@ -54994,6 +55331,7 @@ function createResttyRuntime2(options) {
    const autoResize = terminal.autoResize ?? true;
    const showResizeOverlay = terminal.showResizeOverlay ?? true;
    const forwardTerminalReplies = terminal.forwardTerminalReplies ?? true;
@@ -907,7 +1126,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
    const touchSelectionMode = normalizeTouchSelectionMode(terminal.touchSelectionMode);
    const touchSelectionLongPressMs = clampFiniteNumber(terminal.touchSelectionLongPressMs, 450, 120, 2000, true);
    const touchSelectionMoveThresholdPx = clampFiniteNumber(terminal.touchSelectionMoveThresholdPx, 10, 1, 64);
-@@ -55175,6 +55439,7 @@ function createResttyRuntime2(options) {
+@@ -55175,6 +55513,7 @@ function createResttyRuntime2(options) {
    let lastRenderState = null;
    const runtimeInteraction = createRuntimeInteraction({
      attachCanvasEvents,
@@ -915,7 +1134,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      touchSelectionMode,
      touchSelectionLongPressMs,
      touchSelectionMoveThresholdPx,
-@@ -55249,6 +55514,10 @@ function createResttyRuntime2(options) {
+@@ -55249,6 +55588,10 @@ function createResttyRuntime2(options) {
    inputHandler = createInputHandler2({
      getCursorPosition: resolveCursorForCpr,
      sendReply: (data) => {
@@ -926,7 +1145,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
        ptyTransport.sendInput(data);
      },
      positionToCell,
-@@ -55278,14 +55547,8 @@ function createResttyRuntime2(options) {
+@@ -55278,14 +55621,8 @@ function createResttyRuntime2(options) {
        const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
        return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
      },
@@ -943,7 +1162,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      getKittyKeyboardFlags: () => {
        if (!wasm || !wasmHandle)
          return 0;
-@@ -55332,9 +55595,11 @@ function createResttyRuntime2(options) {
+@@ -55332,9 +55669,11 @@ function createResttyRuntime2(options) {
        getLastKeydownSeq: () => lastKeydownSeq,
        getLastKeydownSeqAt: () => lastKeydownSeqAt,
        keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
@@ -956,7 +1175,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
    bindCanvasEvents();
    const fontState = {
      font: null,
-@@ -55628,6 +55893,8 @@ function createResttyRuntime2(options) {
+@@ -55628,6 +55967,8 @@ function createResttyRuntime2(options) {
            const face = fontLease.faces[i];
            entries.push(createFontEntry2(face.font, face.label));
          }
@@ -965,7 +1184,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
          if (!entries.length) {
            throw new Error("Unable to parse any loaded font source.");
          }
-@@ -55828,6 +56095,8 @@ function createResttyRuntime2(options) {
+@@ -55828,6 +56169,8 @@ function createResttyRuntime2(options) {
      },
      set lastRenderState(value) {
        lastRenderState = value;
@@ -974,7 +1193,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      }
    });
    const readRuntimeControllerState = () => ({
-@@ -55923,7 +56192,7 @@ function createResttyRuntime2(options) {
+@@ -55923,7 +56266,7 @@ function createResttyRuntime2(options) {
        maxScrollback: terminal.maxScrollback
      }
    });
@@ -983,7 +1202,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..6792ea0a0cd62393eef27ae2caeb9c70
      terminal: {
        setFontSize: applyFontSize,
        setLigatures,
-@@ -55950,6 +56219,62 @@ function createResttyRuntime2(options) {
+@@ -55950,6 +56293,62 @@ function createResttyRuntime2(options) {
        getShaderStages
      }
    });

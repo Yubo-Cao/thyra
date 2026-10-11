@@ -110,4 +110,160 @@ describe("restty patch", () => {
       /function resolveFallbackScaleAdjustment\(primaryFont, fallbackFont\) \{[^]*?if \(isSameFaceMetrics\(primary, fallback\)\)\s*return 1;/,
     );
   });
+
+  describe("IME input", () => {
+    const fn = (name: string) =>
+      source.match(new RegExp(`\\nfunction ${name}\\([^]*?\\n\\}\\n`))?.[0];
+    const consts = source.match(
+      /\nvar IME_INPUT_MAX_CHARS = [^]*?\n\]\);\n/,
+    )?.[0];
+    const bindImeEvents = new Function(
+      `const requestAnimationFrame = (frame) => frame();${consts}${fn("imeInputEditsInPlace")}${fn("imeInputEdit")}${fn("bindImeEvents")}; return bindImeEvents;`,
+    )();
+
+    /** A hidden input bound like restty binds it, with a browser's edits. */
+    const setup = () => {
+      // Setting the value puts the caret at its end, as in a textarea.
+      let text = "";
+      const input = Object.assign(new EventTarget(), {
+        selectionStart: 0,
+        selectionEnd: 0,
+        value: "",
+      });
+      Object.defineProperty(input, "value", {
+        get: () => text,
+        set: (next: string) => {
+          text = next;
+          input.selectionStart = input.selectionEnd = next.length;
+        },
+      });
+      const sent: string[] = [];
+      const imeState = {
+        composing: false,
+        preedit: "",
+        selectionStart: 0,
+        selectionEnd: 0,
+      };
+      bindImeEvents({
+        bindOptions: {
+          inputHandler: {
+            encodeBeforeInput: (e: InputEvent) =>
+              e.inputType === "insertText"
+                ? e.data || ""
+                : e.inputType.startsWith("delete")
+                  ? "\x7f"
+                  : e.inputType === "insertLineBreak"
+                    ? "\r"
+                    : "",
+            mapKeyForPty: (text: string) => text,
+          },
+          sendKeyInput: (text: string) => sent.push(text),
+          sendPasteText: (text: string) => sent.push(`paste:${text}`),
+          sendPastePayloadFromDataTransfer: () => {},
+          getLastKeydownSeq: () => "",
+          getLastKeydownSeqAt: () => 0,
+          keydownBeforeinputDedupeMs: 0,
+        },
+        imeInput: input,
+        imeState,
+        cleanupCanvasFns: [],
+        getWasmReady: () => true,
+        getWasmHandle: () => 1,
+        setPreedit: (text: string) => (imeState.preedit = text),
+        syncImeSelection: () => {},
+      });
+      const fire = (type: string, props: Record<string, unknown> = {}) => {
+        const event = Object.assign(new Event(type, { cancelable: true }), {
+          isComposing: false,
+          ...props,
+        });
+        input.dispatchEvent(event);
+        return !event.defaultPrevented;
+      };
+      const select = (start: number, end = start) => {
+        input.selectionStart = start;
+        input.selectionEnd = end;
+      };
+      const replace = (inserted: string) => {
+        const { value, selectionStart: start, selectionEnd: end } = input;
+        input.value = value.slice(0, start) + inserted + value.slice(end);
+        select(start + inserted.length);
+      };
+      /** Composes text over the selection, as an IME commits or replaces. */
+      const compose = (text: string) => {
+        fire("compositionstart", { data: "" });
+        fire("compositionupdate", { data: text });
+        replace(text);
+        fire("compositionend", { data: text });
+      };
+      /** An edit the browser applies itself unless it is cancelled. */
+      const edit = (inputType: string, data: string | null = null) => {
+        if (!fire("beforeinput", { inputType, data })) return;
+        if (inputType === "deleteContentBackward") {
+          if (input.selectionStart === input.selectionEnd)
+            select(Math.max(0, input.selectionStart - 1), input.selectionEnd);
+          replace("");
+        } else replace(data ?? "");
+        fire("input", { inputType, data });
+      };
+      return { input, sent, imeState, fire, select, compose, edit };
+    };
+    const last = (sent: string[]) => sent[sent.length - 1];
+
+    test("a voice IME replacing its commit sends the correction once", () => {
+      const ime = setup();
+      ime.compose("hello world");
+      expect(ime.sent).toEqual(["hello world"]);
+      // The cleanup pass reselects the dictated text and composes over it.
+      ime.select(0, ime.input.value.length);
+      ime.compose("Hello, world.");
+      expect(ime.sent[1]).toBe(`${"\x7f".repeat(11)}Hello, world.`);
+      expect(ime.imeState.composing).toBe(false);
+      expect(ime.imeState.preedit).toBe("");
+    });
+
+    test("replacement text, deletes and middle edits retype the tail", () => {
+      const ime = setup();
+      ime.compose("teh cat");
+      ime.select(0, 3);
+      ime.edit("insertReplacementText", "the");
+      expect(ime.sent[1]).toBe(`${"\x7f".repeat(6)}he cat`);
+      ime.select(ime.input.value.length);
+      ime.edit("deleteContentBackward");
+      expect(ime.sent[2]).toBe("\x7f");
+      expect(ime.input.value).toBe("the ca");
+    });
+
+    test("deletes count code points, not UTF-16 units", () => {
+      const ime = setup();
+      ime.compose("语音😀");
+      ime.select(0, ime.input.value.length);
+      ime.compose("语音。");
+      expect(ime.sent[1]).toBe("\x7f。");
+    });
+
+    test("keys and paste start over; IME keys keep the text", () => {
+      const ime = setup();
+      ime.compose("ls");
+      ime.fire("keydown", { key: "Process", keyCode: 229 });
+      expect(ime.input.value).toBe("ls");
+      ime.fire("keydown", { key: "Enter", keyCode: 13 });
+      expect(ime.input.value).toBe("");
+      ime.compose("echo");
+      // A backspace with nothing to delete still reaches the pty.
+      ime.fire("keydown", { key: "ArrowLeft", keyCode: 37 });
+      ime.edit("deleteContentBackward");
+      expect(last(ime.sent)).toBe("\x7f");
+      ime.edit("insertLineBreak");
+      expect(last(ime.sent)).toBe("\r");
+      expect(ime.input.value).toBe("");
+      ime.compose("x");
+      ime.fire("beforeinput", {
+        inputType: "insertFromPaste",
+        dataTransfer: { getData: () => "pasted" },
+      });
+      expect(last(ime.sent)).toBe("paste:pasted");
+      expect(ime.input.value).toBe("");
+    });
+  });
 });

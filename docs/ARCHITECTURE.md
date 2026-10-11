@@ -178,6 +178,10 @@ requests and invalidates clipboard ownership.
   `0x1f` in a shell and `CSI 47;5u` in a Kitty-keyboard app, as from Ghostty.
   IME composition, dead keys, paste and on-screen keyboards keep the
   `terminal.input` byte path; both share one ordered queue per terminal.
+  The hidden input keeps the text IMEs commit until a real key, paste or line
+  break, so an IME that reselects and replaces it (voice input's cleanup,
+  reconversion, autocorrect) reaches the pane as backspaces over the changed
+  tail plus the new text instead of a second copy.
   On macOS, Cmd belongs to Thyra's bindings and native
   copy/paste; other Cmd chords reach the pane with Super, except the browser's
   reload/address/tab/window/zoom/find/select-all chords, which the opt-in exclusive keyboard
