@@ -353,5 +353,6 @@ describe("hostile archives", () => {
     }
     expect(await leftovers()).toEqual([]);
     expect(await readdir(root)).toEqual(["big.tar.gz"]);
-  });
+    // Building the 400 MB archive alone can outlast the default on CI.
+  }, 30_000);
 });
