@@ -155,6 +155,19 @@ export const HTTP_POLICY = {
   "update.install": { class: "dangerous", scope: "host" },
   "herdr.status": { class: "admin", scope: "host" },
   "herdr.setup": { class: "dangerous", scope: "host" },
+  // The instance admin panel (auth/admin-routes.ts): accounts, invitations
+  // to the instance, and the sign-up policy.
+  "admin.users": { class: "admin", scope: "host" },
+  "admin.users.role": { class: "admin", scope: "host" },
+  "admin.users.disable": { class: "admin", scope: "host" },
+  "admin.users.remove": { class: "admin", scope: "host" },
+  "admin.users.revoke-sessions": { class: "admin", scope: "host" },
+  "admin.invites": { class: "admin", scope: "host" },
+  "admin.invites.create": { class: "admin", scope: "host" },
+  "admin.invites.revoke": { class: "admin", scope: "host" },
+  "admin.invites.resend": { class: "admin", scope: "host" },
+  "admin.signup": { class: "admin", scope: "host" },
+  "admin.signup.set": { class: "admin", scope: "host" },
 
   "connection.herdr-info": { class: "read", scope: "session" },
   // A malformed connection route: log in first, then see the routing error.
@@ -248,6 +261,18 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/update/install": { POST: "update.install" },
   "/api/herdr/status": { GET: "herdr.status" },
   "/api/herdr/setup": { POST: "herdr.setup" },
+  "/api/admin/users": { GET: "admin.users" },
+  "/api/admin/users/role": { POST: "admin.users.role" },
+  "/api/admin/users/disable": { POST: "admin.users.disable" },
+  "/api/admin/users/remove": { POST: "admin.users.remove" },
+  "/api/admin/users/revoke-sessions": { POST: "admin.users.revoke-sessions" },
+  "/api/admin/invites": {
+    GET: "admin.invites",
+    POST: "admin.invites.create",
+  },
+  "/api/admin/invites/revoke": { POST: "admin.invites.revoke" },
+  "/api/admin/invites/resend": { POST: "admin.invites.resend" },
+  "/api/admin/signup": { GET: "admin.signup", POST: "admin.signup.set" },
 };
 
 /** OAuth and OIDC sign-in: start (POST) and the provider's return (GET). */

@@ -27,6 +27,7 @@ import {
 import type { ShareRoutes } from "./share-routes";
 import type { TailnetSso } from "./tailnet-sso";
 import type { AccountRoutes } from "./account-routes";
+import type { AdminRoutes } from "./admin-routes";
 import type { SignInRoutes } from "./sign-in-routes";
 import { PasskeyError, type PasskeyService, passkeyOrigin } from "./passkeys";
 import {
@@ -99,6 +100,8 @@ export function createAuthRoutes(args: {
   signIn?: SignInRoutes | null;
   /** The account page: profile, avatar, sign-in methods, invitations. */
   account?: AccountRoutes | null;
+  /** The instance admin panel (`/api/admin/*`). */
+  admin?: AdminRoutes | null;
   logger?: Logger;
 }) {
   const logger = args.logger ?? silentLogger;
@@ -420,6 +423,10 @@ export function createAuthRoutes(args: {
           break;
       }
       if (!principal) return null;
+      if (route.startsWith("admin."))
+        return args.admin
+          ? args.admin.handle(route, req, access, principal)
+          : null;
       if (args.account) {
         const response = await args.account.handle(
           route,

@@ -269,8 +269,6 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_GOOGLE_CLIENT_ID`, `THYRA_GOOGLE_CLIENT_SECRET` | "Continue with Google"; see [sign-in providers](#sign-in-providers) |
 | `THYRA_MICROSOFT_CLIENT_ID`, `THYRA_MICROSOFT_CLIENT_SECRET`, `THYRA_MICROSOFT_TENANT` | "Continue with Microsoft" (tenant default `common`); see [sign-in providers](#sign-in-providers) |
 | `THYRA_OIDC_ISSUER`, `THYRA_OIDC_CLIENT_ID`, `THYRA_OIDC_CLIENT_SECRET`, `THYRA_OIDC_NAME`, `THYRA_OIDC_SCOPES` | Single sign-on through any OpenID Connect provider; see [sign-in providers](#sign-in-providers) |
-| `THYRA_SIGNUP=invite\|open` | Whether unknown verified identities get a member account (default `invite`: they do not) |
-| `THYRA_SIGNUP_DOMAINS` | Comma-separated email domains whose verified addresses get a member account even when sign-up is `invite` |
 | `THYRA_TAILNET_SSO_URL` | HTTPS origin of the tailnet listener (`https://dev.example.com`); tailnet devices then sign in to the public address automatically; see [tailnet sign-in](#tailnet-sign-in-on-the-public-address) |
 | `THYRA_TAILSCALE_IDENTITY=off` | Disable Tailscale `whois` lookups |
 | `THYRA_TAILSCALE_SOCKET`, `THYRA_TAILSCALE_CLI` | tailscaled LocalAPI socket or `tailscale` binary to use for `whois` |
@@ -336,8 +334,6 @@ THYRA_OIDC_ISSUER=https://login.example.com/realms/corp
 THYRA_OIDC_CLIENT_ID=...
 THYRA_OIDC_CLIENT_SECRET=...
 THYRA_OIDC_NAME="Example SSO"
-# Let anyone with a verified address at these domains in (as a member):
-THYRA_SIGNUP_DOMAINS=example.com
 ```
 
 - **Email** (Resend): verify the sending domain of `THYRA_EMAIL_FROM` in Resend (its SPF and DKIM records), then create an API key with sending access.
@@ -354,7 +350,10 @@ THYRA_SIGNUP_DOMAINS=example.com
 
 The callback host is the address people sign in on, normally `THYRA_PUBLIC_ORIGIN`; register one callback per address you use.
 Identities are linked by the provider's user id; a new identity joins an existing account only when a signed-in person links it under **Configuration > Account**, when it arrives through an invitation, or when its address is verified (GitHub's primary verified address, `email_verified` for the others) and matches exactly one account's verified address.
-Anyone else who signs in gets "Signed in as … Ask the owner for access" and no account, unless `THYRA_SIGNUP=open` makes everyone, or `THYRA_SIGNUP_DOMAINS` makes people with a verified address at those domains, members without grants; owners then share workspaces with them.
+Anyone else who signs in gets "Signed in as … Ask the owner for access" and no account, unless the instance's sign-up setting lets them in as members without grants; owners then share workspaces with them.
+Instance admins choose it in the admin panel, stored in the account database and applied at the next sign-in: **invite only** (the default) or **open** to every verified identity, plus email domains whose verified addresses may sign up even when it is invite only.
+The admin panel also lists accounts (role, sign-in methods, sessions, last activity), changes roles, disables and removes accounts, signs out all of an account's sessions, and invites addresses to the instance as members or admins: the invitation is mailed when email sign-in is on, and its link is always shown to copy.
+An admin cannot demote, disable or remove their own account, nor the last enabled admin who can sign in; `thyra user` on the host still can.
 When the provider returns to a browser other than the one that started (an iOS Home Screen app opens it in Safari), that browser shows a 4-digit number and asks before finishing; the app, still polling, then signs in.
 
 **Configuration > Account** edits the display name and picture (cropped and scaled to 256 px in the browser, or imported from a linked GitHub or Google account), adds and removes passkeys, linked providers and email addresses (never the last way to sign in), and lists sessions with their device, method and last activity, one of which or all others can be signed out.

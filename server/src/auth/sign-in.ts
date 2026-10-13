@@ -1,10 +1,17 @@
+import { randomBytes } from "node:crypto";
+import type {
+  AdminInvite,
+  AdminSignupSettings,
+  InstanceRole,
+  SignupPolicy,
+} from "../../../shared/admin";
 import {
   type AccountStore,
   hashSecret,
   randomToken,
   type User,
 } from "../accounts/store";
-import type { OAuthProviderId, SignupPolicy } from "./providers";
+import type { OAuthProviderId } from "./providers";
 
 /**
  * From a verified external identity (a mailed code, GitHub, Google,
@@ -48,6 +55,63 @@ export const PROVIDER_LABELS: Record<ExternalIdentity["provider"], string> = {
   oidc: "SSO",
 };
 
+const SIGNUP_SETTING = "signup";
+const DOMAIN_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+/**
+ * Who may sign up without an invitation, from the account database so that
+ * admins change it at runtime: `invite` (default; unknown identities get no
+ * account) or `open` (they become members without grants), and email domains
+ * whose verified addresses become members even when sign-up is `invite`.
+ */
+export function signupSettings(store: AccountStore): AdminSignupSettings {
+  const saved = store.getSetting(SIGNUP_SETTING) as Partial<
+    Record<keyof AdminSignupSettings, unknown>
+  > | null;
+  return {
+    policy: saved?.policy === "open" ? "open" : "invite",
+    domains: Array.isArray(saved?.domains)
+      ? saved.domains.filter((domain) => typeof domain === "string")
+      : [],
+  };
+}
+
+/**
+ * Validate and store sign-up settings: domains are lower-cased, lose a
+ * leading `@` and are deduplicated. Returns the stored settings, or the
+ * reason they were refused.
+ */
+export function saveSignupSettings(
+  store: AccountStore,
+  input: { policy?: unknown; domains?: unknown },
+  actor: string | null,
+): { ok: true; settings: AdminSignupSettings } | { ok: false; error: string } {
+  if (input.policy !== "invite" && input.policy !== "open")
+    return { ok: false, error: "policy must be invite or open" };
+  if (
+    !Array.isArray(input.domains) ||
+    !input.domains.every((entry) => typeof entry === "string")
+  )
+    return { ok: false, error: "domains must be a list of domain names" };
+  const domains: string[] = [];
+  for (const entry of input.domains as string[]) {
+    const domain = entry.trim().toLowerCase().replace(/^@/, "");
+    if (!domain) continue;
+    if (!DOMAIN_PATTERN.test(domain))
+      return {
+        ok: false,
+        error: `${JSON.stringify(entry.trim())} is not a domain name`,
+      };
+    domains.push(domain);
+  }
+  const settings = {
+    policy: input.policy as SignupPolicy,
+    domains: [...new Set(domains)],
+  };
+  store.setSetting(SIGNUP_SETTING, settings, actor);
+  return { ok: true, settings };
+}
+
 /** Whether a verified address is in one of the sign-up domains. */
 export function inSignupDomain(
   identity: Pick<ExternalIdentity, "email" | "emailVerified">,
@@ -85,15 +149,14 @@ function link(
  *   another account already has it).
  * - `inviteUserId`: an invitation's holder chose this method; it is linked
  *   to the invited account.
- * - `signupDomains`: an unknown identity with a verified address in one of
- *   them gets a member account even when `signup` is `invite`.
+ *
+ * Otherwise an unknown identity gets a member account as `signupSettings`
+ * allow, read at each sign-in.
  */
 export function resolveIdentity(
   store: AccountStore,
   identity: ExternalIdentity,
   options: {
-    signup: SignupPolicy;
-    signupDomains?: readonly string[];
     linkUserId?: string | null;
     inviteUserId?: string | null;
   },
@@ -144,10 +207,8 @@ export function resolveIdentity(
       }
     }
   }
-  if (
-    options.signup === "open" ||
-    inSignupDomain(identity, options.signupDomains ?? [])
-  ) {
+  const signup = signupSettings(store);
+  if (signup.policy === "open" || inSignupDomain(identity, signup.domains)) {
     const user = store.db.transaction(() => {
       const created = store.createUser({
         name: store.uniqueName(
@@ -174,16 +235,54 @@ export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type InviteStore = ReturnType<typeof createInviteStore>;
 
-/** Invitation links: the secret is mailed once and stored as SHA-256. */
+/**
+ * Invitation links: the secret is mailed once and stored as SHA-256. Each
+ * invitation also has a public id, by which admins list, revoke and resend
+ * it.
+ */
 export function createInviteStore(store: AccountStore) {
   const { db } = store;
   type Row = { user_id: string; email: string; expires_at: number };
+  type ListRow = {
+    id: string;
+    email: string;
+    user_id: string;
+    role: InstanceRole;
+    created_by: string | null;
+    created_at: number;
+    expires_at: number;
+  };
   const byHash = (hash: string): Row | null =>
     db
       .query<Row, { hash: string }>(
         "SELECT user_id, email, expires_at FROM invites WHERE token_hash = $hash",
       )
       .get({ hash });
+  const liveRows = (id?: string): ListRow[] =>
+    db
+      .query<ListRow, { now: number; id: string | null }>(
+        `SELECT i.id, i.email, i.user_id, u.role, i.created_by, i.created_at, i.expires_at
+           FROM invites i JOIN users u ON u.id = i.user_id
+          WHERE i.expires_at > $now AND ($id IS NULL OR i.id = $id)
+          ORDER BY i.created_at DESC`,
+      )
+      .all({ now: store.now(), id: id ?? null });
+  const view = (row: ListRow): AdminInvite => ({
+    id: row.id,
+    email: row.email,
+    userId: row.user_id,
+    role: row.role,
+    // Accounts invite by id; "local" and "cli" have no name to show.
+    createdBy: row.created_by
+      ? (store.getUser(row.created_by)?.displayName ?? null)
+      : null,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  });
+  const get = (id: string): AdminInvite | null => {
+    const row = liveRows(id)[0];
+    return row ? view(row) : null;
+  };
   const valid = (token: unknown): token is string =>
     typeof token === "string" && token.length >= 20 && token.length <= 128;
   const peekHash = (hash: string) => {
@@ -207,17 +306,18 @@ export function createInviteStore(store: AccountStore) {
     /** Invitations by the SHA-256 of their token (OAuth flows keep that). */
     peekHash,
     consumeHash,
-    create(args: {
-      userId: string;
-      email: string;
-      actor: string | null;
-    }): string {
+    create(args: { userId: string; email: string; actor: string | null }): {
+      id: string;
+      token: string;
+    } {
+      const id = `i_${randomBytes(9).toString("base64url")}`;
       const token = randomToken(32);
       const at = store.now();
       db.query(
-        `INSERT INTO invites (token_hash, user_id, email, created_by, created_at, expires_at)
-         VALUES ($hash, $user, $email, $actor, $at, $expires)`,
+        `INSERT INTO invites (id, token_hash, user_id, email, created_by, created_at, expires_at)
+         VALUES ($id, $hash, $user, $email, $actor, $at, $expires)`,
       ).run({
+        id,
         hash: hashSecret(token),
         user: args.userId,
         email: args.email,
@@ -225,9 +325,9 @@ export function createInviteStore(store: AccountStore) {
         at,
         expires: at + INVITE_TTL_MS,
       });
-      store.audit(args.actor, "invite.create", args.userId);
+      store.audit(args.actor, "invite.create", args.userId, { invite: id });
       store.markChanged();
-      return token;
+      return { id, token };
     },
     /** The invited account and address for a live token. */
     peek(token: unknown): { user: User; email: string } | null {
@@ -236,6 +336,49 @@ export function createInviteStore(store: AccountStore) {
     /** Use a token up; the invited account, or null. */
     consume(token: unknown): { user: User; email: string } | null {
       return valid(token) ? consumeHash(hashSecret(token)) : null;
+    },
+    /** Unexpired invitations, newest first. */
+    list(): AdminInvite[] {
+      return liveRows().map(view);
+    },
+    get,
+    /** Delete an invitation; the deleted one, or null. */
+    remove(id: string, actor: string | null): AdminInvite | null {
+      const invite = get(id);
+      if (!invite) return null;
+      db.query("DELETE FROM invites WHERE id = $id").run({ id });
+      store.audit(actor, "invite.revoke", invite.userId, { invite: id });
+      store.markChanged();
+      return invite;
+    },
+    /** Delete every invitation to an account (it is invited afresh). */
+    removeForUser(userId: string) {
+      db.query("DELETE FROM invites WHERE user_id = $user").run({
+        user: userId,
+      });
+      store.markChanged();
+    },
+    /**
+     * A new token and a full validity period for a live invitation; the old
+     * link stops working.
+     */
+    rotate(
+      id: string,
+      actor: string | null,
+    ): { invite: AdminInvite; token: string } | null {
+      if (!get(id)) return null;
+      const token = randomToken(32);
+      db.query(
+        "UPDATE invites SET token_hash = $hash, expires_at = $expires WHERE id = $id",
+      ).run({
+        id,
+        hash: hashSecret(token),
+        expires: store.now() + INVITE_TTL_MS,
+      });
+      const invite = get(id)!;
+      store.audit(actor, "invite.resend", invite.userId, { invite: id });
+      store.markChanged();
+      return { invite, token };
     },
     pruneExpired() {
       db.query("DELETE FROM invites WHERE expires_at <= $now").run({

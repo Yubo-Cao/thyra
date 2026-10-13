@@ -123,6 +123,17 @@ const RPC_MATRIX: Record<string, string> = {
 };
 
 const HTTP_MATRIX: Record<string, string> = {
+  "admin.invites": "admin",
+  "admin.invites.create": "admin",
+  "admin.invites.resend": "admin",
+  "admin.invites.revoke": "admin",
+  "admin.signup": "admin",
+  "admin.signup.set": "admin",
+  "admin.users": "admin",
+  "admin.users.disable": "admin",
+  "admin.users.remove": "admin",
+  "admin.users.revoke-sessions": "admin",
+  "admin.users.role": "admin",
   "api.health": "admin owner editor viewer outsider guest guest-pane",
   "auth.avatar": "admin owner editor viewer outsider",
   "auth.avatar.remove": "admin owner editor viewer outsider",

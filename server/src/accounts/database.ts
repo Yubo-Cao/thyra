@@ -6,8 +6,8 @@ import { thyraEnv } from "../config/environment";
 
 /**
  * The account database: users, their identities and passkeys, login
- * sessions, workspace grants, share links and their guest sessions, and the
- * audit log. One SQLite file in the data
+ * sessions, workspace grants, share links and their guest sessions,
+ * invitations, instance settings and the audit log. One SQLite file in the data
  * directory (`THYRA_DB_PATH` overrides), mode 0600, WAL so the CLI can write
  * while the server runs. Schema changes are appended to `MIGRATIONS`; the
  * index of the last applied one is stored in `PRAGMA user_version`.
@@ -213,6 +213,21 @@ const MIGRATIONS: readonly Migration[] = [
     created_by TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
+  );
+  `,
+  ],
+  [
+    // Invitations get a public id, so admins can list, revoke and resend
+    // them without their secret.
+    addColumn("invites", "id", "TEXT"),
+    `
+  UPDATE invites SET id = 'i_' || lower(hex(randomblob(9))) WHERE id IS NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS invites_id ON invites(id);
+  -- Instance settings changed at runtime (sign-up policy), as JSON values.
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
   );
   `,
   ],

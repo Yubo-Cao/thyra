@@ -183,8 +183,6 @@ export function createSignInRoutes(args: {
       ? args.invites.peekHash(options.inviteHash)
       : null;
     const outcome = resolveIdentity(args.store, identity, {
-      signup: args.providers.signup,
-      signupDomains: args.providers.signupDomains,
       linkUserId: options.linkUserId,
       inviteUserId: invite?.user.id ?? null,
     });

@@ -387,7 +387,11 @@ export function createAccountRoutes(args: {
     // Accounts that can already sign in just get the grant.
     const invited = args.store.signInMethodCount(user.id) === 0;
     if (invited) {
-      const token = args.invites.create({ userId: user.id, email, actor });
+      const { token } = args.invites.create({
+        userId: user.id,
+        email,
+        actor,
+      });
       const inviter =
         principal.kind === "user" ? principal.user.displayName : "The owner";
       try {

@@ -14,11 +14,9 @@
  *   `THYRA_OIDC_CLIENT_SECRET`; `THYRA_OIDC_NAME` labels its button
  *   (default "SSO") and `THYRA_OIDC_SCOPES` overrides `openid email profile`.
  *   Its endpoints come from the issuer's discovery document.
- * - `THYRA_SIGNUP`: `invite` (default; unknown identities get no account)
- *   or `open` (they become members without grants).
- * - `THYRA_SIGNUP_DOMAINS`: comma-separated email domains; an unknown
- *   identity whose verified address is in one becomes a member without
- *   grants even when sign-up is invite-only.
+ *
+ * Who may sign up is an instance setting in the account database
+ * (`signupSettings` in sign-in.ts), changed from the admin panel.
  *
  * The server reads that file too (`providerEnvironment`); variables already
  * in the environment win.
@@ -34,8 +32,6 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { dataRoot } from "../config/data-paths";
 import { parseEnvironmentFile } from "../config/environment";
-
-export type SignupPolicy = "invite" | "open";
 
 export const AUTH_PROVIDERS_FILE = "auth-providers.env";
 
@@ -112,9 +108,6 @@ export type AuthProviders = {
   google: OAuthProviderConfig | null;
   microsoft: OAuthProviderConfig | null;
   oidc: OAuthProviderConfig | null;
-  signup: SignupPolicy;
-  /** Verified email domains that may sign up whatever `signup` says. */
-  signupDomains: string[];
   warnings: string[];
 };
 
@@ -176,29 +169,8 @@ function issuerUrl(value: string, warnings: string[]): string | null {
   return null;
 }
 
-function signupDomains(env: Env, warnings: string[]): string[] {
-  const domains: string[] = [];
-  for (const entry of (env.THYRA_SIGNUP_DOMAINS ?? "").split(",")) {
-    const domain = entry.trim().toLowerCase().replace(/^@/, "");
-    if (!domain) continue;
-    if (/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(domain))
-      domains.push(domain);
-    else
-      warnings.push(
-        `ignoring THYRA_SIGNUP_DOMAINS entry ${JSON.stringify(entry.trim())}: not a domain name`,
-      );
-  }
-  return [...new Set(domains)];
-}
-
 export function loadAuthProviders(env: Env = process.env): AuthProviders {
   const warnings: string[] = [];
-  const signupText = env.THYRA_SIGNUP?.trim().toLowerCase() || "invite";
-  const signup: SignupPolicy = signupText === "open" ? "open" : "invite";
-  if (signupText !== "open" && signupText !== "invite")
-    warnings.push(
-      `ignoring unknown THYRA_SIGNUP ${JSON.stringify(env.THYRA_SIGNUP)}; sign-up stays invite-only`,
-    );
 
   let email: EmailConfig | null = null;
   const apiKey = env.THYRA_RESEND_API_KEY?.trim();
@@ -345,8 +317,6 @@ export function loadAuthProviders(env: Env = process.env): AuthProviders {
     google,
     microsoft,
     oidc,
-    signup,
-    signupDomains: signupDomains(env, warnings),
     warnings,
   };
 }

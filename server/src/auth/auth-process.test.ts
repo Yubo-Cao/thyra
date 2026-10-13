@@ -297,3 +297,110 @@ test("tailnet admins, passkey members, grants and revocation", async () => {
     await server.stop();
   }
 }, 60_000);
+
+test("the admin API: admins only, same origin, and disabling ends live pages", async () => {
+  const server = await startTestServer({
+    whois: { "100.64.7.7": "owner@example.com" },
+  });
+  try {
+    const { request, proxy } = server;
+    const outside = proxy("203.0.113.5");
+    const adminCookie = sessionCookie(
+      await request("/", {
+        headers: { ...proxy("100.64.7.7"), accept: "text/html" },
+      }),
+    );
+    const json = {
+      ...outside,
+      origin: ORIGIN,
+      "content-type": "application/json",
+    };
+    const asAdmin = { ...json, cookie: adminCookie };
+
+    // A member who enrolled a passkey.
+    const added = await server.cli("user", "add", "bob");
+    const secret = added.stdout.match(/\/enroll#([\w-]+)/)![1];
+    const key = await createSoftwareAuthenticator();
+    const enrollment = (await (
+      await request("/api/auth/passkey/register/options", {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ secret }),
+      })
+    ).json()) as any;
+    const bobCookie = sessionCookie(
+      await request("/api/auth/passkey/register/verify", {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          flow: enrollment.flow,
+          response: key.create(enrollment.options, ORIGIN),
+        }),
+      }),
+    );
+    expect(
+      (
+        await request("/api/admin/users", {
+          headers: { ...outside, cookie: bobCookie },
+        })
+      ).status,
+    ).toBe(403);
+
+    const { users } = (await (
+      await request("/api/admin/users", { headers: asAdmin })
+    ).json()) as any;
+    expect(
+      users.map((user: any) => [user.name, user.self, user.pending]),
+    ).toEqual([
+      ["bob", false, false],
+      ["owner", true, false],
+    ]);
+
+    // Mutations need this origin, like every other POST.
+    const signup = JSON.stringify({ policy: "open", domains: [] });
+    expect(
+      (
+        await request("/api/admin/signup", {
+          method: "POST",
+          headers: { ...asAdmin, origin: "https://evil.example" },
+          body: signup,
+        })
+      ).status,
+    ).toBe(403);
+    const saved = await request("/api/admin/signup", {
+      method: "POST",
+      headers: asAdmin,
+      body: signup,
+    });
+    expect(await saved.json()).toEqual({ policy: "open", domains: [] });
+
+    const self = await request("/api/admin/users/disable", {
+      method: "POST",
+      headers: asAdmin,
+      body: JSON.stringify({ user: users[1].id, disabled: true }),
+    });
+    expect(self.status).toBe(409);
+
+    const page = await server.connect({
+      ...outside,
+      origin: ORIGIN,
+      cookie: bobCookie,
+    });
+    const disabled = await request("/api/admin/users/disable", {
+      method: "POST",
+      headers: asAdmin,
+      body: JSON.stringify({ user: users[0].id, disabled: true }),
+    });
+    expect(disabled.status).toBe(200);
+    expect(await page.closed).toMatchObject({ code: 4001 });
+    expect(
+      (
+        await request("/api/auth/me", {
+          headers: { ...outside, cookie: bobCookie },
+        })
+      ).status,
+    ).toBe(401);
+  } finally {
+    await server.stop();
+  }
+}, 60_000);

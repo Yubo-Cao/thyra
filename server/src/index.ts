@@ -122,10 +122,11 @@ import {
 import { createAccessControl } from "./auth/access";
 import { avatarUrl, createAvatarFiles } from "./accounts/avatars";
 import { createAccountRoutes } from "./auth/account-routes";
+import { createAdminRoutes } from "./auth/admin-routes";
 import { createEmailCodeStore, createResendMailer } from "./auth/email";
 import { createOAuthFlowStore } from "./auth/oauth";
 import { loadAuthProviders, providerEnvironment } from "./auth/providers";
-import { createInviteStore } from "./auth/sign-in";
+import { createInviteStore, signupSettings } from "./auth/sign-in";
 import { createSignInRoutes } from "./auth/sign-in-routes";
 import { createPasskeyService } from "./auth/passkeys";
 import {
@@ -480,6 +481,9 @@ function accountRoutes(
     accessControl.invalidate();
     checkLiveSessions();
   };
+  // Invitations point at the public address when there is one.
+  const inviteOrigin = (access: RequestAccess) =>
+    publicListener?.origin ?? access.ownOrigin;
   return createAuthRoutes({
     store: accountStore,
     authenticator: listenerAuthenticator,
@@ -520,8 +524,7 @@ function accountRoutes(
       codes: emailCodes,
       invites,
       avatars: avatarFiles,
-      // Invitations point at the public address when there is one.
-      inviteOrigin: (access) => publicListener?.origin ?? access.ownOrigin,
+      inviteOrigin,
       connectionExists,
       onChange,
       onSessionEnded: (idHash) =>
@@ -542,6 +545,14 @@ function accountRoutes(
         );
       },
       logger: logger.child("auth"),
+    }),
+    admin: createAdminRoutes({
+      store: accountStore,
+      invites,
+      mailer,
+      inviteOrigin,
+      onChange,
+      logger: logger.child("admin"),
     }),
     shareRoutes: createShareRoutes({
       store: accountStore,
@@ -2822,8 +2833,7 @@ function main() {
       ]
         .filter(Boolean)
         .join(",") || "none",
-    signup: authProviders.signup,
-    signup_domains: authProviders.signupDomains.join(",") || undefined,
+    signup: signupSettings(accountStore).policy,
   });
   if (accountStore.userCount() === 0 && tailnetAuth.mode === "off") {
     logger.warn(

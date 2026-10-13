@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 /**
  * Accounts, identities, sessions, passkeys, enrollment links, workspace
- * grants and the audit log, over the account database. Secrets (session
+ * grants, instance settings and the audit log, over the account database. Secrets (session
  * cookies, enrollment secrets) are stored only as SHA-256 digests.
  */
 
@@ -588,6 +588,23 @@ export function createAccountStore(
         q.passkeysForUser.all({ user: userId }).length
       );
     },
+    /**
+     * Enabled admins with a way to sign in (an invited admin who has not
+     * accepted yet does not count).
+     */
+    activeAdminCount(): number {
+      return (
+        db
+          .query<{ count: number }, []>(
+            `SELECT COUNT(*) AS count FROM users u
+              WHERE u.role = 'admin' AND u.disabled = 0
+                AND (EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = u.id)
+                  OR EXISTS (SELECT 1 FROM identities i WHERE i.user_id = u.id
+                               AND (i.provider <> 'email' OR i.email_verified = 1)))`,
+          )
+          .get()?.count ?? 0
+      );
+    },
     /** Users with a verified identity carrying this email address. */
     usersWithVerifiedEmail(email: string): string[] {
       return db
@@ -949,6 +966,28 @@ export function createAccountStore(
           grantedBy: row.granted_by,
           updatedAt: row.updated_at,
         }));
+    },
+    // Instance settings (JSON values).
+    getSetting(key: string): unknown {
+      const row = db
+        .query<{ value: string }, { key: string }>(
+          "SELECT value FROM settings WHERE key = $key",
+        )
+        .get({ key });
+      if (!row) return null;
+      try {
+        return JSON.parse(row.value);
+      } catch {
+        return null;
+      }
+    },
+    setSetting(key: string, value: unknown, actor: string | null) {
+      db.query(
+        `INSERT INTO settings (key, value, updated_at) VALUES ($key, $value, $at)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      ).run({ key, value: JSON.stringify(value), at: now() });
+      audit(actor, "setting.set", key, { value });
+      changed();
     },
     listAudit(limit = 50) {
       return db

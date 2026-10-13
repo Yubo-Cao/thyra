@@ -29,7 +29,7 @@ describe("account database", () => {
     if (process.platform !== "win32")
       expect(statSync(path).mode & 0o777).toBe(0o600);
     migrate(db);
-    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 4 });
+    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 5 });
     db.run("PRAGMA user_version = 99");
     expect(() => migrate(db)).toThrow("newer than this Thyra");
     db.close();
@@ -53,13 +53,14 @@ describe("account database", () => {
         .all()
         .map((row) => row.name);
     const latest = version();
-    // Undo the last migration except for the index and a column it added,
-    // as an unreleased build left them in a live database.
-    for (const table of ["email_codes", "oauth_flows", "invites"])
+    // Undo the fourth migration (and the fifth, which builds on it) except
+    // for the index and a column it added, as an unreleased build left them
+    // in a live database.
+    for (const table of ["email_codes", "oauth_flows", "invites", "settings"])
       db.run(`DROP TABLE ${table}`);
     db.run("ALTER TABLE identities DROP COLUMN avatar_url");
     db.run("ALTER TABLE users DROP COLUMN avatar");
-    db.run(`PRAGMA user_version = ${latest - 1}`);
+    db.run("PRAGMA user_version = 3");
     expect(names("index")).toContain("identities_email");
     expect(columns("identities")).toContain("email_verified");
 
@@ -72,15 +73,34 @@ describe("account database", () => {
       expect.arrayContaining(["email_verified", "avatar_url"]),
     );
     expect(columns("users")).toContain("avatar");
+    expect(columns("invites")).toContain("id");
 
     // An object that cannot be reused still fails, naming the migration.
     db.run("DROP INDEX identities_email");
     db.run("CREATE TABLE identities_email (x)");
-    db.run(`PRAGMA user_version = ${latest - 1}`);
+    db.run("PRAGMA user_version = 3");
     expect(() => migrate(db)).toThrow(
-      `account database migration ${latest} of ${latest} failed`,
+      `account database migration 4 of ${latest} failed`,
     );
-    expect(version()).toBe(latest - 1);
+    expect(version()).toBe(3);
+    db.close();
+  });
+
+  test("gives invitations made before ids an id", () => {
+    const db = openAccountDatabase(":memory:");
+    const store = createAccountStore(db);
+    const user = store.createUser({ name: "pat", role: "member" });
+    db.run("DROP INDEX invites_id");
+    db.run("DROP TABLE settings");
+    db.run("ALTER TABLE invites DROP COLUMN id");
+    db.query(
+      "INSERT INTO invites (token_hash, user_id, email, created_at, expires_at) VALUES ('h', $user, 'pat@example.com', 1, 2)",
+    ).run({ user: user.id });
+    db.run("PRAGMA user_version = 4");
+    migrate(db);
+    expect(
+      db.query<{ id: string }, []>("SELECT id FROM invites").get()?.id,
+    ).toMatch(/^i_[0-9a-f]{18}$/);
     db.close();
   });
 

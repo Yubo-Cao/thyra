@@ -37,9 +37,9 @@ Grant **editor** only to people you would give a shell account on the host.
 - **Email, GitHub, Google, Microsoft and OpenID Connect** (optional; see [sign-in providers](docs/DEPLOYMENT.md#sign-in-providers)).
   A mailed 6-digit code and one-time link (10 minutes, single use, SHA-256 at rest, five wrong codes per message) prove an address; requests answer alike for every address, one message per address per minute and a per-client limit stop mail floods.
   The OAuth and OpenID Connect providers use the authorization code flow with PKCE and a single-use state; identities are keyed by the provider's user id (OIDC: issuer and subject), and an address links a new identity to an existing account only when both are verified (GitHub's primary verified address, `email_verified` for the others; Microsoft's never are).
-  Unknown identities get no account (`THYRA_SIGNUP=invite`, the default), except verified addresses at the domains in `THYRA_SIGNUP_DOMAINS`, which become members without grants.
+  Unknown identities get no account (sign-up `invite`, the default), unless an instance admin opens sign-up or lists email domains whose verified addresses become members without grants; the setting lives in the account database.
   A provider that returns to a browser without the flow's cookie cannot sign that browser in: it shows the flow's pairing number and asks before handing the session to the starting page, which alone holds the poll secret.
-  Invitations (7 days, single use, SHA-256 at rest) are mailed by workspace owners and sign their holder in to the pending account.
+  Invitations (7 days, single use, SHA-256 at rest) are mailed by workspace owners, or by instance admins to the instance, and sign their holder in to the pending account; resending one replaces its secret.
   Linking, unlinking, sign-ins, refusals and revocations are audited; the last sign-in method of an account cannot be removed.
 - **Passkeys** (WebAuthn) for everyone else.
   `thyra user add <name>` on the host prints a single-use enrollment link, valid for 24 hours, whose secret is in the URL fragment (never sent to servers or logs).

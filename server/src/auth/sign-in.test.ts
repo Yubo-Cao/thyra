@@ -31,7 +31,7 @@ import {
 } from "./providers";
 import { renderLoginPage } from "./pages";
 import { createAuthRoutes } from "./routes";
-import { createInviteStore } from "./sign-in";
+import { createInviteStore, saveSignupSettings } from "./sign-in";
 import { createSignInRoutes } from "./sign-in-routes";
 import {
   mailedSecrets,
@@ -65,11 +65,15 @@ function access(overrides: Partial<RequestAccess> = {}): RequestAccess {
   };
 }
 
-function setup(env: Record<string, string> = {}) {
+function setup(
+  env: Record<string, string> = {},
+  signup?: { policy: "invite" | "open"; domains: string[] },
+) {
   let clock = 1_700_000_000_000;
   const store = createAccountStore(openAccountDatabase(":memory:"), {
     now: () => clock,
   });
+  if (signup) saveSignupSettings(store, signup, null);
   const providers = loadAuthProviders({ ...stub.env(), ...env });
   const authenticator = createAuthenticator({
     store,
@@ -349,7 +353,7 @@ describe("email sign-in", () => {
   });
 
   test("open sign-up creates a member for a verified address", async () => {
-    const ctx = setup({ THYRA_SIGNUP: "open" });
+    const ctx = setup({}, { policy: "open", domains: [] });
     const { mail } = await requestCode(ctx, "new@example.com");
     const { code, flow } = mailedSecrets(mail!);
     const done = await ctx.call("POST", "/auth/email/verify", {
@@ -629,7 +633,7 @@ describe("Microsoft and OpenID Connect sign-in", () => {
   }
 
   test("Microsoft addresses are never verified, so they never link by email", async () => {
-    const ctx = setup({ THYRA_SIGNUP_DOMAINS: "contoso.example" });
+    const ctx = setup({}, { policy: "invite", domains: ["contoso.example"] });
     await signedIn(ctx, "person@contoso.example");
     const page = await login(ctx, "microsoft");
     expect(await page.text()).toContain(
@@ -682,7 +686,10 @@ describe("Microsoft and OpenID Connect sign-in", () => {
   });
 
   test("sign-up domains admit verified addresses as members", async () => {
-    const ctx = setup({ THYRA_SIGNUP_DOMAINS: "@Corp.Example, example.org" });
+    const ctx = setup(
+      {},
+      { policy: "invite", domains: ["@Corp.Example", "example.org"] },
+    );
     const done = await login(ctx, "oidc");
     expect(done.status).toBe(303);
     const principal = await ctx.principalOf(ctx.cookieOf(done));
@@ -1020,12 +1027,7 @@ describe("provider configuration", () => {
 
   test("turns each provider on only with its variables, and test URLs only for loopback", () => {
     const none = loadAuthProviders({});
-    expect([none.email, none.github, none.google, none.signup]).toEqual([
-      null,
-      null,
-      null,
-      "invite",
-    ]);
+    expect([none.email, none.github, none.google]).toEqual([null, null, null]);
     const half = loadAuthProviders({ THYRA_GITHUB_CLIENT_ID: "x" });
     expect(half.github).toBeNull();
     expect(half.warnings.join()).toContain("THYRA_GITHUB_CLIENT_SECRET");
@@ -1041,7 +1043,7 @@ describe("provider configuration", () => {
     expect(real.google?.tokenUrl).toBe("https://oauth2.googleapis.com/token");
   });
 
-  test("configures Microsoft, OIDC and sign-up domains", () => {
+  test("configures Microsoft and OIDC", () => {
     const loaded = loadAuthProviders({
       THYRA_MICROSOFT_CLIENT_ID: "m",
       THYRA_MICROSOFT_CLIENT_SECRET: "s",
@@ -1051,7 +1053,6 @@ describe("provider configuration", () => {
       THYRA_OIDC_CLIENT_SECRET: "s",
       THYRA_OIDC_NAME: "Keycloak",
       THYRA_OIDC_SCOPES: "email profile groups",
-      THYRA_SIGNUP_DOMAINS: "Example.com, @corp.example, not a domain,,",
     });
     expect(loaded.microsoft?.authorizeUrl).toBe(
       "https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/authorize",
@@ -1065,8 +1066,7 @@ describe("provider configuration", () => {
       "profile",
       "groups",
     ]);
-    expect(loaded.signupDomains).toEqual(["example.com", "corp.example"]);
-    expect(loaded.warnings.join()).toContain('"not a domain"');
+    expect(loaded.warnings).toEqual([]);
 
     const refused = loadAuthProviders({
       THYRA_MICROSOFT_CLIENT_ID: "m",

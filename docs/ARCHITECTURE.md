@@ -748,11 +748,13 @@ A live share-link guest cookie yields a `guest` principal (see share links below
 A session whose privilege epoch is older than its user's is rotated to a new id on its next request.
 `requireLogin(req, access)` returns the principal and cookie headers, or the login redirect/401, for listeners that require an account.
 Passkey registration and login (`server/src/auth/passkeys.ts`, `@simplewebauthn/server`) use discoverable credentials; the relying party is the effective host name, and challenges are single-use and held in memory for five minutes.
-**Sign-in providers.** `server/src/auth/providers.ts` turns email (Resend), GitHub, Google, Microsoft and one generic OpenID Connect provider on from their variables (and `auth-providers.env`); `sign-in-routes.ts` serves the email code and link, OAuth start, callback, confirmation and poll, and invitation routes, and `sign-in.ts` maps a verified identity to an account (by subject; by verified address only when both sides are verified; otherwise "no access" or a new member, with `THYRA_SIGNUP=open` or a verified address in `THYRA_SIGNUP_DOMAINS`).
+**Sign-in providers.** `server/src/auth/providers.ts` turns email (Resend), GitHub, Google, Microsoft and one generic OpenID Connect provider on from their variables (and `auth-providers.env`); `sign-in-routes.ts` serves the email code and link, OAuth start, callback, confirmation and poll, and invitation routes, and `sign-in.ts` maps a verified identity to an account (by subject; by verified address only when both sides are verified; otherwise "no access" or a new member, when the sign-up setting in the `settings` table is `open` or lists the verified address's domain; it is read at every sign-in).
 OAuth goes through arctic's `OAuth2Client` with PKCE; a flow is a row keyed by its state, the starting page holds its poll secret and pairing number, a callback with the flow cookie signs that browser in, and one without asks first and leaves the session for the poll.
 Google, Microsoft and OIDC identities come from the OpenID Connect userinfo endpoint; an address counts as verified only with `email_verified: true` (Microsoft never sends it). The OIDC provider's endpoints come from its issuer's discovery document (cached for an hour, never downgraded from HTTPS), and its subjects are stored as `<issuer>#<sub>`, so another issuer never matches them.
 `account-routes.ts` serves the account page: profile, avatar (WebP or JPEG up to 256x256 and 128 KiB, stored under its SHA-256 in `avatars/` beside the database and served with an immutable cache), sign-in methods with last-method protection, other sessions, and invitations by email.
 A profile change closes the account's sockets with 4003 so presence picks up the new name and picture.
+`admin-routes.ts` serves the instance admin panel, `/api/admin/*` (wire types in `shared/admin.ts`, `host` scope): accounts with their methods and sessions, role, disable, remove and sign-out-everywhere through the same store calls as `thyra user` and `thyra session`, instance invitations listed, revoked (removing a still-pending account) and resent by public id, and the sign-up setting.
+It refuses demoting, disabling or removing the caller's own account and any change that leaves no enabled admin with a way to sign in, even for local use, which stays an admin only on the host.
 The login and enrollment pages are small server-rendered documents outside the application bundle; their strings travel in a JSON data block and their logic is the same-origin `/auth/passkey.js`, so they need no inline script under the public listener's CSP.
 
 **Account database.** `server/src/accounts/` keeps a `bun:sqlite` database (`thyra.db`, WAL, mode `0600`) with numbered migrations in `PRAGMA user_version`:
@@ -769,7 +771,8 @@ The login and enrollment pages are small server-rendered documents outside the a
 | `guest_sessions` | SHA-256 of a guest cookie value, public id, link, user agent, created/last seen/expiry (the link's) |
 | `email_codes` | mailed sign-in and verification codes: SHA-256 of the 6-digit code and of the link secret, address, purpose, attempts, expiry (10 minutes), use |
 | `oauth_flows` | GitHub/Google/Microsoft/OIDC flows in progress: SHA-256 of state and poll secret, PKCE verifier, intent (`login`/`link`), pairing number, status and result |
-| `invites` | SHA-256 of invitation secrets, invited account, address, expiry (7 days) |
+| `invites` | public id, SHA-256 of invitation secrets, invited account, address, inviter, expiry (7 days) |
+| `settings` | instance settings changed at runtime as JSON (`signup`: policy and domains) |
 | `tailnet_sso_codes` | SHA-256 of single-use tailnet sign-in codes, user, PKCE challenge, return origin, expiry (60 seconds) |
 | `audit_log` | account, session, passkey, grant and share-link changes (bounded) |
 
