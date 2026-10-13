@@ -8,6 +8,7 @@ import { RequestError, readJsonObject } from "../utils/request";
 import {
   type AccountStore,
   cleanText,
+  countsAsMethod,
   type IdentityRecord,
   isWorkspaceRole,
   type User,
@@ -71,11 +72,6 @@ async function readBytes(
     offset += chunk.byteLength;
   }
   return bytes;
-}
-
-/** Counted as a way to sign in (an unverified address is not). */
-function countsAsMethod(identity: IdentityRecord): boolean {
-  return identity.provider !== "email" || identity.emailVerified;
 }
 
 export type AccountRoutes = ReturnType<typeof createAccountRoutes>;

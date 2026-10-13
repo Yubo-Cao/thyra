@@ -24,8 +24,10 @@ export interface AdminUser {
   emails: string[];
   role: InstanceRole;
   disabled: boolean;
-  /** True until the account first signs in (it was created by an invite). */
+  /** No way to sign in yet (invited, or made by `thyra user add`). */
   pending: boolean;
+  /** An unexpired invitation signs in to this account. */
+  invited: boolean;
   identities: AdminIdentity[];
   /** Live sessions. */
   sessions: number;
@@ -39,6 +41,60 @@ export interface AdminUser {
 /** `GET /api/admin/users` */
 export interface AdminUsersResponse {
   users: AdminUser[];
+}
+
+/** One way an account signs in, as the user detail lists it. */
+export interface AdminSignInMethod {
+  /** `identity` (email, OAuth, Tailscale) or `passkey`. */
+  kind: "identity" | "passkey";
+  /** Names it for removal: `<provider>:<subject>`, or the credential id. */
+  id: string;
+  /** `email`, `google`, `github`, `microsoft`, `oidc`, `tailscale` or `passkey`. */
+  provider: string;
+  /** An address, a login, a provider account or a passkey name. */
+  label: string;
+  /**
+   * The address was confirmed (by a code, the provider or an admin). An
+   * unverified one, such as an invitation's, is not a way in yet.
+   */
+  verified: boolean;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+/**
+ * `GET /api/admin/users/detail?user=<id>`, and the answer of every route
+ * that changes an account's sign-in methods.
+ */
+export interface AdminUserDetail extends AdminUser {
+  methods: AdminSignInMethod[];
+}
+
+/**
+ * `POST /api/admin/users/emails`: link addresses the admin vouches for as
+ * verified, all or none. An address another account has is refused (409),
+ * so is an invalid one (400); one this account already has is skipped.
+ */
+export interface AdminEmailsRequest {
+  user: string;
+  emails: string[];
+}
+
+/** `POST /api/admin/users/tailscale`: link a Tailscale login (409 when taken). */
+export interface AdminTailscaleRequest {
+  user: string;
+  login: string;
+}
+
+/**
+ * `POST /api/admin/users/methods/remove`. Removing an account's last way to
+ * sign in needs `allowLast` (409 otherwise); an admin can never remove
+ * their own last one. Signed-in sessions stay.
+ */
+export interface AdminRemoveMethodRequest {
+  user: string;
+  method: Pick<AdminSignInMethod, "kind" | "id">;
+  allowLast?: boolean;
 }
 
 /** `POST /api/admin/users/role` */

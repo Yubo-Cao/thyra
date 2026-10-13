@@ -174,18 +174,9 @@ export async function runAccountsCommand(
     const email = normalizeEmail(value);
     if (!email)
       throw new Error(`invalid email address ${JSON.stringify(value)}`);
-    const owner = store.findIdentity("email", email);
-    if (owner && owner.id !== user.id)
-      throw new Error(`${email} is already linked to ${owner.name}`);
-    store.linkIdentity({
-      provider: "email",
-      subject: email,
-      userId: user.id,
-      email,
-      emailVerified: true,
-      displayName: email,
-      actor: "cli",
-    });
+    const taken = store.vouchEmails(user.id, [email], "cli");
+    if (taken)
+      throw new Error(`${email} is already linked to ${taken.owner.name}`);
   };
   const printEnrollment = (user: User, baseUrl: string | undefined) => {
     const base = enrollmentBaseUrl(baseUrl, env);
@@ -226,18 +217,13 @@ export async function runAccountsCommand(
             actor: "cli",
           });
           if (values.email) linkEmail(created, values.email);
-          if (values.tailscale) {
-            if (store.findIdentity("tailscale", values.tailscale))
-              throw new Error(
-                `Tailscale login ${values.tailscale} is already linked to another user`,
-              );
-            store.linkIdentity({
-              provider: "tailscale",
-              subject: values.tailscale,
-              userId: created.id,
-              actor: "cli",
-            });
-          }
+          if (
+            values.tailscale &&
+            store.linkTailscale(created.id, values.tailscale, "cli")
+          )
+            throw new Error(
+              `Tailscale login ${values.tailscale} is already linked to another user`,
+            );
           return created;
         })();
         log(

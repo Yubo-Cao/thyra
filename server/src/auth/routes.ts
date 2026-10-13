@@ -100,7 +100,7 @@ export function createAuthRoutes(args: {
   signIn?: SignInRoutes | null;
   /** The account page: profile, avatar, sign-in methods, invitations. */
   account?: AccountRoutes | null;
-  /** The instance admin panel (`/api/admin/*`). */
+  /** The instance admin page's API (`/api/admin/*`). */
   admin?: AdminRoutes | null;
   logger?: Logger;
 }) {

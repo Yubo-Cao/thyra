@@ -2312,6 +2312,12 @@ async function refuseUnauthorized(
       headers: { "cache-control": "no-store" },
     });
   }
+  // The admin page is only a shell: everyone else goes back to the app.
+  if (route.routeId === "admin.page")
+    return new Response(null, {
+      status: 303,
+      headers: { location: "/", "cache-control": "no-store" },
+    });
   logger.warn("rejected unauthorized request", {
     route: route.routeId,
     reason: decision.message,

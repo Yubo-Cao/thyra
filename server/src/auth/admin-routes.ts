@@ -1,13 +1,19 @@
 import type {
   AdminIdentity,
+  AdminSignInMethod,
   AdminInviteResponse,
   AdminInvitesResponse,
   AdminSignupSettings,
   AdminUser,
+  AdminUserDetail,
   AdminUsersResponse,
   InstanceRole,
 } from "../../../shared/admin";
-import type { AccountStore, User } from "../accounts/store";
+import {
+  type AccountStore,
+  countsAsMethod,
+  type User,
+} from "../accounts/store";
 import type { HttpRouteId } from "../authz/http-policy";
 import type { RequestAccess } from "../http/request-access";
 import { type Logger, silentLogger } from "../utils/logger";
@@ -22,17 +28,23 @@ import {
 } from "./sign-in";
 
 /**
- * The instance admin panel's routes (`/api/admin/*`, wire types in
- * `shared/admin.ts`): accounts, invitations to the instance, and who may
- * sign up. `HTTP_POLICY` admits only instance admins (local use counts).
+ * The instance admin page's routes (`/api/admin/*`, wire types in
+ * `shared/admin.ts`): accounts and their sign-in methods, invitations to
+ * the instance, and who may sign up. `HTTP_POLICY` admits only instance
+ * admins (local use counts).
  *
  * An admin cannot demote, disable or remove their own account, and no
  * change may leave the instance without an enabled admin who can sign in:
  * local use stays an admin, but only on the host. `thyra user` on the host
  * is the way out of either.
+ *
+ * Addresses an admin links count as verified, like `thyra user link`: the
+ * account signs in with email codes, and an OAuth account reporting the
+ * address as verified signs in to it.
  */
 
 const MAX_BODY_BYTES = 8 * 1024;
+const MAX_EMAILS = 50;
 const NO_STORE = { "cache-control": "no-store" };
 
 function json(body: unknown, status = 200): Response {
@@ -61,7 +73,11 @@ export function createAdminRoutes(args: {
   /** Invited and never signed in: no way to sign in yet. */
   const pending = (userId: string) => store.signInMethodCount(userId) === 0;
 
-  function adminUser(user: User, principal: Principal): AdminUser {
+  function adminUser(
+    user: User,
+    principal: Principal,
+    invited = new Set(invites.list().map((invite) => invite.userId)),
+  ): AdminUser {
     const identities = store.identitiesOf(user.id);
     const sessions = store.listSessions(user.id);
     const methods: AdminIdentity[] = [
@@ -94,6 +110,7 @@ export function createAdminRoutes(args: {
       role: user.role,
       disabled: user.disabled,
       pending: methods.length === 0,
+      invited: invited.has(user.id),
       identities: methods,
       sessions: sessions.length,
       lastSeenAt: sessions.length
@@ -104,11 +121,119 @@ export function createAdminRoutes(args: {
     };
   }
 
-  function target(body: Record<string, unknown>): User {
-    const user =
-      typeof body.user === "string" ? store.getUser(body.user) : null;
+  function detail(user: User, principal: Principal): AdminUserDetail {
+    const methods: AdminSignInMethod[] = [
+      ...store.identitiesOf(user.id).map((entry) => ({
+        kind: "identity" as const,
+        id: `${entry.provider}:${entry.subject}`,
+        provider: entry.provider,
+        label:
+          entry.provider === "email"
+            ? entry.subject
+            : (entry.displayName ?? entry.email ?? entry.subject),
+        verified: countsAsMethod(entry),
+        createdAt: entry.createdAt,
+        lastUsedAt: entry.lastUsedAt,
+      })),
+      ...store.passkeysOf(user.id).map((passkey) => ({
+        kind: "passkey" as const,
+        id: passkey.credentialId,
+        provider: "passkey",
+        label: passkey.name ?? "Passkey",
+        verified: true,
+        createdAt: passkey.createdAt,
+        lastUsedAt: passkey.lastUsedAt,
+      })),
+    ];
+    return { ...adminUser(user, principal), methods };
+  }
+
+  function target(body: Record<string, unknown> | URLSearchParams): User {
+    const id = body instanceof URLSearchParams ? body.get("user") : body.user;
+    const user = typeof id === "string" ? store.getUser(id) : null;
     if (!user) throw new RequestError("no such user", 404);
     return user;
+  }
+
+  /** Link every address in `body.emails`, or none. */
+  function bindEmails(principal: Principal, body: Record<string, unknown>) {
+    const user = target(body);
+    if (!Array.isArray(body.emails) || body.emails.length === 0)
+      throw new RequestError("emails must be a list of addresses");
+    if (body.emails.length > MAX_EMAILS)
+      throw new RequestError(`at most ${MAX_EMAILS} addresses at once`);
+    const emails = body.emails.map((value) => {
+      const email = normalizeEmail(value);
+      if (!email)
+        throw new RequestError(
+          `${JSON.stringify(String(value))} is not a valid email address`,
+        );
+      return email;
+    });
+    const taken = store.vouchEmails(
+      user.id,
+      [...new Set(emails)],
+      actorOf(principal),
+    );
+    if (taken)
+      throw new RequestError(
+        `${taken.email} belongs to another account (${taken.owner.name})`,
+        409,
+      );
+  }
+
+  function bindTailscale(principal: Principal, body: Record<string, unknown>) {
+    const user = target(body);
+    const login = typeof body.login === "string" ? body.login.trim() : "";
+    if (!login || login.length > 256 || /\s/.test(login))
+      throw new RequestError("enter a Tailscale login, such as name@github");
+    const owner = store.linkTailscale(user.id, login, actorOf(principal));
+    if (owner)
+      throw new RequestError(
+        `${login} belongs to another account (${owner.name})`,
+        409,
+      );
+  }
+
+  /**
+   * Remove one sign-in method. The account's last one goes only with
+   * `allowLast`, never the admin's own, and never the last admin's.
+   */
+  function removeMethod(principal: Principal, body: Record<string, unknown>) {
+    const user = target(body);
+    const method = (body.method ?? {}) as Record<string, unknown>;
+    const id = typeof method.id === "string" ? method.id : "";
+    const identity =
+      method.kind === "identity"
+        ? store
+            .identitiesOf(user.id)
+            .find((entry) => `${entry.provider}:${entry.subject}` === id)
+        : undefined;
+    const passkey =
+      method.kind === "passkey" &&
+      store.passkeysOf(user.id).some((entry) => entry.credentialId === id);
+    if (!identity && !passkey)
+      throw new RequestError("no such sign-in method", 404);
+    if (
+      (!identity || countsAsMethod(identity)) &&
+      store.signInMethodCount(user.id) <= 1
+    ) {
+      if (isSelf(principal, user))
+        throw new RequestError(
+          "this is your last way to sign in; add another first",
+          409,
+        );
+      if (body.allowLast !== true)
+        throw new RequestError(
+          "this is the account's last way to sign in; confirm to remove it",
+          409,
+        );
+      keepAdmin(user);
+    }
+    const actor = actorOf(principal);
+    if (identity)
+      store.unlinkIdentity(identity.provider, identity.subject, user.id, actor);
+    else store.removePasskey(id, user.id, actor);
   }
 
   /** Refuse a change that takes away the last admin who can sign in. */
@@ -292,10 +417,19 @@ export function createAdminRoutes(args: {
     principal: Principal,
   ): Promise<unknown> {
     switch (id) {
-      case "admin.users":
+      case "admin.users": {
+        const invited = new Set(invites.list().map((invite) => invite.userId));
         return {
-          users: store.listUsers().map((user) => adminUser(user, principal)),
+          users: store
+            .listUsers()
+            .map((user) => adminUser(user, principal, invited)),
         } satisfies AdminUsersResponse;
+      }
+      case "admin.users.detail":
+        return detail(
+          target(new URL(req.url).searchParams),
+          principal,
+        ) satisfies AdminUserDetail;
       case "admin.invites":
         return {
           invites: invites.list(),
@@ -315,6 +449,15 @@ export function createAdminRoutes(args: {
       case "admin.invites.revoke":
         revokeInvite(principal, body);
         return { ok: true };
+      case "admin.users.emails":
+      case "admin.users.tailscale":
+      case "admin.users.methods.remove": {
+        if (id === "admin.users.emails") bindEmails(principal, body);
+        else if (id === "admin.users.tailscale") bindTailscale(principal, body);
+        else removeMethod(principal, body);
+        args.onChange();
+        return detail(target(body), principal) satisfies AdminUserDetail;
+      }
       case "admin.signup.set": {
         const saved = saveSignupSettings(store, body, actorOf(principal));
         if (!saved.ok) throw new RequestError(saved.error);
@@ -332,7 +475,7 @@ export function createAdminRoutes(args: {
       access: RequestAccess,
       principal: Principal,
     ): Promise<Response | null> {
-      if (!id.startsWith("admin.")) return null;
+      if (!id.startsWith("admin.") || id === "admin.page") return null;
       try {
         const result = await route(id, req, access, principal);
         return result === null ? null : json(result);

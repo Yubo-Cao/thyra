@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type {
   AdminInviteResponse,
   AdminInvitesResponse,
+  AdminUserDetail,
   AdminUsersResponse,
 } from "../../../shared/admin";
 import { openAccountDatabase } from "../accounts/database";
@@ -84,7 +85,7 @@ function setup(options: { email?: boolean } = {}) {
     path: string,
     body?: unknown,
   ): Promise<{ status: number; body: any }> {
-    const route = matchHttpRoute(method, path);
+    const route = matchHttpRoute(method, path.split("?")[0]!);
     if (!route) throw new Error(`no route ${method} ${path}`);
     const decision = await authorizeHttp({
       route,
@@ -191,6 +192,7 @@ describe("admin routes", () => {
       role: "admin",
       disabled: false,
       pending: false,
+      invited: false,
       identities: [
         { provider: "email", label: "ada@example.com" },
         { provider: "passkey", label: "Laptop" },
@@ -204,6 +206,7 @@ describe("admin routes", () => {
       emails: ["new@example.com"],
       role: "member",
       pending: true,
+      invited: true,
       identities: [],
       sessions: 0,
       lastSeenAt: null,
@@ -517,6 +520,348 @@ describe("admin routes", () => {
     });
     ctx.advance(INVITE_TTL_MS);
     expect(ctx.invites.list()).toEqual([]);
+  });
+});
+
+describe("sign-in methods", () => {
+  const google = (subject: string, email: string) => ({
+    provider: "google" as const,
+    subject,
+    email,
+    emailVerified: true,
+    displayName: null,
+    avatarUrl: null,
+    label: email,
+  });
+
+  test("only instance admins reach them", async () => {
+    const ctx = setup();
+    const { user: max, principal: member } = ctx.account("max", "member");
+    const calls = [
+      ["GET", `/api/admin/users/detail?user=${max.id}`, undefined],
+      ["POST", "/api/admin/users/emails", { user: max.id, emails: ["m@x.io"] }],
+      ["POST", "/api/admin/users/tailscale", { user: max.id, login: "m@gh" }],
+      [
+        "POST",
+        "/api/admin/users/methods/remove",
+        { user: max.id, method: { kind: "identity", id: "email:x" } },
+      ],
+    ] as const;
+    for (const [method, path, body] of calls) {
+      expect((await ctx.call(member, method, path, body)).status).toBe(403);
+      expect((await ctx.call(guest("g"), method, path, body)).status).toBe(403);
+    }
+    expect(ctx.store.identitiesOf(max.id)).toHaveLength(1);
+    expect(
+      (await ctx.call(LOCAL_PRINCIPAL, "GET", calls[0][1])).body.methods,
+    ).toHaveLength(1);
+  });
+
+  test("the detail lists every method with the id that removes it", async () => {
+    const ctx = setup();
+    const { principal } = ctx.account("ada", "admin");
+    const created = (
+      await ctx.call(principal, "POST", "/api/admin/invites", {
+        email: "pat@example.com",
+        role: "member",
+      })
+    ).body as AdminInviteResponse;
+    const pat = created.invite.userId;
+    ctx.store.linkIdentity({
+      provider: "github",
+      subject: "42",
+      userId: pat,
+      displayName: "@pat",
+      email: "pat@users.example",
+      emailVerified: true,
+    });
+    ctx.store.linkTailscale(pat, "pat@github", null);
+    ctx.store.addPasskey({
+      credentialId: "cred-9",
+      userId: pat,
+      publicKey: new Uint8Array([1]),
+      counter: 0,
+      transports: [],
+      rpId: "thyra.example",
+      name: null,
+    });
+    const { status, body } = await ctx.call(
+      principal,
+      "GET",
+      `/api/admin/users/detail?user=${pat}`,
+    );
+    expect(status).toBe(200);
+    const detail = body as AdminUserDetail;
+    expect(detail).toMatchObject({ id: pat, pending: false, invited: true });
+    expect(
+      detail.methods.map(({ kind, id, provider, label, verified }) => ({
+        kind,
+        id,
+        provider,
+        label,
+        verified,
+      })),
+    ).toEqual([
+      {
+        kind: "identity",
+        id: "email:pat@example.com",
+        provider: "email",
+        label: "pat@example.com",
+        verified: false,
+      },
+      {
+        kind: "identity",
+        id: "github:42",
+        provider: "github",
+        label: "@pat",
+        verified: true,
+      },
+      {
+        kind: "identity",
+        id: "tailscale:pat@github",
+        provider: "tailscale",
+        label: "pat@github",
+        verified: true,
+      },
+      {
+        kind: "passkey",
+        id: "cred-9",
+        provider: "passkey",
+        label: "Passkey",
+        verified: true,
+      },
+    ]);
+    expect(
+      (await ctx.call(principal, "GET", "/api/admin/users/detail?user=u_x"))
+        .status,
+    ).toBe(404);
+  });
+
+  test("binds several verified addresses at once, or none", async () => {
+    const ctx = setup();
+    const { principal } = ctx.account("ada", "admin");
+    ctx.account("max", "member");
+    // Made on the host without a way to sign in, never invited.
+    const sam = ctx.store.createUser({ name: "sam", role: "member" });
+    const listed = (await users(ctx, principal)).find(
+      (user) => user.id === sam.id,
+    );
+    expect(listed).toMatchObject({ pending: true, invited: false });
+    const bind = (emails: unknown) =>
+      ctx.call(principal, "POST", "/api/admin/users/emails", {
+        user: sam.id,
+        emails,
+      });
+
+    const taken = await bind(["sam@work.example", "MAX@example.com"]);
+    expect(taken.status).toBe(409);
+    expect(taken.body.error).toContain("max@example.com");
+    const invalid = await bind(["sam@work.example", "not an address"]);
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error).toContain('"not an address"');
+    expect((await bind([])).status).toBe(400);
+    expect((await bind("sam@work.example")).status).toBe(400);
+    expect(ctx.store.identitiesOf(sam.id)).toEqual([]);
+
+    const bound = await bind([
+      " Sam@Work.example ",
+      "sam@home.example",
+      "sam@work.example",
+    ]);
+    expect(bound.status).toBe(200);
+    const detail = bound.body as AdminUserDetail;
+    expect(detail.pending).toBeFalse();
+    expect(detail.emails).toEqual(["sam@home.example", "sam@work.example"]);
+    expect(
+      detail.methods.map((method) => [method.id, method.verified]),
+    ).toEqual([
+      ["email:sam@home.example", true],
+      ["email:sam@work.example", true],
+    ]);
+    // Already bound: nothing changes and nothing is audited twice.
+    const audits = ctx.store.listAudit(50).length;
+    expect((await bind(["sam@home.example"])).status).toBe(200);
+    expect(ctx.store.listAudit(50)).toHaveLength(audits);
+    expect(ctx.store.listAudit(1)[0]).toMatchObject({
+      actor: principal.key.slice(5),
+      action: "identity.link",
+      target: sam.id,
+    });
+
+    // A Google account reporting the address as verified signs in here.
+    const outcome = resolveIdentity(
+      ctx.store,
+      google("g-sam", "sam@home.example"),
+      {},
+    );
+    expect(outcome).toMatchObject({ kind: "user", linked: true });
+    expect(outcome.kind === "user" && outcome.user.id).toBe(sam.id);
+    // So does an email code to it.
+    expect(ctx.store.findIdentity("email", "sam@work.example")?.id).toBe(
+      sam.id,
+    );
+
+    // An address another account has through its provider is taken too.
+    resolveIdentity(ctx.store, google("g-sam2", "sam@corp.example"), {
+      linkUserId: sam.id,
+    });
+    const other = await ctx.call(principal, "POST", "/api/admin/users/emails", {
+      user: principal.key.slice(5),
+      emails: ["sam@corp.example"],
+    });
+    expect(other.status).toBe(409);
+    expect(other.body.error).toContain("sam@corp.example");
+  });
+
+  test("an invitation's address becomes verified when an admin binds it", async () => {
+    const ctx = setup();
+    const created = (
+      await ctx.call(LOCAL_PRINCIPAL, "POST", "/api/admin/invites", {
+        email: "pat@example.com",
+        role: "member",
+      })
+    ).body as AdminInviteResponse;
+    const bound = await ctx.call(
+      LOCAL_PRINCIPAL,
+      "POST",
+      "/api/admin/users/emails",
+      { user: created.invite.userId, emails: ["pat@example.com"] },
+    );
+    expect(bound.status).toBe(200);
+    expect(bound.body).toMatchObject({ pending: false, invited: true });
+  });
+
+  test("binds a Tailscale login unless another account has it", async () => {
+    const ctx = setup();
+    const { user: max } = ctx.account("max", "member");
+    const { user: bea } = ctx.account("bea", "member");
+    const bind = (user: string, login: unknown) =>
+      ctx.call(LOCAL_PRINCIPAL, "POST", "/api/admin/users/tailscale", {
+        user,
+        login,
+      });
+    const bound = await bind(max.id, " max@github ");
+    expect(bound.status).toBe(200);
+    expect(
+      (bound.body as AdminUserDetail).methods.some(
+        (method) => method.id === "tailscale:max@github",
+      ),
+    ).toBeTrue();
+    expect((await bind(max.id, "max@github")).status).toBe(200);
+    const taken = await bind(bea.id, "max@github");
+    expect(taken.status).toBe(409);
+    expect(taken.body.error).toContain("max@github");
+    for (const login of ["", "two words", 7])
+      expect((await bind(bea.id, login)).status).toBe(400);
+    expect(ctx.store.findIdentity("tailscale", "max@github")?.id).toBe(max.id);
+  });
+
+  test("removes methods, the last only when confirmed", async () => {
+    const ctx = setup();
+    const { user: ada, principal } = ctx.account("ada", "admin");
+    const { user: max } = ctx.account("max", "member");
+    ctx.store.addPasskey({
+      credentialId: "cred-max",
+      userId: max.id,
+      publicKey: new Uint8Array([1]),
+      counter: 0,
+      transports: [],
+      rpId: "thyra.example",
+      name: "Phone",
+    });
+    const remove = (
+      who: Principal,
+      user: string,
+      method: { kind: string; id: string },
+      allowLast?: boolean,
+    ) =>
+      ctx.call(who, "POST", "/api/admin/users/methods/remove", {
+        user,
+        method,
+        ...(allowLast === undefined ? {} : { allowLast }),
+      });
+    const email = { kind: "identity", id: "email:max@example.com" };
+    const passkey = { kind: "passkey", id: "cred-max" };
+
+    expect((await remove(principal, max.id, passkey)).status).toBe(200);
+    expect(ctx.store.passkeysOf(max.id)).toEqual([]);
+    expect(
+      (await remove(principal, max.id, { kind: "passkey", id: "cred-max" }))
+        .status,
+    ).toBe(404);
+    expect(
+      (await remove(principal, max.id, { kind: "identity", id: "cred-max" }))
+        .status,
+    ).toBe(404);
+    const last = await remove(principal, max.id, email);
+    expect(last.status).toBe(409);
+    expect(last.body.error).toContain("last way to sign in");
+    expect((await remove(principal, max.id, email, false)).status).toBe(409);
+    const confirmed = await remove(principal, max.id, email, true);
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body).toMatchObject({
+      pending: true,
+      invited: false,
+      methods: [],
+    });
+    // Like removing your own method, signed-in sessions stay.
+    expect(ctx.store.listSessions(max.id)).toHaveLength(1);
+    expect(ctx.store.listAudit(1)[0]).toMatchObject({
+      actor: ada.id,
+      action: "identity.unlink",
+      target: max.id,
+    });
+
+    // An admin never removes their own last method, even when confirming.
+    const self = await remove(
+      principal,
+      ada.id,
+      { kind: "identity", id: "email:ada@example.com" },
+      true,
+    );
+    expect(self.status).toBe(409);
+    expect(self.body.error).toContain("your last way");
+    // Nor may anyone take the last admin's.
+    const lastAdmin = await remove(
+      LOCAL_PRINCIPAL,
+      ada.id,
+      { kind: "identity", id: "email:ada@example.com" },
+      true,
+    );
+    expect(lastAdmin.status).toBe(409);
+    expect(lastAdmin.body.error).toContain("last admin");
+    // A method that is not the last goes without confirmation.
+    ctx.store.linkTailscale(ada.id, "ada@github", null);
+    expect(
+      (
+        await remove(principal, ada.id, {
+          kind: "identity",
+          id: "email:ada@example.com",
+        })
+      ).status,
+    ).toBe(200);
+    expect(ctx.store.signInMethodCount(ada.id)).toBe(1);
+  });
+
+  test("an invitation's unverified address is removed without confirmation", async () => {
+    const ctx = setup();
+    const created = (
+      await ctx.call(LOCAL_PRINCIPAL, "POST", "/api/admin/invites", {
+        email: "pat@example.com",
+        role: "member",
+      })
+    ).body as AdminInviteResponse;
+    const removed = await ctx.call(
+      LOCAL_PRINCIPAL,
+      "POST",
+      "/api/admin/users/methods/remove",
+      {
+        user: created.invite.userId,
+        method: { kind: "identity", id: "email:pat@example.com" },
+      },
+    );
+    expect(removed.status).toBe(200);
+    expect(removed.body.methods).toEqual([]);
   });
 });
 

@@ -381,6 +381,43 @@ test("the admin API: admins only, same origin, and disabling ends live pages", a
     });
     expect(self.status).toBe(409);
 
+    // The admin page is the app shell for admins; members go back to `/`.
+    const html = { ...outside, accept: "text/html" };
+    const shell = await request(`/admin/users/${users[0].id}`, {
+      headers: { ...html, cookie: adminCookie },
+    });
+    expect(shell.status).toBe(200);
+    expect(await shell.text()).toContain('<div id="root">');
+    const bounced = await request("/admin", {
+      headers: { ...html, cookie: bobCookie },
+    });
+    expect(bounced.status).toBe(303);
+    expect(bounced.headers.get("location")).toBe("/");
+
+    // Binding addresses is a same-origin POST like the rest.
+    const emails = JSON.stringify({
+      user: users[0].id,
+      emails: ["bob@example.com", "bob@work.example"],
+    });
+    expect(
+      (
+        await request("/api/admin/users/emails", {
+          method: "POST",
+          headers: { ...asAdmin, origin: "https://evil.example" },
+          body: emails,
+        })
+      ).status,
+    ).toBe(403);
+    const bound = await request("/api/admin/users/emails", {
+      method: "POST",
+      headers: asAdmin,
+      body: emails,
+    });
+    expect(((await bound.json()) as any).emails).toEqual([
+      "bob@example.com",
+      "bob@work.example",
+    ]);
+
     const page = await server.connect({
       ...outside,
       origin: ORIGIN,

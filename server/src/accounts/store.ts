@@ -54,6 +54,11 @@ export type IdentityRecord = {
   lastUsedAt: number | null;
 };
 
+/** Counted as a way to sign in (an unverified address is not). */
+export function countsAsMethod(identity: IdentityRecord): boolean {
+  return identity.provider !== "email" || identity.emailVerified;
+}
+
 export type SessionRecord = {
   idHash: string;
   publicId: string;
@@ -429,6 +434,70 @@ export function createAccountStore(
     changed();
   }
 
+  /** Users with a verified identity carrying this email address. */
+  function usersWithVerifiedEmail(email: string): string[] {
+    return db
+      .query<{ user_id: string }, { email: string }>(
+        "SELECT DISTINCT user_id FROM identities WHERE email = $email COLLATE NOCASE AND email_verified = 1",
+      )
+      .all({ email })
+      .map((row) => row.user_id);
+  }
+
+  /**
+   * Link normalised addresses an admin vouches for as verified email
+   * sign-in, all or none. Returns, without linking any, the first address
+   * another account has (as its email identity or as a verified address of
+   * another identity) and that account.
+   */
+  function vouchEmails(
+    userId: string,
+    emails: readonly string[],
+    actor: string | null,
+  ): { email: string; owner: User } | null {
+    return db.transaction(() => {
+      for (const email of emails) {
+        const owner =
+          findIdentity("email", email) ??
+          getUser(
+            usersWithVerifiedEmail(email).find((id) => id !== userId) ?? "",
+          );
+        if (owner && owner.id !== userId) return { email, owner };
+      }
+      const verified = new Set(
+        q.identitiesForUser
+          .all({ user: userId })
+          .filter((row) => row.provider === "email" && row.email_verified)
+          .map((row) => row.subject),
+      );
+      for (const email of emails) {
+        if (verified.has(email)) continue;
+        linkIdentity({
+          provider: "email",
+          subject: email,
+          userId,
+          email,
+          emailVerified: true,
+          displayName: email,
+          actor,
+        });
+      }
+      return null;
+    })();
+  }
+
+  /** Link a Tailscale login; returns the account that has it, if another. */
+  function linkTailscale(
+    userId: string,
+    login: string,
+    actor: string | null,
+  ): User | null {
+    const owner = findIdentity("tailscale", login);
+    if (owner) return owner.id === userId ? null : owner;
+    linkIdentity({ provider: "tailscale", subject: login, userId, actor });
+    return null;
+  }
+
   function createSession(args: {
     userId: string;
     authMethod: string;
@@ -605,15 +674,7 @@ export function createAccountStore(
           .get()?.count ?? 0
       );
     },
-    /** Users with a verified identity carrying this email address. */
-    usersWithVerifiedEmail(email: string): string[] {
-      return db
-        .query<{ user_id: string }, { email: string }>(
-          "SELECT DISTINCT user_id FROM identities WHERE email = $email COLLATE NOCASE AND email_verified = 1",
-        )
-        .all({ email })
-        .map((row) => row.user_id);
-    },
+    usersWithVerifiedEmail,
     setAvatar(userId: string, avatar: string | null, actor: string | null) {
       db.query(
         "UPDATE users SET avatar = $avatar, updated_at = $at WHERE id = $id",
@@ -679,6 +740,8 @@ export function createAccountStore(
     // Identities.
     findIdentity,
     linkIdentity,
+    vouchEmails,
+    linkTailscale,
     unlinkIdentity(
       provider: string,
       subject: string,

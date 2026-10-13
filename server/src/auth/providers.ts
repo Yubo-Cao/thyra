@@ -16,7 +16,7 @@
  *   Its endpoints come from the issuer's discovery document.
  *
  * Who may sign up is an instance setting in the account database
- * (`signupSettings` in sign-in.ts), changed from the admin panel.
+ * (`signupSettings` in sign-in.ts), changed on the admin page.
  *
  * The server reads that file too (`providerEnvironment`); variables already
  * in the environment win.

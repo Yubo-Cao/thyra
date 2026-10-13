@@ -155,9 +155,15 @@ export const HTTP_POLICY = {
   "update.install": { class: "dangerous", scope: "host" },
   "herdr.status": { class: "admin", scope: "host" },
   "herdr.setup": { class: "dangerous", scope: "host" },
-  // The instance admin panel (auth/admin-routes.ts): accounts, invitations
-  // to the instance, and the sign-up policy.
+  // The instance admin page (the application shell at `/admin` and below;
+  // others are sent to `/`) and its API (auth/admin-routes.ts): accounts and
+  // their sign-in methods, invitations to the instance, and sign-up.
+  "admin.page": { class: "admin", scope: "host" },
   "admin.users": { class: "admin", scope: "host" },
+  "admin.users.detail": { class: "admin", scope: "host" },
+  "admin.users.emails": { class: "admin", scope: "host" },
+  "admin.users.tailscale": { class: "admin", scope: "host" },
+  "admin.users.methods.remove": { class: "admin", scope: "host" },
   "admin.users.role": { class: "admin", scope: "host" },
   "admin.users.disable": { class: "admin", scope: "host" },
   "admin.users.remove": { class: "admin", scope: "host" },
@@ -262,6 +268,10 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/herdr/status": { GET: "herdr.status" },
   "/api/herdr/setup": { POST: "herdr.setup" },
   "/api/admin/users": { GET: "admin.users" },
+  "/api/admin/users/detail": { GET: "admin.users.detail" },
+  "/api/admin/users/emails": { POST: "admin.users.emails" },
+  "/api/admin/users/tailscale": { POST: "admin.users.tailscale" },
+  "/api/admin/users/methods/remove": { POST: "admin.users.methods.remove" },
   "/api/admin/users/role": { POST: "admin.users.role" },
   "/api/admin/users/disable": { POST: "admin.users.disable" },
   "/api/admin/users/remove": { POST: "admin.users.remove" },
@@ -321,6 +331,8 @@ export function matchHttpRoute(
       : null;
   if (pathname === "/api" || pathname.startsWith("/api/")) return null;
   if (method !== "GET" && method !== "HEAD") return null;
+  if (pathname === "/admin" || pathname.startsWith("/admin/"))
+    return "admin.page";
   return isPublicStaticAsset(pathname) ? "static.asset" : "static";
 }
 
