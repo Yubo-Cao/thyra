@@ -41,21 +41,29 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+// `/admin` and below is the instance admin page (the bridge serves it to
+// admins only): one lazy chunk, without the workspace store, its socket or
+// the terminal.
+const adminPage = /^\/admin(?:\/|$)/.test(window.location.pathname);
+
 initializeLayoutPreferences();
-initializeShortcutPreferences();
-// Connect before the first render requests the terminal chunks.
-store.init();
-// Cache the shell and fingerprinted assets so repeat visits on slow links only
-// fetch what a deploy changed (web/public/task-notifications-sw.js).
-if (import.meta.env.PROD) registerAppServiceWorker();
+if (!adminPage) {
+  initializeShortcutPreferences();
+  // Connect before the first render requests the terminal chunks.
+  store.init();
+  // Cache the shell and fingerprinted assets so repeat visits on slow links
+  // only fetch what a deploy changed (web/public/task-notifications-sw.js).
+  if (import.meta.env.PROD) registerAppServiceWorker();
+}
 
 // Load the interface catalog before the first render so no text flips language.
-void initLocale().then(() => {
+void Promise.all([
+  initLocale(),
+  adminPage && import("./components/AdminPage"),
+]).then(([, admin]) => {
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
+      <ErrorBoundary>{admin ? <admin.AdminPage /> : <App />}</ErrorBoundary>
     </React.StrictMode>,
   );
 });

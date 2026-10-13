@@ -345,7 +345,6 @@ export default {
 
   // Administration
   Administration: "管理",
-  "Sign-up settings apply when saved.": "注册设置在保存后生效。",
   Admin: "管理员",
   Users: "用户",
   Invited: "已邀请",
@@ -390,4 +389,27 @@ export default {
   "Add domains": "添加域名",
   Add: "添加",
   "Not a domain: {entries}": "不是有效域名：{entries}",
+  "No sign-in method": "未绑定登录方式",
+  User: "用户",
+  Activity: "活动",
+  "Back to users": "返回用户列表",
+  "Created {time}": "{time}创建",
+  "No way to sign in: add an email address or a Tailscale login below, or send an invitation.":
+    "无法登录：请在下方添加邮箱或 Tailscale 账号，或发送邀请。",
+  "Not verified": "未验证",
+  "Added {time}": "{time}添加",
+  "Remove {method}": "移除 {method}",
+  "Add email addresses": "添加邮箱",
+  "Addresses you add count as verified: {name} signs in with a code sent to any of them, or with a Google, GitHub or Microsoft account that uses one.":
+    "你添加的邮箱视为已验证：{name} 可以用发送到其中任一邮箱的验证码登录，也可以用使用该邮箱的 Google、GitHub 或 Microsoft 账号登录。",
+  "Email addresses": "邮箱地址",
+  "Separate several with commas, spaces or lines.":
+    "多个地址用逗号、空格或换行分隔。",
+  "Not an email address: {entries}": "不是有效邮箱：{entries}",
+  "Tailscale login": "Tailscale 账号",
+  "On the tailnet, the person with this Tailscale login signs in as {name} without a password.":
+    "在 tailnet 中，使用此 Tailscale 账号的人会以 {name} 的身份自动登录。",
+  "Remove the last sign-in method?": "移除最后一种登录方式？",
+  "{name} will not be able to sign in until you add another method or send a new invitation. Browsers already signed in stay signed in.":
+    "在你添加其他登录方式或发送新邀请之前，{name} 将无法登录。已登录的浏览器保持登录。",
 } satisfies Record<string, string>;

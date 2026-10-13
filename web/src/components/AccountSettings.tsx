@@ -3,8 +3,8 @@ import { AtSign, KeyRound, Laptop, Link2, Network } from "lucide-react";
 import { logoutBrowserSession } from "../api";
 import { avatarBlob } from "../avatarImage";
 import { t } from "../i18n";
+import { PROVIDER_NAMES, request, since } from "../accountRequests";
 import { usePrincipal } from "../principal";
-import { formatUiRelativeTime } from "../uiLocale";
 import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
 import { TextField } from "./ui/TextField";
@@ -52,34 +52,6 @@ type Methods = {
   tailnet_visible: boolean;
 };
 
-export async function request<T>(
-  path: string,
-  body?: Record<string, unknown> | Blob,
-): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    cache: "no-store",
-    ...(body
-      ? {
-          method: "POST",
-          headers: {
-            "content-type":
-              body instanceof Blob ? body.type : "application/json",
-          },
-          body: body instanceof Blob ? body : JSON.stringify(body),
-        }
-      : {}),
-  });
-  const data = (await response.json().catch(() => ({}))) as T & {
-    error?: string;
-  };
-  if (!response.ok)
-    throw new Error(
-      data.error || t("Request failed ({status})", { status: response.status }),
-    );
-  return data;
-}
-
 /** "Firefox on Linux" from a User-Agent, for the session list. */
 function browserLabel(userAgent: string | null): string {
   if (!userAgent) return t("Unknown browser");
@@ -106,25 +78,6 @@ function browserLabel(userAgent: string | null): string {
   if (browser && os) return t("{browser} on {os}", { browser, os });
   return browser ?? os ?? t("Unknown browser");
 }
-
-export function since(timestamp: number): string {
-  const seconds = Math.round((timestamp - Date.now()) / 1000);
-  const absolute = Math.abs(seconds);
-  if (absolute < 60) return formatUiRelativeTime(seconds, "second");
-  if (absolute < 3600)
-    return formatUiRelativeTime(Math.round(seconds / 60), "minute");
-  if (absolute < 86400)
-    return formatUiRelativeTime(Math.round(seconds / 3600), "hour");
-  return formatUiRelativeTime(Math.round(seconds / 86400), "day");
-}
-
-export const PROVIDER_NAMES: Record<string, string> = {
-  github: "GitHub",
-  google: "Google",
-  microsoft: "Microsoft",
-  oidc: "SSO",
-  tailscale: "Tailscale",
-};
 
 const OAUTH_PROVIDERS = ["oidc", "google", "microsoft", "github"] as const;
 

@@ -341,7 +341,6 @@ export function ConfigMenuDropdown({
                       ? ([
                           ["Connection", msg("Connection"), Server],
                           ["Integrations", msg("Integrations"), Plug],
-                          ["Admin", msg("Administration"), ShieldCheck],
                         ] as const)
                       : []),
                     // Share-link guests have no account.
@@ -360,6 +359,13 @@ export function ConfigMenuDropdown({
                     }}
                   />
                 ))}
+                {admin ? (
+                  <ConfigMenuItem
+                    icon={<ShieldCheck size={15} />}
+                    label={t("Administration")}
+                    onClick={() => window.location.assign("/admin")}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
