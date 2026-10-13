@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   Server,
   Settings,
+  ShieldCheck,
   UserRound,
   Wifi,
 } from "lucide-react";
@@ -340,6 +341,7 @@ export function ConfigMenuDropdown({
                       ? ([
                           ["Connection", msg("Connection"), Server],
                           ["Integrations", msg("Integrations"), Plug],
+                          ["Admin", msg("Administration"), ShieldCheck],
                         ] as const)
                       : []),
                     // Share-link guests have no account.

@@ -1,0 +1,65 @@
+/* Compact rows: copy (name, addresses, tokens) and its actions. */
+.admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+.admin-row-tokens,
+.admin-domains {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-row-tokens {
+  margin-top: 3px;
+}
+
+.configuration-dialog .admin-row-tokens > .admin-row-meta {
+  white-space: nowrap;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.admin-domains {
+  padding: 0 8px;
+}
+
+/* Email, role, and the button on one line; the button wraps on phones. */
+.admin-invite-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.admin-save-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 500px) {
+  .admin-invite-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .admin-invite-form > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .admin-row:has(> .ui-segmented) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-settings > .config-title:not(:first-child) {
+  margin-top: 14px;
+}

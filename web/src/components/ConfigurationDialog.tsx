@@ -81,6 +81,7 @@ import { type PaneSwipeFingers, paneSwipeFingers } from "../touchGestures";
 import { cn } from "../utils";
 import { AccountSettings } from "./AccountSettings";
 import { AgentIntegrationsSettings } from "./AgentIntegrationsSettings";
+import { LazyBoundary } from "./LazyBoundary";
 import { useInstanceAdmin } from "../principal";
 import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 import { TerminalTransportSettings } from "./TerminalTransportSettings";
@@ -114,6 +115,12 @@ const TerminalThemeDialog = lazyWithReload("terminal-theme", () =>
     default: module.TerminalThemeDialog,
   })),
 );
+// Instance administration loads only when an admin opens its tab.
+const AdminSettings = lazyWithReload("admin-settings", () =>
+  import("./AdminSettings").then((module) => ({
+    default: module.AdminSettings,
+  })),
+);
 const MobileLayoutDialog = lazyWithReload("mobile-layout", () =>
   import("./MobileLayoutDialog").then((module) => ({
     default: module.MobileLayoutDialog,
@@ -144,12 +151,14 @@ const tabs = [
   "Connection",
   "Integrations",
   "Account",
+  "Admin",
 ] as const;
 export type ConfigurationTab = (typeof tabs)[number];
 /** Host settings: instance admins only. */
 const ADMIN_TABS: ReadonlySet<ConfigurationTab> = new Set([
   "Connection",
   "Integrations",
+  "Admin",
 ]);
 const TAB_LABELS: Record<ConfigurationTab, string> = {
   Appearance: msg("Appearance"),
@@ -157,6 +166,7 @@ const TAB_LABELS: Record<ConfigurationTab, string> = {
   Connection: msg("Connection"),
   Integrations: msg("Integrations"),
   Account: msg("Account"),
+  Admin: msg("Administration"),
 };
 type Detail = "terminal" | "layout" | "keyboard" | "mobile";
 
@@ -591,7 +601,9 @@ export function ConfigurationDialog({
           <span className="configuration-footer-note">
             {tab === "Integrations"
               ? t("Changes require confirmation.")
-              : t("Changes are saved automatically.")}
+              : tab === "Admin"
+                ? t("Sign-up settings apply when saved.")
+                : t("Changes are saved automatically.")}
           </span>
           <Button variant="primary" size="md" onClick={onClose}>
             {t("Done")}
@@ -614,6 +626,13 @@ export function ConfigurationDialog({
         {tab === "Behavior" ? behavior : null}
         {tab === "Connection" && admin ? connection : null}
         {tab === "Account" ? <AccountSettings /> : null}
+        {tab === "Admin" && admin ? (
+          <LazyBoundary
+            fallback={<p className="configuration-scope">{t("Loading...")}</p>}
+          >
+            <AdminSettings />
+          </LazyBoundary>
+        ) : null}
         {tab === "Integrations" && admin ? (
           <AgentIntegrationsSettings
             key={scopeKey}

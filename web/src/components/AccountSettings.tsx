@@ -52,7 +52,7 @@ type Methods = {
   tailnet_visible: boolean;
 };
 
-async function request<T>(
+export async function request<T>(
   path: string,
   body?: Record<string, unknown> | Blob,
 ): Promise<T> {
@@ -107,7 +107,7 @@ function browserLabel(userAgent: string | null): string {
   return browser ?? os ?? t("Unknown browser");
 }
 
-function since(timestamp: number): string {
+export function since(timestamp: number): string {
   const seconds = Math.round((timestamp - Date.now()) / 1000);
   const absolute = Math.abs(seconds);
   if (absolute < 60) return formatUiRelativeTime(seconds, "second");
@@ -118,7 +118,7 @@ function since(timestamp: number): string {
   return formatUiRelativeTime(Math.round(seconds / 86400), "day");
 }
 
-const PROVIDER_NAMES: Record<string, string> = {
+export const PROVIDER_NAMES: Record<string, string> = {
   github: "GitHub",
   google: "Google",
   microsoft: "Microsoft",

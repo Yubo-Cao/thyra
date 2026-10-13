@@ -342,4 +342,52 @@ export default {
   "Release keyboard": "释放键盘",
   "Go to the next change in a diff": "跳到差异中的下一处更改",
   "Go to the previous change in a diff": "跳到差异中的上一处更改",
+
+  // Administration
+  Administration: "管理",
+  "Sign-up settings apply when saved.": "注册设置在保存后生效。",
+  Admin: "管理员",
+  Users: "用户",
+  Invited: "已邀请",
+  "Manage {name}": "管理 {name}",
+  "Enable account": "启用账户",
+  "Disable account": "停用账户",
+  "Sign out everywhere": "退出所有设备",
+  "Remove account": "删除账户",
+  "Remove {name}?": "删除 {name}？",
+  "The account, its sign-in methods and sessions are deleted. This cannot be undone.":
+    "将删除该账户及其登录方式和会话。此操作无法撤销。",
+  "Never signed in": "从未登录",
+  "Seen {time}": "{time}活跃",
+  "No recent activity": "近期无活动",
+  "1 session": "1 个会话",
+  "{count} sessions": "{count} 个会话",
+  "{provider}: {accounts}": "{provider}：{accounts}",
+  Invitations: "邀请",
+  "This server cannot send email: copy each invitation link and share it yourself.":
+    "此服务器无法发送邮件：请复制邀请链接并自行发送。",
+  "Email address": "邮箱地址",
+  "Emailed to {email}; you can also share this link":
+    "已发送邮件到 {email}；也可以直接分享此链接",
+  "Not emailed: share this link with {email}":
+    "未发送邮件：请把此链接发给 {email}",
+  "Invited by {name}": "由 {name} 邀请",
+  "Send again with a new link": "用新链接重新发送",
+  "Make a new link": "生成新链接",
+  "Revoke invitation": "撤销邀请",
+  "No pending invitations.": "没有待接受的邀请。",
+  "Sign-up": "注册",
+  "Who can sign up": "谁可以注册",
+  "Anyone who can reach this server can create an account.":
+    "能访问此服务器的任何人都可以创建账户。",
+  "Only invited people, and the domains below.":
+    "仅限受邀者，以及以下域名的邮箱。",
+  "Invite only": "仅限邀请",
+  "Open sign-up": "开放注册",
+  "Verified addresses in these domains can sign up even when sign-up is invite-only.":
+    "即使仅限邀请，这些域名下已验证的邮箱也可以注册。",
+  "Remove {domain}": "移除 {domain}",
+  "Add domains": "添加域名",
+  Add: "添加",
+  "Not a domain: {entries}": "不是有效域名：{entries}",
 } satisfies Record<string, string>;
