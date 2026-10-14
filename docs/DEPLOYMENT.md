@@ -528,6 +528,11 @@ Desktop Chrome's Local Network Access asks once, per browser profile, whether th
 While it asks, the login buttons appear after 1.8 seconds and allowing still signs in; after a refusal the page skips the attempt and shows the buttons at once, including **Sign in with tailnet**, whose top-level navigation Local Network Access does not block.
 Safari's tracking prevention does not affect it: nothing depends on cookies at the tailnet address.
 
+**Direct path.** A page signed in to an account on the public address also moves itself to the tailnet address when the device can reach it, so its requests and WebSocket skip the tunnel.
+The public listener's hello names `THYRA_TAILNET_SSO_URL` to account sessions only (never share-link guests); after the hello, the page sends `GET https://dev.example.com/auth/tailnet-direct` without cookies, waiting at most 1.5 seconds.
+The tailnet listener answers with the account its `whois` identifies (`{"user_id": …}`, CORS for `THYRA_PUBLIC_ORIGIN` only, 404 when the device is not identified), and only when that is the page's own account does the page `location.replace` to the same path, query and fragment on the tailnet origin; anything else leaves it where it is, without a message.
+Open the public address with `?direct=0`, or set `localStorage["thyra:directPath"] = "off"` there, to stay on it; the query saves that setting in the browser.
+
 **Home Screen app (iOS and iPadOS).** Both ways work in standalone mode.
 The silent sign-in is a background request, so the app never leaves its window.
 **Sign in with tailnet** is an ordinary link in the same window (never a new tab, which would open Safari and its separate cookie store): iOS keeps the navigation inside the app, showing the tailnet host in a bar while the page is outside the app's scope, and the callback lands back on the public origin, where the session cookie goes into the app's own store.

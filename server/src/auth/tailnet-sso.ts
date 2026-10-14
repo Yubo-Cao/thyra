@@ -393,6 +393,21 @@ export function createTailnetSso(args: {
     );
   }
 
+  /**
+   * `sso.direct`: the account this tailnet device signs in as (tailnet
+   * listener). A page on the public origin compares it with its own account
+   * before moving to the tailnet origin; CORS for the public origin only.
+   */
+  async function direct(req: Request, access: RequestAccess) {
+    const cors: Record<string, string> =
+      req.headers.get("origin") === args.publicOrigin
+        ? corsHeaders()
+        : { vary: "Origin" };
+    const user = await args.tailnetAccount(req, access);
+    if (!user) return json({ error: "not found" }, 404, cors);
+    return json({ user_id: user.id }, 200, cors);
+  }
+
   /** `sso.authorize`: the redirect flow's tailnet step. */
   async function authorize(
     req: Request,
@@ -541,8 +556,8 @@ export function createTailnetSso(args: {
     },
 
     /**
-     * Serve a tailnet sign-in route: `sso.code` and `sso.authorize` on the
-     * tailnet listener, the rest on the public listener; 404 elsewhere.
+     * Serve a tailnet sign-in route: `sso.code`, `sso.authorize` and
+     * `sso.direct` on the tailnet listener, the rest on the public listener; 404 elsewhere.
      */
     async handle(
       route: HttpRouteId,
@@ -550,7 +565,10 @@ export function createTailnetSso(args: {
       url: URL,
       access: RequestAccess,
     ): Promise<Response | null> {
-      const tailnetRoute = route === "sso.code" || route === "sso.authorize";
+      const tailnetRoute =
+        route === "sso.code" ||
+        route === "sso.authorize" ||
+        route === "sso.direct";
       const publicRoute =
         route === "sso.config" ||
         route === "sso.start" ||
@@ -567,6 +585,8 @@ export function createTailnetSso(args: {
           return code(req, access);
         case "sso.authorize":
           return authorize(req, url, access);
+        case "sso.direct":
+          return direct(req, access);
         case "sso.config":
           // Only the login page's tailnet code path asks, to probe or to
           // offer the redirect button on a device known to be on the tailnet.

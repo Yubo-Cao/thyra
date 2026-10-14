@@ -211,6 +211,7 @@ const HTTP_MATRIX: Record<string, string> = {
     "admin owner editor viewer outsider guest guest-pane anonymous",
   "sso.config": "admin owner editor viewer outsider guest guest-pane anonymous",
   "sso.code": "admin owner editor viewer outsider guest guest-pane anonymous",
+  "sso.direct": "admin owner editor viewer outsider guest guest-pane anonymous",
   "sso.redeem": "admin owner editor viewer outsider guest guest-pane anonymous",
   "sso.start": "admin owner editor viewer outsider guest guest-pane anonymous",
   static: "admin owner editor viewer outsider guest guest-pane",

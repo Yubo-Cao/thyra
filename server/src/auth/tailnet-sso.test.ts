@@ -446,6 +446,57 @@ describe("silent tailnet sign-in", () => {
   });
 });
 
+describe("direct path probe", () => {
+  const probe = (
+    ctx: ReturnType<typeof setup>,
+    access = tailnetAccess(),
+    origin = PUBLIC,
+  ) =>
+    ctx.call("GET", `${TAILNET}/auth/tailnet-direct`, access, {
+      headers: { origin },
+    });
+
+  test("names the tailnet device's account to the public origin only", async () => {
+    const ctx = setup();
+    const answer = await probe(ctx);
+    expect(answer.status).toBe(200);
+    expect(answer.headers.get("access-control-allow-origin")).toBe(PUBLIC);
+    expect(answer.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(answer.headers.get("vary")).toBe("Origin");
+    expect(answer.headers.get("cache-control")).toBe("no-store");
+    const user = ctx.store.findIdentity("tailscale", "owner@example.com");
+    expect(await answer.json()).toEqual({ user_id: user!.id });
+
+    const foreign = await probe(ctx, tailnetAccess(), "https://evil.example");
+    expect(foreign.headers.get("access-control-allow-origin")).toBeNull();
+    expect(foreign.headers.get("vary")).toBe("Origin");
+  });
+
+  test("is 404 off the tailnet, for disabled accounts and on other listeners", async () => {
+    const ctx = setup();
+    for (const access of [
+      tailnetAccess({ proxied: false }),
+      tailnetAccess({ cloudflare: true }),
+      tailnetAccess({ clientAddress: "100.64.9.9" }),
+    ]) {
+      const refused = await probe(ctx, access);
+      expect(refused.status).toBe(404);
+      expect(refused.headers.get("access-control-allow-origin")).toBe(PUBLIC);
+    }
+    expect(ctx.store.userCount()).toBe(0);
+
+    await probe(ctx);
+    const user = ctx.store.findIdentity("tailscale", "owner@example.com")!;
+    ctx.store.setDisabled(user.id, true, null);
+    expect((await probe(ctx)).status).toBe(404);
+
+    expect((await probe(ctx, publicAccess())).status).toBe(404);
+    expect(
+      (await probe(ctx, tailnetAccess({ listener: "local" }))).status,
+    ).toBe(404);
+  });
+});
+
 describe("redirect tailnet sign-in", () => {
   /** start -> authorize -> the callback URL and the state cookie. */
   async function roundTrip(ctx: ReturnType<typeof setup>) {

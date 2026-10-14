@@ -115,6 +115,53 @@ test.skipIf(process.platform === "win32")(
       expect(((await me.json()) as any).user.name).toBe("owner");
       expect((await redeem()).status).toBe(401);
 
+      // The direct path: the public hello names the tailnet origin to the
+      // account session, and the tailnet listener confirms the same account.
+      const Socket = WebSocket as unknown as new (
+        url: string,
+        options: Bun.WebSocketOptions,
+      ) => WebSocket;
+      const socket = new Socket(
+        `${server.publicBase.replace("http:", "ws:")}/ws`,
+        {
+          headers: { ...cloudflared, origin: "https://thyra.example", cookie },
+        },
+      );
+      const hello = await new Promise<any>((resolve, reject) => {
+        socket.onmessage = (event) => {
+          const message = JSON.parse(String(event.data));
+          if (message.hello) resolve(message);
+        };
+        socket.onclose = () => reject(new Error("socket closed"));
+      });
+      socket.close();
+      expect(hello.direct_origin).toBe("https://dev.example");
+      const tailnetSocket = await server.connect({
+        ...server.proxy("100.64.7.7"),
+        origin: "https://dev.example",
+      });
+      expect(tailnetSocket.hello.direct_origin).toBeUndefined();
+      const direct = await tailnet("100.64.7.7", "/auth/tailnet-direct", {
+        headers: { origin: "https://thyra.example" },
+      });
+      expect(direct.status).toBe(200);
+      expect(direct.headers.get("access-control-allow-origin")).toBe(
+        "https://thyra.example",
+      );
+      expect(((await direct.json()) as any).user_id).toBe(
+        hello.principal.user.id,
+      );
+      expect(
+        (
+          await tailnet("100.64.9.9", "/auth/tailnet-direct", {
+            headers: { origin: "https://thyra.example" },
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (await pub("/auth/tailnet-direct", { headers: { cookie } })).status,
+      ).toBe(404);
+
       // The redirect flow's start points at the tailnet listener.
       const start = await pub("/auth/tailnet-sso/start");
       expect(start.status).toBe(303);

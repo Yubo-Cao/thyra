@@ -65,12 +65,15 @@ export const HTTP_POLICY = {
   // public origin only; `authorize`: the redirect flow); the public listener
   // starts the redirect flow, redeems codes for sessions, and tells the login
   // page where the tailnet listener is (`config`) so its HTML never names it.
+  // `direct` tells a public page which account this tailnet device is, so a
+  // signed-in page can move to the tailnet origin (CORS, public origin only).
   "sso.code": { class: "write", scope: "public" },
   "sso.authorize": { class: "write", scope: "public" },
   "sso.config": { class: "read", scope: "public" },
   "sso.start": { class: "read", scope: "public" },
   "sso.callback": { class: "write", scope: "public" },
   "sso.redeem": { class: "write", scope: "public" },
+  "sso.direct": { class: "read", scope: "public" },
   // Optional sign-in providers (auth/sign-in-routes.ts): email codes and
   // links, GitHub, Google, Microsoft and OIDC, and invitation links. Rate-limited per client;
   // POSTs need this origin's Origin header.
@@ -224,6 +227,7 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/auth/tailnet-sso/start": { GET: "sso.start" },
   "/auth/tailnet-sso/callback": { GET: "sso.callback" },
   "/auth/tailnet-sso/redeem": { POST: "sso.redeem" },
+  "/auth/tailnet-direct": { GET: "sso.direct" },
   "/auth/email/start": { POST: "email.start" },
   "/auth/email/verify": { POST: "email.verify" },
   "/auth/email": { GET: "email.page", HEAD: "email.page" },

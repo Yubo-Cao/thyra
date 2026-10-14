@@ -194,6 +194,8 @@ export interface BridgeHello {
   /** Presence participant id the bridge assigned to this page. */
   participant_id?: string;
   principal?: BridgePrincipal;
+  /** Public listener: the tailnet origin of the direct path (directPath.ts). */
+  direct_origin?: string;
   capabilities: {
     connection_id?: boolean;
     connection_scoped_http?: boolean;

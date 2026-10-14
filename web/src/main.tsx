@@ -11,6 +11,7 @@ import "./styles/heroui.css";
 import App from "./App";
 import { store } from "./store";
 import { registerAppServiceWorker } from "./appServiceWorker";
+import { initDirectPath } from "./directPath";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -51,6 +52,8 @@ if (!adminPage) {
   initializeShortcutPreferences();
   // Connect before the first render requests the terminal chunks.
   store.init();
+  // Move to the tailnet origin when this device reaches it (after hello).
+  initDirectPath();
   // Cache the shell and fingerprinted assets so repeat visits on slow links
   // only fetch what a deploy changed (web/public/task-notifications-sw.js).
   if (import.meta.env.PROD) registerAppServiceWorker();

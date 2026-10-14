@@ -319,7 +319,8 @@ function publicPagePolicy(): Promise<string> {
     .then((html) =>
       publicContentSecurityPolicy(
         inlineScriptHashes(html ?? ""),
-        // The login page's silent tailnet sign-in fetches a code there.
+        // The login page's silent tailnet sign-in fetches a code there, and
+        // the app asks it for the direct path (web/src/directPath.ts).
         tailnetSsoOrigin && publicListener
           ? [tailnetConnectSource(tailnetSsoOrigin, publicListener.origin)]
           : [],
@@ -2112,6 +2113,11 @@ type SocketData = {
   principal: Principal;
   client?: ClientContext;
   clientSession: string | null;
+  /**
+   * The tailnet listener's origin, offered in the hello to account sessions
+   * on the public listener so a page on a tailnet device can move there.
+   */
+  directOrigin: string | null;
 };
 
 type AuthenticatedRoute = {
@@ -2188,6 +2194,10 @@ async function routeAuthenticated(
           clientSession:
             clientSession && CLIENT_SESSION_PATTERN.test(clientSession)
               ? clientSession
+              : null,
+          directOrigin:
+            route.publicListener && principal.kind === "user"
+              ? tailnetSsoOrigin
               : null,
         },
       })
@@ -2621,6 +2631,9 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
           ? { socket: config.socketPath }
           : {}),
         principal: principalView(ws.data.principal),
+        ...(ws.data.directOrigin
+          ? { direct_origin: ws.data.directOrigin }
+          : {}),
         bridge_protocol_version: 2,
         ...(webEntry ? { web_entry: webEntry } : {}),
         default_connection_id: connectionManager.defaultId(),
