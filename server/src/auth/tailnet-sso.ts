@@ -60,6 +60,10 @@ const SIGNED_OUT_TTL_SECONDS = 30 * 24 * 60 * 60;
  */
 const DEVICE_COOKIE = "thyra_tailnet_device";
 const DEVICE_TTL_SECONDS = 400 * 24 * 60 * 60;
+/** Whether this browser once signed in through the tailnet (DEVICE_COOKIE). */
+export function knownTailnetDevice(req: Request): boolean {
+  return readPublicCookie(req, DEVICE_COOKIE) === "1";
+}
 /** 32 random bytes or a SHA-256 digest, base64url without padding. */
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const MAX_BODY_BYTES = 4 * 1024;
@@ -550,7 +554,7 @@ export function createTailnetSso(args: {
           : null;
       return {
         silent: !message && readPublicCookie(req, SIGNED_OUT_COOKIE) !== "1",
-        known: readPublicCookie(req, DEVICE_COOKIE) === "1",
+        known: knownTailnetDevice(req),
         message,
       };
     },

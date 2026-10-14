@@ -144,6 +144,7 @@ import { createShareRoutes } from "./auth/share-routes";
 import {
   createSsoCodeStore,
   createTailnetSso,
+  knownTailnetDevice,
   parseTailnetSsoUrl,
   tailnetConnectSource,
 } from "./auth/tailnet-sso";
@@ -2196,7 +2197,11 @@ async function routeAuthenticated(
               ? clientSession
               : null,
           directOrigin:
-            route.publicListener && principal.kind === "user"
+            // Only admins and known tailnet browsers probe it, so outside
+            // collaborators never see Chrome's local network prompt.
+            route.publicListener &&
+            principal.kind === "user" &&
+            (principal.user.role === "admin" || knownTailnetDevice(req))
               ? tailnetSsoOrigin
               : null,
         },
