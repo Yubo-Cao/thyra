@@ -132,7 +132,7 @@ Thyra controls terminals and modifies real files. Keep the default loopback
 binding; read [SECURITY.md](./SECURITY.md) before allowing another device access.
 Tailnet users log in automatically as admins, everyone else with a passkey, and workspaces are shared as viewer, editor or owner ([accounts and login](./docs/DEPLOYMENT.md#accounts-and-login)).
 Guests without an account can watch one workspace or pane through an expiring, revocable read-only link ([read-only share links](./docs/DEPLOYMENT.md#read-only-share-links)).
-Behind a public Cloudflare Tunnel address, tailnet devices are signed in automatically by their Tailscale identity ([tailnet sign-in](./docs/DEPLOYMENT.md#tailnet-sign-in-on-the-public-address)).
+Behind a public Cloudflare Tunnel address, tailnet devices are signed in automatically by their Tailscale identity ([tailnet sign-in](./docs/DEPLOYMENT.md#tailnet-sign-in-on-the-public-address)), and other pages move their bridge traffic off the tunnel onto a peer-to-peer WebRTC data channel ([peer-to-peer transport](./docs/DEPLOYMENT.md#peer-to-peer-transport)).
 Optional email, GitHub, Google, Microsoft and any OpenID Connect single sign-on are invite-only by default; owners invite people by email from **Share workspace**, and admins invite to the instance, open sign-up to their email domains, or bind email addresses and other sign-in methods to accounts on the admin page (`/admin`) ([sign-in providers](./docs/DEPLOYMENT.md#sign-in-providers)).
 
 ## License

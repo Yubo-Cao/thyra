@@ -264,6 +264,9 @@ or edit the service environment file. Source `bun run` retains normal Bun loadin
 | `THYRA_PUBLIC_LISTEN` | Second, internet-facing listener (`127.0.0.1:8788`) for Cloudflare Tunnel; see [public access](#public-access-through-cloudflare-tunnel) |
 | `THYRA_PUBLIC_ORIGIN` | The one HTTPS origin served by the public listener, such as `https://thyra.example.com` |
 | `THYRA_PUBLIC_TRUSTED_PROXIES` | Peers whose `CF-Connecting-IP` the public listener believes (default `loopback`) |
+| `THYRA_RTC=off` | Disable the [peer-to-peer transport](#peer-to-peer-transport) of the public listener (default on) |
+| `THYRA_RTC_STUN` | Comma-separated STUN URLs for it (default `stun:stun.cloudflare.com:3478`; empty: host candidates only) |
+| `THYRA_RTC_PORT_RANGE` | Local UDP ports for it, such as `50000-50100` (default: any free port) |
 | `THYRA_RESEND_API_KEY`, `THYRA_EMAIL_FROM` | Email sign-in codes and invitations through Resend; see [sign-in providers](#sign-in-providers) |
 | `THYRA_GITHUB_CLIENT_ID`, `THYRA_GITHUB_CLIENT_SECRET` | "Continue with GitHub"; see [sign-in providers](#sign-in-providers) |
 | `THYRA_GOOGLE_CLIENT_ID`, `THYRA_GOOGLE_CLIENT_SECRET` | "Continue with Google"; see [sign-in providers](#sign-in-providers) |
@@ -536,6 +539,22 @@ Open the public address with `?direct=0`, or set `localStorage["thyra:directPath
 **Home Screen app (iOS and iPadOS).** Both ways work in standalone mode.
 The silent sign-in is a background request, so the app never leaves its window.
 **Sign in with tailnet** is an ordinary link in the same window (never a new tab, which would open Safari and its separate cookie store): iOS keeps the navigation inside the app, showing the tailnet host in a bar while the page is outside the app's scope, and the callback lands back on the public origin, where the session cookie goes into the app's own store.
+
+#### Peer-to-peer transport
+
+Every request through the tunnel takes a detour through a Cloudflare data center (tens of milliseconds even when the server is next door), so a page on the public address moves its bridge traffic (requests, terminal frames and input) to a direct WebRTC data channel when it can.
+It is the fallback for pages the [direct path](#tailnet-sign-in-on-the-public-address) does not move.
+
+- **Who.** The public listener offers it in the hello to account sessions and share-link guests alike; the channel acts for exactly the principal of the WebSocket that negotiated it, and revocation, logout, role changes and link expiry close it like a WebSocket.
+  The primary listener never offers it.
+- **How.** After the hello the page loads the WebRTC code, gathers its candidates (at most 1.5 seconds), sends the complete offer with `bridge.rtc_offer` over the authenticated WebSocket, and the server answers with its own candidates.
+  Once the channel opens the page switches to it without showing a disconnect, repaints its terminals once and closes the WebSocket.
+  The connection menu shows **P2P** or **Relay** next to the browser status.
+- **Network.** The server needs outbound UDP; nothing has to be opened inbound, because both ends send first (UDP hole punching).
+  A server behind NAT discovers its public address through `THYRA_RTC_STUN`; a firewall that allows only some UDP ports can pin them with `THYRA_RTC_PORT_RANGE`.
+  Host candidates on Tailscale addresses are left out of the answer.
+  If the channel cannot open or drops, the page stays on (or returns to) the WebSocket and tries again after 30 seconds, 2 minutes, then every 10 minutes.
+- **Opting out.** Open the public address with `?rtc=0`, or set `localStorage["thyra:rtc"] = "off"`, to keep the WebSocket in that browser (`?rtc=1` undoes it); `THYRA_RTC=off` turns it off for everyone.
 
 #### Cloudflare edge caching
 

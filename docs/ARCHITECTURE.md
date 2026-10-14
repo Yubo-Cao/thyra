@@ -142,6 +142,29 @@ replies compress against earlier messages. Clipboard payloads stay
 uncompressed. Inbound decompression is shared with client context takeover
 disabled; backpressure and generation checks still apply.
 
+**Peer-to-peer bridge sockets.** On the public listener the hello carries
+`rtc: true` (and `rtc_ice_servers`) for users and guests. `bridge.rtc_offer`
+`{sdp}` takes a complete offer and returns a complete answer `{sdp}`
+(non-trickle ICE). Each WebSocket may own one peer connection, the bridge at
+most 64; a channel that has not opened within 10 seconds, or that stays silent
+for 120 seconds, is closed. When the ordered, reliable channel `thyra` opens,
+`RtcSocket` (`server/src/bridge/rtc-transport.ts`) stands in for a Bun
+`ServerWebSocket` with a copy of the negotiating socket's data (principal,
+client context, client session, so the same presence participant) and the
+regular WebSocket handlers drive it: it gets its own hello, joins the socket
+set that RPC routing, terminal streams, presence, `bridge.status` counts and
+session revocation iterate, and outlives the WebSocket. `getBufferedAmount`
+is the channel's `bufferedAmount` and `drain` fires below 256 KiB, so the
+send, coalescing and slow-client rules above apply unchanged. Every message
+crosses the channel as chunks of at most 16 KiB behind a one-byte header
+(more, binary, close; `shared/rtcFrames.ts`); a close chunk carries the close
+code and reason, so a revoked session ends the channel with the same 4001.
+The page (`web/src/rtcPath.ts`, lazily `rtcTransport.ts`) adopts the channel
+as its socket without leaving `connected` or advancing its generation,
+re-attaches terminals and shell subscriptions once on the channel's hello,
+and closes the WebSocket after the replies it still owed arrive. A channel
+that closes takes the normal WebSocket reconnect path.
+
 ### Geometry, input, and selection
 
 `terminal.attach` supplies pane `cols`/`rows` and optionally tab

@@ -128,7 +128,7 @@ bun run dev:web
 Thyra 能控制终端，也会修改真实文件。请保持默认的仅本机（loopback）监听；允许其他设备访问前，请先阅读 [SECURITY.md](./SECURITY.md)。
 tailnet 用户自动以管理员身份登录，其他人使用通行密钥登录，工作区可按查看者、编辑者或所有者共享（见[账户与登录](./docs/DEPLOYMENT.md#accounts-and-login)）。
 无需账户的访客可通过会过期、可撤销的只读共享链接观看一个工作区或窗格（见[只读共享链接](./docs/DEPLOYMENT.md#read-only-share-links)）。
-通过 Cloudflare Tunnel 公开访问时，tailnet 中的设备会凭 Tailscale 身份自动登录（见 [tailnet 登录](./docs/DEPLOYMENT.md#tailnet-sign-in-on-the-public-address)）。
+通过 Cloudflare Tunnel 公开访问时，tailnet 中的设备会凭 Tailscale 身份自动登录（见 [tailnet 登录](./docs/DEPLOYMENT.md#tailnet-sign-in-on-the-public-address)），其他页面会把桥接流量改走点对点的 WebRTC 数据通道，绕过隧道（见[点对点传输](./docs/DEPLOYMENT.md#peer-to-peer-transport)）。
 可选的邮箱、GitHub、Google、Microsoft 及任意 OpenID Connect 单点登录默认仅限受邀者，所有者可在“共享工作区”中通过邮箱邀请他人，管理员可在管理页（`/admin`）中邀请他人加入实例、按邮箱域名开放注册，或为账户绑定邮箱等登录方式（见[登录方式](./docs/DEPLOYMENT.md#sign-in-providers)）。
 
 ## 许可证
