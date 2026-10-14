@@ -169,6 +169,12 @@ import { parseTrustedProxies } from "./identity/client-address";
 import { dataRoot } from "./config/data-paths";
 import { thyraEnv } from "./config/environment";
 import {
+  createRtcTransport,
+  parseRtcConfig,
+  RtcOfferError,
+  type RtcSocket,
+} from "./bridge/rtc-transport";
+import {
   archiveRunningBuild,
   entryScriptPath,
   prewarmStaticCompression,
@@ -704,6 +710,15 @@ const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   scheduleProcessExit: scheduleManagedShutdown,
 });
 const clients = new Set<ServerWebSocket<unknown>>();
+const rtcSetup = parseRtcConfig();
+for (const warning of rtcSetup.warnings) logger.warn(warning);
+/** An RTC socket stands in for a `ServerWebSocket` (see rtc-transport.ts). */
+function asServerSocket(socket: RtcSocket<SocketData>) {
+  return socket as unknown as ServerWebSocket<SocketData>;
+}
+function isRtcSocket(ws: ServerWebSocket<unknown>): boolean {
+  return (ws as { transport?: string }).transport === "rtc";
+}
 /**
  * The collaboration service holding each browser socket's presence, so a
  * closed page leaves at once instead of lingering until its lease expires.
@@ -1438,6 +1453,27 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     sendReply({ id, result: { ok: true } }, "bridge-ping");
     return;
   }
+  if (method === "bridge.rtc_offer") {
+    const data = (ws as ServerWebSocket<SocketData>).data;
+    if (!data?.rtc || isRtcSocket(ws)) {
+      sendError("rpc-denied", new Error("bridge.rtc_offer: not offered"));
+      return;
+    }
+    try {
+      const sdp = await rtcTransport.answer(
+        ws,
+        { ...data, rtc: false },
+        ws.remoteAddress,
+        params?.sdp,
+      );
+      sendReply({ id, result: { sdp } }, method);
+    } catch (error) {
+      if (!(error instanceof RtcOfferError))
+        logger.warn("rtc offer failed", { error: (error as Error).message });
+      sendError(`${method}-error`, error);
+    }
+    return;
+  }
   if (method === "bridge.identity" || method === "bridge.identity_profile") {
     try {
       const result =
@@ -2119,6 +2155,11 @@ type SocketData = {
    * on the public listener so a page on a tailnet device can move there.
    */
   directOrigin: string | null;
+  /**
+   * The hello offers the peer-to-peer transport (public listener only). An
+   * RTC socket copies its negotiating socket's data with this off.
+   */
+  rtc: boolean;
 };
 
 type AuthenticatedRoute = {
@@ -2204,6 +2245,10 @@ async function routeAuthenticated(
             (principal.user.role === "admin" || knownTailnetDevice(req))
               ? tailnetSsoOrigin
               : null,
+          rtc:
+            route.publicListener &&
+            rtcTransport.enabled &&
+            (principal.kind === "user" || principal.kind === "guest"),
         },
       })
     )
@@ -2627,6 +2672,7 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     logger.debug("client connected", {
       client: label,
       clients: clients.size,
+      ...(isRtcSocket(ws) ? { transport: "rtc" } : {}),
     });
     safeSend(
       ws,
@@ -2638,6 +2684,9 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
         principal: principalView(ws.data.principal),
         ...(ws.data.directOrigin
           ? { direct_origin: ws.data.directOrigin }
+          : {}),
+        ...(ws.data.rtc
+          ? { rtc: true, rtc_ice_servers: rtcTransport.iceServers }
           : {}),
         bridge_protocol_version: 2,
         ...(webEntry ? { web_entry: webEntry } : {}),
@@ -2726,6 +2775,7 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
       });
   },
   close(ws) {
+    rtcTransport.ownerClosed(ws);
     const { client, viewedTerminals } = webSocketCleanup.complete(ws);
     logger.debug("client disconnected", {
       client,
@@ -2734,6 +2784,24 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     });
   },
 };
+
+/**
+ * Data channels negotiated with `bridge.rtc_offer` become sockets the
+ * handlers above drive like WebSockets: they join `clients`, so hello, RPC
+ * routing, terminal streams, presence and revocation cover them too.
+ */
+const rtcTransport = createRtcTransport<SocketData>({
+  config: rtcSetup.config,
+  logger: logger.child("rtc"),
+  handlers: {
+    open: (socket) => websocketHandlers.open?.(asServerSocket(socket)),
+    message: (socket, message) =>
+      websocketHandlers.message(asServerSocket(socket), message),
+    close: (socket, code, reason) =>
+      websocketHandlers.close?.(asServerSocket(socket), code, reason),
+    drain: (socket) => websocketHandlers.drain?.(asServerSocket(socket)),
+  },
+});
 
 let publicServer: Server<SocketData> | null = null;
 
@@ -2887,6 +2955,7 @@ function main() {
 
 let managerStopTask: Promise<void> | null = null;
 function stopManagerOnce(): Promise<void> {
+  rtcTransport.closeAll();
   webPush.stop();
   connectionProfiles.stopSupervision();
   managerStopTask ??= connectionManager.stopAll();

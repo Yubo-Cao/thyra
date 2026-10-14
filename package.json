@@ -74,6 +74,7 @@
     "typescript": "^7.0.2"
   },
   "patchedDependencies": {
-    "restty@0.3.0": "patches/restty@0.3.0.patch"
+    "restty@0.3.0": "patches/restty@0.3.0.patch",
+    "werift@0.25.0": "patches/werift@0.25.0.patch"
   }
 }

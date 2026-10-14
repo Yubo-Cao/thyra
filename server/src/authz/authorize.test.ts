@@ -24,6 +24,7 @@ const RPC_MATRIX: Record<string, string> = {
   "bridge.identity_profile": "admin owner editor viewer outsider",
   "bridge.pause_others": "admin",
   "bridge.ping": "admin owner editor viewer outsider guest guest-pane",
+  "bridge.rtc_offer": "admin owner editor viewer outsider guest guest-pane",
   "bridge.status": "admin owner editor viewer outsider guest guest-pane",
   "collaboration.claim": "admin owner editor",
   "collaboration.leave": "admin owner editor viewer outsider guest guest-pane",

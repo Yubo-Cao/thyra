@@ -94,6 +94,13 @@ Voice activity detection runs the WebRTC voice activity detector through
 It is Copyright (c) 2011, The WebRTC project authors, under the BSD 3-Clause
 License. See [`LICENSES/WEBRTC-VAD.txt`](./LICENSES/WEBRTC-VAD.txt).
 
+## werift
+
+The bridge's peer-to-peer transport (WebRTC data channels) uses
+[werift](https://github.com/shinyoshiaki/werift-webrtc) 0.25.0, a pure
+TypeScript WebRTC implementation, Copyright (c) 2020 shinyoshiaki, under the
+MIT License. See [`LICENSES/WERIFT.txt`](./LICENSES/WERIFT.txt).
+
 ## Trademarks
 
 Herdr, Pi, Codex, Claude, Gemini, Kimi, Grok, and other product names and logos

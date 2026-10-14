@@ -140,6 +140,8 @@ const herdr = (entry: RpcPolicyEntry): RpcPolicyEntry => ({
 export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // Bridge-global.
   "bridge.ping": guest(session()),
+  // Peer-to-peer transport: the channel inherits the socket's principal.
+  "bridge.rtc_offer": guest(session()),
   // Filtered: counts, the caller's connections, no host details.
   "bridge.status": guest(session()),
   "bridge.identity": guest(session()),
