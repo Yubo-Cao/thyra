@@ -12,6 +12,7 @@ import {
   type RtcChannelLike,
   type RtcSocket,
   RtcSocket as RtcSocketClass,
+  virtualBridgeAddresses,
   withoutTailnetCandidates,
 } from "./rtc-transport";
 
@@ -360,5 +361,22 @@ describe("rtc config", () => {
     expect(out).not.toContain("a=candidate:2 ");
     expect(out).toContain("a=candidate:3 ");
     expect(out).toContain("a=candidate:4 ");
+  });
+
+  test("container bridge host candidates are not published", () => {
+    const bridges = virtualBridgeAddresses({
+      docker0: [{ address: "172.17.0.1" } as never],
+      incusbr0: [{ address: "10.121.113.1" } as never],
+      enp8s0: [{ address: "131.215.155.232" } as never],
+    });
+    expect([...bridges].sort()).toEqual(["10.121.113.1", "172.17.0.1"]);
+    const sdp = [
+      "a=candidate:1 1 udp 2116026367 10.121.113.1 44216 typ host generation 0",
+      "a=candidate:2 1 udp 2116026367 131.215.155.232 42637 typ host generation 0",
+      "",
+    ].join("\r\n");
+    const out = withoutTailnetCandidates(sdp, bridges);
+    expect(out).not.toContain("a=candidate:1 ");
+    expect(out).toContain("a=candidate:2 ");
   });
 });

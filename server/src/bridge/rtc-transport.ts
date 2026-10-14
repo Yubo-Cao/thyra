@@ -12,6 +12,8 @@ import {
   encodeRtcMessage,
   RtcFrameDecoder,
 } from "../../../shared/rtcFrames";
+import { networkInterfaces } from "node:os";
+
 import { thyraEnv } from "../config/environment";
 import { type Logger, silentLogger } from "../utils/logger";
 
@@ -233,8 +235,30 @@ interface Peer<Data> {
   closed: boolean;
 }
 
-/** Drop host candidates that only name tailnet (CGNAT, Tailscale ULA) addresses. */
-export function withoutTailnetCandidates(sdp: string): string {
+/** Container and VM bridges: no browser reaches the server through them. */
+const VIRTUAL_BRIDGE = /^(docker|br-|incusbr|lxdbr|virbr|veth|cni|podman)/;
+
+/** This host's addresses on container and VM bridges. */
+export function virtualBridgeAddresses(
+  interfaces = networkInterfaces(),
+): Set<string> {
+  const addresses = new Set<string>();
+  for (const [name, entries] of Object.entries(interfaces)) {
+    if (!VIRTUAL_BRIDGE.test(name)) continue;
+    for (const entry of entries ?? [])
+      addresses.add(entry.address.toLowerCase());
+  }
+  return addresses;
+}
+
+/**
+ * Drop host candidates that only name tailnet (CGNAT, Tailscale ULA)
+ * addresses or the given container-bridge addresses.
+ */
+export function withoutTailnetCandidates(
+  sdp: string,
+  excluded: ReadonlySet<string> = new Set(),
+): string {
   return sdp
     .split(/\r\n/)
     .filter((line) => {
@@ -243,6 +267,7 @@ export function withoutTailnetCandidates(sdp: string): string {
       );
       if (!match) return true;
       const address = match[1]!.toLowerCase();
+      if (excluded.has(address)) return false;
       if (address.startsWith("fd7a:115c:a1e0:")) return false;
       const octets = address.split(".").map(Number);
       return !(
@@ -498,7 +523,7 @@ export function createRtcTransport<Data>(options: RtcTransportOptions<Data>) {
         await waitForGathering(pc);
         const answer = pc.localDescription?.sdp;
         if (peer.closed || !answer) throw new Error("peer closed");
-        return withoutTailnetCandidates(answer);
+        return withoutTailnetCandidates(answer, virtualBridgeAddresses());
       } catch (error) {
         teardown(peer, 1006, "rtc negotiation failed");
         throw new RtcOfferError(
