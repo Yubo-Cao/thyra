@@ -6,6 +6,7 @@ import { devtools } from "zustand/middleware";
 import { createStore, type StateCreator } from "zustand/vanilla";
 import {
   bridge,
+  type BridgeTransport,
   type ConnectionClient,
   type ConnectionStatus,
   type ConnectionSummary,
@@ -51,6 +52,11 @@ export interface State extends ServerSessionState {
   /** Host-wide actions are offered (`hostCapable` of the hello principal). */
   host?: boolean;
   connectionPaused: boolean;
+  /**
+   * What carries the bridge when its public listener offers a data channel
+   * (rtcPath.ts); null when it does not.
+   */
+  bridgeTransport: BridgeTransport | null;
   bridgeStatus: BridgeStatus | null;
   connections: ConnectionSummary[];
   defaultConnectionId: string;
@@ -199,6 +205,7 @@ const initialSession = emptyServerSessionState();
 const initialState: State = {
   status: "disconnected",
   connectionPaused: storedConnectionPaused(),
+  bridgeTransport: null,
   bridgeStatus: null,
   connections: [],
   defaultConnectionId: LEGACY_DEFAULT_CONNECTION_ID,

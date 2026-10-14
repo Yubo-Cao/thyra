@@ -18,6 +18,7 @@ import { t } from "../../i18n";
 import { editorMayTakeFocus } from "../../localEditorPolicy";
 import { useHighLatency } from "../../latencyAuto";
 import { useShellEditorMode } from "../../shellEditorPreferences";
+import { useStoreSelector } from "../../store";
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import {
   measureTerminal,
@@ -70,6 +71,8 @@ export function ShellEditor({
 }) {
   const mode = useShellEditorMode();
   const auto = useHighLatency();
+  // Bumped when the bridge moves to another socket: subscribe on that one.
+  const attachEpoch = useStoreSelector((s) => s.terminalAttachEpoch);
   const [state, setState] = useState<ShellInputState | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -185,7 +188,7 @@ export function ShellEditor({
           .call("shell.subscribe", { pane_id: paneId, enabled: false })
           .catch(() => {});
     };
-  }, [client, paneId]);
+  }, [client, paneId, attachEpoch]);
   useEffect(() => {
     const measure = () => {
       const buffer = term.buffer.active;

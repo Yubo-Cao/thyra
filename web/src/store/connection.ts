@@ -527,6 +527,19 @@ export function handleHello(defaultConnectionId: string) {
   }
 }
 
+/**
+ * The bridge moved to another socket for the same session (a data channel):
+ * the server knows nothing yet of this page's terminal streams, so attach
+ * them again, once, and refresh metadata. The connection never left
+ * "connected", so leases, caches and generations stay as they were.
+ */
+export function handleSocketSwap() {
+  if (state.status !== "connected" || state.connectionPaused) return;
+  set({ terminalAttachEpoch: state.terminalAttachEpoch + 1 });
+  void refreshNow();
+  void refreshBridgeStatus();
+}
+
 export function handleStatus(s: ConnectionStatus) {
   if (s === "disconnected") {
     set({ endpointAvailability: {} });

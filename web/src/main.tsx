@@ -12,6 +12,7 @@ import App from "./App";
 import { store } from "./store";
 import { registerAppServiceWorker } from "./appServiceWorker";
 import { initDirectPath } from "./directPath";
+import { initRtcPath } from "./rtcPath";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -54,6 +55,8 @@ if (!adminPage) {
   store.init();
   // Move to the tailnet origin when this device reaches it (after hello).
   initDirectPath();
+  // Otherwise move the bridge onto a peer-to-peer data channel when offered.
+  initRtcPath();
   // Cache the shell and fingerprinted assets so repeat visits on slow links
   // only fetch what a deploy changed (web/public/task-notifications-sw.js).
   if (import.meta.env.PROD) registerAppServiceWorker();

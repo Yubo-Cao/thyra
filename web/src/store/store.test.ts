@@ -201,6 +201,7 @@ function partitionState(): State {
     ...alpha,
     status: "connected",
     connectionPaused: false,
+    bridgeTransport: null,
     bridgeStatus: null,
     connections: [
       {

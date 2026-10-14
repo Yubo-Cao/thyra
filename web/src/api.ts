@@ -12,6 +12,9 @@ import {
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
+/** What carries the bridge: the WebSocket, or a peer-to-peer data channel. */
+export type BridgeTransport = "websocket" | "p2p";
+
 export type ConnectionLifecycleState =
   | "disconnected"
   | "connecting"
@@ -196,6 +199,10 @@ export interface BridgeHello {
   principal?: BridgePrincipal;
   /** Public listener: the tailnet origin of the direct path (directPath.ts). */
   direct_origin?: string;
+  /** Public listener: the page may move to a data channel (rtcPath.ts). */
+  rtc?: boolean;
+  /** STUN URLs for that data channel. */
+  rtc_ice_servers?: string[];
   capabilities: {
     connection_id?: boolean;
     connection_scoped_http?: boolean;
@@ -413,6 +420,11 @@ export class Bridge {
   private statusHandlers = new Set<(s: ConnectionStatus) => void>();
   private controlHandlers = new Set<(c: BridgeControlMsg) => void>();
   private helloHandlers = new Set<(hello: BridgeHello) => void>();
+  private transportHandlers = new Set<(transport: BridgeTransport) => void>();
+  private socketSwapHandlers = new Set<() => void>();
+  private _transport: BridgeTransport = "websocket";
+  /** An adopted socket's hello is still due; it re-arms per-socket state. */
+  private swapHelloTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -447,6 +459,16 @@ export class Bridge {
 
   get hello() {
     return this._hello;
+  }
+
+  get transport() {
+    return this._transport;
+  }
+
+  private setTransport(transport: BridgeTransport) {
+    if (this._transport === transport) return;
+    this._transport = transport;
+    this.transportHandlers.forEach((handler) => handler(transport));
   }
 
   setConnectionRuntimeGenerations(
@@ -610,6 +632,11 @@ export class Bridge {
       );
     }, this.connectTimeoutMs);
 
+    this.setTransport("websocket");
+    this.attachSocket(ws);
+  }
+
+  private attachSocket(ws: WebSocket) {
     ws.onopen = () => {
       // A TCP/WebSocket open is not a usable bridge connection. Keep the
       // connecting state and deadline until a valid, unscoped hello arrives.
@@ -625,6 +652,7 @@ export class Bridge {
     };
     ws.onclose = (event) => {
       if (this.ws !== ws) return;
+      this.clearSwapHello();
       if (event?.code === 4001) {
         const guest = this._hello?.principal?.kind === "guest";
         this.disconnect({ code: "logged_out", message: msg("logged out") });
@@ -647,6 +675,84 @@ export class Bridge {
     };
   }
 
+  /**
+   * Move the bridge onto `next`, an open socket for the same session that
+   * will send its own hello (the data channel of rtcTransport.ts). The page
+   * stays connected throughout: no status change, no generation change.
+   * Replies to requests sent on the old socket still arrive there; it closes
+   * once they have. False when the bridge is not connected.
+   */
+  adoptSocket(next: WebSocket, transport: BridgeTransport): boolean {
+    const old = this.ws;
+    if (
+      !old ||
+      this._status !== "connected" ||
+      !this.helloAcceptedForSocket ||
+      next.readyState !== WebSocket.OPEN
+    ) {
+      return false;
+    }
+    this.ws = next;
+    this.swapHelloTimer = setTimeout(() => {
+      this.swapHelloTimer = null;
+      if (this.ws !== next) return;
+      this.forceReconnect({
+        code: "handshake_timeout",
+        message: msg("bridge hello timed out"),
+      });
+    }, this.connectTimeoutMs);
+    this.attachSocket(next);
+    this.retireSocket(old);
+    this.setTransport(transport);
+    return true;
+  }
+
+  private clearSwapHello() {
+    if (!this.swapHelloTimer) return;
+    clearTimeout(this.swapHelloTimer);
+    this.swapHelloTimer = null;
+  }
+
+  /** Close a replaced socket once the replies it still owes have arrived. */
+  private retireSocket(old: WebSocket) {
+    const owed = new Set(this.pending.keys());
+    const startedAt = performance.now();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const finish = (closeSocket: boolean) => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+      old.onmessage = null;
+      old.onclose = null;
+      old.onerror = null;
+      // Whatever is still owed will not arrive now.
+      this.rejectPending(
+        { code: "disconnected", message: msg("bridge disconnected") },
+        (_pending, id) => owed.has(id),
+      );
+      if (closeSocket) {
+        try {
+          old.close(1000, "transport moved");
+        } catch {
+          // Already closed.
+        }
+      }
+    };
+    const check = () => {
+      for (const id of owed) if (!this.pending.has(id)) owed.delete(id);
+      if (owed.size === 0 || performance.now() - startedAt > RPC_TIMEOUT_MS)
+        finish(true);
+    };
+    old.onmessage = (ev) => {
+      // Only replies: pushes now come over the new socket.
+      this.onMessage(ev.data, true);
+      check();
+    };
+    old.onclose = () => finish(false);
+    old.onerror = null;
+    timer = setInterval(check, 1000);
+    check();
+  }
+
   disconnect(
     reason: BridgeFailure = {
       code: "paused",
@@ -663,6 +769,7 @@ export class Bridge {
     this._hello = null;
     this.helloAcceptedForSocket = false;
     this.clearConnectTimer();
+    this.clearSwapHello();
     this.stopHeartbeat();
     this.advanceActiveConnectionGeneration();
     this.rejectPending(reason);
@@ -759,10 +866,10 @@ export class Bridge {
 
   private rejectPending(
     reason: BridgeFailure,
-    predicate: (pending: Pending) => boolean = () => true,
+    predicate: (pending: Pending, id: string) => boolean = () => true,
   ) {
     for (const [id, pending] of this.pending) {
-      if (!predicate(pending)) continue;
+      if (!predicate(pending, id)) continue;
       pending.reject(bridgeErrorFrom(reason));
       this.pending.delete(id);
     }
@@ -781,6 +888,7 @@ export class Bridge {
     this._hello = null;
     this.helloAcceptedForSocket = false;
     this.clearConnectTimer();
+    this.clearSwapHello();
     this.stopHeartbeat();
     this.advanceActiveConnectionGeneration();
     this.setStatus("disconnected");
@@ -805,7 +913,7 @@ export class Bridge {
     this.handleDisconnect(ws, reason);
   }
 
-  private onMessage(raw: string) {
+  private onMessage(raw: string, repliesOnly = false) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -834,6 +942,20 @@ export class Bridge {
       hasControl,
     ].filter(Boolean).length;
     if (kindCount !== 1) return;
+    if (repliesOnly && !hasReply) return;
+
+    if (hasHello && this.swapHelloTimer) {
+      // The adopted socket's own hello: same session, fresh server state.
+      if (!isBridgeHello(msg)) return;
+      this.clearSwapHello();
+      this._hello = msg;
+      this.helloHandlers.forEach((handler) => handler(msg));
+      this.socketSwapHandlers.forEach((handler) => handler());
+      // Round trips now measure the new transport.
+      this.stopHeartbeat();
+      this.startHeartbeat();
+      return;
+    }
 
     if (hasHello) {
       if (this.helloAcceptedForSocket || !isBridgeHello(msg)) return;
@@ -1164,6 +1286,17 @@ export class Bridge {
     this.helloHandlers.add(cb);
     if (this._hello) cb(this._hello);
     return () => this.helloHandlers.delete(cb);
+  }
+
+  onTransport(cb: (transport: BridgeTransport) => void): () => void {
+    this.transportHandlers.add(cb);
+    return () => this.transportHandlers.delete(cb);
+  }
+
+  /** After an adopted socket's hello: re-attach per-socket server state. */
+  onSocketSwap(cb: () => void): () => void {
+    this.socketSwapHandlers.add(cb);
+    return () => this.socketSwapHandlers.delete(cb);
   }
 
   onEvent(cb: (event: HerdrEventMsg) => void): () => void {

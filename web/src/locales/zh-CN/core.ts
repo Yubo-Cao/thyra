@@ -183,6 +183,8 @@ export default {
   "Browser sync paused": "浏览器同步已暂停",
   "Browser connected to bridge": "浏览器已连接到桥接服务",
   "Browser connecting to bridge": "浏览器正在连接桥接服务",
+  P2P: "P2P 直连",
+  Relay: "隧道中转",
   "Pause other browser": "暂停其他浏览器",
   "Pause other browsers ({count})": "暂停其他浏览器（{count}）",
   "Pause browser sync": "暂停浏览器同步",

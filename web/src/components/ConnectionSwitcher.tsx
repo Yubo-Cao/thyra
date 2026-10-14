@@ -31,7 +31,10 @@ import {
 } from "../connectionProfiles";
 import { t } from "../i18n";
 import { store, useStoreSelector } from "../store";
-import { browserTransportPresentation } from "./browserTransport";
+import {
+  bridgeTransportLabel,
+  browserTransportPresentation,
+} from "./browserTransport";
 import {
   ConnectionSwitcherTrigger,
   type MenuFocus,
@@ -94,6 +97,7 @@ function useBrowserTransport() {
   const state = useStoreSelector(
     useShallow((snapshot) => ({
       bridgeStatus: snapshot.bridgeStatus,
+      bridgeTransport: snapshot.bridgeTransport,
       connectionPaused: snapshot.connectionPaused,
       status: snapshot.status,
     })),
@@ -105,7 +109,13 @@ function useBrowserTransport() {
     state.bridgeStatus?.devices,
   );
   const { label, countLabel } = presentation;
-  const statusLabel = countLabel ? `${label} · ${countLabel}` : label;
+  const transportLabel =
+    state.status === "connected" && !state.connectionPaused
+      ? bridgeTransportLabel(state.bridgeTransport)
+      : null;
+  const statusLabel = [label, transportLabel, countLabel]
+    .filter(Boolean)
+    .join(" · ");
   return {
     ...presentation,
     statusLabel,

@@ -14,6 +14,7 @@ import {
   applyConnectionCatalog,
   connectionActions,
   handleHello,
+  handleSocketSwap,
   handleStatus,
   markInitialized,
   markTerminalReattachPending,
@@ -100,6 +101,18 @@ function init() {
     }
   });
   bridge.onStatus(handleStatus);
+  bridge.onSocketSwap(handleSocketSwap);
+  const showTransport = () =>
+    set({
+      bridgeTransport:
+        bridge.transport === "p2p"
+          ? "p2p"
+          : bridge.hello?.rtc
+            ? "websocket"
+            : null,
+    });
+  bridge.onTransport(showTransport);
+  bridge.onHello(showTransport);
   bridge.onEvent(handleHerdrEvent);
   bridge.onControl((control) => {
     if (control.type === "pause_connection") {

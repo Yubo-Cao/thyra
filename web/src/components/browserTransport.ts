@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import type { ConnectionStatus } from "../api";
+import type { BridgeTransport, ConnectionStatus } from "../api";
 
 export interface BrowserTransportPresentation {
   label: string;
@@ -27,6 +27,15 @@ export function browserCountLabel(
   return clients === 1
     ? t("{count} browser", { count: clients })
     : t("{count} browsers", { count: clients });
+}
+
+/** "P2P" on a data channel, "Relay" on the tunnel's WebSocket. */
+export function bridgeTransportLabel(
+  transport: BridgeTransport | null,
+): string | null {
+  if (transport === "p2p") return t("P2P");
+  if (transport === "websocket") return t("Relay");
+  return null;
 }
 
 export function browserTransportPresentation(
