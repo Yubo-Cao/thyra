@@ -2248,7 +2248,9 @@ async function routeAuthenticated(
           rtc:
             route.publicListener &&
             rtcTransport.enabled &&
-            (principal.kind === "user" || principal.kind === "guest"),
+            // Accounts only: the answer names the server's addresses, which
+            // anonymous share-link guests have no reason to learn.
+            principal.kind === "user",
         },
       })
     )

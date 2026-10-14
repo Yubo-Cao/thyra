@@ -143,7 +143,7 @@ uncompressed. Inbound decompression is shared with client context takeover
 disabled; backpressure and generation checks still apply.
 
 **Peer-to-peer bridge sockets.** On the public listener the hello carries
-`rtc: true` (and `rtc_ice_servers`) for users and guests. `bridge.rtc_offer`
+`rtc: true` (and `rtc_ice_servers`) for signed-in accounts (not share-link guests, who should not learn the server's addresses). `bridge.rtc_offer`
 `{sdp}` takes a complete offer and returns a complete answer `{sdp}`
 (non-trickle ICE). Each WebSocket may own one peer connection, the bridge at
 most 64; a channel that has not opened within 10 seconds, or that stays silent
