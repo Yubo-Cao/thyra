@@ -8,15 +8,22 @@
  *   bun scripts/capture-screenshots.ts --serve --port 8831   # elsewhere
  *   bun scripts/check-terminal-links.ts --url http://127.0.0.1:8831/
  *
- * In the demo's shell pane it prints a URL and an absolute path with spaces,
- * then keeps the pane repainting the way agent spinners do. At pixel ratio
- * 1.25 (125% Windows scaling) and 2 it checks that the pointer lands on the
- * right cell, that hovering a link underlines it with a pointer cursor, that
- * Ctrl+click (Cmd where Thyra sees a Mac) opens the URL in a new tab with noopener and the
- * spaced path in the file preview, and that a plain click opens no URL.
+ * In the demo's shell pane it runs `scripts/demo/link-screen.ts`, which
+ * prints the link shapes coding agents print (plain URLs inside and at the
+ * start of a row, an OSC 8 hyperlink, a URL soft-wrapped across two rows, a
+ * Claude Code style URL hard-wrapped into two OSC 8 parts, and an absolute
+ * path with spaces), then repaints a spinner and a status row every 80 ms.
+ * At pixel ratio 1.25 (125% Windows scaling) and 2 it checks that the pointer
+ * lands on the right cell, that hovering a link underlines it with a pointer
+ * cursor, that Ctrl+click (Cmd where Thyra sees a Mac) after a 300-800 ms
+ * hover opens each URL, every time, in a new tab with noopener, that the
+ * spaced path opens in the file preview, and that a plain click opens no URL.
  * Exits non-zero on a failure.
  */
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { linkScreen } from "./demo/link-screen";
 import { loadPlaywrightCore } from "./playwright-core";
 
 const { values } = parseArgs({
@@ -27,7 +34,10 @@ const url = values.url;
 const SCREEN = ".terminal-engine-screen";
 const DIRECTORY = "/tmp/thyra-link-check/My Folder";
 const FILE = `${DIRECTORY}/file name.ts`;
-const URL_TEXT = "https://example.com/x";
+const REPORT = "/tmp/thyra-link-check/screen.json";
+const SCREEN_SCRIPT = join(import.meta.dir, "demo/link-screen.ts");
+// How long each click rests on its link first, as a person's hover does.
+const HOVER_RESTS = [300, 800, 450, 650, 350, 550];
 const playwright = await loadPlaywrightCore();
 const failures: string[] = [];
 const check = (ok: boolean, message: string) => {
@@ -69,11 +79,18 @@ async function run(kind: "chromium" | "webkit", dpr: number) {
   let box = await screen.boundingBox();
   await page.mouse.click(box.x + 100, box.y + box.height - 20);
   await page.keyboard.press("Control+c");
+  rmSync(REPORT, { force: true });
   await page.keyboard.type(
-    `mkdir -p '${DIRECTORY}' && touch '${FILE}' && clear && printf 'url ${URL_TEXT} here\\n${FILE}:12\\n' && while :; do printf '\\r%s' $RANDOM; sleep 0.1; done`,
+    `mkdir -p '${DIRECTORY}' && touch '${FILE}' && clear && ${process.execPath} ${SCREEN_SCRIPT} ${REPORT} '${FILE}'`,
   );
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(1500);
+  for (let i = 0; i < 100 && !existsSync(REPORT); i++)
+    await page.waitForTimeout(100);
+  const { cols } = JSON.parse(readFileSync(REPORT, "utf8")) as {
+    cols: number;
+  };
+  const layout = linkScreen(cols, FILE);
+  await page.waitForTimeout(1000);
   box = await screen.boundingBox();
   const underline = () =>
     page.evaluate(
@@ -116,7 +133,7 @@ async function run(kind: "chromium" | "webkit", dpr: number) {
     `${label}: canvas ${backing.device.join("x")} is its CSS size ${backing.css.join("x")} times ${dpr}`,
   );
 
-  // The first row: "url https://example.com/x here"; find the cell width.
+  // The first row: "plain https://example.com/plain here"; find the cell size.
   const rowY = (row: number, cellH: number) => box.y + (row + 0.5) * cellH;
   // Playwright's WebKit reports a Mac, so Thyra expects Cmd there.
   const modifier = (await page.evaluate(() =>
@@ -124,46 +141,113 @@ async function run(kind: "chromium" | "webkit", dpr: number) {
   ))
     ? "Meta"
     : "Control";
+  const plain = layout.plain;
   await page.keyboard.down(modifier);
   await page.mouse.move(box.x + 60, rowY(0, 10));
   await page.waitForTimeout(400);
   let hover = await underline();
-  const cellW = hover.width / URL_TEXT.length;
+  const cellW = hover.width / plain.url.length;
   const cellH = hover.top + 1;
   check(
     hover.shown &&
       hover.cursor === "pointer" &&
-      Math.abs(hover.left - 4 * cellW) < 0.5,
+      Math.abs(hover.left - plain.col * cellW) < 0.5,
     `${label}: Ctrl+hover underlines the URL from its first cell with a pointer (${JSON.stringify(hover)})`,
   );
   // Cell edges: the space before the URL is no link, its first cell is.
-  await page.mouse.move(box.x + 4 * cellW - 1, rowY(0, cellH));
+  await page.mouse.move(box.x + plain.col * cellW - 1, rowY(0, cellH));
   await page.waitForTimeout(300);
   const before = await underline();
-  await page.mouse.move(box.x + 4 * cellW + 1, rowY(0, cellH));
+  await page.mouse.move(box.x + plain.col * cellW + 1, rowY(0, cellH));
   await page.waitForTimeout(300);
   const first = await underline();
   check(
     !before.shown && first.shown,
     `${label}: hit-testing splits the cells at the URL's left edge`,
   );
-  // Let the repainting pane run, without moving the pointer.
-  await page.waitForTimeout(1200);
-  await page.mouse.down();
-  await page.mouse.up();
-  await page.waitForTimeout(300);
-  const urls = await opened();
-  check(
-    urls.length === 1 &&
-      urls[0]![0] === URL_TEXT &&
-      urls[0]![1] === "_blank" &&
-      /noopener/.test(urls[0]![2] ?? ""),
-    `${label}: Ctrl+click opens the URL in a new tab with noopener (${JSON.stringify(urls)})`,
+
+  // Each link the way a person clicks it: move onto it, rest 300-800 ms
+  // while the spinner rows keep repainting, then click. Every click must
+  // open exactly that link's URL.
+  const cellX = (col: number) => box.x + (col + 0.5) * cellW;
+  const ctrlClicks = async (
+    name: string,
+    row: number,
+    col: number,
+    expected: string,
+  ) => {
+    let hits = 0;
+    const wrong: string[] = [];
+    for (const rest of HOVER_RESTS) {
+      await page.mouse.move(cellX(0), rowY(layout.spinnerRow + 1, cellH));
+      await page.waitForTimeout(150);
+      const count = (await opened()).length;
+      await page.mouse.move(cellX(col), rowY(row, cellH));
+      await page.waitForTimeout(rest);
+      await page.mouse.down();
+      await page.mouse.up();
+      await page.waitForTimeout(250);
+      const urls = (await opened()).slice(count);
+      if (
+        urls.length === 1 &&
+        urls[0]![0] === expected &&
+        urls[0]![1] === "_blank" &&
+        /noopener/.test(urls[0]![2] ?? "")
+      )
+        hits++;
+      else if (urls.length) wrong.push(...urls.map((url: string[]) => url[0]!));
+    }
+    check(
+      hits === HOVER_RESTS.length && !wrong.length,
+      `${label}: Ctrl+click on ${name} opens it ${hits}/${HOVER_RESTS.length} times${wrong.length ? `, other URLs ${JSON.stringify(wrong)}` : ""}`,
+    );
+  };
+  await ctrlClicks(
+    "a plain URL inside a row",
+    plain.row,
+    plain.col + 3,
+    plain.url,
+  );
+  await ctrlClicks(
+    "a plain URL that starts its row",
+    layout.first.row,
+    layout.first.col + 5,
+    layout.first.url,
+  );
+  await ctrlClicks(
+    "an OSC 8 hyperlink",
+    layout.osc.row,
+    layout.osc.col + 3,
+    layout.osc.url,
+  );
+  await ctrlClicks(
+    "a soft-wrapped URL's first row",
+    layout.soft.row,
+    10,
+    layout.soft.url,
+  );
+  await ctrlClicks(
+    "a soft-wrapped URL's second row",
+    layout.soft.tailRow,
+    Math.floor(layout.soft.tailLength / 2),
+    layout.soft.url,
+  );
+  await ctrlClicks(
+    "a hard-wrapped OSC 8 URL's first row",
+    layout.hard.row,
+    layout.hard.col + 10,
+    layout.hard.url,
+  );
+  await ctrlClicks(
+    "a hard-wrapped OSC 8 URL's second row",
+    layout.hard.tailRow,
+    layout.hard.col + Math.floor(layout.hard.tailLength / 2),
+    layout.hard.url,
   );
 
-  // The second row: the absolute path with spaces; hover inside "name".
+  // The absolute path with spaces; hover inside "name".
   const nameCol = FILE.indexOf("name") + 1;
-  await page.mouse.move(box.x + (nameCol + 0.5) * cellW, rowY(1, cellH));
+  await page.mouse.move(cellX(nameCol), rowY(layout.file.row, cellH));
   await page.waitForTimeout(800);
   hover = await underline();
   check(
@@ -192,7 +276,7 @@ async function run(kind: "chromium" | "webkit", dpr: number) {
   const shell = page.locator(SCREEN).last();
   box = await shell.boundingBox();
   const tabs = (await opened()).length;
-  await page.mouse.move(box.x + 8 * cellW, rowY(0, cellH));
+  await page.mouse.move(box.x + (plain.col + 3) * cellW, rowY(0, cellH));
   await page.waitForTimeout(400);
   await page.mouse.down();
   await page.mouse.up();
