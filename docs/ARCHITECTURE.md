@@ -255,19 +255,26 @@ a path start extended over single spaces. They and any word-split prefix of them
 link only after `file.resolve` finds the file.
 Unicode prose punctuation can delimit paths. Resolved local files are validated
 against connection/pane scope and the displayed text, so unrelated repaints do
-not retire their actions. Remote link metadata still requires the exact frame.
-A click checks only the link's own rows. A repaint keeps the hovered link and
+not retire their actions. Links the bridge resolves follow the same rule: a
+click checks only the link's own rows (plus the row beside an edge it touches,
+which a wrap could continue), and a failed lookup never drops links found locally. A repaint keeps the hovered link and
 re-evaluates it at most every 200 ms, after the previous lookup answers. Scrolls
 and resizes drop it, and rows without a hovered link are never looked up again.
 
 Endpoint repaints carry an opaque `link_frame` identity, stable across identical,
-cursor-only, and focus-only surfaces. Content, hyperlink, viewport/scroll, input,
-or resize changes invalidate it. Identical repaints do not rewrite the terminal, keeping
-native link IDs and in-progress clicks intact.
+cursor-only, and focus-only surfaces. Content, hyperlink, viewport/scroll, or input
+changes issue a new one. Identical repaints do not rewrite the terminal, keeping
+native link IDs and in-progress clicks intact. The bridge keeps the last 16
+frames replaced within 3 s (and always the newest) so a lookup can name the frame
+the browser displayed while the pane keeps repainting; resize, reconnect, or a
+vanished pane forgets them all.
 
-`terminal.link.resolve` verifies attachment ownership and frame identity. OSC 8
-uses the cropped frame's hyperlink table; optional plain-text resolution runs on
-that exact socket with its content revision and scroll offset. Coordinates are
+`terminal.link.resolve` verifies attachment ownership and that the named frame is
+still kept. OSC 8 uses that frame's hyperlink table. Herdr's optional plain-text
+resolution reads only current content, so it runs on that exact socket with the
+newest frame's content revision and scroll offset, and the answer stands for the
+named frame only if every row it depends on (the regions, plus the row beside an
+edge they touch) shows the same text and targets in both frames. Coordinates are
 zero-based **cropped-pane display cells**, never surface origins or CSS pixels.
 Hover probes are bounded and independently timed out; hover never activates.
 
@@ -280,7 +287,7 @@ and empty/`localhost` authorities; network hosts, UNC paths, credentials,
 queries/fragments, malformed encoding, and control characters are rejected.
 Other URI schemes are not opened.
 
-Async lookups recheck frame, buffer, geometry, navigation, and connection state,
+Async lookups recheck the link's rows, buffer, geometry, navigation, and connection state,
 even while selection freezes presentation. Once clicked, a file menu survives
 ordinary output but closes on connection/workspace/navigation changes. Web links
 open in the browser; files use the pane's workspace, not later global focus.

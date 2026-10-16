@@ -145,10 +145,13 @@ export function registerTerminalLinkProvider(
     state: () => unknown;
     /** Stable connection/pane identity; unrelated frame repaints may change state. */
     scope?: () => unknown;
+    /** The displayed frame's identity, which a lookup names to the bridge. */
+    frame?: () => unknown;
     resolve: (
       row: number,
       col: number,
       touch?: boolean,
+      frame?: unknown,
     ) => Promise<TerminalResolvedLink | null>;
   },
 ) {
@@ -173,6 +176,7 @@ export function registerTerminalLinkProvider(
     const viewport = activeBuffer.viewportY;
     const state = upstream?.state();
     const scope = upstream?.scope?.();
+    const frame = upstream?.frame?.();
     const infer = inferContinuations();
     const context = readLinkContext(term, bufferLineNumber, infer);
     if (!context || state === null) {
@@ -207,6 +211,10 @@ export function registerTerminalLinkProvider(
     for (const cell of cells)
       if (!shownRows.has(cell.start.y))
         shownRows.set(cell.start.y, rowText(cell.start.y));
+    // The bridge's links may span any displayed row, or end beside one.
+    if (upstream)
+      for (let y = viewport + 1; y <= viewport + rowCount; y++)
+        if (!shownRows.has(y)) shownRows.set(y, rowText(y));
     const viewCurrent = () =>
       !(
         disposed ||
@@ -455,10 +463,13 @@ export function registerTerminalLinkProvider(
         callback(links.length ? links : undefined);
         return;
       }
+      // A hover's links stay valid while their own rows are displayed
+      // unchanged; a touch lookup still needs its whole frame.
+      const lookupCurrent = touch ? isFrameCurrent : viewCurrent;
       const resolve = async () => {
         const resolved: TerminalResolvedLink[] = [];
         for (const col of [...columns].slice(0, MAX_CANDIDATES_PER_LINE)) {
-          if (!isFrameCurrent()) {
+          if (!lookupCurrent()) {
             callback(undefined);
             return;
           }
@@ -471,7 +482,7 @@ export function registerTerminalLinkProvider(
           )
             continue;
           try {
-            const link = await upstream.resolve(row, col, !!touch);
+            const link = await upstream.resolve(row, col, !!touch, frame);
             if (touch && link && "uri" in link) {
               if (!isFrameCurrent()) {
                 callback(undefined);
@@ -508,16 +519,17 @@ export function registerTerminalLinkProvider(
               callback(undefined);
               return;
             }
-            break;
+            // An unresolved probe adds nothing; the links found here stand.
           }
         }
-        if (!isFrameCurrent()) {
+        if (!lookupCurrent()) {
           callback(undefined);
           return;
         }
         const regions = resolved.flatMap((link) => link.regions);
         const accepted = links.filter(
           (link) =>
+            isShown(link.range) &&
             !regions.some((r) => {
               const y = r.row + (viewport ?? 0) + 1;
               return (
@@ -537,23 +549,46 @@ export function registerTerminalLinkProvider(
           // every wrapped row underlines, whichever row is hovered.
           const first = link.regions[0]!;
           const last = link.regions[link.regions.length - 1]!;
+          const range = {
+            start: {
+              x: first.start_col + 1,
+              y: first.row + (viewport ?? 0) + 1,
+            },
+            end: {
+              x: last.end_col + 1,
+              y: last.row + (viewport ?? 0) + 1,
+            },
+          };
+          // The URL is the text of these rows as the lookup saw them. A link
+          // touching a row edge may continue across a wrap the screen does not
+          // record, so a displayed row beside that edge must stay unchanged.
+          const guard = {
+            start: {
+              ...range.start,
+              y:
+                first.start_col === 0 && range.start.y > viewport + 1
+                  ? range.start.y - 1
+                  : range.start.y,
+            },
+            end: {
+              ...range.end,
+              y:
+                last.end_col >= columnCount - 2 &&
+                range.end.y < viewport + rowCount
+                  ? range.end.y + 1
+                  : range.end.y,
+            },
+          };
+          const shown = () => isShown(guard);
+          if (!shown()) continue;
           accepted.push({
             text: link.url,
             target: { kind: "url", value: link.url },
             hover,
-            range: {
-              start: {
-                x: first.start_col + 1,
-                y: first.row + (viewport ?? 0) + 1,
-              },
-              end: {
-                x: last.end_col + 1,
-                y: last.row + (viewport ?? 0) + 1,
-              },
-            },
+            range,
             activate(event) {
               event.preventDefault();
-              if (isFrameCurrent() && terminalLinkModifierMatches(event)) {
+              if (shown() && terminalLinkModifierMatches(event)) {
                 term.clearSelection?.();
                 window.open(link.url!, "_blank", "noopener,noreferrer");
               }

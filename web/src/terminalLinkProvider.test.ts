@@ -4,7 +4,10 @@ import type {
   TerminalLink,
   TerminalLinkProvider,
 } from "./terminalEngine";
-import { registerTerminalLinkProvider } from "./terminalLinkProvider";
+import {
+  registerTerminalLinkProvider,
+  type TerminalResolvedLink,
+} from "./terminalLinkProvider";
 import { TerminalFileResolutionCache } from "./terminalFileLinks";
 import {
   getShortcutSnapshot,
@@ -27,6 +30,7 @@ function fixture(rows: string[], cols: number, wrapped: number[] = []) {
   const buffer = { getLine: (y: number) => lines[y] };
   const term = {
     cols,
+    rows: rows.length,
     buffer: { active: buffer },
     registerLinkProvider(value: TerminalLinkProvider) {
       provider = value;
@@ -750,6 +754,166 @@ describe("endpoint terminal link provider", () => {
       expect(await links).toEqual([]);
     },
   );
+
+  describe("in a pane that keeps repainting other rows", () => {
+    const url = "https://example.com/first";
+    const ctrlClick = { preventDefault() {}, ctrlKey: true } as MouseEvent;
+    async function withWindow(run: (opened: string[]) => Promise<void>) {
+      const opened: string[] = [];
+      const previous = getShortcutSnapshot().preferences.active;
+      selectShortcutPreset("linux");
+      const global = globalThis as { window?: unknown };
+      const saved = global.window;
+      global.window = {
+        open: (target: string) => opened.push(target),
+        addEventListener() {},
+      };
+      try {
+        await run(opened);
+      } finally {
+        global.window = saved;
+        selectShortcutPreset(previous);
+      }
+    }
+    // A URL that starts its row is probed upstream: it may continue a wrap.
+    function spinnerPane(
+      resolve: (
+        row: number,
+        col: number,
+        touch?: boolean,
+        frame?: unknown,
+      ) => Promise<TerminalResolvedLink | null>,
+      rows = ["", `  ${url}`, "", "* 1"],
+      cols = 40,
+    ) {
+      const f = fixture(rows, cols);
+      Object.assign(f.term, { rows: rows.length });
+      Object.assign(f.term.buffer.active, { viewportY: 0 });
+      const pane = { state: 1, frame: "t1" };
+      registerTerminalLinkProvider(f.term, undefined, undefined, () => true, {
+        state: () => pane.state,
+        scope: () => "pane",
+        frame: () => pane.frame,
+        resolve,
+      });
+      // A new frame repaints the spinner row and advances the link state.
+      const repaint = (spinner: string) => {
+        f.lines[rows.length - 1]!.text = spinner;
+        pane.state++;
+        pane.frame = `t${pane.state}`;
+      };
+      return { ...f, pane, repaint };
+    }
+    const upstreamLink = (end = 2 + url.length - 1) => ({
+      url,
+      regions: [{ row: 1, start_col: 2, end_col: end }],
+    });
+
+    test("an upstream link opens after repaints elsewhere, never after its row changed", async () => {
+      const frames: unknown[] = [];
+      const f = spinnerPane(async (_row, _col, _touch, frame) => {
+        frames.push(frame);
+        return upstreamLink();
+      });
+      const [link] = await f.links(2);
+      expect(link?.text).toBe(url);
+      expect(frames).toEqual(["t1"]);
+      await withWindow(async (opened) => {
+        f.repaint("* 2");
+        f.repaint("* 3");
+        link!.activate(ctrlClick, link!.text);
+        expect(opened).toEqual([url]);
+        f.lines[1]!.text = "  https://example.com/other";
+        link!.activate(ctrlClick, link!.text);
+        expect(opened).toEqual([url]);
+      });
+    });
+
+    test("a repaint during the lookup keeps the link and names the frame the rows came from", async () => {
+      const text = "https://a.example/x https://b.example/y";
+      const frames: unknown[] = [];
+      const f: ReturnType<typeof spinnerPane> = spinnerPane(
+        async (_row, col, _touch, frame) => {
+          frames.push(frame);
+          f.repaint(`* ${frames.length + 1}`);
+          return col === 0
+            ? null
+            : {
+                url: "https://b.example/y",
+                regions: [{ row: 1, start_col: 20, end_col: 38 }],
+              };
+        },
+        ["", text, "", "* 1"],
+        text.length,
+      );
+      const links = await f.links(2);
+      expect(links.map((link) => link.text)).toEqual([
+        "https://a.example/x",
+        "https://b.example/y",
+      ]);
+      expect(frames).toEqual(["t1", "t1"]);
+    });
+
+    test("a failed upstream lookup keeps the links found locally", async () => {
+      const f = spinnerPane(async () => {
+        f.repaint("* 2");
+        throw new Error("Terminal link frame changed");
+      });
+      const [link] = await f.links(2);
+      expect(link?.text).toBe(url);
+      await withWindow(async (opened) => {
+        link!.activate(ctrlClick, link!.text);
+        expect(opened).toEqual([url]);
+      });
+    });
+
+    test("drops links whose own row changed while the lookup ran", async () => {
+      const f = spinnerPane(async () => {
+        f.lines[1]!.text = "  https://example.com/other";
+        return upstreamLink();
+      });
+      expect(await f.links(2)).toEqual([]);
+    });
+
+    test("an upstream link at the row edge also needs the row after it unchanged", async () => {
+      const cols = 2 + url.length;
+      const f = spinnerPane(
+        async () => upstreamLink(cols - 1),
+        ["", `  ${url}`, "more", "* 1"],
+        cols,
+      );
+      const [link] = await f.links(2);
+      expect(link?.text).toBe(url);
+      await withWindow(async (opened) => {
+        f.repaint("* 2");
+        link!.activate(ctrlClick, link!.text);
+        expect(opened).toEqual([url]);
+        // The next row may have continued the URL in the frame it came from.
+        f.lines[2]!.text = "mor";
+        link!.activate(ctrlClick, link!.text);
+        expect(opened).toEqual([url]);
+      });
+    });
+
+    test("another pane or connection still ends every link", async () => {
+      let scope = "pane";
+      const f = fixture(["", `  ${url}`, "", "* 1"], 40);
+      Object.assign(f.term, { rows: 4 });
+      Object.assign(f.term.buffer.active, { viewportY: 0 });
+      registerTerminalLinkProvider(f.term, undefined, undefined, () => true, {
+        state: () => 1,
+        scope: () => scope,
+        frame: () => "t1",
+        resolve: async () => upstreamLink(),
+      });
+      const [link] = await f.links(2);
+      await withWindow(async (opened) => {
+        scope = "other";
+        link!.activate(ctrlClick, link!.text);
+        expect(opened).toEqual([]);
+      });
+    });
+  });
 
   test("refreshes a stale cached file on hover without enabling its old action", async () => {
     const f = fixture(["/tmp/old.md"], 30);

@@ -605,12 +605,17 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
         client.isCurrent() && !session.disposed
           ? `${desiredTerminal.current}:${refs.workspaceId.current}`
           : null,
-      resolve: async (row, col, touch) => {
+      // The frame the lookup read its rows from. The bridge keeps a few
+      // recent frames, so a pane repainting elsewhere does not void it.
+      frame: () => refs.presentation.current?.displayedFrame?.linkFrame,
+      resolve: async (row, col, touch, frame) => {
         const terminalId = desiredTerminal.current;
         if (
-          !session.latestLinkFrame ||
+          typeof frame !== "string" ||
           !terminalId ||
-          !linkState() ||
+          session.disposed ||
+          !client.isCurrent() ||
+          (touch && !linkState()) ||
           (!touch &&
             !store
               .get()
@@ -621,7 +626,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
           return null;
         return client.call("terminal.link.resolve", {
           terminal_id: terminalId,
-          frame: session.latestLinkFrame,
+          frame,
           row,
           col,
         }) as Promise<TerminalResolvedLink>;

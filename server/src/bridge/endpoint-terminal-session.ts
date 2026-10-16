@@ -7,7 +7,7 @@ import {
 } from "./endpoint-client";
 import { EndpointCreationDeadline } from "./endpoint-creation";
 import { frameToAnsi } from "./frame-to-ansi";
-import type { FrameData } from "./frame-codec";
+import type { CellData, FrameData } from "./frame-codec";
 import type { OwnShellClients } from "./own-shell-clients";
 import type { Logger } from "../utils/logger";
 import { silentLogger } from "../utils/logger";
@@ -30,6 +30,28 @@ const FIRST_SURFACE_WAIT_MS = 10_000;
 const SURFACE_FIT_MAX_ATTEMPTS = 3;
 // How long a misfitting frame waits for the settled replacement.
 const FIT_DEFER_MS = 500;
+/**
+ * Recent link frames a viewer may still display: frames reach browsers
+ * through a flow-controlled stream and a hover lookup takes a round trip, so
+ * a pane repainting every few tens of milliseconds has always moved past the
+ * frame a click names.
+ */
+export const LINK_FRAME_HISTORY = 16;
+export const LINK_FRAME_HISTORY_MS = 3000;
+// Herdr rejects a lookup whose content revision it has moved past; the frame
+// showing its new content arrives within a few milliseconds.
+const LINK_RESOLVE_ATTEMPTS = 3;
+const LINK_RESOLVE_RETRY_WAIT_MS = 250;
+
+type LinkFrame = {
+  token: string;
+  frame: FrameData;
+  /** Herdr's content identity for this frame, sent with read-only lookups. */
+  contentRevision: number;
+  offsetFromBottom?: number;
+  /** When a newer frame replaced it (the newest frame never expires). */
+  at: number;
+};
 
 type ScrollDispatch = {
   offset: number;
@@ -78,13 +100,11 @@ export class EndpointTerminalSession extends EventEmitter {
   private closed = false;
   private seq = 0;
   private readonly linkSessionId = crypto.randomUUID();
-  private linkLookupEpoch = 0;
-  private linkFrame: {
-    token: string;
-    content: string;
-    surface: EndpointSurface;
-    frame: FrameData;
-  } | null = null;
+  // The newest displayed link frame, reused while its content is unchanged.
+  private linkFrame: (LinkFrame & { content: string }) | null = null;
+  // Newest last; lookups resolve against the frame the viewer names.
+  private linkFrames: LinkFrame[] = [];
+  private linkFrameWaiters = new Set<() => void>();
   private deferredFrame: {
     timer: ReturnType<typeof setTimeout>;
     emit: () => void;
@@ -317,7 +337,7 @@ export class EndpointTerminalSession extends EventEmitter {
     const pane = surface.panes.find((p) => p.paneId === this.paneId);
     if (!pane?.mouseReporting) this.pressedMouseButtons.clear();
     if (!pane) {
-      this.linkFrame = null;
+      this.forgetLinkFrames();
       this.lastScroll = null;
       this.scrollTarget = null;
       this.scrollDispatched = null;
@@ -392,9 +412,24 @@ export class EndpointTerminalSession extends EventEmitter {
     const emitFrame = () => {
       if (this.closed) return;
       this.seq += 1;
-      const token =
-        this.linkFrame?.token ?? `${this.linkSessionId}:${this.seq}`;
-      this.linkFrame ??= { token, content, surface, frame: cropped };
+      const now = Date.now();
+      if (!this.linkFrame) {
+        // The frame it replaces was displayed until now.
+        const previous = this.linkFrames.at(-1);
+        if (previous) previous.at = now;
+        this.linkFrame = {
+          token: `${this.linkSessionId}:${this.seq}`,
+          content,
+          frame: cropped,
+          contentRevision: pane.contentRevision,
+          offsetFromBottom: pane.scroll?.offsetFromBottom,
+          at: now,
+        };
+        this.linkFrames.push(this.linkFrame);
+        for (const wake of [...this.linkFrameWaiters]) wake();
+      }
+      this.pruneLinkFrames();
+      const token = this.linkFrame.token;
       this.emit("terminal", {
         linkFrame: token,
         graphics,
@@ -445,7 +480,7 @@ export class EndpointTerminalSession extends EventEmitter {
   }
 
   resize(cols: number, rows: number) {
-    this.linkFrame = null;
+    this.forgetLinkFrames();
     this.clearDeferredFrame();
     this.paneSize = { cols, rows };
     this.fitAttempts = SURFACE_FIT_MAX_ATTEMPTS;
@@ -715,9 +750,6 @@ export class EndpointTerminalSession extends EventEmitter {
     );
     if (offset === (this.scrollTarget ?? this.lastScroll.offsetFromBottom))
       return;
-    // Pending motion blocks lookups, but canceled/clamped motion may never
-    // repaint. Keep the displayed token while retiring pre-gesture requests.
-    this.linkLookupEpoch++;
     this.scrollTarget = offset;
     this.flushScroll();
   }
@@ -794,58 +826,133 @@ export class EndpointTerminalSession extends EventEmitter {
       });
   }
 
-  /** Read-only hit testing on the very shell that rendered the cropped pane. */
+  private pruneLinkFrames() {
+    const now = Date.now();
+    const newest = this.linkFrames.at(-1);
+    this.linkFrames = this.linkFrames.filter(
+      (frame, index) =>
+        frame === newest ||
+        (index >= this.linkFrames.length - LINK_FRAME_HISTORY &&
+          now - frame.at <= LINK_FRAME_HISTORY_MS),
+    );
+  }
+
+  /** Geometry or the pane changed: no displayed frame can be looked up. */
+  private forgetLinkFrames() {
+    this.linkFrame = null;
+    this.linkFrames = [];
+    for (const wake of [...this.linkFrameWaiters]) wake();
+  }
+
+  /**
+   * Read-only hit testing on the frame the viewer displayed (`token`), which
+   * may be a few repaints old. OSC 8 targets come from that frame itself.
+   * Herdr resolves plain URLs only on its current content, so the newest
+   * frame is asked and its answer holds for the displayed one only where
+   * every row it depends on is the same in both: a spinner or clock
+   * elsewhere in the pane leaves a link usable, a change to the link does not.
+   */
   async resolveLink(token: string, row: number, col: number) {
-    const displayed = this.linkFrame;
-    const epoch = this.linkLookupEpoch;
-    const pane = displayed?.surface.panes.find((p) => p.paneId === this.paneId);
-    const current = () =>
-      !this.closed &&
-      !this.connecting &&
-      this.linkFrame === displayed &&
-      this.linkLookupEpoch === epoch &&
-      !this.fitResizeInFlight &&
-      this.scrollTarget === null;
+    this.pruneLinkFrames();
+    const shown = this.linkFrames.find((frame) => frame.token === token);
     if (
-      !displayed ||
-      !pane ||
-      displayed.token !== token ||
-      !current() ||
+      !shown ||
+      this.closed ||
+      this.connecting ||
       !Number.isInteger(row) ||
       !Number.isInteger(col) ||
       row < 0 ||
       col < 0 ||
-      row >= displayed.frame.height ||
-      col >= displayed.frame.width
+      row >= shown.frame.height ||
+      col >= shown.frame.width
     )
       throw new Error("Terminal link frame changed");
     // The public xterm buffer omits OSC8 IDs. Read the owned cropped frame,
     // without invoking plugins or requiring the optional plain-link resolver.
-    const uri = frameHyperlinkAt(displayed.frame, row, col);
+    const uri = frameHyperlinkAt(shown.frame, row, col);
     if (uri !== undefined) return { regions: [], url: null, uri };
     if (!this.negotiation?.methods.includes("pane.link.resolve"))
       return { regions: [], url: null };
     this.client.assertMethod("pane.link.resolve");
-    // Optional hover reads must not block focus/scroll or close a healthy terminal.
-    const result = await this.client.callEndpoint(
-      "pane.link.resolve",
-      {
-        pane_id: this.paneId,
-        viewport_row: row,
-        col,
-        content_revision: pane.contentRevision,
-        ...(pane.scroll
-          ? { offset_from_bottom: pane.scroll.offsetFromBottom }
-          : {}),
-      },
-      1500,
-    );
-    if (!current()) throw new Error("Terminal link frame changed");
-    return resolvedFrameLink(result, displayed.frame, row, col);
+    for (let attempt = 1; ; attempt++) {
+      const latest = this.linkFrames.at(-1)!;
+      if (!sameLinkRows(shown.frame, latest.frame, row, row))
+        throw new Error("Terminal link frame changed");
+      let result: unknown;
+      try {
+        // Optional hover reads must not block focus/scroll or close a healthy terminal.
+        result = await this.client.callEndpoint(
+          "pane.link.resolve",
+          {
+            pane_id: this.paneId,
+            viewport_row: row,
+            col,
+            content_revision: latest.contentRevision,
+            ...(latest.offsetFromBottom === undefined
+              ? {}
+              : { offset_from_bottom: latest.offsetFromBottom }),
+          },
+          1500,
+        );
+      } catch (error) {
+        // Herdr's content runs a surface ahead of the frames that reach the
+        // bridge, so a pane repainting every few tens of milliseconds often
+        // has moved past `latest`. Ask again about the frame that shows it.
+        if (
+          attempt >= LINK_RESOLVE_ATTEMPTS ||
+          !/\bchanged (?:before|during) link\b/.test(
+            error instanceof Error ? error.message : "",
+          ) ||
+          !(await this.newerLinkFrame(latest)) ||
+          !this.linkFrames.includes(shown)
+        )
+          throw error;
+        continue;
+      }
+      // Herdr answered for exactly `latest` (it rejects any other revision or
+      // viewport); a resize or reconnect since then retired both frames.
+      if (this.closed || !this.linkFrames.includes(latest))
+        throw new Error("Terminal link frame changed");
+      const link = resolvedFrameLink(result, latest.frame, row, col);
+      const first = link.regions[0];
+      const last = link.regions.at(-1);
+      if (
+        first &&
+        last &&
+        !sameLinkRows(
+          shown.frame,
+          latest.frame,
+          // A region touching a row edge may continue across a soft wrap the
+          // frames do not record, so the neighbouring row decides it as well.
+          first.start_col === 0 ? first.row - 1 : first.row,
+          last.end_col >= latest.frame.width - 2 ? last.row + 1 : last.row,
+        )
+      )
+        throw new Error("Terminal link frame changed");
+      return link;
+    }
+  }
+
+  /** Whether a frame newer than `frame` arrives (or already has) soon. */
+  private newerLinkFrame(frame: LinkFrame): Promise<boolean> {
+    const newer = () =>
+      !this.closed &&
+      this.linkFrames.length > 0 &&
+      this.linkFrames.at(-1) !== frame;
+    if (newer() || this.closed) return Promise.resolve(newer());
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.linkFrameWaiters.delete(done);
+        resolve(newer());
+      };
+      const timer = setTimeout(done, LINK_RESOLVE_RETRY_WAIT_MS);
+      this.linkFrameWaiters.add(done);
+    });
   }
 
   close() {
-    this.linkFrame = null;
+    this.forgetLinkFrames();
     if (this.closed) return;
     this.closed = true;
     this.scrollTarget = null;
@@ -895,6 +1002,37 @@ function scrollResult(result: unknown, paneId: string) {
   )
     return null;
   return { offset, maxOffset };
+}
+
+/**
+ * Whether rows `first..last` (clamped to the frame) show the same text and
+ * link targets in both frames, which then share every link those rows hold.
+ */
+export function sameLinkRows(
+  a: FrameData,
+  b: FrameData,
+  first: number,
+  last: number,
+): boolean {
+  if (a === b) return true;
+  if (a.width !== b.width || a.height !== b.height) return false;
+  const target = (frame: FrameData, cell: CellData | undefined) =>
+    cell?.hyperlink == null ? null : (frame.hyperlinks[cell.hyperlink] ?? "");
+  for (let y = Math.max(0, first); y <= Math.min(a.height - 1, last); y++) {
+    for (let x = 0; x < a.width; x++) {
+      const i = y * a.width + x;
+      const left = a.cells[i];
+      const right = b.cells[i];
+      if (left === right) continue;
+      if (
+        left?.symbol !== right?.symbol ||
+        left?.skip !== right?.skip ||
+        target(a, left) !== target(b, right)
+      )
+        return false;
+    }
+  }
+  return true;
 }
 
 /** Crop one pane's content rect out of the tab surface. */

@@ -9,7 +9,10 @@ import {
   EndpointTerminalSession,
   cropFrame,
   frameHyperlinkAt,
+  LINK_FRAME_HISTORY,
+  LINK_FRAME_HISTORY_MS,
   resolvedFrameLink,
+  sameLinkRows,
 } from "./endpoint-terminal-session";
 import type { CellData, FrameData } from "./frame-codec";
 import type { ServerWebSocket } from "bun";
@@ -3955,7 +3958,7 @@ describe("read-only terminal links", () => {
     expect(frameHyperlinkAt(cropped, 0, 2)).toBeNull();
   });
 
-  test("owned OSC8 target needs no upstream link capability and rejects stale tokens", async () => {
+  test("owned OSC8 targets need no upstream link capability and come from the frame each token names", async () => {
     const frame = linkFrame(["", "    label", ""], 24);
     frame.cells[28]!.hyperlink = 0;
     frame.hyperlinks = ["file://localhost/tmp/docs"];
@@ -4000,14 +4003,24 @@ describe("read-only terminal links", () => {
       const next = once(session, "terminal");
       send(panes, { ...frame, hyperlinks: ["javascript:alert(1)"] });
       await next;
-      await expect(session.resolveLink(old, 0, 0)).rejects.toThrow(
-        "frame changed",
-      );
+      expect(token).not.toBe(old);
+      // The viewer still displaying the older frame gets that frame's target.
+      expect(await session.resolveLink(old, 0, 0)).toEqual({
+        regions: [],
+        url: null,
+        uri: frame.hyperlinks[0],
+      });
       expect(await session.resolveLink(token, 0, 0)).toEqual({
         regions: [],
         url: null,
         uri: "javascript:alert(1)",
       });
+      await expect(
+        session.resolveLink(`${old.split(":")[0]}:999`, 0, 0),
+      ).rejects.toThrow("frame changed");
+      await expect(session.resolveLink("other:1", 0, 0)).rejects.toThrow(
+        "frame changed",
+      );
       expect(requests).not.toContain("pane.link.resolve");
       expect(requests).not.toContain("pane.link.activate");
     } finally {
@@ -4095,7 +4108,7 @@ describe("read-only terminal links", () => {
   });
 
   test.each(["frame", "scroll", "resize", "input", "close"])(
-    "drops delayed resolution after %s and never activates plugins",
+    "delayed resolution after %s answers for the displayed frame or nothing, and never activates plugins",
     async (change) => {
       let send!: (panes: TestPane[]) => void;
       let finish!: (result: unknown) => void;
@@ -4158,7 +4171,15 @@ describe("read-only terminal links", () => {
         else if (change === "input") session.input(Buffer.from("a"));
         else session.close();
         finish(resolvedRegions([{ row: 1, start_col: 0, end_col: 7 }]));
-        expect(await result).toBeInstanceOf(Error);
+        if (change === "resize" || change === "close")
+          expect(await result).toBeInstanceOf(Error);
+        // Herdr answered for the frame it was asked about, whose rows are the
+        // displayed frame's; what happened since does not change that answer.
+        else
+          expect(await result).toEqual({
+            regions: [{ row: 1, start_col: 0, end_col: 7 }],
+            url: null,
+          });
         expect(requests.some((r) => r.method === "pane.link.activate")).toBe(
           false,
         );
@@ -4169,7 +4190,7 @@ describe("read-only terminal links", () => {
   );
 
   test.each(["reversal", "clamped"])(
-    "%s scroll without a surface keeps new lookups usable but retires pending replies",
+    "%s scroll without a surface keeps the displayed token and its lookups usable",
     async (kind) => {
       const held = deferred<unknown>();
       const dispatched = deferred<void>();
@@ -4212,7 +4233,7 @@ describe("read-only terminal links", () => {
         if (kind === "reversal") session.scroll("down", 3);
         await session.focus(() => false);
         held.resolve(resolvedRegions([]));
-        expect(await stale).toBeInstanceOf(Error);
+        expect(await stale).toEqual({ regions: [], url: null });
         expect(await session.resolveLink(displayed, 1, 2)).toEqual({
           regions: [],
           url: null,
@@ -4227,7 +4248,7 @@ describe("read-only terminal links", () => {
     },
   );
 
-  test("resolve and focus full-surface emissions retain link identity, but content and intent do not", async () => {
+  test("resolve and focus full-surface emissions retain link identity, but content and intent do not; old tokens resolve while the link's rows match", async () => {
     const frame = linkFrame(["", " https://example.com/a", ""], 24);
     const panes: TestPane[] = [
       {
@@ -4319,14 +4340,244 @@ describe("read-only terminal links", () => {
         send(metadata, changed);
         await shown;
         expect(token).not.toBe(before);
-        await expect(session.resolveLink(before, 1, 2)).rejects.toThrow(
-          "frame changed",
-        );
+        if (["cells", "hyperlink", "viewport"].includes(change))
+          await expect(session.resolveLink(before, 1, 2)).rejects.toThrow(
+            "frame changed",
+          );
+        else
+          expect((await session.resolveLink(before, 1, 2)).url).toBe(
+            "https://example.com/a",
+          );
       }
       expect(methods).not.toContain("pane.link.activate");
     } finally {
       session.close();
     }
+  });
+
+  test("compares link rows by text and target, not style or hyperlink index", () => {
+    const a = linkFrame(["one", "two", "three"], 8);
+    const b = structuredClone(a);
+    expect(sameLinkRows(a, b, 0, 2)).toBe(true);
+    b.cells[0]!.fg = 3;
+    b.hyperlinks = ["https://example.org/unused", "https://example.org/x"];
+    a.hyperlinks = ["https://example.org/x"];
+    a.cells[9]!.hyperlink = 0;
+    b.cells[9]!.hyperlink = 1;
+    expect(sameLinkRows(a, b, 0, 2)).toBe(true);
+    b.cells[9]!.hyperlink = 0;
+    expect(sameLinkRows(a, b, 1, 1)).toBe(false);
+    expect(sameLinkRows(a, b, 0, 0)).toBe(true);
+    b.cells[17]!.symbol = "X";
+    expect(sameLinkRows(a, b, 2, 2)).toBe(false);
+    // Rows outside the frame are clamped away, never compared.
+    expect(sameLinkRows(a, b, -1, 0)).toBe(true);
+    expect(sameLinkRows(a, linkFrame(["one", "two", "three"], 9), 0, 0)).toBe(
+      false,
+    );
+  });
+
+  describe("an older token while the pane repaints", () => {
+    const panes: TestPane[] = [
+      {
+        paneId: "w1:p1",
+        x: 0,
+        mouseReporting: false,
+        rect: { x: 0, y: 0, width: 24, height: 4 },
+        innerRect: { x: 0, y: 0, width: 24, height: 4 },
+      },
+    ];
+    async function repainting(
+      regions: (revision: number) => unknown = () =>
+        resolvedRegions([{ row: 1, start_col: 1, end_col: 21 }]),
+    ) {
+      const requests: any[] = [];
+      let send!: (panes: TestPane[], frame?: FrameData) => void;
+      const socketPath = await startSessionServer({
+        initialSurface: {
+          frame: linkFrame(["", " https://example.com/a", "", "* 0"]),
+          panes,
+        },
+        methods: ["pane.focus", "pane.link.resolve"],
+        onConnection: (value) => {
+          send = value;
+        },
+        onRequest: (method, params) => {
+          if (method !== "pane.link.resolve") return;
+          requests.push(params);
+          return regions(params.content_revision);
+        },
+      });
+      const session = new EndpointTerminalSession(
+        socketPath,
+        "terminal",
+        async () => "w1:p1",
+      );
+      const tokens: string[] = [];
+      session.on("terminal", (value) => {
+        if (tokens.at(-1) !== value.linkFrame) tokens.push(value.linkFrame);
+      });
+      await session.connect(24, 4);
+      let revision = 1;
+      const paint = async (rows: string[]) => {
+        const shown = once(session, "terminal");
+        revision++;
+        send(
+          panes.map((pane) => ({ ...pane, contentRevision: revision })),
+          linkFrame(rows),
+        );
+        await shown;
+      };
+      return { session, tokens, requests, paint };
+    }
+
+    test("resolves its link against the newest frame when only other rows changed", async () => {
+      const { session, tokens, requests, paint } = await repainting();
+      try {
+        const displayed = tokens[0]!;
+        for (let i = 1; i <= 5; i++)
+          await paint(["", " https://example.com/a", "", `* ${i}`]);
+        expect(tokens).toHaveLength(6);
+        expect(await session.resolveLink(displayed, 1, 4)).toEqual({
+          regions: [{ row: 1, start_col: 1, end_col: 21 }],
+          url: "https://example.com/a",
+        });
+        // Herdr only answers for its current content: the newest frame.
+        expect(requests.at(-1)).toMatchObject({
+          viewport_row: 1,
+          col: 4,
+          content_revision: 6,
+        });
+      } finally {
+        session.close();
+      }
+    });
+
+    test("rejects it once the link's own row changed, without asking Herdr", async () => {
+      const { session, tokens, requests, paint } = await repainting();
+      try {
+        const displayed = tokens[0]!;
+        await paint(["", " https://example.com/b", "", "* 1"]);
+        await expect(session.resolveLink(displayed, 1, 4)).rejects.toThrow(
+          "frame changed",
+        );
+        expect(requests).toHaveLength(0);
+        expect((await session.resolveLink(tokens[1]!, 1, 4)).url).toBe(
+          "https://example.com/b",
+        );
+      } finally {
+        session.close();
+      }
+    });
+
+    test("rejects a link whose answer depends on a row that changed", async () => {
+      // Herdr reports a URL soft-wrapped onto row 2; row 2 changed since.
+      const wrapped = resolvedRegions([
+        { row: 1, start_col: 1, end_col: 23 },
+        { row: 2, start_col: 0, end_col: 2 },
+      ]);
+      const { session, tokens, paint } = await repainting(() => wrapped);
+      try {
+        await paint(["", " https://example.com/abc", "efg", "* 1"]);
+        const displayed = tokens[1]!;
+        await paint(["", " https://example.com/abc", "efX", "* 2"]);
+        await expect(session.resolveLink(displayed, 1, 4)).rejects.toThrow(
+          "frame changed",
+        );
+        expect((await session.resolveLink(tokens[2]!, 1, 4)).url).toBe(
+          "https://example.com/abcefX",
+        );
+      } finally {
+        session.close();
+      }
+    });
+
+    test("checks the row after a link that reaches the edge, which may continue it", async () => {
+      // An unwrapped answer at the edge: the next row decides whether the
+      // displayed frame showed more of the URL there.
+      const edge = resolvedRegions([{ row: 1, start_col: 1, end_col: 23 }]);
+      const { session, tokens, paint } = await repainting(() => edge);
+      try {
+        await paint(["", " https://example.com/abc", "efg", "* 1"]);
+        const displayed = tokens[1]!;
+        await paint(["", " https://example.com/abc", " fg", "* 2"]);
+        await expect(session.resolveLink(displayed, 1, 4)).rejects.toThrow(
+          "frame changed",
+        );
+        await paint(["", " https://example.com/abc", " fg", "* 3"]);
+        expect((await session.resolveLink(tokens[2]!, 1, 4)).url).toBe(
+          "https://example.com/abc",
+        );
+      } finally {
+        session.close();
+      }
+    });
+
+    test("asks again once the frame showing Herdr's newer content arrives", async () => {
+      const later: { paint?: (rows: string[]) => Promise<void> } = {};
+      const asked: number[] = [];
+      const fixture = await repainting((revision) => {
+        asked.push(revision);
+        if (asked.length === 1) {
+          // Herdr's spinner moved on before its surface reached the bridge.
+          setTimeout(
+            () => void later.paint!(["", " https://example.com/a", "", "* 9"]),
+            5,
+          );
+          throw "pane content changed before link resolution";
+        }
+        if (asked.length === 3)
+          throw "pane content changed during link resolution";
+        return resolvedRegions([{ row: 1, start_col: 1, end_col: 21 }]);
+      });
+      later.paint = fixture.paint;
+      const { session, tokens } = fixture;
+      try {
+        expect((await session.resolveLink(tokens[0]!, 1, 4)).url).toBe(
+          "https://example.com/a",
+        );
+        expect(asked).toEqual([1, 2]);
+        // A rejection with no newer frame in sight ends the lookup.
+        await expect(session.resolveLink(tokens[0]!, 1, 4)).rejects.toThrow(
+          "changed during link",
+        );
+        expect(asked).toEqual([1, 2, 2]);
+      } finally {
+        session.close();
+      }
+    });
+
+    test("keeps a bounded history: the last frames of the last few seconds", async () => {
+      const now = spyOn(Date, "now");
+      let clock = 1_000_000;
+      now.mockImplementation(() => clock);
+      const { session, tokens, paint } = await repainting();
+      try {
+        for (let i = 1; i <= LINK_FRAME_HISTORY; i++)
+          await paint(["", " https://example.com/a", "", `* ${i}`]);
+        await expect(session.resolveLink(tokens[0]!, 1, 4)).rejects.toThrow(
+          "frame changed",
+        );
+        expect((await session.resolveLink(tokens[1]!, 1, 4)).url).toBe(
+          "https://example.com/a",
+        );
+        clock += LINK_FRAME_HISTORY_MS + 1;
+        await expect(session.resolveLink(tokens[1]!, 1, 4)).rejects.toThrow(
+          "frame changed",
+        );
+        // The newest frame stays displayed however long nothing repaints.
+        expect((await session.resolveLink(tokens.at(-1)!, 1, 4)).url).toBe(
+          "https://example.com/a",
+        );
+        session.resize(24, 4);
+        await expect(session.resolveLink(tokens.at(-1)!, 1, 4)).rejects.toThrow(
+          "frame changed",
+        );
+      } finally {
+        now.mockRestore();
+        session.close();
+      }
+    });
   });
 
   test("uses only the attached socket's methods and rejects cells outside its split crop", async () => {
