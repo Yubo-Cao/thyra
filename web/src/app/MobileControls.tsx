@@ -1,6 +1,7 @@
 import {
   FileDiff,
   FolderOpen,
+  Globe,
   FolderTree,
   MoreHorizontal,
   PanelTop,
@@ -170,6 +171,7 @@ export function MobileTerminalControls({
   onShowSession,
   onOpenWorkspaces,
   onOpenProjectLauncher,
+  onOpenAgentBrowser,
 }: {
   controls: MobileControls;
   mobileView: MobileView;
@@ -178,6 +180,8 @@ export function MobileTerminalControls({
   onShowSession: () => void;
   onOpenWorkspaces: () => void;
   onOpenProjectLauncher: () => void;
+  /** The active agent pane's browser, when this host offers it. */
+  onOpenAgentBrowser?: () => void;
 }) {
   const { collapsed, tabSheetOpen, composerDraftKey, composerOpen } = controls;
   const composerHasDraft = useComposerHasDraft(composerDraftKey);
@@ -222,6 +226,18 @@ export function MobileTerminalControls({
               onClick={() => {
                 controls.setTabSheetOpen(false);
                 onOpenProjectLauncher();
+              }}
+            />
+          ) : null}
+          {onOpenAgentBrowser ? (
+            <IconButton
+              label={t("Open agent browser")}
+              icon={<Globe size={16} aria-hidden="true" />}
+              tabIndex={tabIndex}
+              onPointerDown={blurActiveInput}
+              onClick={() => {
+                controls.setTabSheetOpen(false);
+                onOpenAgentBrowser();
               }}
             />
           ) : null}

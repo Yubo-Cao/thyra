@@ -602,6 +602,14 @@ allowlist, ten-second deadline, four concurrent requests, and a bounded
 The Service Worker checks connection generation when routing clicks; enrolled
 pages suppress duplicate local notifications. See [delivery limits](./DEPLOYMENT.md#web-push-notifications).
 
+## Agent browser
+
+`server/src/browser/agent-browser.ts` serves the default connection when it runs without SSH, and only instance admins (`browser.*` in the HTTP policy).
+`GET /ws/browser` (strict origin check, like `/ws`) opens one connection to the VNC Unix socket per WebSocket and copies binary frames both ways; either side closing closes the other, and revoked sessions close like other sockets.
+`GET /api/browser?pane=` reports the socket's presence, the proxy's event stream state, and the pane's tabs; `POST /api/browser/activate?pane=&target=` fronts a tab only if the proxy lists it for that pane, defaulting to the latest pending review, else the latest tab.
+The bridge follows the proxy's `/events` stream and turns a transition to `review: pending` into a `thyra.browser.review` event for admin sockets and a Web Push of kind `review` (the `blocked` preference) whose target carries `view: "browser"`.
+Review states are remembered per stream, so repeats are quiet; the proxy never replays, so a reconnect starts fresh.
+
 ## Browser collaboration and terminal ownership
 
 Each browser page receives an ephemeral participant ID, which keeps tabs, windows, and separate browser sessions distinct for pane claims while allowing one participant session to hold claims on several panes.

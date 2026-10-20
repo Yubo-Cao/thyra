@@ -12,6 +12,7 @@
 [Herdr](https://herdr.dev) 的**浏览器客户端**。
 在电脑或手机上操作终端、查看 Agent 状态、审阅文件和 diff。
 可以在平板上看着 Agent，用手机输入，而不改变终端尺寸。
+还能实时查看并操作 Agent 使用的有界面浏览器，Agent 把标签页交给你审阅时会收到通知。
 **需要 [Herdr 0.9](./docs/DEPLOYMENT.md#herdr-compatibility) 服务端；** 安装脚本会一并装好。
 
 ## 截图

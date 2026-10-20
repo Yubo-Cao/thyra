@@ -101,7 +101,8 @@ export function createAgentBrowser(options: {
   const backoff =
     options.backoffMs ?? ((attempt) => Math.min(30_000, 1000 * 2 ** attempt));
   const { logger } = options;
-  // Last review state seen per tab, so a replayed or repeated event is quiet.
+  // Last review state seen per tab, so a repeated event is quiet. The proxy
+  // never replays, so a new stream starts afresh.
   const reviews = new Map<string, string>();
   let events: AbortController | null = null;
   let proxyUp = false;
@@ -199,6 +200,7 @@ export function createAgentBrowser(options: {
         if (!proxyUp) logger.info("browser proxy events connected");
         proxyUp = true;
         attempt = 0;
+        reviews.clear();
         const parse = createSseParser();
         const decoder = new TextDecoder();
         for await (const chunk of response.body)

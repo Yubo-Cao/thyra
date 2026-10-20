@@ -186,6 +186,15 @@ contents, for **Codex, Claude, Kimi, Grok Build, Pi, Muse Code, and Antigravity
 CLI**. SSH connections use Herdr-reported paths and Pi ID lookups remotely and
 never search local files for a remote pane.
 
+### Agent Browser
+
+When agents drive a headed Chromium on the Thyra host, the globe button in an agent pane's header (on phones, in the floating controls; or **Open agent browser** in the command menu) shows that browser live, including extension popups and system dialogs such as a password manager or Duo.
+Opening it brings the pane's tab forward: the one the agent handed over for review, else its newest; with several tabs, the picker in the header switches between them.
+On a desktop the remote screen follows the view's size; on a phone it scales to fit, taps click, and the keyboard button types into the page.
+When an agent hands a tab over for review, admins get a notice and, with **Agent needs input** enabled, a notification; **Open browser** opens the view.
+Instance admins only, for the default connection when it is local; the button is hidden otherwise, and the view says so in one line when the display is not running.
+See [setup](docs/DEPLOYMENT.md#agent-browser).
+
 ## Git Worktree Lifecycle
 
 Open **Worktree Lifecycle** from a workspace menu or the command menu to:

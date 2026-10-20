@@ -27,7 +27,11 @@ import { useAppearance } from "./app/useAppearance";
 import { useDocumentTitle } from "./app/useDocumentTitle";
 import { useAppShortcuts } from "./app/useAppShortcuts";
 import { useWorkspaceInspector } from "./app/useWorkspaceInspector";
-import { openAgentBrowser, useAgentBrowserOpen } from "./agentBrowser";
+import {
+  openAgentBrowser,
+  useAgentBrowserAvailable,
+  useAgentBrowserOpen,
+} from "./agentBrowser";
 import {
   agentBrowserPanel,
   mobileTabSheet,
@@ -93,6 +97,7 @@ export default function App() {
     shell;
   const [projectLauncherOpen, setProjectLauncherOpen] = useState(false);
   const agentBrowserOpen = useAgentBrowserOpen() !== null;
+  const agentBrowserAvailable = useAgentBrowserAvailable(s.activeConnectionId);
   const focusedWorkspace = s.workspaces.find((w) => w.focused);
   const activePaneId = activePaneIdForSnapshot(s);
   const activePane = activePaneId
@@ -220,6 +225,16 @@ export default function App() {
         onShowSession={activateTerminalSurface}
         onOpenWorkspaces={shell.openWorkspaces}
         onOpenProjectLauncher={() => setProjectLauncherOpen(true)}
+        onOpenAgentBrowser={
+          agentBrowserAvailable && activePane?.agent
+            ? () =>
+                openAgentBrowser({
+                  connectionId: s.activeConnectionId,
+                  workspaceId: activePane.workspace_id,
+                  paneId: activePane.pane_id,
+                })
+            : undefined
+        }
       />
       <NoticeHost onOpenTarget={openNotificationTarget} />
       <div

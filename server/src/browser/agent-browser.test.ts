@@ -83,7 +83,7 @@ describe("agent browser", () => {
     expect(await browser.activate("p")).toBeNull();
   });
 
-  test("events: pending reviews notify once, reconnect after loss", async () => {
+  test("events: pending reviews notify once per stream, reconnect after loss", async () => {
     const owner = { paneId: "w1:p1", workspaceId: "w1" };
     const event = (type: string, review: unknown, targetId = "t1") =>
       `id: 1\ndata: ${JSON.stringify({ type, targetId, owner, review, url: "u", title: "T" })}\n\n`;
@@ -111,7 +111,7 @@ describe("agent browser", () => {
       backoffMs: () => 0,
       onReview: (review) => {
         reviews.push(review);
-        if (reviews.length === 2) done();
+        if (reviews.length === 3) done();
       },
       fetch: (async () => {
         const chunks = streams[connects++];
@@ -131,6 +131,7 @@ describe("agent browser", () => {
     await finished;
     browser.stop();
     expect(reviews.map((review) => review.message)).toEqual([
+      "Check login",
       "Check login",
       "Again",
     ]);

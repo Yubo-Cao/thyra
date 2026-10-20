@@ -649,6 +649,18 @@ subscription receives only workspaces its account may see.
 while suspended/closed. Encrypted payloads contain agent names/routing IDs, not
 terminal output, and may appear on lock screens.
 
+## Agent browser
+
+The [agent browser](../FEATURES.md#agent-browser) needs two services on the Thyra host, run by the same user:
+
+- A VNC server for the browser's display that speaks RFB 3.8 without authentication on a Unix socket only (mode 0600), such as TigerVNC `Xvnc -rfbport -1 -rfbunixpath ... -SecurityTypes None`.
+  Default socket: `$XDG_RUNTIME_DIR/chromium-virtual-display/vnc.sock`; override with `THYRA_BROWSER_VNC_SOCKET`.
+- The web-access CDP proxy that records which Herdr pane owns each tab (`GET /targets?pane=`, `GET /events`, `POST /activate?target=`).
+  Default: `http://127.0.0.1:3456`; override with `THYRA_BROWSER_PROXY_URL`.
+
+Either may be missing: the button stays hidden for SSH and non-default connections and for non-admins, the view reports a missing display, and Thyra reconnects to the proxy's event stream with backoff.
+Anyone who can open the view drives the host owner's signed-in browser, so it is limited to instance admins.
+
 ## Voice input
 
 The microphone in each pane header (the floating microphone on touch devices) types dictation into the terminal, and the composer's microphone dictates into its draft.
