@@ -4,6 +4,7 @@
 // Layering (each module imports only from those above it):
 //   preferences -> core -> notifications -> refresh -> actions -> updates
 //   -> connection -> navigation -> workspaces, worktrees, git
+import { refreshAgentBrowserStatus } from "../agentBrowser";
 import { reloadWatchedPanes } from "../paneWatch";
 import { bridge, type ConnectionSummary } from "../api";
 import { prepareAppUpdate, servesOtherBuild } from "../appServiceWorker";
@@ -28,6 +29,7 @@ import { getState, type Notice, set, state, subscribe } from "./core";
 import { gitActions } from "./git";
 import { navigationActions } from "./navigation";
 import {
+  handleBrowserReviewEvent,
   notificationActions,
   reloadTaskNotificationPreferences,
   restoreTaskNotifications,
@@ -86,6 +88,7 @@ function init() {
   bridge.onHello((hello) => {
     handleHello(hello.default_connection_id);
     set({ host: hostCapable(hello.principal) });
+    void refreshAgentBrowserStatus(state.host !== false);
     // A deploy restarted the bridge under this open page: offer a reload
     // (an in-app update reloads by itself).
     if (
@@ -114,6 +117,7 @@ function init() {
   bridge.onTransport(showTransport);
   bridge.onHello(showTransport);
   bridge.onEvent(handleHerdrEvent);
+  bridge.onEvent(handleBrowserReviewEvent);
   bridge.onControl((control) => {
     if (control.type === "pause_connection") {
       store.pauseConnection(

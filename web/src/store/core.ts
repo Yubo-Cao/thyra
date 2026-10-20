@@ -91,6 +91,7 @@ export interface Notice {
   actionRuntimeGeneration?: number;
   actionWorkspaceId?: string;
   actionPaneId?: string;
+  actionView?: "browser";
   actionClipboardText?: string;
   id?: number;
 }

@@ -18,6 +18,8 @@ export interface TaskNotificationTarget {
   runtimeGeneration: number;
   workspaceId: string;
   paneId: string;
+  /** `browser`: open the pane's agent browser too (a review handoff). */
+  view?: "browser";
 }
 
 export function isTaskNotificationTarget(
@@ -34,7 +36,8 @@ export function isTaskNotificationTarget(
     typeof target.workspaceId === "string" &&
     target.workspaceId.length > 0 &&
     typeof target.paneId === "string" &&
-    target.paneId.length > 0
+    target.paneId.length > 0 &&
+    (target.view === undefined || target.view === "browser")
   );
 }
 

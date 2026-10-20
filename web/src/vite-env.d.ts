@@ -30,3 +30,22 @@ declare module "virtual:file-icons" {
     light: string;
   };
 }
+
+// noVNC ships untyped ES modules; only the RFB client the agent browser uses.
+declare module "@novnc/novnc" {
+  export default class RFB extends EventTarget {
+    constructor(
+      target: HTMLElement,
+      url: string,
+      options?: { shared?: boolean; wsProtocols?: string[] },
+    );
+    scaleViewport: boolean;
+    resizeSession: boolean;
+    qualityLevel: number;
+    compressionLevel: number;
+    focusOnClick: boolean;
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
+    focus(): void;
+    disconnect(): void;
+  }
+}

@@ -1,4 +1,5 @@
 import { workspaceCan } from "../capabilities";
+import { openAgentBrowser, useAgentBrowserAvailable } from "../agentBrowser";
 import {
   shortcutMatches,
   shortcutLabel,
@@ -21,6 +22,7 @@ import {
   FolderOpen,
   GitCommitHorizontal,
   GitBranch,
+  Globe,
   Maximize2,
   PanelTop,
   SplitSquareHorizontal,
@@ -316,6 +318,7 @@ export function CommandCombobox({
     s.panes.find((p) => p.pane_id === s.layout?.focused_pane_id) ??
     s.panes.find((p) => p.tab_id === activeTab?.tab_id && p.focused) ??
     s.panes.find((p) => p.tab_id === activeTab?.tab_id);
+  const browserAvailable = useAgentBrowserAvailable(s.activeConnectionId);
   const agents = useMemo(
     () =>
       s.panes
@@ -535,6 +538,21 @@ export function CommandCombobox({
         focusedWorkspace.workspace_id,
       ),
       run: () => store.createTab(focusedWorkspace.workspace_id),
+    });
+  }
+  if (activePane?.agent && browserAvailable) {
+    currentActions.push({
+      key: "current-agent-browser",
+      icon: <Globe size={15} />,
+      title: msg("Open agent browser"),
+      detail: shortId(activePane.pane_id),
+      keywords: ["browser", "chromium", "vnc", "review", "tab"],
+      run: () =>
+        openAgentBrowser({
+          connectionId: s.activeConnectionId,
+          workspaceId: activePane.workspace_id,
+          paneId: activePane.pane_id,
+        }),
     });
   }
   if (activePane) {

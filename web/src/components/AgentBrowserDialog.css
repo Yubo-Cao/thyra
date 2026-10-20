@@ -1,0 +1,37 @@
+.agent-browser-dialog {
+  --ui-dialog-width: min(1440px, 96vw);
+  height: min(900px, 100%);
+}
+
+.agent-browser-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.agent-browser-screen {
+  flex: 1;
+  min-height: 0;
+  background: var(--terminal-bg);
+}
+
+.agent-browser-note {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+}
+
+/* Off-screen input that raises a phone's keyboard; keys go to the remote. */
+.agent-browser-keys {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  resize: none;
+  pointer-events: none;
+}

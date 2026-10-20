@@ -30,6 +30,12 @@ export const mobileTabSheet = lazyPanel("mobile-tab-sheet", () =>
 export const noticeToastsPanel = lazyPanel("notice-toasts", () =>
   import("../components/NoticeToasts").then((module) => module.NoticeToasts),
 );
+// The agent browser view and noVNC load when a pane first opens it.
+export const agentBrowserPanel = lazyPanel("agent-browser", () =>
+  import("../components/AgentBrowserDialog").then(
+    (module) => module.AgentBrowserDialog,
+  ),
+);
 export const projectLauncherPanel = lazyPanel("project-launcher", () =>
   import("../components/ProjectLauncher").then(
     (module) => module.ProjectLauncher,

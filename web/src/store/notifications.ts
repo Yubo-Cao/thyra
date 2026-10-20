@@ -1,5 +1,7 @@
 // Task notifications: detect agents that finished or need input, raise a toast
 // and (when enabled) a browser notification, and own the device preference.
+import type { HerdrEventMsg } from "../api";
+import { agentBrowserStore } from "../agentBrowser";
 import { t } from "../i18n";
 import { paneWatched, playTaskChime } from "../paneWatch";
 import {
@@ -194,6 +196,7 @@ export function taskNotificationTargetFromNotice(
     | "actionRuntimeGeneration"
     | "actionWorkspaceId"
     | "actionPaneId"
+    | "actionView"
   >,
 ): TaskNotificationTarget | null {
   const target = {
@@ -201,6 +204,7 @@ export function taskNotificationTargetFromNotice(
     runtimeGeneration: notice.actionRuntimeGeneration,
     workspaceId: notice.actionWorkspaceId,
     paneId: notice.actionPaneId,
+    ...(notice.actionView ? { view: notice.actionView } : {}),
   };
   return isTaskNotificationTarget(target) ? target : null;
 }
@@ -292,6 +296,59 @@ export function notifyCompletedTasks(
     }
     notifyTaskCompleted(pane, workspaces, tabs, watched);
   }
+}
+
+/**
+ * An agent handed a browser tab over for review (bridge `thyra.browser.review`,
+ * sent to instance admins): chime, toast, and notify like a blocked agent,
+ * unless that pane's browser is already open here.
+ */
+export function handleBrowserReviewEvent(event: HerdrEventMsg) {
+  if (event.event !== "thyra.browser.review") return;
+  const { pane_id, workspace_id, message, title } = event.data;
+  const generation = event.connection_generation;
+  if (
+    typeof pane_id !== "string" ||
+    typeof workspace_id !== "string" ||
+    typeof generation !== "number"
+  )
+    return;
+  const open = agentBrowserStore.getState().open;
+  if (open?.paneId === pane_id && open.connectionId === event.connection_id)
+    return;
+  const target: TaskNotificationTarget = {
+    connectionId: event.connection_id,
+    runtimeGeneration: generation,
+    workspaceId: workspace_id,
+    paneId: pane_id,
+    view: "browser",
+  };
+  const body =
+    [message, title].find(
+      (part): part is string => typeof part === "string" && !!part.trim(),
+    ) ?? t("A browser tab is ready for review");
+  playTaskChime("blocked");
+  set({
+    notice: {
+      kind: "info",
+      message: t("Agent browser ready for review"),
+      detail: body,
+      actionLabel: t("Open browser"),
+      actionConnectionId: target.connectionId,
+      actionRuntimeGeneration: generation,
+      actionWorkspaceId: workspace_id,
+      actionPaneId: pane_id,
+      actionView: "browser",
+      autoDismissMs: DEFAULT_NOTICE_AUTO_DISMISS_MS,
+    },
+  });
+  if (state.taskNotificationPreferences.blocked)
+    maybeShowBrowserTaskNotification(
+      t("Agent browser ready for review"),
+      body,
+      JSON.stringify(["thyra-browser", pane_id]),
+      target,
+    );
 }
 
 /** Adopt a preference another tab wrote, then resync background delivery. */

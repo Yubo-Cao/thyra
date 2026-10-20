@@ -27,7 +27,9 @@ import { useAppearance } from "./app/useAppearance";
 import { useDocumentTitle } from "./app/useDocumentTitle";
 import { useAppShortcuts } from "./app/useAppShortcuts";
 import { useWorkspaceInspector } from "./app/useWorkspaceInspector";
+import { openAgentBrowser, useAgentBrowserOpen } from "./agentBrowser";
 import {
+  agentBrowserPanel,
   mobileTabSheet,
   projectLauncherPanel,
   StartupLayers,
@@ -55,6 +57,7 @@ import { useShallow } from "zustand/react/shallow";
 
 const MobileTabSheet = mobileTabSheet.Component;
 const LazyProjectLauncher = projectLauncherPanel.Component;
+const LazyAgentBrowser = agentBrowserPanel.Component;
 
 export default function App() {
   useShortcutPreferences();
@@ -89,6 +92,7 @@ export default function App() {
   const { mobileView, setMobileView, setSidebarHidden, zenMode, applyZenMode } =
     shell;
   const [projectLauncherOpen, setProjectLauncherOpen] = useState(false);
+  const agentBrowserOpen = useAgentBrowserOpen() !== null;
   const focusedWorkspace = s.workspaces.find((w) => w.focused);
   const activePaneId = activePaneIdForSnapshot(s);
   const activePane = activePaneId
@@ -136,6 +140,7 @@ export default function App() {
       if (!inspectorStateRef.current?.open) activateTerminalSurface();
       setSidebarHidden(false);
       void store.focusTaskNotificationTarget(target);
+      if (target.view === "browser") openAgentBrowser(target);
     },
     [activateTerminalSurface, inspectorStateRef, setSidebarHidden],
   );
@@ -191,6 +196,9 @@ export default function App() {
           />
         </LazyBoundary>
       ) : null}
+      <Latched open={agentBrowserOpen}>
+        <LazyAgentBrowser />
+      </Latched>
       <Latched open={mobile && mobileControls.tabSheetOpen}>
         <MobileTabSheet
           open={mobile && mobileControls.tabSheetOpen}

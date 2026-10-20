@@ -101,6 +101,14 @@ The bridge's peer-to-peer transport (WebRTC data channels) uses
 TypeScript WebRTC implementation, Copyright (c) 2020 shinyoshiaki, under the
 MIT License. See [`LICENSES/WERIFT.txt`](./LICENSES/WERIFT.txt).
 
+## noVNC
+
+The agent browser view uses the unmodified core library of
+[noVNC](https://github.com/novnc/noVNC) 1.7.0, Copyright (C) 2022 The noVNC
+authors, under the Mozilla Public License 2.0; its source is available from
+that repository and the `@novnc/novnc` npm package. See
+[`LICENSES/NOVNC.txt`](./LICENSES/NOVNC.txt).
+
 ## Trademarks
 
 Herdr, Pi, Codex, Claude, Gemini, Kimi, Grok, and other product names and logos

@@ -196,4 +196,16 @@ export default {
   // Shared UI components (components/ui)
   Notifications: "通知",
   "Clear search": "清除搜索",
+  "Agent browser": "Agent 浏览器",
+  "Open agent browser": "打开 Agent 浏览器",
+  "Agent browser ready for review": "Agent 浏览器等待查看",
+  "A browser tab is ready for review": "有浏览器标签页等待查看",
+  "Open browser": "打开浏览器",
+  "Browser tab": "浏览器标签页",
+  "Choose a tab": "选择标签页",
+  "The browser display is not available on this host.":
+    "此主机上的浏览器画面不可用。",
+  "Browser display disconnected.": "浏览器画面已断开。",
+  "Connecting to the browser display...": "正在连接浏览器画面...",
+  "Type into the browser": "向浏览器输入",
 } satisfies Record<string, string>;

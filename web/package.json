@@ -31,6 +31,7 @@
     "@lezer/highlight": "^1.2.5",
     "@lezer/markdown": "^1.8.0",
     "@lobehub/icons-static-svg": "^1.91.0",
+    "@novnc/novnc": "1.7.0",
     "@pierre/diffs": "^1.4.3",
     "@shikijs/core": "^4.4.3",
     "@shikijs/langs": "^4.4.3",

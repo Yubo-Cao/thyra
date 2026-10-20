@@ -11,7 +11,8 @@ const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 // them (or their dependencies) into the entry; over HTTP/2 they load in
 // parallel for a few hundred bytes of headers each.
 // The lazy PDF viewer adds its worker, CMaps, standard fonts, and image codecs.
-const maxFileCount = 330;
+// The lazy agent browser (noVNC) adds its chunk, its sheet and a shared icon.
+const maxFileCount = 333;
 // The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB,
 // the lazy GPU terminal engine (its WASM core inlined) ~2.7 MiB.
 const maxTotalBytes = 22 * 1024 * 1024;

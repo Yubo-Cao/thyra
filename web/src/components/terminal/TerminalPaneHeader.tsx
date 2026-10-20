@@ -5,6 +5,7 @@ import {
   Columns2,
   Eye,
   EyeOff,
+  Globe,
   Keyboard,
   Maximize2,
   Minimize2,
@@ -19,6 +20,7 @@ import {
 import type { TerminalPreviewMode } from "./TerminalPreview";
 import type { PointerEvent } from "react";
 import { agentStatusText } from "../../agentOrder";
+import { openAgentBrowser, useAgentBrowserAvailable } from "../../agentBrowser";
 import { t } from "../../i18n";
 import { shortcutTitle } from "../../shortcutPreferences";
 import { setPaneWatched, usePaneWatched } from "../../paneWatch";
@@ -100,6 +102,7 @@ export function TerminalPaneHeader({
   const pinnedHere = access.display?.mine === true && access.display.pinned;
   const connectionId = useStoreSelector((state) => state.activeConnectionId);
   const watched = usePaneWatched(connectionId, pane.pane_id);
+  const browser = useAgentBrowserAvailable(connectionId) && !!pane.agent;
   const scrollReason =
     endpointAvailable && store.terminalScrollReason(pane.terminal_id);
   return (
@@ -304,6 +307,21 @@ export function TerminalPaneHeader({
                 setPaneWatched(connectionId, pane.pane_id, !watched)
               }
               icon={watched ? <BellRing size={14} /> : <Bell size={14} />}
+            />
+          ) : null}
+          {browser ? (
+            <IconButton
+              className="terminal-pane-action"
+              label={t("Open agent browser")}
+              onPointerDown={preventPaneActionFocus}
+              onClick={() =>
+                openAgentBrowser({
+                  connectionId,
+                  workspaceId: pane.workspace_id,
+                  paneId: pane.pane_id,
+                })
+              }
+              icon={<Globe size={14} />}
             />
           ) : null}
           {promptEditor ? (
