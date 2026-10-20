@@ -371,7 +371,8 @@ export function originCheckMode(
   pathname: string,
   method: string,
 ): "strict" | "read" | "none" {
-  if (pathname === "/ws" || !isSafeMethod(method)) return "strict";
+  if (pathname === "/ws" || pathname === "/ws/browser" || !isSafeMethod(method))
+    return "strict";
   if (pathname === "/api" || pathname.startsWith("/api/")) return "read";
   return "none";
 }

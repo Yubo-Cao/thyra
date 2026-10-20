@@ -157,6 +157,11 @@ export const HTTP_POLICY = {
   "update.check": { class: "admin", scope: "host" },
   "update.install": { class: "dangerous", scope: "host" },
   "herdr.status": { class: "admin", scope: "host" },
+  // The host's agent-driven Chromium (its owner's sign-ins): view and drive
+  // its display, list a pane's tabs, and bring one to the front.
+  "browser.status": { class: "admin", scope: "host" },
+  "browser.activate": { class: "admin", scope: "host" },
+  "browser.vnc": { class: "dangerous", scope: "host" },
   "herdr.setup": { class: "dangerous", scope: "host" },
   // The instance admin page (the application shell at `/admin` and below;
   // others are sent to `/`) and its API (auth/admin-routes.ts): accounts and
@@ -262,6 +267,9 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/share-links/revoke": { POST: "share.revoke" },
   "/api/share/redeem": { POST: "share.redeem" },
   "/ws": { GET: "ws" },
+  "/ws/browser": { GET: "browser.vnc" },
+  "/api/browser": { GET: "browser.status" },
+  "/api/browser/activate": { POST: "browser.activate" },
   "/api/health": { GET: "api.health" },
   "/api/notifications/push": { GET: "push", POST: "push", DELETE: "push" },
   "/api/voice/status": { GET: "voice.status" },

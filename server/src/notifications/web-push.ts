@@ -39,6 +39,10 @@ export interface PushTask extends TaskEvent {
   runtimeGeneration: number;
 }
 const MAX_DEVICES = 128;
+
+/** A browser review asks for input, so it follows the `blocked` choice. */
+const preferenceOf = (kind: TaskEvent["kind"]): keyof PushPreferences =>
+  kind === "review" ? "blocked" : kind;
 const MAX_BODY_BYTES = 16 * 1024;
 
 /** Only browser push providers are valid outbound destinations, never arbitrary URLs. */
@@ -248,7 +252,7 @@ export function createWebPushService(
       stopped ||
       !registry?.devices.includes(device) ||
       !isCurrent() ||
-      !device.preferences[task.kind] ||
+      !device.preferences[preferenceOf(task.kind)] ||
       // Grants may have changed while the notification was queued.
       !item.sees(device.owner)
     )
@@ -258,16 +262,20 @@ export function createWebPushService(
       runtimeGeneration: task.runtimeGeneration,
       workspaceId: task.workspaceId,
       paneId: task.paneId,
+      ...(task.kind === "review" ? { view: "browser" } : {}),
     };
     try {
       await send(
         device.subscription,
         JSON.stringify({
           title:
-            task.kind === "blocked"
-              ? "Thyra agent needs input"
-              : "Thyra task completed",
+            task.kind === "review"
+              ? "Agent browser ready for review"
+              : task.kind === "blocked"
+                ? "Thyra agent needs input"
+                : "Thyra task completed",
           body: [
+            task.message?.trim(),
             task.agent,
             task.connectionLabel?.trim(),
             task.workspaceLabel?.trim() || task.workspaceId,
@@ -405,7 +413,8 @@ export function createWebPushService(
     ) {
       if (!registry || stopped || !isCurrent()) return;
       for (const device of registry.devices) {
-        if (!device.preferences[task.kind] || !sees(device.owner)) continue;
+        if (!device.preferences[preferenceOf(task.kind)] || !sees(device.owner))
+          continue;
         if (queue.length >= 256) {
           warn("Web Push queue is full; notification dropped.");
           break;

@@ -190,6 +190,9 @@ const HTTP_MATRIX: Record<string, string> = {
   health: "admin owner editor viewer outsider guest guest-pane anonymous",
   "herdr.setup": "admin",
   "herdr.status": "admin",
+  "browser.activate": "admin",
+  "browser.status": "admin",
+  "browser.vnc": "admin",
   "login.icon": "admin owner editor viewer outsider guest guest-pane anonymous",
   "login.page": "admin owner editor viewer outsider guest guest-pane anonymous",
   "login.script":

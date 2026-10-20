@@ -296,6 +296,7 @@ describe("request access decisions", () => {
 describe("originCheckMode", () => {
   test.each([
     ["/ws", "GET", "strict"],
+    ["/ws/browser", "GET", "strict"],
     ["/api/login", "POST", "strict"],
     ["/anything", "DELETE", "strict"],
     ["/api/health", "GET", "read"],

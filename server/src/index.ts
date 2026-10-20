@@ -2,6 +2,12 @@ import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
 import { createWebPushService } from "./notifications/web-push";
+import {
+  agentBrowserConfig,
+  createAgentBrowser,
+  type ReviewRequest,
+  type VncPeer,
+} from "./browser/agent-browser";
 import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import packageJson from "../../package.json";
@@ -620,7 +626,7 @@ function closeSockets(
  */
 function checkLiveSessions(force = false) {
   if (!accessControl.refresh() && !force) return;
-  for (const client of [...clients]) {
+  for (const client of [...clients, ...vncSockets.keys()]) {
     const principal = socketPrincipals.get(client);
     if (principal?.kind === "guest") {
       // Revoking a link deletes its guest sessions, here or in the CLI.
@@ -710,6 +716,69 @@ const { handleUpdateCheck, handleUpdateInstall } = createUpdateHandlers({
   scheduleProcessExit: scheduleManagedShutdown,
 });
 const clients = new Set<ServerWebSocket<unknown>>();
+/** Agent-browser VNC sockets: outside `clients`, no RPC or events. */
+const vncSockets = new Map<
+  ServerWebSocket<unknown>,
+  { message(data: Uint8Array): void; close(): void }
+>();
+/** Connections whose Herdr runs on this host (no SSH), by id. */
+const localConnections = new Set<string>();
+/** The agent browser serves the default connection when it is local. */
+function agentBrowserConnection(): string | null {
+  const id = connectionManager.defaultId();
+  return localConnections.has(id) && connectionManager.has(id) ? id : null;
+}
+const agentBrowser = createAgentBrowser({
+  ...agentBrowserConfig(),
+  logger: logger.child("agent-browser"),
+  onReview: notifyBrowserReview,
+});
+/** A tab handed over for review reaches admins like an agent needing input. */
+function notifyBrowserReview(review: ReviewRequest) {
+  const connectionId = agentBrowserConnection();
+  const workspaceId = review.owner.workspaceId;
+  if (!connectionId || !workspaceId) return;
+  const generation = connectionManager.status(connectionId).generation;
+  const isCurrent = () =>
+    agentBrowserConnection() === connectionId &&
+    connectionManager.status(connectionId).generation === generation;
+  const line = serializeHerdrEventEnvelope(
+    connectionId,
+    {
+      event: "thyra.browser.review",
+      data: {
+        workspace_id: workspaceId,
+        pane_id: review.owner.paneId,
+        target_id: review.targetId,
+        message: review.message,
+        title: review.title,
+        url: review.url,
+      },
+    },
+    generation,
+  );
+  for (const ws of clients)
+    if (isInstanceAdmin(socketPrincipals.get(ws))) safeSend(ws, line, "event");
+  webPush.notify(
+    {
+      kind: "review",
+      workspaceId,
+      paneId: review.owner.paneId,
+      agent: review.title || "Agent",
+      message: review.message,
+      connectionId,
+      runtimeGeneration: generation,
+    },
+    isCurrent,
+    (owner) => {
+      if (!owner || owner === "local") return true;
+      const user = owner.startsWith("user:")
+        ? accountStore.getUser(owner.slice(5))
+        : null;
+      return !!user && !user.disabled && user.role === "admin";
+    },
+  );
+}
 const rtcSetup = parseRtcConfig();
 for (const warning of rtcSetup.warnings) logger.warn(warning);
 /** An RTC socket stands in for a `ServerWebSocket` (see rtc-transport.ts). */
@@ -1029,6 +1098,8 @@ function runtimeFactoryForProfile(
               hasExplicitClientSocketPath: true,
               ownedRuntimeDirectory: undefined,
             };
+    if (profileConfig.sshHost) localConnections.delete(identity.id);
+    else localConnections.add(identity.id);
     let runtime: LegacyConnectionRuntime;
     try {
       runtime = createLegacyConnectionRuntime({
@@ -2160,6 +2231,8 @@ type SocketData = {
    * RTC socket copies its negotiating socket's data with this off.
    */
   rtc: boolean;
+  /** An agent-browser VNC socket (see browser/agent-browser.ts). */
+  vnc?: true;
 };
 
 type AuthenticatedRoute = {
@@ -2256,6 +2329,51 @@ async function routeAuthenticated(
     )
       return undefined;
     return new Response("websocket upgrade failed", { status: 400 });
+  }
+  if (url.pathname === "/ws/browser") {
+    if (!agentBrowserConnection())
+      return new Response("agent browser unavailable", { status: 404 });
+    return server.upgrade(req, {
+      data: {
+        principal,
+        clientSession: null,
+        directOrigin: null,
+        rtc: false,
+        vnc: true,
+      },
+    })
+      ? undefined
+      : new Response("websocket upgrade failed", { status: 400 });
+  }
+  if (
+    url.pathname === "/api/browser" ||
+    url.pathname === "/api/browser/activate"
+  ) {
+    const connectionId = agentBrowserConnection();
+    const pane = url.searchParams.get("pane");
+    const headers = { "cache-control": "no-store" };
+    if (url.pathname === "/api/browser") {
+      return Response.json(
+        {
+          connection_id: connectionId,
+          ...agentBrowser.status(),
+          ...(connectionId && pane
+            ? { tabs: await agentBrowser.tabs(pane) }
+            : {}),
+        },
+        { headers },
+      );
+    }
+    if (!connectionId || !pane)
+      return Response.json(
+        { error: "agent browser unavailable" },
+        { status: 404, headers },
+      );
+    const target = await agentBrowser.activate(
+      pane,
+      url.searchParams.get("target"),
+    );
+    return Response.json({ target_id: target }, { headers });
   }
   if (url.pathname === "/api/notifications/push") {
     return webPush.handle(req, principal.key);
@@ -2661,6 +2779,11 @@ async function publicRoute(
 const websocketHandlers: WebSocketHandler<SocketData> = {
   perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
   open(ws) {
+    if (ws.data.vnc) {
+      socketPrincipals.set(ws, ws.data.principal);
+      vncSockets.set(ws, agentBrowser.openVnc(ws as VncPeer));
+      return;
+    }
     clients.add(ws);
     socketPrincipals.set(ws, ws.data.principal);
     clientIdentity.attach(ws, ws.data.client);
@@ -2704,6 +2827,7 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     );
   },
   drain(ws) {
+    if (ws.data.vnc) return;
     // The viewer caught up: send the newest repaint we held back.
     flushCoalescedMessages(ws, {
       cleanup: () => {
@@ -2716,6 +2840,11 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     });
   },
   message(ws, message) {
+    const vnc = vncSockets.get(ws);
+    if (vnc) {
+      if (typeof message !== "string") vnc.message(message);
+      return;
+    }
     if (!clients.has(ws)) return;
     const text = typeof message === "string" ? message : message.toString();
     const { id, method, connectionId, connectionGeneration } =
@@ -2777,6 +2906,11 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
       });
   },
   close(ws) {
+    if (ws.data.vnc) {
+      vncSockets.get(ws)?.close();
+      vncSockets.delete(ws);
+      return;
+    }
     rtcTransport.ownerClosed(ws);
     const { client, viewedTerminals } = webSocketCleanup.complete(ws);
     logger.debug("client disconnected", {
@@ -2834,6 +2968,7 @@ function main() {
       return primary;
     },
     startConnection: async () => {
+      agentBrowser.start();
       await connectionProfiles.startConfigured();
       const runtime = connectionManager.defaultReadyRuntime();
       void runtime?.herdr
@@ -2959,6 +3094,7 @@ let managerStopTask: Promise<void> | null = null;
 function stopManagerOnce(): Promise<void> {
   rtcTransport.closeAll();
   webPush.stop();
+  agentBrowser.stop();
   connectionProfiles.stopSupervision();
   managerStopTask ??= connectionManager.stopAll();
   return managerStopTask;

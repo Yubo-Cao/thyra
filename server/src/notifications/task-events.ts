@@ -1,13 +1,16 @@
 import { herdrEventName } from "../utils/herdr-events";
 
 export interface TaskEvent {
-  kind: "completed" | "blocked";
+  /** `review`: an agent handed a browser tab over (agent-browser). */
+  kind: "completed" | "blocked" | "review";
   workspaceId: string;
   paneId: string;
   tabId?: string;
   workspaceLabel?: string;
   tabLabel?: string;
   agent: string;
+  /** The agent's handover text (`review` only). */
+  message?: string;
 }
 
 type Pane = {
