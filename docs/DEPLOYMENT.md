@@ -649,6 +649,63 @@ subscription receives only workspaces its account may see.
 while suspended/closed. Encrypted payloads contain agent names/routing IDs, not
 terminal output, and may appear on lock screens.
 
+## Agent message board
+
+The [message board](../FEATURES.md#agent-message-board) persists in `thyra.db` (`THYRA_DB_PATH` overrides the default).
+Back up that database to preserve inbox messages and credential records.
+Direct local access has the inbox owner `local`; signed-in accounts have separate `user:<id>` inboxes, including tailnet accounts.
+Use the intended owner when issuing a credential; a credential cannot choose another inbox in a request.
+
+On the Thyra host, issue an expiring scoped credential with the administrative CLI:
+
+```bash
+thyra message-board token-issue local '{"label":"Codex","scopes":["create","list","get","update"],"expires_at":<future Unix epoch milliseconds>}'
+thyra message-board tokens local
+thyra message-board token-revoke local <credential-id>
+```
+
+Replace the expiry placeholder with a number within one year, and use `user:<id>` instead of `local` for an account inbox.
+The issue command returns the token once; store it privately.
+The authenticated owner can also use the bridge RPC methods `message_board.credentials.issue`, `.list`, and `.revoke` for its own inbox.
+Revocation and expiry apply to subsequent API calls; disabled or deleted accounts cannot use their credentials.
+
+Configure the agent process with `THYRA_BOARD_URL` (the Thyra base URL) and `THYRA_BOARD_TOKEN` (the issued token).
+The client requires HTTPS except for loopback HTTP.
+For local Codex, register a stdio MCP server that runs the installed executable:
+
+```toml
+[mcp_servers.thyra_messages]
+command = "thyra"
+args = ["message-board", "mcp"]
+env_vars = ["THYRA_BOARD_URL", "THYRA_BOARD_TOKEN"]
+```
+
+Set those environment variables in the process that starts Codex, with the token supplied from private configuration.
+MCP tools are `leave_message`, `list_messages`, and `update_message`.
+For a shell client, the same operations accept a JSON argument:
+
+```bash
+thyra message-board leave_message '{"title":"Ready for review","body":"The report is ready.","author_label":"Codex","idempotency_key":"report-42"}'
+thyra message-board list_messages '{"limit":50}'
+thyra message-board update_message '{"id":"<message-id>","pinned":true,"read":false}'
+```
+
+`create`, `list`, `get`, and `update` are also accepted CLI operation names.
+Creation supports up to 20 attachments: a URL attachment uses `{"label":"Report","kind":"url","url":"https://example.com/report"}` and optional HTTP(S) `preview_url` and `download_url`.
+A file attachment uses `{"label":"Report","kind":"file","path":"report.html"}` with message-level `source: {"connection_id":"...","workspace_id":"..."}` and optional `pane_id`.
+Open the source connection in Thyra before opening its file attachment; missing files and revoked workspace access leave the message intact.
+
+Cloud Agents use the same configured client or call `POST /api/agent/message-board` over HTTPS with `Authorization: Bearer <token>` and JSON `{"method":"create","params":{"title":"Ready for review","body":"The report is ready.","idempotency_key":"report-42"}}`.
+Methods are `create`, `list`, `get`, and `update`, restricted by the credential's scopes.
+Responses contain `{result: ...}` or `{error: {code, message}}`; a successful create returns the persisted record.
+The endpoint rejects browser `Origin` and `Cookie` headers; do not send either.
+No browser cookie or workspace grant is replaced by an agent credential.
+
+Titles allow 1–200 characters, bodies up to 32 KiB, and author labels up to 100 characters.
+Reuse an `idempotency_key` when retrying a create with the same credential to avoid duplicate cards and notices.
+List accepts `archived` (default false), `limit` (1–100), and the returned `next_cursor` as `cursor`.
+Update accepts `id` and optional booleans `pinned`, `read`, and `archived`; set `archived: false` to restore a card.
+
 ## Agent browser
 
 The [agent browser](../FEATURES.md#agent-browser) needs two services on the Thyra host, run by the same user:

@@ -522,6 +522,45 @@ describe("bridge connection lifecycle", () => {
     expect(received).toEqual([{ connection_id: "legacy-default", ...push }]);
   });
 
+  test("dispatches private board invalidations separately and rejects overlapping envelopes", async () => {
+    class ManualWebSocket extends HangingWebSocket {
+      static instance: ManualWebSocket;
+      constructor() {
+        super();
+        ManualWebSocket.instance = this;
+        queueMicrotask(() => {
+          this.readyState = ManualWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+    }
+    installBrowserGlobals(ManualWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge();
+    const created: string[] = [];
+    const updated: string[] = [];
+    const stop = bridge.onMessageBoardCreated((id) => created.push(id));
+    bridge.onMessageBoardUpdated((id) => updated.push(id));
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ManualWebSocket.instance);
+    const push = (value: unknown) =>
+      ManualWebSocket.instance.onmessage?.({
+        data: JSON.stringify(value),
+      } as MessageEvent);
+    push({ type: "message_board.created", message_id: "first" });
+    push({ type: "message_board.updated", message_id: "first" });
+    push({
+      type: "message_board.created",
+      message_id: "spoof",
+      id: 123,
+      result: {},
+    });
+    stop();
+    push({ type: "message_board.created", message_id: "after-stop" });
+    expect(created).toEqual(["first"]);
+    expect(updated).toEqual(["first"]);
+  });
+
   test("dispatches agent status events that omit data.type", async () => {
     class ManualWebSocket extends HangingWebSocket {
       static instance: ManualWebSocket;
@@ -682,7 +721,7 @@ describe("bridge connection lifecycle", () => {
     bridge.setActiveConnection("alpha");
 
     const downstream = bridge.call("workspace.list");
-    const global = bridge.call("connections.list");
+    const global = bridge.call("message_board.list");
     const [downstreamRequest, globalRequest] =
       ManualWebSocket.instance.sent.map((raw) => JSON.parse(raw));
 

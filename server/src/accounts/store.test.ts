@@ -29,10 +29,41 @@ describe("account database", () => {
     if (process.platform !== "win32")
       expect(statSync(path).mode & 0o777).toBe(0o600);
     migrate(db);
-    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 5 });
+    expect(db.query("PRAGMA user_version").get()).toEqual({ user_version: 6 });
     db.run("PRAGMA user_version = 99");
     expect(() => migrate(db)).toThrow("newer than this Thyra");
     db.close();
+  });
+
+  test("migrates version five accounts without changing their data", () => {
+    const db = openAccountDatabase(":memory:");
+    try {
+      const store = createAccountStore(db);
+      const user = store.createUser({ name: "board-owner", role: "member" });
+      const before = db.query("SELECT * FROM users WHERE id=?").get(user.id);
+      db.run("DROP TABLE board_messages");
+      db.run("DROP TABLE board_credentials");
+      db.run("PRAGMA user_version = 5");
+      migrate(db);
+      expect(db.query("PRAGMA user_version").get()).toEqual({
+        user_version: 6,
+      });
+      expect(db.query("SELECT * FROM users WHERE id=?").get(user.id)).toEqual(
+        before,
+      );
+      expect(
+        db.query("SELECT COUNT(*) AS n FROM board_messages").get(),
+      ).toEqual({ n: 0 });
+      expect(
+        db.query("SELECT COUNT(*) AS n FROM board_credentials").get(),
+      ).toEqual({ n: 0 });
+      migrate(db);
+      expect(db.query("SELECT * FROM users WHERE id=?").get(user.id)).toEqual(
+        before,
+      );
+    } finally {
+      db.close();
+    }
   });
 
   test("migrates over objects an aborted migration left behind", () => {

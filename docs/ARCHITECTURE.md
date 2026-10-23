@@ -26,6 +26,25 @@ carries connection identity. Subscription acknowledgements trigger snapshots;
 events during refresh queue another refresh. This reconciles missed changes,
 not an atomic or replayable event log.
 
+## Agent message board
+
+`shared/messageBoard.ts` defines the durable inbox contracts.
+The bridge owns persistence in its SQLite database; records are independent of Herdr session lifetime and browser storage.
+The owning principal determines the inbox, and submitted connection/workspace/pane identifiers describe provenance only.
+Guests have no inbox access.
+
+The bridge-global `message_board.list`, `message_board.get`, `message_board.create`, and `message_board.update` operations share validation and persistence with the agent HTTP transport.
+IDs and timestamps are server assigned; updates address only records owned by the caller and another owner's ID is not found.
+Lists are bounded and paginated, ordered by pins then descending creation time with an ID tie-breaker.
+Idempotency keys are scoped to the owner and agent credential; a retry returns the persisted message without a second new-message event.
+Owner-filtered events identify changed records; browser reconnect refreshes durable state without replaying old notices.
+
+Attachments contain plain HTTP(S) links or workspace file references, never trusted markup.
+A file reference does not authorize reading a file: opening it uses the current connection lease and existing workspace authorization and preview sandbox.
+Archiving and workspace closure preserve the message and its references.
+Agent credentials grant only selected board operations for one inbox, expire, can be revoked, and are stored as hashes.
+See [deployment](./DEPLOYMENT.md#agent-message-board) for the transport and setup commands.
+
 ## Connection isolation
 
 A bridge-global `ConnectionManager` owns shared profiles and independent

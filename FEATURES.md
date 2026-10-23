@@ -186,6 +186,20 @@ contents, for **Codex, Claude, Kimi, Grok Build, Pi, Muse Code, and Antigravity
 CLI**. SSH connections use Herdr-reported paths and Pi ID lookups remotely and
 never search local files for a remote pane.
 
+### Agent Message Board
+
+Open **Agent messages** from the shell to read durable agent handoffs, with an unread count and pinned messages above the newest messages.
+Each card contains a title, plain text body, author, timestamps, optional source context, and artifact links or files.
+Pin or unpin a card, mark it read or unread, or archive it; the archive view lets you restore it.
+New messages show a dismissible notice with an action to open the board.
+Reloading or reconnecting refreshes the board without repeating notices for older messages.
+
+Messages belong to your inbox and survive terminal/session closure and server restarts.
+Switch to the attachment's source connection to open a file through the normal authorized workspace preview.
+A missing connection, workspace, or file is unavailable while the message stays visible.
+Shared-view guests cannot access the board.
+See [agent setup](docs/DEPLOYMENT.md#agent-message-board) for MCP and remote API configuration.
+
 ### Agent Browser
 
 When agents drive a headed Chromium on the Thyra host, the globe button in an agent pane's header (on phones, in the floating controls; or **Open agent browser** in the command menu) shows that browser live, including extension popups and system dialogs such as a password manager or Duo.

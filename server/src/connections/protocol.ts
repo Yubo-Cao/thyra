@@ -55,7 +55,11 @@ export function validateConnectionGeneration(value: unknown): number {
 }
 
 export function isBridgeGlobalMethod(method: string): boolean {
-  return method.startsWith("bridge.") || method.startsWith("connections.");
+  return (
+    method.startsWith("message_board.") ||
+    method.startsWith("bridge.") ||
+    method.startsWith("connections.")
+  );
 }
 
 export function resolveReadyConnection<Runtime>(

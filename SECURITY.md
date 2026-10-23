@@ -55,7 +55,8 @@ Grant **editor** only to people you would give a shell account on the host.
   An account (direct local use, a session cookie or tailnet login) always wins over a guest cookie in the same browser: a signed-in visitor keeps its own account and grants, and the landing page offers **Open with my account** or **Open as guest**; only that explicit choice (an extra `thyra_as_guest` cookie) makes the guest session win until the guest leaves.
   **Leave shared view** in the guest badge ends the guest session on the server, clears its cookies and returns to the login page.
 
-There is no shared password or token login.
+There is no shared password or token login for the browser.
+Scoped agent credentials authenticate only the [message board API](docs/DEPLOYMENT.md#agent-message-board); they cannot open a browser session or authorize workspace files.
 State-changing sign-in and account routes are JSON `POST`s that the listeners accept only with the listener's own `Origin` (the silent tailnet code request excepted, above), so other sites cannot forge them; OAuth callbacks are bound to their single-use state, and every redirect goes to this origin.
 The session cookie `thyra_session` holds a random 256-bit id; the database stores only its SHA-256 digest.
 Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, and last 30 days.
@@ -96,6 +97,19 @@ An editor takes control with **Take control** once the protection ends; owners a
 Viewers and guests never write, and never move Herdr's history position: Herdr keeps one per pane, shared by everyone watching it, so their pages read the scrollback (`terminal.history`, a passive snapshot) and browse a local copy, and the bridge refuses their `terminal.scroll`.
 Editors while another person holds the pane scroll only Herdr's history (everyone watching the pane sees that scroll).
 
+### Agent message board
+
+Each inbox belongs to one account, or to the direct local host owner; workspace sharing does not share inbox messages.
+Share-link guests cannot list, create, or update messages or issue agent credentials.
+Agents receive revocable credentials bound to that inbox and explicit board operations, with a required expiry; only their SHA-256 digests are persisted.
+Disabling or removing the owning account also denies its agent credentials.
+Credentials belong in private configuration or an environment variable and the HTTP Authorization header, never URLs or logs.
+The dedicated agent endpoint does not grant terminal, workspace, or file authority and does not relax the browser's cookie and Origin checks.
+
+Message bodies are plain text and artifact URLs allow only HTTP(S).
+File attachments go through the existing workspace authorization and sandboxed preview; provenance fields are untrusted metadata and do not grant file access.
+Messages survive closed workspaces and revoked file access, so protect the database and its backups as private correspondence.
+
 ### Browser request checks
 
 Browser requests are bound to Thyra's own origin, so another web page open in a signed-in (or local) browser cannot drive the bridge:
@@ -127,7 +141,7 @@ Checksums detect corruption and bind the archive, **not independently verify pub
 Custom mirrors are trusted executable-code infrastructure.
 Update requests need an instance admin plus `x-thyra-update: 1`.
 
-The account database (`~/.config/thyra/thyra.db`, mode `0600`) holds accounts, passkey public keys, session digests, grants, share-link and guest-session digests and an audit log; protect it and its backups.
+The account database (`~/.config/thyra/thyra.db`, mode `0600`) holds accounts, passkey public keys, session digests, grants, share-link and guest-session digests, agent messages, agent credential digests and an audit log; protect it and its backups.
 
 Web Push subscription mutations require a login, JSON, and `x-thyra-push: 1`; cross-site browser requests are rejected.
 Each subscription records the account that created it and receives notifications only for workspaces that account may see.

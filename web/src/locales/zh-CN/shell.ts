@@ -1,5 +1,28 @@
 // Simplified Chinese messages for the shell group; keys are the English source.
 export default {
+  "Message source": "留言来源",
+  "Message updated": "留言更新时间",
+  Archive: "归档",
+  "Agent messages ({count} unread)": "智能体留言（{count} 条未读）",
+  Messages: "留言",
+  "An agent left you a message": "有智能体给你留言",
+  "Open message board": "打开留言板",
+  "Agent messages": "智能体留言",
+  "Show inbox": "显示收件箱",
+  "Show archived": "显示已归档",
+  "{count} unread messages": "{count} 条未读留言",
+  "Loading messages": "正在加载留言",
+  "No archived messages": "没有已归档留言",
+  "No messages yet": "暂无留言",
+  Unread: "未读",
+  "File unavailable in the current workspace connection":
+    "当前工作区连接中无法访问此文件",
+  Unpin: "取消置顶",
+  "Mark read": "标为已读",
+  "Mark unread": "标为未读",
+  "Restore to inbox": "恢复到收件箱",
+  "Load more messages": "加载更多留言",
+
   // App shell
   "Loading terminal": "正在加载终端",
   "Find Pane": "查找窗格",

@@ -231,6 +231,22 @@ const MIGRATIONS: readonly Migration[] = [
   );
   `,
   ],
+  `
+  CREATE TABLE IF NOT EXISTS board_messages (
+    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, credential_id TEXT NOT NULL,
+    idempotency_key TEXT, title TEXT NOT NULL, body TEXT NOT NULL,
+    author_label TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0, read_at INTEGER, archived_at INTEGER,
+    source TEXT, attachments TEXT NOT NULL,
+    UNIQUE(owner_id, credential_id, idempotency_key)
+  );
+  CREATE INDEX IF NOT EXISTS board_messages_owner ON board_messages(owner_id, archived_at, pinned, created_at, id);
+  CREATE TABLE IF NOT EXISTS board_credentials (
+    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL, scopes TEXT NOT NULL, created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL, revoked_at INTEGER
+  );
+  `,
 ];
 
 export function defaultDatabasePath(

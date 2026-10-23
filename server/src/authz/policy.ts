@@ -138,6 +138,13 @@ const herdr = (entry: RpcPolicyEntry): RpcPolicyEntry => ({
 });
 
 export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
+  "message_board.list": { class: "read", scope: "session" },
+  "message_board.get": { class: "read", scope: "session" },
+  "message_board.create": { class: "write", scope: "session" },
+  "message_board.update": { class: "write", scope: "session" },
+  "message_board.credentials.issue": { class: "write", scope: "session" },
+  "message_board.credentials.list": { class: "read", scope: "session" },
+  "message_board.credentials.revoke": { class: "write", scope: "session" },
   // Bridge-global.
   "bridge.ping": guest(session()),
   // Peer-to-peer transport: the channel inherits the socket's principal.

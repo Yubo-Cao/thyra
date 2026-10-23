@@ -1,0 +1,64 @@
+.message-board-trigger {
+  gap: 6px;
+}
+.message-board-toolbar,
+.message-board-heading,
+.message-board-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.message-board-toolbar,
+.message-board-heading {
+  justify-content: space-between;
+}
+.message-board-list {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+.message-board-card {
+  padding: 14px;
+  background: var(--panel);
+  min-width: 0;
+}
+.message-board-card.unread {
+  background: var(--accent-soft);
+}
+.message-board-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.message-board-meta {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 5px;
+}
+.message-board-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.message-board-actions {
+  flex-wrap: wrap;
+}
+.message-board-attachments {
+  padding-inline-start: 20px;
+  overflow-wrap: anywhere;
+}
+.message-board-attachments li {
+  margin-bottom: 6px;
+}
+.message-board-attachments li > span {
+  font-size: 12px;
+}
+.message-board-error {
+  color: var(--danger-text);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .message-board-trigger-label {
+    display: none;
+  }
+}

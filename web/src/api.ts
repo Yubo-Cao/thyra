@@ -311,7 +311,11 @@ const HEARTBEAT_TIMEOUT_MS = 6000;
 const MAX_WS_BUFFERED_BYTES = 4 * 1024 * 1024;
 
 export function isBridgeGlobalMethod(method: string): boolean {
-  return method.startsWith("bridge.") || method.startsWith("connections.");
+  return (
+    method.startsWith("bridge.") ||
+    method.startsWith("connections.") ||
+    method.startsWith("message_board.")
+  );
 }
 
 export async function logoutBrowserSession(): Promise<void> {
@@ -913,6 +917,20 @@ export class Bridge {
     this.handleDisconnect(ws, reason);
   }
 
+  private messageBoardUpdatedHandlers = new Set<(id: string) => void>();
+
+  onMessageBoardUpdated(cb: (id: string) => void): () => void {
+    this.messageBoardUpdatedHandlers.add(cb);
+    return () => this.messageBoardUpdatedHandlers.delete(cb);
+  }
+
+  private messageBoardHandlers = new Set<(id: string) => void>();
+
+  onMessageBoardCreated(cb: (id: string) => void): () => void {
+    this.messageBoardHandlers.add(cb);
+    return () => this.messageBoardHandlers.delete(cb);
+  }
+
   private onMessage(raw: string, repliesOnly = false) {
     let parsed: unknown;
     try {
@@ -923,6 +941,19 @@ export class Bridge {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
     // pi-lens-ignore: no-unsafe-dictionary-any
     const msg = parsed as Record<string, any>;
+    if (
+      (msg.type === "message_board.created" ||
+        msg.type === "message_board.updated") &&
+      typeof msg.message_id === "string" &&
+      Object.keys(msg).every((key) => key === "type" || key === "message_id")
+    ) {
+      if (!repliesOnly)
+        (msg.type === "message_board.created"
+          ? this.messageBoardHandlers
+          : this.messageBoardUpdatedHandlers
+        ).forEach((cb) => cb(msg.message_id));
+      return;
+    }
     const owns = (field: string) =>
       Object.prototype.hasOwnProperty.call(msg, field);
     const hasHello = owns("hello");

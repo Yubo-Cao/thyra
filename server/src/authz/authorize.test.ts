@@ -18,6 +18,13 @@ import { PRINCIPALS, testDeps } from "../../test-support/authz/principals";
  * fails this test until its row is reviewed and added here.
  */
 const RPC_MATRIX: Record<string, string> = {
+  "message_board.list": "admin owner editor viewer outsider",
+  "message_board.get": "admin owner editor viewer outsider",
+  "message_board.create": "admin owner editor viewer outsider",
+  "message_board.update": "admin owner editor viewer outsider",
+  "message_board.credentials.issue": "admin owner editor viewer outsider",
+  "message_board.credentials.list": "admin owner editor viewer outsider",
+  "message_board.credentials.revoke": "admin owner editor viewer outsider",
   "agent.list": "admin owner editor viewer guest guest-pane",
   "agent.prompt": "-",
   "bridge.identity": "admin owner editor viewer outsider guest guest-pane",

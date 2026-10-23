@@ -1,3 +1,6 @@
+import { AGENT_BOARD_PATH, handleAgentBoard } from "./message-board/http";
+import { runMessageBoardCommand } from "./message-board/cli";
+import { createMessageBoard } from "./message-board/service";
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
@@ -218,6 +221,8 @@ import { runShellIntegrationCommand } from "./shell/cli";
 import { refreshShellScripts } from "./shell/installer";
 
 const APP_VERSION = packageJson.version;
+const boardCommandResult = await runMessageBoardCommand(process.argv.slice(2));
+if (boardCommandResult !== null) process.exit(boardCommandResult);
 const shellCommandResult = await runShellIntegrationCommand(
   process.argv.slice(2),
   APP_VERSION,
@@ -385,10 +390,21 @@ if (thyraEnv("PASSWORD"))
     "THYRA_PASSWORD is no longer used: log in with a passkey (`thyra user add`) or through tailnet login",
   );
 
+let messageBoard: ReturnType<typeof createMessageBoard>;
 let accountStore: AccountStore;
 let shareLinks: ShareLinkStore;
 try {
-  accountStore = createAccountStore(openAccountDatabase(defaultDatabasePath()));
+  const accountDatabase = openAccountDatabase(defaultDatabasePath());
+  accountStore = createAccountStore(accountDatabase);
+  messageBoard = createMessageBoard(accountDatabase, (owner, id, event) => {
+    for (const client of clients)
+      if (socketPrincipals.get(client)?.key === owner)
+        safeSend(
+          client,
+          JSON.stringify({ type: `message_board.${event}`, message_id: id }),
+          "message-board",
+        );
+  });
   accountStore.pruneExpired();
   shareLinks = createShareLinkStore(accountStore);
   shareLinks.pruneExpired();
@@ -1479,6 +1495,32 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     sendReply({ id, result: authorization.stub.result }, "rpc-stub");
     return;
   }
+  if (method.startsWith("message_board.")) {
+    if (principal.kind === "guest") {
+      sendError("message-board", new Error("permission denied"));
+      return;
+    }
+    try {
+      const operation = method.slice("message_board.".length);
+      const result =
+        operation === "credentials.issue"
+          ? messageBoard.issue(principal.key, params)
+          : operation === "credentials.list"
+            ? messageBoard.credentials(principal.key)
+            : operation === "credentials.revoke"
+              ? messageBoard.revoke(principal.key, params?.id)
+              : messageBoard.execute(
+                  principal.key,
+                  "browser",
+                  operation,
+                  params,
+                );
+      sendReply({ id, result }, "message-board");
+    } catch (error) {
+      sendError("message-board", error);
+    }
+    return;
+  }
   const roles = connectionId ? viewerRoles(ws, connectionId) : null;
   // A guest link narrowed to one pane filters results to that pane.
   const scope =
@@ -2566,6 +2608,8 @@ async function primaryFetch(
     });
     return hostNotAllowedResponse(access.host);
   }
+  if (url.pathname === AGENT_BOARD_PATH)
+    return handleAgentBoard(req, messageBoard);
   const route = httpRoute(req, url, requestPathname);
   const originMode = originCheckMode(url.pathname, req.method);
   // The silent tailnet sign-in is a CORS request from the public origin; its
@@ -2704,6 +2748,8 @@ async function publicRoute(
       headers: { "cache-control": "no-store" },
     });
   }
+  if (url.pathname === AGENT_BOARD_PATH)
+    return handleAgentBoard(req, messageBoard);
   const originMode = originCheckMode(url.pathname, req.method);
   if (originMode !== "none") {
     const decision = publicAccessPolicy.checkOrigin(

@@ -13,6 +13,7 @@ A **browser client** for [Herdr](https://herdr.dev). Control terminals, watch
 agent status, and review files and diffs on desktop or mobile.
 Watch an agent on a tablet and type from your phone without resizing it.
 See and drive the headed browser your agents use, and get notified when one hands you a tab.
+Keep agent handoffs in a persistent [message board](./FEATURES.md#agent-message-board), with unread counts, pins, and artifact links.
 **Requires a [Herdr 0.9](./docs/DEPLOYMENT.md#herdr-compatibility) server;** the installer sets one up.
 
 ## Screenshots

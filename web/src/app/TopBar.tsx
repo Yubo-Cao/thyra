@@ -1,3 +1,4 @@
+import { MessageBoard } from "../components/MessageBoard";
 import { Suspense } from "react";
 import packageJson from "../../package.json";
 import { CommandMenu } from "../components/CommandMenu";
@@ -59,6 +60,7 @@ export function TopBar({
       </div>
       <div className="topbar-actions">
         <div className="topbar-command-group">
+          <MessageBoard onOpenFile={inspector.openFileExplorerFile} />
           <CommandMenu
             key={`${resourceUiKey}:commands`}
             onOpenFileExplorer={inspector.openFileExplorer}
