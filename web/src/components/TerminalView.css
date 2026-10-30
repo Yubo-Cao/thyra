@@ -11,7 +11,8 @@
   min-height: 0;
   background: var(--terminal-bg);
   border: 0;
-  overflow: hidden;
+  /* Not hidden: a hidden box still scrolls to reveal a focused input's caret. */
+  overflow: clip;
   overscroll-behavior: contain;
   touch-action: none;
 }
@@ -86,7 +87,7 @@
 
 /* Keys, IME and paste land here; the engine moves it to the cursor. */
 .terminal-engine-input {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   width: 1px;

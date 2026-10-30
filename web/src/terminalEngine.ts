@@ -724,6 +724,10 @@ export class TerminalEngine {
     this.screen.tabIndex = -1;
     this.textarea = doc.createElement("textarea");
     this.textarea.className = "terminal-engine-input";
+    // Placed in this element's box at the cursor (see the restty patch). A
+    // fixed input lands off by the stage's origin, since the stage is a
+    // size container, and the caret then scrolls the pane sideways.
+    this.textarea.style.position = "absolute";
     this.textarea.setAttribute("aria-label", "Terminal input");
     this.textarea.autocapitalize = "off";
     this.textarea.autocomplete = "off";

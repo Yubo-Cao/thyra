@@ -61,7 +61,7 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15ebe72386e 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..770d6bc003c585044fe31c377900371e5f879abe 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
 @@ -1428,7 +1428,7 @@ function createInputHandler2(options = {}) {
@@ -669,7 +669,40 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      scrollbarState,
      selectionState,
      linkState,
-@@ -50397,11 +50698,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
+@@ -49182,15 +49483,29 @@ function createRuntimeInteraction(options) {
+     if (!imeInput || !cursor)
+       return;
+     const canvas = getCanvas();
+-    const rect = canvas.getBoundingClientRect();
++    // An input absolutely positioned in the canvas's own box is placed in
++    // layout pixels there: ancestor transforms, zoom and containing blocks
++    // move both alike, and it stays inside the canvas so no ancestor
++    // scrolls to reveal the composition caret.
++    const local = imeInput.offsetParent !== null && imeInput.offsetParent === canvas.offsetParent;
++    const rect = local ? {
++      left: canvas.offsetLeft + canvas.clientLeft,
++      top: canvas.offsetTop + canvas.clientTop,
++      width: canvas.clientWidth,
++      height: canvas.clientHeight
++    } : canvas.getBoundingClientRect();
+     const { cols, rows } = getGridState();
+     const fallbackScale = getCurrentDpr() || 1;
+     const scaleX = rect.width > 0 ? canvas.width / rect.width : fallbackScale;
+     const scaleY = rect.height > 0 ? canvas.height / rect.height : fallbackScale;
+     const cssCellW = cellW > 0 ? cellW / Math.max(0.000001, scaleX) : cols > 0 ? rect.width / cols : 1;
+     const cssCellH = cellH > 0 ? cellH / Math.max(0.000001, scaleY) : rows > 0 ? rect.height / rows : 1;
+-    const x = rect.left + cursor.col * cssCellW;
+-    const y = rect.top + cursor.row * cssCellH;
++    let x = rect.left + cursor.col * cssCellW;
++    let y = rect.top + cursor.row * cssCellH;
++    if (local) {
++      x = Math.max(rect.left, Math.min(x, rect.left + rect.width - imeInput.offsetWidth));
++      y = Math.max(rect.top, Math.min(y, rect.top + rect.height - imeInput.offsetHeight));
++    }
+     imeInput.style.transform = "none";
+     imeInput.style.left = `${x}px`;
+     imeInput.style.top = `${y}px`;
+@@ -50397,11 +50712,16 @@ function normalizedMetricFactor(primaryMetric, primary, fallbackMetric, fallback
    const factor = primaryMetric / primary.unitsPerEm / (fallbackMetric / fallback.unitsPerEm);
    return Number.isFinite(factor) && factor > 0 ? factor : 1;
  }
@@ -686,7 +719,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
    if (fallback.icWidth > 0) {
      return normalizedMetricFactor(icWidth(primary), primary, fallback.icWidth, fallback);
    }
-@@ -51297,28 +51603,25 @@ function populateWebGLOverlays(ctx) {
+@@ -51297,28 +51617,25 @@ function populateWebGLOverlays(ctx) {
    } = deps;
    if (cursor && imeState.preedit) {
      const preeditText = imeState.preedit;
@@ -727,7 +760,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
        const rowY = preeditRow * cellH;
        pushRect(bgData, x, rowY, widthPx, cellH, PREEDIT_BG);
        const thickness = underlineThicknessPx;
-@@ -51330,27 +51633,32 @@ function populateWebGLOverlays(ctx) {
+@@ -51330,27 +51647,32 @@ function populateWebGLOverlays(ctx) {
        const selStart = Math.max(0, Math.min(visiblePreeditText.length, rawSelStart - selectionOffset));
        const selEnd = Math.max(selStart, Math.min(visiblePreeditText.length, rawSelEnd - selectionOffset));
        if (selEnd > selStart) {
@@ -775,7 +808,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      }
    }
    const resizeAge = performance.now() - resizeState.lastAt;
-@@ -51463,7 +51771,6 @@ function searchHighlightForColumn(matches, startIndex, endIndex, col, cols) {
+@@ -51463,7 +51785,6 @@ function searchHighlightForColumn(matches, startIndex, endIndex, col, cols) {
  
  // src/runtime/create-runtime/ligature-runs.ts
  var PROGRAMMING_LIGATURE_CHARS = new Set(Array.from("!#%&*+-.:/<=>?@\\^|~"));
@@ -783,7 +816,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
  function bytesEqual(left, leftIndex, right, rightIndex) {
    if (!left || !right)
      return left === right;
-@@ -51500,11 +51807,19 @@ function resolveLigatureRun(options) {
+@@ -51500,11 +51821,19 @@ function resolveLigatureRun(options) {
      ulStyle,
      cursorBlock,
      cursorCell,
@@ -803,7 +836,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
    if (cursorBlock && cursorCell && row === cursorCell.row && col >= cursorCell.col && col < cursorCell.col + (cursorCell.wide ? 2 : 1)) {
      return null;
    }
-@@ -51512,7 +51827,7 @@ function resolveLigatureRun(options) {
+@@ -51512,7 +51841,7 @@ function resolveLigatureRun(options) {
    const indices = [idx];
    let text = cluster.text;
    let span = cluster.span;
@@ -812,7 +845,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      const nextCol = col + indices.length;
      const nextCluster = readCellCluster(nextIdx);
      if (!nextCluster || nextCluster.span !== 1 || !isLigatureRunText(nextCluster.text))
-@@ -51520,6 +51835,8 @@ function resolveLigatureRun(options) {
+@@ -51520,6 +51849,8 @@ function resolveLigatureRun(options) {
      if (cursorBlock && cursorCell && row === cursorCell.row && nextCol >= cursorCell.col && nextCol < cursorCell.col + (cursorCell.wide ? 2 : 1)) {
        break;
      }
@@ -821,7 +854,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      if (!valuesEqual(contentTags, idx, contentTags, nextIdx))
        break;
      if (!valuesEqual(styleFlags, idx, styleFlags, nextIdx))
-@@ -51540,34 +51857,12 @@ function resolveLigatureRun(options) {
+@@ -51540,34 +51871,12 @@ function resolveLigatureRun(options) {
    }
    return indices.length >= 2 ? { text, span, indices } : null;
  }
@@ -862,7 +895,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
  function resolveRenderableLigatureRun(options) {
    const {
      ligatureRun,
-@@ -51577,16 +51872,45 @@ function resolveRenderableLigatureRun(options) {
+@@ -51577,16 +51886,45 @@ function resolveRenderableLigatureRun(options) {
      shapeClusterWithFont,
      readCellCluster
    } = options;
@@ -917,7 +950,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
  }
  
  // src/runtime/create-runtime/render-tick-webgl-scene.ts
-@@ -51859,6 +52183,9 @@ function populateWebGLSceneData(ctx) {
+@@ -51859,6 +52197,9 @@ function populateWebGLSceneData(ctx) {
          ulStyle,
          cursorBlock,
          cursorCell,
@@ -927,7 +960,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
          readCellCluster
        }) : null;
        const renderableLigatureRun = ligatureRun ? resolveRenderableLigatureRun({
-@@ -51876,16 +52203,15 @@ function populateWebGLSceneData(ctx) {
+@@ -51876,16 +52217,15 @@ function populateWebGLSceneData(ctx) {
            mergedLigatureSkip[renderableLigatureRun.indices[i]] = 1;
          }
        }
@@ -947,7 +980,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
        let cellSpan = baseSpan;
        const nerdConstraint = resolveSymbolConstraint(cp);
        const symbolLike = isRenderSymbolLike(cp) || !!nerdConstraint;
-@@ -52387,6 +52713,9 @@ function collectWebGPUCellPass(params) {
+@@ -52387,6 +52727,9 @@ function collectWebGPUCellPass(params) {
          ulStyle,
          cursorBlock,
          cursorCell,
@@ -957,7 +990,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
          readCellCluster
        }) : null;
        const renderableLigatureRun = ligatureRun ? resolveRenderableLigatureRun({
-@@ -52404,16 +52733,15 @@ function collectWebGPUCellPass(params) {
+@@ -52404,16 +52747,15 @@ function collectWebGPUCellPass(params) {
            mergedLigatureSkip[renderableLigatureRun.indices[i]] = 1;
          }
        }
@@ -977,7 +1010,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
        let cellSpan = baseSpan;
        const nerdConstraint = resolveSymbolConstraint(cp);
        const symbolLike = isRenderSymbolLike(cp) || !!nerdConstraint;
-@@ -53078,28 +53406,25 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+@@ -53078,28 +53420,25 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
    } = deps;
    if (cursor && imeState.preedit) {
      const preeditText = imeState.preedit;
@@ -1017,7 +1050,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
        const rowY = preeditRow * cellH;
        pushRect(frame.bgData, x, rowY, widthPx, cellH, PREEDIT_BG);
        const thickness = underlineThicknessPx;
-@@ -53111,27 +53436,32 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
+@@ -53111,27 +53450,32 @@ function augmentWebGPUFrameWithOverlaysAndAtlas(params) {
        const selStart = Math.max(0, Math.min(visiblePreeditText.length, rawSelStart - selectionOffset));
        const selEnd = Math.max(selStart, Math.min(visiblePreeditText.length, rawSelEnd - selectionOffset));
        if (selEnd > selStart) {
@@ -1065,7 +1098,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      }
    }
    const resizeAge = performance.now() - resizeState.lastAt;
-@@ -53444,7 +53774,7 @@ function createFontRuntimeGridHelpers(options) {
+@@ -53444,7 +53788,7 @@ function createFontRuntimeGridHelpers(options) {
      const advanceUnits = glyphId !== undefined && glyphId !== null ? primary.font.advanceWidth(glyphId) : shapeClusterWithFont(primary, "M").advance;
      const cellW = Math.max(1, Math.round(advanceUnits * scale));
      const lineHeight = fontHeightUnits2(primary.font) * scale;
@@ -1074,7 +1107,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      const baselineOffset = primary.font.ascender * scale;
      const yPad = Math.max(0, (cellH - lineHeight) * 0.5);
      return { cellW, cellH, fontSizePx, scale, lineHeight, baselineOffset, yPad };
-@@ -53565,14 +53895,17 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53565,14 +53909,17 @@ function createFontRuntimeTextHelpers(options) {
      return shaped;
    }
    function noteColorGlyphText(entry, text, shaped) {
@@ -1095,7 +1128,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
    }
    function fontHasGlyph(entry, ch, probeCoverage) {
      const glyphId = entry.font.glyphIdForChar(ch);
-@@ -53668,8 +54001,12 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53668,8 +54015,12 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -1109,7 +1142,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
        const result = tryIndex(emojiIndex);
        if (result !== null)
          return result;
-@@ -53679,7 +54016,7 @@ function createFontRuntimeTextHelpers(options) {
+@@ -53679,7 +54030,7 @@ function createFontRuntimeTextHelpers(options) {
        if (result !== null)
          return result;
      }
@@ -1118,7 +1151,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      if (firstIndex >= 0) {
        setBoundedMap(fontState.fontPickCache, cacheKey, firstIndex, fontPickCacheLimit);
        return firstIndex;
-@@ -54994,6 +55331,7 @@ function createResttyRuntime2(options) {
+@@ -54994,6 +55345,7 @@ function createResttyRuntime2(options) {
    const autoResize = terminal.autoResize ?? true;
    const showResizeOverlay = terminal.showResizeOverlay ?? true;
    const forwardTerminalReplies = terminal.forwardTerminalReplies ?? true;
@@ -1126,7 +1159,17 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
    const touchSelectionMode = normalizeTouchSelectionMode(terminal.touchSelectionMode);
    const touchSelectionLongPressMs = clampFiniteNumber(terminal.touchSelectionLongPressMs, 450, 120, 2000, true);
    const touchSelectionMoveThresholdPx = clampFiniteNumber(terminal.touchSelectionMoveThresholdPx, 10, 1, 64);
-@@ -55175,6 +55513,7 @@ function createResttyRuntime2(options) {
+@@ -55153,7 +55505,8 @@ function createResttyRuntime2(options) {
+     if (!imeInput)
+       return;
+     const style = imeInput.style;
+-    style.position = "fixed";
++    if (style.position !== "absolute")
++      style.position = "fixed";
+     style.left = "0";
+     style.top = "0";
+     style.width = "1em";
+@@ -55175,6 +55528,7 @@ function createResttyRuntime2(options) {
    let lastRenderState = null;
    const runtimeInteraction = createRuntimeInteraction({
      attachCanvasEvents,
@@ -1134,7 +1177,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      touchSelectionMode,
      touchSelectionLongPressMs,
      touchSelectionMoveThresholdPx,
-@@ -55249,6 +55588,10 @@ function createResttyRuntime2(options) {
+@@ -55249,6 +55603,10 @@ function createResttyRuntime2(options) {
    inputHandler = createInputHandler2({
      getCursorPosition: resolveCursorForCpr,
      sendReply: (data) => {
@@ -1145,7 +1188,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
        ptyTransport.sendInput(data);
      },
      positionToCell,
-@@ -55278,14 +55621,8 @@ function createResttyRuntime2(options) {
+@@ -55278,14 +55636,8 @@ function createResttyRuntime2(options) {
        const cellHeightPx = Math.max(1, Math.round(gridState.cellH || heightPx / Math.max(1, rows)));
        return { rows, cols, widthPx, heightPx, cellWidthPx, cellHeightPx };
      },
@@ -1162,7 +1205,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      getKittyKeyboardFlags: () => {
        if (!wasm || !wasmHandle)
          return 0;
-@@ -55332,9 +55669,11 @@ function createResttyRuntime2(options) {
+@@ -55332,9 +55684,11 @@ function createResttyRuntime2(options) {
        getLastKeydownSeq: () => lastKeydownSeq,
        getLastKeydownSeqAt: () => lastKeydownSeqAt,
        keydownBeforeinputDedupeMs: KEYDOWN_BEFOREINPUT_DEDUPE_MS,
@@ -1175,7 +1218,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
    bindCanvasEvents();
    const fontState = {
      font: null,
-@@ -55628,6 +55967,8 @@ function createResttyRuntime2(options) {
+@@ -55628,6 +55982,8 @@ function createResttyRuntime2(options) {
            const face = fontLease.faces[i];
            entries.push(createFontEntry2(face.font, face.label));
          }
@@ -1184,7 +1227,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
          if (!entries.length) {
            throw new Error("Unable to parse any loaded font source.");
          }
-@@ -55828,6 +56169,8 @@ function createResttyRuntime2(options) {
+@@ -55828,6 +56184,8 @@ function createResttyRuntime2(options) {
      },
      set lastRenderState(value) {
        lastRenderState = value;
@@ -1193,7 +1236,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      }
    });
    const readRuntimeControllerState = () => ({
-@@ -55923,7 +56266,7 @@ function createResttyRuntime2(options) {
+@@ -55923,7 +56281,7 @@ function createResttyRuntime2(options) {
        maxScrollback: terminal.maxScrollback
      }
    });
@@ -1202,7 +1245,7 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..15b3c63ebb98bcb680425f65fcbfa15e
      terminal: {
        setFontSize: applyFontSize,
        setLigatures,
-@@ -55950,6 +56293,62 @@ function createResttyRuntime2(options) {
+@@ -55950,6 +56308,62 @@ function createResttyRuntime2(options) {
        getShaderStages
      }
    });
