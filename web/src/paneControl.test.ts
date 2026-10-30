@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  inputTakeoverMode,
   paneControlClient,
   paneControlState,
   type PaneControlState,
@@ -64,7 +65,13 @@ test("the same person's other page may type but not resize; viewers never write"
     paneControlState(annotated, "p1", "alice-phone", false, 200, {
       personId: "person-a",
     }),
-  ).toMatchObject({ viewOnly: false, canResize: false, readOnly: false });
+  ).toMatchObject({
+    viewOnly: false,
+    canResize: false,
+    readOnly: false,
+    // Its protection is against other people: this window may take over.
+    protectedUntil: 0,
+  });
   expect(
     paneControlState(snapshot, "p2", "bob", false, 200, { readOnly: true }),
   ).toMatchObject({ viewOnly: true, canResize: false, readOnly: true });
@@ -315,4 +322,48 @@ test("a device that does not display the pane never resizes or focuses it", asyn
   await client.call("terminal.input", { data: "eA==" });
   await client.call("pane.send_input", { text: "hi" });
   expect(calls).toEqual(["terminal.input", "pane.send_input"]);
+});
+test("typing in the person's other window takes control there", () => {
+  const annotated: CollaborationSnapshot = {
+    ...snapshot,
+    participants: [{ ...snapshot.participants[0], person_id: "person-a" }],
+  };
+  const other = paneControlState(annotated, "p1", "alice-phone", false, 200, {
+    personId: "person-a",
+  });
+  // Both windows show the truth: the holder "In control", this one not.
+  expect(other).toMatchObject({ ownsLayout: false, viewOnly: false });
+  expect(inputTakeoverMode(other)).toBe("resize");
+  // The holder, an unclaimed pane, and another person's pane take nothing.
+  expect(
+    inputTakeoverMode(paneControlState(annotated, "p1", "alice", false, 200)),
+  ).toBeNull();
+  expect(
+    inputTakeoverMode(paneControlState(annotated, "p2", "alice", false, 200)),
+  ).toBeNull();
+  expect(
+    inputTakeoverMode(paneControlState(snapshot, "p1", "bob", false, 200)),
+  ).toBeNull();
+  // Another device displays the pane: type here and keep its size.
+  const displayed: CollaborationSnapshot = {
+    ...annotated,
+    participants: [
+      ...annotated.participants,
+      {
+        ...annotated.participants[0],
+        participant_id: "tv",
+        device_id: "tv-device",
+      },
+    ],
+    display_owners: [
+      { pane_id: "p1", participant_id: "tv", pinned: true, since_unix_ms: 1 },
+    ],
+  };
+  expect(
+    inputTakeoverMode(
+      paneControlState(displayed, "p1", "alice-phone", false, 200, {
+        personId: "person-a",
+      }),
+    ),
+  ).toBe("type");
 });

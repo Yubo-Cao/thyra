@@ -443,6 +443,22 @@ describe("authorize", () => {
         allowed: true,
         takeoverAnytime: true,
       });
+    // An editor takes control from their own other window during its
+    // protection, but not from another person.
+    const ownPage = testDeps({
+      claims: { "w1:p1": { participantId: "web-editor-phone" } },
+      participants: { "web-editor-phone": PRINCIPALS.editor.key },
+    });
+    expect(
+      await request("editor", "collaboration.claim", claim, ownPage),
+    ).toMatchObject({ allowed: true, takeoverAnytime: true });
+    const otherPerson = testDeps({
+      claims: { "w1:p1": { participantId: "web-other" } },
+      participants: { "web-other": PRINCIPALS.admin.key },
+    });
+    expect(
+      await request("editor", "collaboration.claim", claim, otherPerson),
+    ).toMatchObject({ allowed: true, takeoverAnytime: false });
   });
 
   test("routine host calls from members get a harmless answer", async () => {

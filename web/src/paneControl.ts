@@ -118,12 +118,29 @@ export function paneControlState(
         t("Another collaborator"))
       : null,
     protectedUntil:
-      claim && !ownsLayout && !options.overridesProtection
+      // Protection guards against other people, not this person's windows.
+      claim && !ownsLayout && !samePerson && !options.overridesProtection
         ? (claim.protected_until_unix_ms ?? 0)
         : 0,
     display,
     inputOnly: !blocked && ownsLayout && !!display && !display.mine,
   };
+}
+
+/**
+ * How input typed here takes control from this person's other window (tab,
+ * device) that holds the pane, so the window in use shows "In control" and
+ * sizes the pane: `type` keeps another device's display, `resize` sizes it
+ * here. Null when this page already controls the pane, nobody does (input
+ * claims it), or it may not type at all.
+ */
+export function inputTakeoverMode(
+  access: PaneControlState,
+): "type" | "resize" | null {
+  if (access.viewOnly || access.readOnly || access.ownsLayout) return null;
+  // Not view only, so a live claim here is this person's other window's.
+  if (access.ownerName === null) return null;
+  return access.display && !access.display.mine ? "type" : "resize";
 }
 
 // A viewing preference for this Thyra pane, not an authentication boundary.

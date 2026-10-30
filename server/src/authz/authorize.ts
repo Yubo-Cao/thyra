@@ -65,7 +65,10 @@ export type RpcAuthorization =
       paneId?: string;
       /** Claim the unclaimed pane for the caller before sending input. */
       autoClaim?: boolean;
-      /** Workspace owners and admins may take control during protection. */
+      /**
+       * Workspace owners and admins, and the holder's other pages, may take
+       * control during protection.
+       */
       takeoverAnytime?: boolean;
       /** Reply with this instead of dispatching (see `deniedResult`). */
       stub?: { result: unknown };
@@ -297,6 +300,17 @@ export async function authorize(
       : claim;
   };
 
+  // Another page of this principal's holds the pane.
+  const heldByOwnPage = (): boolean => {
+    if (!connectionId || !paneId) return false;
+    const claim = deps.claimOf(connectionId, paneId);
+    return (
+      !!claim &&
+      claim.participantId !== request.participantId &&
+      deps.principalOfParticipant(claim.participantId) === principal.key
+    );
+  };
+
   if (method === "terminal.scroll") {
     // Only a writer may scroll into the application (page keys, wheel
     // reporting); other editors scroll Herdr's history. Viewers never reach
@@ -319,7 +333,9 @@ export async function authorize(
       params:
         requested === undefined ? params : { ...params, protect_ms: requested },
       ...(paneId ? { paneId } : {}),
-      takeoverAnytime: roleFloor() === "owner",
+      // Protection guards a pane from other people, not from the holder's
+      // next window: typing in another window of theirs moves control there.
+      takeoverAnytime: roleFloor() === "owner" || heldByOwnPage(),
     };
   }
 

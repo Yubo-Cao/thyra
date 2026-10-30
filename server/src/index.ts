@@ -1965,7 +1965,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         authorization.takeoverAnytime &&
         callParams.takeover === true
       ) {
-        // Workspace owners and admins take control during the protection.
+        // Workspace owners and admins, and the holder's other windows, take
+        // control during the protection.
         const paneId = String(callParams.pane_id);
         const holder = connection.claims.get(paneId);
         if (

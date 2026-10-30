@@ -12,7 +12,11 @@ import {
   type CollaborationSnapshot,
 } from "./collaboration";
 import { workspaceCan } from "./capabilities";
-import { paneControlClient, paneControlState } from "./paneControl";
+import {
+  inputTakeoverMode,
+  paneControlClient,
+  paneControlState,
+} from "./paneControl";
 import { store, useStoreSelector } from "./store";
 
 export function usePaneControl(
@@ -162,6 +166,19 @@ export function usePaneControl(
     },
     [client, paneId, participantId, scope, busy],
   );
+  const takingOver = useRef(false);
+  /**
+   * The person typed here while their other window controls the pane: move
+   * control (and the size, unless another device displays it) here.
+   */
+  const takeOverOnInput = useCallback(() => {
+    const mode = inputTakeoverMode(accessRef.current);
+    if (!mode || takingOver.current) return;
+    takingOver.current = true;
+    void change(mode).finally(() => {
+      takingOver.current = false;
+    });
+  }, [change]);
   /** Pin the pane's size to this device's screen, or give the pin back. */
   const toggleDisplayPin = useCallback(async () => {
     if (!paneId || busy || !client.isCurrent()) return;
@@ -197,6 +214,7 @@ export function usePaneControl(
     /** Type here; the displaying device keeps the size. */
     typeHere: () => change("type"),
     watch: () => change("view"),
+    takeOverOnInput,
     toggleDisplayPin,
   };
 }

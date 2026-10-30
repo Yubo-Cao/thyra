@@ -139,6 +139,15 @@ const Dialog = terminalMessageDialog.Component;
 
 // Between a typed single-line draft and its Enter; see submitTerminalComposer.
 const TYPED_ENTER_DELAY_MS = 200;
+/** Keys that type nothing alone, so pressing them takes no control. */
+const MODIFIER_KEYS = new Set([
+  "Shift",
+  "Control",
+  "Alt",
+  "Meta",
+  "AltGraph",
+  "CapsLock",
+]);
 // Height of the floating touch controls at the pane's bottom, with margins.
 const FLOATING_ACTIONS_CLEARANCE = 60;
 
@@ -490,6 +499,29 @@ export function TerminalView({
     refs,
     sessionBindings,
   ]);
+  // Typing here while this person's other window controls the pane moves
+  // control here. Only the person's own keys, IME and paste count: the
+  // terminal's automatic replies to the application do not.
+  const takeOverOnInput = control.takeOverOnInput;
+  useEffect(() => {
+    if (!container) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!MODIFIER_KEYS.has(event.key)) takeOverOnInput();
+    };
+    const options = { capture: true };
+    container.addEventListener("keydown", onKey, options);
+    container.addEventListener("compositionstart", takeOverOnInput, options);
+    container.addEventListener("paste", takeOverOnInput, options);
+    return () => {
+      container.removeEventListener("keydown", onKey, options);
+      container.removeEventListener(
+        "compositionstart",
+        takeOverOnInput,
+        options,
+      );
+      container.removeEventListener("paste", takeOverOnInput, options);
+    };
+  }, [container, takeOverOnInput]);
   // Input-only devices preview at a reduced frame rate, or take no frames
   // while showing the text preview. Other devices' streams are unaffected.
   const [previewMode, setPreviewMode] = useState<TerminalPreviewMode>(
@@ -727,6 +759,7 @@ export function TerminalView({
   });
 
   const submitTerminalComposer = async (text: string, submit: boolean) => {
+    takeOverOnInput();
     const targetPaneId = refs.paneId.current;
     if (!targetPaneId) throw new Error(t("No active pane"));
     const send = terminalComposerSend(targetPaneId, text, submit);
