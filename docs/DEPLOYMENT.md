@@ -732,7 +732,14 @@ Run the server build that Remote-SSH already installed (`~/.vscode-server/cli/se
 Set `THYRA_VSCODE_URL=http://127.0.0.1:18976` and restart Thyra.
 Copy the server directory somewhere of its own first (Remote-SSH and `code serve-web` prune old builds), and run it as a user service (`Restart=always`) so its terminals survive Thyra restarts.
 `--disable-workspace-trust` keeps extensions that refuse untrusted folders (Python, Pylance, Jupyter) enabled; `code serve-web` cannot pass it.
-Use the same build as Remote-SSH so extension versions match, and expect VS Code Web's language packs to garble labels when the pack lags the build (the Inspector starts VS Code in English for this reason).
+Use the same build as Remote-SSH so extension versions match.
+[`deploy/vscode/thyra-vscode.service`](../deploy/vscode/thyra-vscode.service) is a user unit for a copy at `~/.local/share/thyra-vscode/server`.
+
+VS Code Web loads its UI translations for the browser's language from Microsoft's CDN, whose files can be built for a different message list than the server and then show garbled labels.
+Serve them from the server instead: run [`deploy/vscode/build-nls.py`](../deploy/vscode/build-nls.py) `<server> <language-pack.vsix> zh-cn` (the pack is the Marketplace VSIX, such as `MS-CEINTL.vscode-language-pack-zh-hans`) and set `nlsCoreBaseUrl` in the server's `product.json` to `/vscode/stable-<commit>/static/nls/`.
+Locales without a built file fall back to English; strings newer than the pack stay English.
+Repeat both steps for every new server build.
+The Inspector sets VS Code's language to Thyra's whenever Thyra's changes; a language picked inside VS Code stays until then.
 Thyra proxies it at `/vscode/` for instance admins only and on local connections only; without it the Inspector is an upload panel.
 The loopback port takes no token, so keep it off shared multi-user hosts.
 

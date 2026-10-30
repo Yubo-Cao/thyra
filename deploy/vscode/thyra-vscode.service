@@ -1,0 +1,20 @@
+[Unit]
+Description=VS Code Web for Thyra's Inspector (proxied at /vscode)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
+# A copy of the same build as the Remote-SSH server, sharing its
+# ~/.vscode-server extensions and machine settings. Started directly rather
+# than through `code serve-web`, which cannot pass --disable-workspace-trust.
+ExecStart=%h/.local/share/thyra-vscode/server/bin/code-server --host 127.0.0.1 --port 18976 --server-base-path /vscode --without-connection-token --accept-server-license-terms --telemetry-level off --disable-workspace-trust --server-data-dir %h/.vscode-server
+Restart=always
+RestartSec=5s
+KillMode=control-group
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=default.target

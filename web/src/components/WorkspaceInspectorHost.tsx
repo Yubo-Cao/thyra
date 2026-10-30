@@ -16,7 +16,7 @@ import {
 import type { ConnectionClient } from "../api";
 import { thyraLocalStorage } from "../browserStorage";
 import type { WorkspaceInspector } from "../app/useWorkspaceInspector";
-import { t } from "../i18n";
+import { getLocale, t } from "../i18n";
 import { shortcutTitle } from "../shortcutPreferences";
 import { store, useStoreSelector } from "../store";
 import type { Pane, Workspace } from "../types";
@@ -53,17 +53,22 @@ function loadVscodeConnections(): Promise<Set<string>> {
   return vscodeConnections;
 }
 
+const EDITOR_LOCALE_KEY = "thyra.vscodeLocale";
+
 /**
- * VS Code Web's zh-CN translations from Microsoft's CDN do not match the
- * workbench build and garble its labels, so the editor starts in English
- * unless its own language setting chose otherwise.
+ * VS Code shows Thyra's language: whenever Thyra's language differs from
+ * the one last handed to VS Code, set VS Code's locale cookie and storage
+ * (its server picks the translation file from the cookie). In between, a
+ * language chosen inside VS Code stays.
  */
-function defaultEditorLocale() {
+function syncEditorLocale() {
+  const locale = getLocale() === "zh-CN" ? "zh-cn" : "en";
   try {
-    if (localStorage.getItem("vscode.nls.locale")) return;
-    localStorage.setItem("vscode.nls.locale", "en");
+    if (localStorage.getItem(EDITOR_LOCALE_KEY) === locale) return;
+    localStorage.setItem(EDITOR_LOCALE_KEY, locale);
+    localStorage.setItem("vscode.nls.locale", locale);
     // biome-ignore lint/suspicious/noDocumentCookie: VS Code reads this cookie.
-    document.cookie = "vscode.nls.locale=en;path=/;max-age=3153600000";
+    document.cookie = `vscode.nls.locale=${locale};path=/;max-age=3153600000`;
   } catch {
     /* Storage disabled: VS Code follows the browser language. */
   }
@@ -200,7 +205,7 @@ export function WorkspaceInspectorHost({
   if (root && workspaceKey) roots.current.set(workspaceKey, root);
   const editorAvailable =
     !!root && !!editorConnections?.has(connectionClient.connectionId);
-  if (editorAvailable) defaultEditorLocale();
+  if (editorAvailable) syncEditorLocale();
   const frames = useEditorFrames(editorAvailable ? root : "", state.file);
 
   const upload = async (files: FileList | File[]) => {
