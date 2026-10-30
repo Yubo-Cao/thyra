@@ -7,7 +7,6 @@ import { store, useStoreSelector } from "../store";
 import type { Workspace, WorktreeList } from "../types";
 import { resolveWorktreeOpenSource, worktreeCreationSource } from "../worktree";
 import {
-  type InspectorView,
   WORKSPACE_INSPECTOR_REQUEST_EVENT,
   type WorkspaceInspectorRequest,
 } from "../workspaceResource";
@@ -298,10 +297,7 @@ export function WorktreeLifecycleDialog({
     return store.openWorktreeFromCwd(openSource.cwd, row.worktree.path, focus);
   };
 
-  const openWorktreeResource = async (
-    row: WorktreeLifecycleRow,
-    view: InspectorView,
-  ) => {
+  const openWorktreeResource = async (row: WorktreeLifecycleRow) => {
     const result = await openWorktree(row, true);
     const targetWorkspaceId = lifecycleOpenedWorkspaceId(result);
     if (!targetWorkspaceId) {
@@ -317,7 +313,6 @@ export function WorktreeLifecycleDialog({
             connectionId: connectionClient.connectionId,
             generation: connectionClient.generation,
             workspaceId: targetWorkspaceId,
-            view,
           },
         },
       ),

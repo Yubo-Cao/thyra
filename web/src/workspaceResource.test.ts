@@ -4,20 +4,16 @@ import type { Workspace } from "./types";
 import {
   checkoutKeyForWorkspace,
   inspectorMaximumSize,
-  inspectorNavigationRatioAtPosition,
   isWorkspaceInspectorShortcut as resolveShortcut,
   INSPECTOR_SEPARATOR_SIZE,
   readInspectorPreferences,
-  readResourceFileSelection,
   relativePathWithinCheckout,
   resourceOwnerKey,
   resourceScopeForWorkspace,
   resourceStateKey,
   resolveWorkspaceForScope,
   sameResourceOwner,
-  writeInspectorNavigationRatio,
   writeInspectorPreferences,
-  writeResourceFileSelection,
   type WorkspaceInspectorState,
 } from "./workspaceResource";
 
@@ -100,12 +96,6 @@ describe("workspace inspector geometry", () => {
     expect(1000 - inspector - INSPECTOR_SEPARATOR_SIZE).toBe(480);
     expect(inspectorMaximumSize("bottom", 1000, 600)).toBe(353);
   });
-
-  test("clamps the expanded navigation splitter around both pane minimums", () => {
-    expect(inspectorNavigationRatioAtPosition(100, 1000)).toBe(0.24);
-    expect(inspectorNavigationRatioAtPosition(400, 1000)).toBe(0.4);
-    expect(inspectorNavigationRatioAtPosition(900, 1000)).toBe(0.692);
-  });
 });
 
 describe("workspace resource scope", () => {
@@ -121,31 +111,18 @@ describe("workspace resource scope", () => {
       workspace("docs", "/repo/.worktrees/docs"),
     );
     expect(new Set([main, auth, docs].map(resourceStateKey)).size).toBe(3);
-    writeResourceFileSelection(storage, auth, "auth-only.md");
-    expect(readResourceFileSelection(storage, main)).toBeUndefined();
-    expect(readResourceFileSelection(storage, docs)).toBeUndefined();
-    writeResourceFileSelection(storage, main, "README.md");
-    writeResourceFileSelection(storage, docs, "docs-only.md");
-    expect(readResourceFileSelection(storage, auth)).toBe("auth-only.md");
-    expect(readResourceFileSelection(storage, main)).toBe("README.md");
-    expect(readResourceFileSelection(storage, docs)).toBe("docs-only.md");
-    writeResourceFileSelection(storage, auth, null);
-    expect(readResourceFileSelection(storage, main)).toBe("README.md");
-    expect(readResourceFileSelection(storage, docs)).toBe("docs-only.md");
+
     writeInspectorPreferences(storage, {
       scope: auth,
       open: true,
-      view: "changes",
       dock: "bottom",
       size: 410,
       expanded: false,
     });
     expect(readInspectorPreferences(storage, main)).toMatchObject({
-      view: "files",
       dock: "right",
     });
     expect(readInspectorPreferences(storage, docs)).toMatchObject({
-      view: "files",
       dock: "right",
     });
   });
@@ -184,17 +161,12 @@ describe("workspace resource scope", () => {
     expect(checkoutKeyForWorkspace(reopened)).toBe(
       checkoutKeyForWorkspace(first),
     );
-    const storage = memoryStorage();
     const unknown = resourceScopeForWorkspace("ssh-profile", first);
-    writeResourceFileSelection(storage, unknown, "unknown-endpoint.md");
+
     reopened.worktree!.gui_settings_key =
       "connection:ssh-profile:ssh:host-a:repo-key";
     const enriched = resourceScopeForWorkspace("ssh-profile", reopened);
     expect(sameResourceOwner(unknown, enriched)).toBe(false);
-    expect(readResourceFileSelection(storage, enriched)).toBeUndefined();
-    expect(readResourceFileSelection(storage, unknown)).toBe(
-      "unknown-endpoint.md",
-    );
   });
 
   test("uses workspace scope when worktree or required checkout identity is missing", () => {
@@ -219,34 +191,27 @@ describe("workspace resource scope", () => {
     const hostB = hostWorkspace("w1", "host-b");
     const scopeA = resourceScopeForWorkspace("ssh-profile", hostA);
     const scopeB = resourceScopeForWorkspace("ssh-profile", hostB);
-    writeResourceFileSelection(storage, scopeA, "host-a.md");
+
     writeInspectorPreferences(storage, {
       scope: scopeA,
       open: true,
-      view: "changes",
       dock: "bottom",
       size: 410,
       expanded: false,
     });
-    writeInspectorNavigationRatio(storage, scopeA, "files", 0.56);
 
     const sibling = resourceScopeForWorkspace(
       "ssh-profile",
       hostWorkspace("linked", "host-a", "/repo/.worktrees/auth"),
     );
     for (const isolated of [scopeB, sibling]) {
-      expect(readResourceFileSelection(storage, isolated)).toBeUndefined();
       expect(readInspectorPreferences(storage, isolated)).toMatchObject({
-        view: "files",
         dock: "right",
-        filesNavigationRatio: 0.4,
       });
       expect(sameResourceOwner(scopeA, isolated)).toBe(false);
       expect(resourceStateKey(scopeA)).not.toBe(resourceStateKey(isolated));
     }
     expect(resolveWorkspaceForScope(scopeA, [hostB])).toBeUndefined();
-    writeResourceFileSelection(storage, scopeB, "host-b.md");
-    writeInspectorNavigationRatio(storage, scopeB, "files", 0.65);
 
     // Reconstruct scopes as after reconnect/restart; runtime workspace IDs may change.
     for (const id of ["w1", "restarted-workspace"]) {
@@ -256,18 +221,12 @@ describe("workspace resource scope", () => {
       expect(resolveWorkspaceForScope(scopeA, [hostB, reopened])).toBe(
         reopened,
       );
-      expect(readResourceFileSelection(storage, restored)).toBe("host-a.md");
+
       expect(readInspectorPreferences(storage, restored)).toMatchObject({
-        view: "changes",
         dock: "bottom",
         bottomSize: 410,
-        filesNavigationRatio: 0.56,
       });
     }
-    expect(readResourceFileSelection(storage, scopeB)).toBe("host-b.md");
-    expect(readInspectorPreferences(storage, scopeB).filesNavigationRatio).toBe(
-      0.65,
-    );
   });
 
   test("encodes repository and checkout paths without delimiter collisions", () => {
@@ -289,21 +248,13 @@ describe("workspace resource scope", () => {
       workspace("auth", "/repo/.worktrees/auth"),
     );
     storage.setItem(
-      "workspaceInspectorFile:checkout:local:repo-key",
-      "sibling-only.md",
-    );
-    storage.setItem(
       "workspaceInspector:checkout:local:repo-key",
-      JSON.stringify({ dock: "bottom", view: "changes" }),
+      JSON.stringify({ dock: "bottom" }),
     );
-    expect(readResourceFileSelection(storage, scope)).toBeUndefined();
+
     expect(readInspectorPreferences(storage, scope)).toMatchObject({
       dock: "right",
-      view: "files",
     });
-    expect(
-      storage.getItem("workspaceInspectorFile:checkout:local:repo-key"),
-    ).toBe("sibling-only.md");
   });
 
   test("uses stable checkout identity instead of a runtime workspace id", () => {
@@ -362,22 +313,20 @@ describe("workspace resource scope", () => {
     );
   });
 
-  test("restores maximized state without losing dock sizes or either list width", () => {
+  test("restores expanded state without losing dock sizes", () => {
     const storage = memoryStorage();
     const scope = resourceScopeForWorkspace("local", workspace("w1"));
     const state: WorkspaceInspectorState = {
       scope,
       open: true,
-      view: "files",
       dock: "right",
       size: 610,
       expanded: false,
     };
     writeInspectorPreferences(storage, state);
-    writeInspectorNavigationRatio(storage, scope, "files", 0.55);
+
     writeInspectorPreferences(storage, { ...state, expanded: true });
-    writeInspectorNavigationRatio(storage, scope, "files", 0.27, true);
-    writeInspectorNavigationRatio(storage, scope, "changes", 0.3, true);
+
     writeInspectorPreferences(storage, {
       ...state,
       open: false,
@@ -386,52 +335,39 @@ describe("workspace resource scope", () => {
     expect(readInspectorPreferences(storage, scope)).toMatchObject({
       expanded: true,
       rightSize: 610,
-      filesNavigationRatio: 0.55,
-      expandedNavigationRatios: { files: 0.27, changes: 0.3 },
     });
     writeInspectorPreferences(storage, { ...state, dock: "bottom", size: 380 });
     expect(readInspectorPreferences(storage, scope)).toMatchObject({
       expanded: false,
       rightSize: 610,
       bottomSize: 380,
-      expandedNavigationRatios: { files: 0.27, changes: 0.3 },
     });
     const other = resourceScopeForWorkspace("remote", workspace("w1"));
     expect(readInspectorPreferences(storage, other)).toMatchObject({
       expanded: false,
-      expandedNavigationRatios: {},
     });
   });
 
-  test("old preferences use an independent, narrow default for expanded lists", () => {
+  test("defaults missing or invalid expanded state to false", () => {
     const storage = {
-      getItem: () => JSON.stringify({ filesNavigationRatio: 0.4 }),
+      getItem: () => JSON.stringify({}),
     };
     const scope = resourceScopeForWorkspace("local", workspace("w1"));
     expect(readInspectorPreferences(storage, scope)).toMatchObject({
       expanded: false,
-      filesNavigationRatio: 0.4,
-      expandedNavigationRatios: {},
     });
-    for (const width of [1000, 1400, 1800]) {
-      expect(
-        inspectorNavigationRatioAtPosition(300, width) * width,
-      ).toBeCloseTo(300);
-    }
     expect(
       readInspectorPreferences(
         {
           getItem: () =>
             JSON.stringify({
               expanded: "true",
-              expandedNavigationRatios: { files: "bad", changes: 99 },
             }),
         },
         scope,
       ),
     ).toMatchObject({
       expanded: false,
-      expandedNavigationRatios: { changes: 0.75 },
     });
   });
 
@@ -444,7 +380,6 @@ describe("workspace resource scope", () => {
     const state: WorkspaceInspectorState = {
       scope,
       open: true,
-      view: "changes",
       dock: "bottom",
       size: 410,
       expanded: false,
@@ -452,14 +387,10 @@ describe("workspace resource scope", () => {
 
     writeInspectorPreferences(storage, state);
     expect(readInspectorPreferences(storage, scope)).toEqual({
-      view: "changes",
       dock: "bottom",
       expanded: false,
-      expandedNavigationRatios: {},
       rightSize: 520,
       bottomSize: 410,
-      filesNavigationRatio: 0.4,
-      changesNavigationRatio: 0.4,
     });
 
     writeInspectorPreferences(storage, { ...state, size: 150 });
@@ -471,17 +402,5 @@ describe("workspace resource scope", () => {
       readInspectorPreferences(memoryStorage(), scope, { bottomSize: 0 })
         .bottomSize,
     ).toBe(360);
-
-    writeInspectorNavigationRatio(storage, scope, "files", 0.56);
-    expect(readInspectorPreferences(storage, scope).filesNavigationRatio).toBe(
-      0.56,
-    );
-
-    writeInspectorPreferences(storage, { ...state, view: "changes" });
-    expect(readInspectorPreferences(storage, scope)).toMatchObject({
-      view: "changes",
-      filesNavigationRatio: 0.56,
-      changesNavigationRatio: 0.4,
-    });
   });
 });

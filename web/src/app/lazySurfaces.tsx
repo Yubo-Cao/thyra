@@ -52,10 +52,6 @@ const LazyOverlayScrollbarLayer = lazyWithReload("overlay-scrollbars", () =>
     default: module.OverlayScrollbarLayer,
   })),
 );
-// The inspector's file and diff caches are not needed for the first screen.
-export const fileExplorerResources = () =>
-  import("../components/fileExplorerResources");
-export const gitDiffQueries = () => import("../inspectorQueries");
 
 // Once the terminal has output, fetch the surfaces people open next, most
 // likely first, one chunk per idle period (skipped under Data Saver and 2G).

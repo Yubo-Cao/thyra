@@ -40,10 +40,6 @@ const base = {
   "pane.splitDown": ["Ctrl+Alt+Shift+D"],
   "pane.zoom": ["Ctrl+Alt+Enter"],
   "workspaces.open": ["Ctrl+Alt+O"],
-  "files.toggle": ["Ctrl+Alt+E"],
-  "diff.toggle": ["Ctrl+Alt+G"],
-  "diff.nextChange": ["Alt+ArrowDown"],
-  "diff.previousChange": ["Alt+ArrowUp"],
   "terminal.pageUp": ["PageUp"],
   "terminal.pageDown": ["PageDown"],
   "terminal.halfPageUp": ["Alt+PageUp"],
@@ -57,8 +53,6 @@ const base = {
   "terminal.copy": ["Ctrl+Shift+C", "Ctrl+Insert"],
   "terminal.paste": ["Ctrl+V", "Ctrl+Shift+V"],
   "terminal.link": ["Ctrl+Click"],
-  "preview.search": ["Ctrl+F"],
-  "preview.selectAll": ["Ctrl+A"],
   "composer.send": ["Ctrl+Enter"],
   "promptEditor.toggle": ["Ctrl+Alt+P"],
   "promptEditor.focus": ["Ctrl+Alt+I"],
@@ -118,16 +112,12 @@ export function defaultShortcutBindings(
       "pane.splitDown": ["Meta+Shift+D"],
       "pane.zoom": ["Meta+Shift+Enter"],
       "workspaces.open": ["Ctrl+Shift+W"],
-      "files.toggle": ["Meta+Shift+E"],
-      "diff.toggle": ["Ctrl+Shift+G"],
       "terminal.lineStart": ["Meta+ArrowLeft", "Meta+ArrowUp"],
       "terminal.lineEnd": ["Meta+ArrowRight", "Meta+ArrowDown"],
       "terminal.deleteToStart": ["Meta+Backspace"],
       "terminal.copy": ["Meta+C"],
       "terminal.paste": ["Meta+V"],
       "terminal.link": ["Meta+Click"],
-      "preview.search": ["Meta+F"],
-      "preview.selectAll": ["Meta+A"],
       "composer.send": ["Meta+Enter"],
     });
   return bindings;
@@ -273,7 +263,7 @@ export function formatShortcut(
 
 export function shortcutScope(id: ShortcutId): string {
   if (id.startsWith("command.") && id !== "command.menu") return "command";
-  if (/^(terminal|preview|composer)\./.test(id)) return id.split(".")[0];
+  if (/^(terminal|composer)\./.test(id)) return id.split(".")[0];
   return "global";
 }
 

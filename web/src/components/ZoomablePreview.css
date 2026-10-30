@@ -48,24 +48,3 @@
   max-width: none;
   object-fit: contain;
 }
-.file-preview-visual,
-.file-preview-mermaid.visual-preview {
-  flex: 1 1 auto;
-  min-height: 0;
-  border: none;
-}
-.file-preview-visual .visual-preview-viewport {
-  background-color: #fff;
-  background-image: conic-gradient(
-    #e5e7eb 25%,
-    transparent 0 50%,
-    #e5e7eb 0 75%,
-    transparent 0
-  );
-  background-size: 20px 20px;
-}
-.file-preview-visual .visual-preview-viewport,
-.file-preview-mermaid.visual-preview .visual-preview-viewport {
-  flex: 1 1 auto;
-  height: auto;
-}

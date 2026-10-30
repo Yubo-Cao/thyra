@@ -6,7 +6,7 @@ import {
 } from "../filesystemPaths";
 import { t } from "../i18n";
 import { useStoreSelector } from "../store";
-import { requestFilePreview } from "./fileExplorerResources";
+import { readWorkspaceFile } from "./workspaceFiles";
 import { ContextMenu } from "./ui/ContextMenu";
 
 export type TerminalFileLinkMenuState = {
@@ -42,7 +42,7 @@ export function TerminalFileLinkMenu({
     let current = true;
     setDirectory(null);
     setChecking(true);
-    void requestFilePreview(state.workspaceId, state.path, { client })
+    void readWorkspaceFile(client, state.workspaceId, state.path)
       .then(
         (preview) => {
           if (current && client.isCurrent())
@@ -72,7 +72,7 @@ export function TerminalFileLinkMenu({
           items: [
             {
               id: "preview",
-              label: directory ? t("Preview directory") : t("Preview file"),
+              label: t("Open in VS Code"),
               onAction: () => onPreview(state.path),
             },
             ...(directory && !alreadyOpen

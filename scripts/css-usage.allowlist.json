@@ -1,6 +1,1 @@
-[
-  {
-    "prefix": "monaco-",
-    "reason": "monaco-editor renders the editor DOM beneath FileEditor."
-  }
-]
+[]

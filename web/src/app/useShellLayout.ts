@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeZenMode, serializeZenMode } from "../appearance";
 import { thyraLocalStorage } from "../browserStorage";
 import { LAYOUT_CHANGE_EVENT } from "../layoutPreferences";
-import type { InspectorView } from "../workspaceResource";
 
-export type MobileView = "workspaces" | "session" | InspectorView;
+export type MobileView = "workspaces" | "session" | "inspector";
 
 const MIN_SIDEBAR = 180;
 const MAX_SIDEBAR = 560;

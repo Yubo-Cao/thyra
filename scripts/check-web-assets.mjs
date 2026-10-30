@@ -4,17 +4,15 @@ import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
-// Lazy Monaco and voice-capture chunks (worklet, VAD, transport) add files,
+// Lazy voice-capture chunks (worklet, VAD, transport) add files,
 // as do per-surface lazy chunks and the small shared chunks Rollup splits
 // between them (single lucide icons, ui primitives), plus the stable vendor
 // chunks and thyra-assets.json. Grouping the tiny shared chunks would pin
 // them (or their dependencies) into the entry; over HTTP/2 they load in
 // parallel for a few hundred bytes of headers each.
-// The lazy PDF viewer adds its worker, CMaps, standard fonts, and image codecs.
 // The lazy agent browser (noVNC) adds its chunk and its sheet.
 const maxFileCount = 332;
-// The lazy Monaco file editor (core, grammars, worker, codicons) adds ~3.5 MiB,
-// the lazy GPU terminal engine (its WASM core inlined) ~2.7 MiB.
+// The lazy GPU terminal engine (its WASM core inlined) adds ~2.7 MiB.
 const maxTotalBytes = 22 * 1024 * 1024;
 // The entry holds the app shell and switchers (workspace tree, agent list,
 // tab bar); React DOM is about 40% of it. Menus, dialogs, pickers and panels
@@ -35,11 +33,6 @@ const maxFirstScreenCssBytes = 143 * 1024;
 const fontDirectory = "assets/fonts";
 const maxFontFileCount = 900;
 const maxFontBytes = 36 * 1024 * 1024;
-// Material Icon Theme SVGs (web/vite.fileIcons.ts): one small file per icon,
-// fetched only when a file row shows it.
-const fileIconDirectory = "assets/file-icons";
-const maxFileIconCount = 1400;
-const maxFileIconBytes = 1.5 * 1024 * 1024;
 
 /** Follow eager imports only, from app entries or explicitly selected features. */
 export function initialAssetFiles(
@@ -123,14 +116,10 @@ async function checkAssets() {
   const root = publicRoot.replace(/\/$/, "");
   const { fileCount, totalBytes } = await collectAssetStats(root, [
     fontDirectory,
-    fileIconDirectory,
   ]);
   const fonts = await collectAssetStats(`${root}/${fontDirectory}`).catch(
     () => ({ fileCount: 0, totalBytes: 0 }),
   );
-  const fileIcons = await collectAssetStats(
-    `${root}/${fileIconDirectory}`,
-  ).catch(() => ({ fileCount: 0, totalBytes: 0 }));
   let manifest;
   try {
     manifest = JSON.parse(
@@ -197,14 +186,6 @@ async function checkAssets() {
     ],
     ["font files", fonts.fileCount, maxFontFileCount, 1, "files"],
     ["font total", fonts.totalBytes, maxFontBytes, 1024 * 1024, "MiB"],
-    ["file icons", fileIcons.fileCount, maxFileIconCount, 1, "files"],
-    [
-      "file icon total",
-      fileIcons.totalBytes,
-      maxFileIconBytes,
-      1024 * 1024,
-      "MiB",
-    ],
   ];
   for (const [name, actual, max, unit, suffix] of checks) {
     const exceeded = actual > max;

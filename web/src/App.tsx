@@ -128,7 +128,6 @@ export default function App() {
     resourceUiKey,
     mobile,
     setMobileView,
-    startupReady,
   });
   const { activateTerminalSurface, stateRef: inspectorStateRef } = inspector;
   const showSessionUnlessInspecting = useCallback(() => {
@@ -255,17 +254,13 @@ export default function App() {
               onSelect={(workspace) =>
                 inspector.keepForWorkspace(workspace.workspace_id)
               }
-              onBrowseFiles={(workspace) =>
-                inspector.openFileExplorer(workspace.workspace_id)
-              }
-              onReviewChanges={(workspace) =>
-                inspector.openDiffViewer(workspace.workspace_id)
+              onOpenEditor={(workspace) =>
+                inspector.openEditor(workspace.workspace_id)
               }
               onSelectAgent={(pane) =>
                 inspector.keepForWorkspace(pane.workspace_id, pane)
               }
-              onBrowseFilesForAgent={inspector.browseFilesForPane}
-              onReviewChangesForAgent={inspector.reviewChangesForPane}
+              onOpenEditorForAgent={inspector.openForPane}
             />
           </div>
         </div>
@@ -284,8 +279,6 @@ export default function App() {
           <div className="workspace-surfaces">
             <WorkspaceStage
               inspector={inspector}
-              mobile={mobile}
-              onMobileViewChange={setMobileView}
               resourceUiKey={resourceUiKey}
               connectionClient={connectionClient}
             >

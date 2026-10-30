@@ -200,6 +200,8 @@ const HTTP_MATRIX: Record<string, string> = {
   "browser.activate": "admin",
   "browser.status": "admin",
   "browser.vnc": "admin",
+  vscode: "admin",
+  "vscode.status": "admin",
   "login.icon": "admin owner editor viewer outsider guest guest-pane anonymous",
   "login.page": "admin owner editor viewer outsider guest guest-pane anonymous",
   "login.script":

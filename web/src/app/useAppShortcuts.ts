@@ -45,10 +45,7 @@ export function useAppShortcuts({
 }: {
   mobile: boolean;
   paneJump: PaneJump;
-  inspector: Pick<
-    WorkspaceInspector,
-    "stateRef" | "toggle" | "toggleView" | "setExpanded"
-  >;
+  inspector: Pick<WorkspaceInspector, "stateRef" | "toggle" | "setExpanded">;
   openWorkspaces: () => void;
   toggleZenMode: () => void;
   toggleSidebar: () => void;
@@ -64,7 +61,7 @@ export function useAppShortcuts({
     openRecent,
     openSearch,
   } = paneJump;
-  const { stateRef, toggle, toggleView, setExpanded } = inspector;
+  const { stateRef, toggle, setExpanded } = inspector;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
@@ -287,9 +284,7 @@ export function useAppShortcuts({
         return;
       }
       const actions: [ShortcutId, () => void][] = [
-        ["files.toggle", () => toggleView("files")],
         ["workspaces.open", openWorkspaces],
-        ["diff.toggle", () => toggleView("changes")],
         ["zen.toggle", toggleZenMode],
       ];
       for (const [id, action] of actions) {
@@ -339,7 +334,6 @@ export function useAppShortcuts({
     stateRef,
     toggle,
     toggleSidebar,
-    toggleView,
     toggleZenMode,
   ]);
 }

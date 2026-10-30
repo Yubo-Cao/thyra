@@ -262,15 +262,13 @@ export function AgentContextMenu({
   state,
   onClose,
   onFocus,
-  onBrowseFiles,
-  onReviewChanges,
+  onOpenEditor,
   onClosePane,
 }: {
   state: AgentMenuState | null;
   onClose: () => void;
   onFocus: (pane: Pane) => void;
-  onBrowseFiles?: (pane: Pane) => void;
-  onReviewChanges?: (pane: Pane) => void;
+  onOpenEditor?: (pane: Pane) => void;
   onClosePane: (pane: Pane) => void;
 }) {
   // The last pane keeps the menu's content while it animates closed.
@@ -310,14 +308,9 @@ export function AgentContextMenu({
               onAction: () => onFocus(pane),
             },
             {
-              id: "browse-files",
-              label: t("Browse files at agent CWD"),
-              onAction: () => onBrowseFiles?.(pane),
-            },
-            {
-              id: "review-changes",
-              label: t("Review workspace changes"),
-              onAction: () => onReviewChanges?.(pane),
+              id: "open-editor",
+              label: t("Open in VS Code"),
+              onAction: () => onOpenEditor?.(pane),
             },
           ],
         },

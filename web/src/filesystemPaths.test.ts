@@ -7,12 +7,7 @@ import {
   normalizeFilesystemPath,
   parentFilesystemPath,
 } from "./filesystemPaths";
-import {
-  isFilesystemPath,
-  readExplorerViewMemory,
-  symlinkDescription,
-  writeExplorerViewMemory,
-} from "./components/fileExplorerResources";
+import { isFilesystemPath } from "./components/workspaceFiles";
 
 test("filesystem breadcrumbs link every ancestor from the root", () => {
   expect(filesystemBreadcrumbs("/home/me/src")).toEqual([
@@ -32,45 +27,13 @@ test("filesystem breadcrumbs link every ancestor from the root", () => {
   expect(filesystemBaseName("/")).toBe("/");
 });
 
-test("host paths select filesystem scope and view memory stays per context", () => {
+test("host paths select filesystem scope", () => {
   for (const path of ["/etc", "C:/Users", "~", "~/src"]) {
     expect(isFilesystemPath(path)).toBe(true);
   }
   for (const path of ["", "src/app", "~other"]) {
     expect(isFilesystemPath(path)).toBe(false);
   }
-  expect(readExplorerViewMemory("a")).toEqual({ mode: "workspace" });
-  writeExplorerViewMemory("a", { mode: "filesystem", directory: "/tmp" });
-  writeExplorerViewMemory("a", { directory: "/var" });
-  expect(readExplorerViewMemory("a")).toEqual({
-    mode: "filesystem",
-    directory: "/var",
-  });
-  expect(readExplorerViewMemory("b")).toEqual({ mode: "workspace" });
-});
-
-test("symlink descriptions match the workspace tree wording", () => {
-  const base = { name: "x", path: "x", size: 0, mtime_ms: 0, hidden: false };
-  expect(symlinkDescription({ ...base, type: "file" })).toBe("");
-  expect(
-    symlinkDescription({ ...base, type: "symlink", symlink_status: "broken" }),
-  ).toBe("broken symlink");
-  expect(
-    symlinkDescription({
-      ...base,
-      type: "directory",
-      symlink_status: "external",
-      symlink_target_type: "directory",
-    }),
-  ).toBe("external symlink");
-  expect(
-    symlinkDescription({
-      ...base,
-      type: "symlink",
-      symlink_status: "internal",
-      symlink_target_type: "file",
-    }),
-  ).toBe("symlink to file");
 });
 
 test("filesystem parents stop at POSIX, drive, and share roots", () => {

@@ -1,8 +1,7 @@
 import {
-  FileDiff,
+  Code,
   FolderOpen,
   Globe,
-  FolderTree,
   MoreHorizontal,
   PanelTop,
   SquarePen,
@@ -114,7 +113,7 @@ function useComposerHasDraft(draftKey: string | null) {
   return hasDraft;
 }
 
-/** Session / Files / Changes switcher of the mobile layout. */
+/** Session / Editor switcher of the mobile layout. */
 export function MobileViewNav({
   mobileView,
   collapsed,
@@ -122,10 +121,7 @@ export function MobileViewNav({
 }: {
   mobileView: MobileView;
   collapsed: boolean;
-  inspector: Pick<
-    WorkspaceInspector,
-    "activateTerminalSurface" | "openFileExplorer" | "openDiffViewer"
-  >;
+  inspector: Pick<WorkspaceInspector, "activateTerminalSurface" | "openEditor">;
 }) {
   const tabIndex = collapsed ? -1 : 0;
   return (
@@ -143,20 +139,12 @@ export function MobileViewNav({
         onClick={inspector.activateTerminalSurface}
       />
       <IconButton
-        className={mobileView === "files" ? "active" : ""}
-        title={shortcutTitle(t("Files"), "files.toggle")}
-        label={t("Show workspace files")}
-        icon={<FolderTree size={16} aria-hidden="true" />}
+        className={mobileView === "inspector" ? "active" : ""}
+        title={shortcutTitle(t("VS Code"), "inspector.toggle")}
+        label={t("Show the workspace editor")}
+        icon={<Code size={16} aria-hidden="true" />}
         tabIndex={tabIndex}
-        onClick={() => inspector.openFileExplorer()}
-      />
-      <IconButton
-        className={mobileView === "changes" ? "active" : ""}
-        title={shortcutTitle(t("Changes"), "diff.toggle")}
-        label={t("Show workspace changes")}
-        icon={<FileDiff size={16} aria-hidden="true" />}
-        tabIndex={tabIndex}
-        onClick={() => inspector.openDiffViewer()}
+        onClick={() => inspector.openEditor()}
       />
     </nav>
   );

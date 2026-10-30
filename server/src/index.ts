@@ -5,6 +5,7 @@ import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
 import { createWebPushService } from "./notifications/web-push";
+import { createVscodeProxy, isVscodePath, vscodeConfig } from "./vscode/proxy";
 import {
   agentBrowserConfig,
   createAgentBrowser,
@@ -642,7 +643,11 @@ function closeSockets(
  */
 function checkLiveSessions(force = false) {
   if (!accessControl.refresh() && !force) return;
-  for (const client of [...clients, ...vncSockets.keys()]) {
+  for (const client of [
+    ...clients,
+    ...vncSockets.keys(),
+    ...vscodeSockets.keys(),
+  ]) {
     const principal = socketPrincipals.get(client);
     if (principal?.kind === "guest") {
       // Revoking a link deletes its guest sessions, here or in the CLI.
@@ -737,6 +742,12 @@ const vncSockets = new Map<
   ServerWebSocket<unknown>,
   { message(data: Uint8Array): void; close(): void }
 >();
+/** VS Code sockets (vscode/proxy.ts): outside `clients` like VNC. */
+const vscodeSockets = new Map<
+  ServerWebSocket<unknown>,
+  { message(data: string | Uint8Array<ArrayBuffer>): void; close(): void }
+>();
+const vscodeProxy = createVscodeProxy(vscodeConfig());
 /** Connections whose Herdr runs on this host (no SSH), by id. */
 const localConnections = new Set<string>();
 /** The agent browser serves the default connection when it is local. */
@@ -2275,6 +2286,8 @@ type SocketData = {
   rtc: boolean;
   /** An agent-browser VNC socket (see browser/agent-browser.ts). */
   vnc?: true;
+  /** A VS Code remote socket and the request it opens upstream. */
+  vscode?: { req: Request; url: URL };
 };
 
 type AuthenticatedRoute = {
@@ -2371,6 +2384,32 @@ async function routeAuthenticated(
     )
       return undefined;
     return new Response("websocket upgrade failed", { status: 400 });
+  }
+  if (url.pathname === "/api/vscode") {
+    // The editor sees this host's files, so only local connections use it.
+    return Response.json(
+      {
+        connections: vscodeProxy.available()
+          ? [...localConnections].filter((id) => connectionManager.has(id))
+          : [],
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  }
+  if (isVscodePath(url.pathname)) {
+    if (req.headers.get("upgrade")?.toLowerCase() !== "websocket")
+      return vscodeProxy.fetchHttp(req, url);
+    return server.upgrade(req, {
+      data: {
+        principal,
+        clientSession: null,
+        directOrigin: null,
+        rtc: false,
+        vscode: { req, url },
+      },
+    })
+      ? undefined
+      : new Response("websocket upgrade failed", { status: 400 });
   }
   if (url.pathname === "/ws/browser") {
     if (!agentBrowserConnection())
@@ -2611,7 +2650,11 @@ async function primaryFetch(
   if (url.pathname === AGENT_BOARD_PATH)
     return handleAgentBoard(req, messageBoard);
   const route = httpRoute(req, url, requestPathname);
-  const originMode = originCheckMode(url.pathname, req.method);
+  const originMode = originCheckMode(
+    url.pathname,
+    req.method,
+    req.headers.get("upgrade")?.toLowerCase() === "websocket",
+  );
   // The silent tailnet sign-in is a CORS request from the public origin; its
   // handler allows exactly that origin.
   if (originMode !== "none" && route.routeId !== "sso.code") {
@@ -2750,7 +2793,11 @@ async function publicRoute(
   }
   if (url.pathname === AGENT_BOARD_PATH)
     return handleAgentBoard(req, messageBoard);
-  const originMode = originCheckMode(url.pathname, req.method);
+  const originMode = originCheckMode(
+    url.pathname,
+    req.method,
+    req.headers.get("upgrade")?.toLowerCase() === "websocket",
+  );
   if (originMode !== "none") {
     const decision = publicAccessPolicy.checkOrigin(
       req,
@@ -2825,6 +2872,13 @@ async function publicRoute(
 const websocketHandlers: WebSocketHandler<SocketData> = {
   perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
   open(ws) {
+    if (ws.data.vscode) {
+      socketPrincipals.set(ws, ws.data.principal);
+      const { req, url } = ws.data.vscode;
+      vscodeSockets.set(ws, vscodeProxy.openSocket(ws, req, url));
+      ws.data.vscode = undefined;
+      return;
+    }
     if (ws.data.vnc) {
       socketPrincipals.set(ws, ws.data.principal);
       vncSockets.set(ws, agentBrowser.openVnc(ws as VncPeer));
@@ -2873,7 +2927,7 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     );
   },
   drain(ws) {
-    if (ws.data.vnc) return;
+    if (ws.data.vnc || vscodeSockets.has(ws)) return;
     // The viewer caught up: send the newest repaint we held back.
     flushCoalescedMessages(ws, {
       cleanup: () => {
@@ -2886,6 +2940,8 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     });
   },
   message(ws, message) {
+    const vscode = vscodeSockets.get(ws);
+    if (vscode) return vscode.message(message);
     const vnc = vncSockets.get(ws);
     if (vnc) {
       if (typeof message !== "string") vnc.message(message);
@@ -2952,6 +3008,12 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
       });
   },
   close(ws) {
+    const vscode = vscodeSockets.get(ws);
+    if (vscode) {
+      vscode.close();
+      vscodeSockets.delete(ws);
+      return;
+    }
     if (ws.data.vnc) {
       vncSockets.get(ws)?.close();
       vncSockets.delete(ws);

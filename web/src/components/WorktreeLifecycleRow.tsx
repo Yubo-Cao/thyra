@@ -1,15 +1,13 @@
 import {
-  FileDiff,
+  Code,
   Focus as FocusIcon,
   FolderOpen,
-  FolderTree,
   GitBranch,
   GitMerge,
   Trash2,
 } from "lucide-react";
 import { t } from "../i18n";
 import { store } from "../store";
-import type { InspectorView } from "../workspaceResource";
 import {
   lifecycleGitChangeCount,
   lifecycleGitSummary,
@@ -40,7 +38,7 @@ export function WorktreeLifecycleRow({
   ) => void;
   onFocus: (workspaceId: string) => void;
   onOpen: (row: LifecycleRow) => Promise<unknown>;
-  onOpenResource: (row: LifecycleRow, view: InspectorView) => Promise<unknown>;
+  onOpenResource: (row: LifecycleRow) => Promise<unknown>;
   onRemove: (row: LifecycleRow) => void;
 }) {
   const workspace = row.workspace;
@@ -94,32 +92,18 @@ export function WorktreeLifecycleRow({
           </Button>
         )}
         {!workspace && !row.worktree.is_prunable ? (
-          <>
-            <Button
-              title={t("Open workspace and browse files")}
-              disabled={operationRunning}
-              onClick={() =>
-                runOperation(rowKey, t("Opening Files"), () =>
-                  onOpenResource(row, "files"),
-                )
-              }
-            >
-              <FolderTree size={14} />
-              {t("Files")}
-            </Button>
-            <Button
-              title={t("Open workspace and review changes")}
-              disabled={operationRunning}
-              onClick={() =>
-                runOperation(rowKey, t("Opening Changes"), () =>
-                  onOpenResource(row, "changes"),
-                )
-              }
-            >
-              <FileDiff size={14} />
-              {t("Changes")}
-            </Button>
-          </>
+          <Button
+            title={t("Open workspace in VS Code")}
+            disabled={operationRunning}
+            onClick={() =>
+              runOperation(rowKey, t("Opening the editor"), () =>
+                onOpenResource(row),
+              )
+            }
+          >
+            <Code size={14} />
+            {t("VS Code")}
+          </Button>
         ) : null}
         {workspace ? (
           <Button

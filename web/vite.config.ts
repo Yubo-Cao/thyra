@@ -1,38 +1,13 @@
-import { realpathSync } from "node:fs";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { assetManifestPlugin, vendorChunk } from "./vite.chunks";
-import { fileIconsPlugin } from "./vite.fileIcons";
 import { resttyWasmPlugin } from "./vite.restty";
-
-// Monaco's package exports append `.js` to every subpath, which cannot reach
-// its CSS or worker sources; alias its ESM tree directly instead.
-const monacoEsmRoot = realpathSync(
-  dirname(fileURLToPath(import.meta.resolve("monaco-editor"))),
-);
 
 // In dev, the web app talks to the bridge through Vite's proxy so the
 // frontend can use a relative /ws URL (same origin, no hardcoded port).
 export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-    resttyWasmPlugin(),
-    fileIconsPlugin(),
-    assetManifestPlugin(),
-  ],
-  resolve: {
-    alias: [
-      {
-        find: /^shiki$/,
-        replacement: fileURLToPath(new URL("./src/shiki.ts", import.meta.url)),
-      },
-      { find: /^monaco-esm\//, replacement: `${monacoEsmRoot}/` },
-    ],
-  },
+  plugins: [react(), tailwindcss(), resttyWasmPlugin(), assetManifestPlugin()],
   worker: {
     format: "es",
   },

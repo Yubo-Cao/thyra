@@ -3,7 +3,6 @@ import { matchesShortcut, type ShortcutBindings } from "./shortcutBindings";
 import type { Workspace } from "./types";
 import { connectionStorageKey } from "./connectionStorage";
 
-export type InspectorView = "files" | "changes";
 export const WORKSPACE_INSPECTOR_REQUEST_EVENT =
   "thyra:workspace-inspector-request";
 
@@ -21,7 +20,6 @@ export interface WorkspaceInspectorRequest {
   connectionId: string;
   generation: number;
   workspaceId: string;
-  view: InspectorView;
 }
 
 export type InspectorDock = "right" | "bottom";
@@ -66,39 +64,33 @@ export type ResourceScope =
       workspaceId: string;
     };
 
+/** A file the editor should open; `nonce` repeats a request for the same file. */
+export interface InspectorFileRequest {
+  path: string;
+  line?: number;
+  nonce: number;
+}
+
 export interface WorkspaceInspectorState {
   scope: ResourceScope;
   open: boolean;
-  view: InspectorView;
   dock: InspectorDock;
   size: number;
   expanded: boolean;
   returnTabId?: string;
-  originPaneId?: string;
-  initialDirectory?: string;
+  file?: InspectorFileRequest;
 }
 
 export interface InspectorPreferences {
-  view: InspectorView;
   dock: InspectorDock;
   expanded: boolean;
-  expandedNavigationRatios: Partial<Record<InspectorSplitView, number>>;
   rightSize: number;
   bottomSize: number;
-  filesNavigationRatio: number;
-  changesNavigationRatio: number;
 }
-
-export type InspectorSplitView = Extract<InspectorView, "files" | "changes">;
 
 const DEFAULT_RIGHT_SIZE = 520;
 const DEFAULT_BOTTOM_SIZE = 360;
-export const DEFAULT_INSPECTOR_NAVIGATION_RATIO = 0.4;
-export const INSPECTOR_NAVIGATION_MIN_SIZE = 240;
-export const INSPECTOR_DETAIL_MIN_SIZE = 300;
-export const INSPECTOR_INTERNAL_SEPARATOR_SIZE = 8;
 const INSPECTOR_PREFERENCES_PREFIX = "workspaceInspector:";
-const FILE_SELECTION_PREFIX = "workspaceInspectorFile:";
 
 function normalizedCheckoutPath(path: string): string {
   const normalized = path
@@ -211,32 +203,6 @@ function finiteSize(value: unknown, fallback: number): number {
     : fallback;
 }
 
-function finiteNavigationRatio(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.min(Math.max(value, 0.15), 0.75)
-    : DEFAULT_INSPECTOR_NAVIGATION_RATIO;
-}
-
-export function inspectorNavigationRatioAtPosition(
-  pointerOffset: number,
-  availableWidth: number,
-): number {
-  if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
-    return DEFAULT_INSPECTOR_NAVIGATION_RATIO;
-  }
-  const maximum = Math.max(
-    INSPECTOR_NAVIGATION_MIN_SIZE,
-    availableWidth -
-      INSPECTOR_DETAIL_MIN_SIZE -
-      INSPECTOR_INTERNAL_SEPARATOR_SIZE,
-  );
-  const width = Math.min(
-    Math.max(pointerOffset, INSPECTOR_NAVIGATION_MIN_SIZE),
-    maximum,
-  );
-  return finiteNavigationRatio(width / availableWidth);
-}
-
 export function readInspectorPreferences(
   storage: Pick<Storage, "getItem">,
   scope: ResourceScope,
@@ -245,37 +211,20 @@ export function readInspectorPreferences(
   > = {},
 ): InspectorPreferences {
   const fallback: InspectorPreferences = {
-    view: "files",
     dock: "right",
     expanded: false,
-    expandedNavigationRatios: {},
     rightSize: finiteSize(defaults.rightSize, DEFAULT_RIGHT_SIZE),
     bottomSize: finiteSize(defaults.bottomSize, DEFAULT_BOTTOM_SIZE),
-    filesNavigationRatio: DEFAULT_INSPECTOR_NAVIGATION_RATIO,
-    changesNavigationRatio: DEFAULT_INSPECTOR_NAVIGATION_RATIO,
   };
   try {
     const raw = storage.getItem(preferencesStorageKey(scope));
     if (!raw) return fallback;
     const value = JSON.parse(raw) as Partial<InspectorPreferences>;
     return {
-      view: value.view === "changes" ? "changes" : "files",
       dock: value.dock === "bottom" ? "bottom" : "right",
       expanded: value.expanded === true,
-      expandedNavigationRatios: Object.fromEntries(
-        (["files", "changes"] as const).flatMap((view) => {
-          const ratio = value.expandedNavigationRatios?.[view];
-          return typeof ratio === "number" && Number.isFinite(ratio)
-            ? [[view, finiteNavigationRatio(ratio)]]
-            : [];
-        }),
-      ),
       rightSize: finiteSize(value.rightSize, DEFAULT_RIGHT_SIZE),
       bottomSize: finiteSize(value.bottomSize, DEFAULT_BOTTOM_SIZE),
-      filesNavigationRatio: finiteNavigationRatio(value.filesNavigationRatio),
-      changesNavigationRatio: finiteNavigationRatio(
-        value.changesNavigationRatio,
-      ),
     };
   } catch {
     return fallback;
@@ -288,63 +237,10 @@ export function writeInspectorPreferences(
 ): void {
   const previous = readInspectorPreferences(storage, state.scope);
   const next: InspectorPreferences = {
-    ...previous,
-    view: state.view,
     dock: state.dock,
     expanded: state.expanded,
     rightSize: state.dock === "right" ? state.size : previous.rightSize,
     bottomSize: state.dock === "bottom" ? state.size : previous.bottomSize,
   };
   storage.setItem(preferencesStorageKey(state.scope), JSON.stringify(next));
-}
-
-export function writeInspectorNavigationRatio(
-  storage: Pick<Storage, "getItem" | "setItem">,
-  scope: ResourceScope,
-  view: InspectorSplitView,
-  ratio: number,
-  expanded = false,
-): void {
-  const previous = readInspectorPreferences(storage, scope);
-  const key =
-    view === "files" ? "filesNavigationRatio" : "changesNavigationRatio";
-  storage.setItem(
-    preferencesStorageKey(scope),
-    JSON.stringify(
-      expanded
-        ? {
-            ...previous,
-            expandedNavigationRatios: {
-              ...previous.expandedNavigationRatios,
-              [view]: finiteNavigationRatio(ratio),
-            },
-          }
-        : { ...previous, [key]: finiteNavigationRatio(ratio) },
-    ),
-  );
-}
-
-function fileSelectionStorageKey(scope: ResourceScope): string {
-  return connectionStorageKey(
-    scope.connectionId,
-    `${FILE_SELECTION_PREFIX}${resourceOwnerKey(scope)}`,
-  );
-}
-
-export function readResourceFileSelection(
-  storage: Pick<Storage, "getItem">,
-  scope: ResourceScope,
-): string | undefined {
-  const path = storage.getItem(fileSelectionStorageKey(scope))?.trim();
-  return path || undefined;
-}
-
-export function writeResourceFileSelection(
-  storage: Pick<Storage, "setItem" | "removeItem">,
-  scope: ResourceScope,
-  path?: string | null,
-): void {
-  const key = fileSelectionStorageKey(scope);
-  if (path) storage.setItem(key, path);
-  else storage.removeItem(key);
 }

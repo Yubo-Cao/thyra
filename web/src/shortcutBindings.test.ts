@@ -201,9 +201,6 @@ describe("shortcut matching and validation", () => {
     expect(shortcutConflicts("tab.create", ["Ctrl+A"], linux())).toContain(
       "terminal.lineStart",
     );
-    expect(shortcutConflicts("preview.selectAll", ["Ctrl+A"], linux())).toEqual(
-      [],
-    );
     expect(shortcutConflicts("command.1", ["Ctrl+Alt+1"], linux())).toEqual([]);
   });
   test("tab and pane handlers use edited keys and stop recognizing the old combination", () => {

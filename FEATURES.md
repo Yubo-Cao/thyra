@@ -101,7 +101,7 @@ The browser only chooses an agent, never the command text.
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; click file/directory paths
-  to preview them directly in the Inspector, including paths with spaces when
+  to open them in the Inspector's VS Code, including paths with spaces when
   quoted, bracketed (`Edit(src/foo bar.ts)`) or followed by `:line:col`, once
   the file exists. Dragging selects without opening.
   Touch uses long-press, then **Open link** or
@@ -142,23 +142,20 @@ The editor appears only at an available shell prompt while you hold input contro
 
 ## Workspace Inspector
 
-Open **Files** or **Changes** from the Inspector button,
-keyboard shortcuts, or workspace/agent menus.
+The Inspector docks VS Code beside the terminal, opened on the focused
+workspace's checkout. Open it from the Inspector button, `Cmd+Shift+B` /
+`Ctrl+Alt+Shift+B`, **Open in VS Code** in workspace and agent menus or the
+command menu, or a terminal file link, which opens that file.
 
-- Dock right/bottom, resize, or expand without unmounting terminals. Narrow
-  layouts use drill-down/overlay views; Esc dismisses transient UI, not Inspector.
-- Tab switches keep Inspector open; workspace switches restore checkout-scoped
-  selection/layout. Files and Changes save separate widths. Closing returns to
-  the originating tab if it still exists.
-- Agent browsing starts at its cwd only inside the checkout. Terminal links use
-  their pane's workspace. Changes describe the checkout, not agent ownership.
-- Closed worktrees must open before browsing; missing ones offer cleanup, never
-  sibling files. Directory previews can prefill **New workspace**.
+- Dock right/bottom, resize, or expand without unmounting terminals. The
+  editor follows the focused workspace; the last three folders stay loaded, so
+  switching back is instant. Closing returns to the originating tab.
+- **Upload** copies files into the checkout root; it is also the whole
+  Inspector where VS Code is unavailable: for non-admins, on SSH connections,
+  or when the host has no VS Code server ([deployment](docs/DEPLOYMENT.md#vs-code-inspector)).
+- **Open VS Code in a new tab** gives the same editor the full window.
 
-Inspector leaves the sidebar unchanged. Previews stay read-only
-until **Edit** opens the file editor;
-[resource ownership](docs/ARCHITECTURE.md#workspace-resource-ownership) prevents
-cross-worktree state mixing.
+The editor is a shell as the host user, so only instance admins reach it.
 
 ## Agent Awareness
 
@@ -195,7 +192,7 @@ New messages show a dismissible notice with an action to open the board.
 Reloading or reconnecting refreshes the board without repeating notices for older messages.
 
 Messages belong to your inbox and survive terminal/session closure and server restarts.
-Switch to the attachment's source connection to open a file through the normal authorized workspace preview.
+Switch to the attachment's source connection to open a file in the Inspector.
 A missing connection, workspace, or file is unavailable while the message stays visible.
 Shared-view guests cannot access the board.
 See [agent setup](docs/DEPLOYMENT.md#agent-message-board) for MCP and remote API configuration.
@@ -225,103 +222,6 @@ Worktree creation fetches the advertised default commit by its object ID
 without rewriting remote-tracking refs or `FETCH_HEAD`. Stale tracking-ref
 names do not block creation, which uses the resolved commit rather than a ref
 that another fetch could change.
-
-## File Explorer and Preview
-
-- Browse a folder as a tree (**List**) or as tiles (**Grid**) with
-  [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
-  file and folder icons (exact names such as `package.json` and `Dockerfile`,
-  extensions, and folder names such as `src` or `.github`, open and closed).
-  Grid tiles show thumbnails of images, and of videos and PDFs when the host has
-  ffmpeg or pdftoppm; thumbnails load only for visible tiles and never delay the
-  listing. Sort by name, type, size or modification time (folders first), toggle
-  hidden files, and filter **loaded** names/paths with case-insensitive
-  substrings or globs (`*`, `?`, `[]`, `{}`, `**`). Git badges mark changes;
-  ignored files are dimmed.
-- Both scopes have back/forward/up (also Alt+Left/Right/Up and the mouse back
-  and forward buttons) and clickable breadcrumbs; double-click a folder, or
-  Alt+Down, to open it. Keys work as in VS Code: arrows move and Right/Left
-  expand and collapse, Enter or Space opens, Backspace goes to the parent,
-  Home/End/Page Up/Page Down jump, typing a name jumps to it, Shift+Alt+C
-  copies the path, and the Menu key or Shift+F10 opens the context menu.
-- The explorer header switches between **Workspace** (the checkout) and
-  **Filesystem** (any path on the connected host, local or SSH). Filesystem mode
-  adds a path bar (click the empty part of the path; `~` and `~/...` resolve to
-  the host user's home) and quick locations (workspace root, pane directories,
-  Home, `/`). Each explorer remembers its mode and directory until the page
-  reloads; opening an agent's files at a cwd outside the checkout starts in
-  Filesystem mode there.
-- Select with click, Ctrl/Cmd-click and Shift-click, Shift+arrows (Ctrl/Cmd+arrows
-  move without selecting, Ctrl/Cmd+Space toggles) and Ctrl/Cmd+A. **New file**
-  and **New folder** open a name field in place (`a/b/c.txt` creates the
-  folders on the way); F2 renames in place. Cut, copy and paste
-  (Ctrl/Cmd+X/C/V) work across folders and between explorers of one
-  connection; pasting beside the original makes `name copy.ext`, and moving
-  onto an existing name asks to **Replace** or **Keep both**. **Duplicate**,
-  **Copy path** and **Copy relative path** work on the whole selection, and
-  **Reveal active file** shows the previewed file in the tree. Every action is
-  also in the context menu (right-click, long-press, the row's `...` button, or
-  the folder's empty space). Viewers and share-link guests browse, preview and
-  download only. Files outside the checkout preview and download like
-  workspace files.
-- **Delete** (or Cmd+Backspace) moves the selection to the host's trash with an
-  **Undo** toast: the freedesktop.org trash on Linux and the BSDs (restorable
-  from the desktop's trash too), `~/.Trash` on macOS, and a Thyra trash folder
-  elsewhere, over SSH as well. Shift+Delete deletes permanently after a
-  confirmation.
-- Drag rows onto a folder to move them; hold Ctrl (Option on macOS) to copy.
-  Hovering a folder while dragging expands it (or opens it in the grid). Drop
-  files or whole folders from the desktop to upload them; in Chromium, drag a
-  file out to the desktop to download it.
-- On touch screens a long-press selects a row and shows a selection bar (cut,
-  copy, paste, rename, download, trash and the full menu); further taps add or
-  remove rows, and moving the finger after the long-press drags the selection
-  onto a folder.
-- **Extract here** unpacks zip, tar, tar.gz/tgz, tar.xz, tar.zst, tar.bz2,
-  and 7z or rar when 7-Zip, unrar or bsdtar is installed, into a new folder
-  named after the archive. **Compress to .zip** or **.tar.gz** packs the
-  selection. Both run on the host that owns the files (the SSH host for SSH
-  connections) with its own tar, unzip, zip, bsdtar or 7-Zip, show progress in
-  a toast with **Cancel**, and say which tool to install when one is missing.
-  Archives with absolute or `..` paths, or symlinks that point outside, are
-  refused, and extraction stops past 100,000 entries or 8 GiB.
-- Text previews provide highlighting, line numbers, search, and refresh.
-  Markdown has a Preview/Source switch with the active mode highlighted;
-  Mermaid fences and `.mmd`/`.mermaid` files
-  have zoomable diagrams and source views. Markdown links navigate within
-  Inspector; external links open a browser tab.
-- Workspace `.html`/`.htm` files open in Preview mode with a Preview/Source switch.
-  Static previews support workspace CSS, images, and fonts, including relative
-  CSS imports, plus HTTPS CDN stylesheets. Scripts, external images and external
-  fonts are blocked; HTML source is limited to 512 KiB. Files outside the workspace
-  remain available as source or downloads.
-- **Edit** opens complete text previews up to 512 KiB in a Monaco editor with
-  syntax highlighting for common languages. **Save** or Ctrl/Cmd+S writes the file
-  back to its host, including SSH connections and absolute filesystem paths;
-  **Revert** restores the last saved text. If the file changed on disk since it
-  was opened, choose **Reload** or **Overwrite**. Unsaved drafts survive switching
-  files and prompt before closing the editor or the page.
-- Preview images (including SVG), PDFs, and local Markdown images with zoom/Fit.
-  Unsupported binaries are download-only; decoding depends on the browser.
-- Download files, or directories as `.tar.gz`. Workspace operations stay
-  inside the checkout; every operation works over SSH.
-
-![Expanded file explorer rendering a README with a Mermaid diagram and a table, in the light theme](docs/images/thyra-desktop-files.png)
-
-## Diff Viewer
-
-- Review **Working tree** or **Against main** as a collapsible folder tree with
-  status tokens and added/deleted counts; a file both staged and unstaged shows
-  both patches. Right-click or long-press opens the file or copies its path.
-- The selected file's unified diff loads on demand with syntax highlighting;
-  changed images show before and after. Step through changes with the arrow
-  buttons or `Alt+Down`/`Alt+Up`; **Wrap** toggles line wrapping and
-  **Open in Files** jumps to the file preview.
-- Changes is read-only: stage, discard, and commit in a terminal.
-
-Scope and wrapping persist per browser. Refresh reloads the list and the shown diff.
-
-![Changes inspector showing a wrapped working-tree diff beside a live agent terminal](docs/images/thyra-desktop-changes.png)
 
 ## Mobile and PWA
 
@@ -461,10 +361,6 @@ Common defaults (Linux/Android exceptions follow):
 | Numbered tab | `Ctrl+1…9` | `Ctrl+Alt+1…9` |
 | Numbered command menu action | `Option+1…9` | `Alt+1…9` |
 | Workspaces | `Ctrl+Shift+W` | `Ctrl+Alt+O` |
-| File Explorer | `Cmd+Shift+E` | `Ctrl+Alt+E` |
-| Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
-| Search raw preview | `Cmd+F` | `Ctrl+F` |
-| Next / previous change in a diff | `Option+Down` / `Option+Up` | `Alt+Down` / `Alt+Up` |
 | Send composer or prompt editor | `Cmd+Enter` | `Ctrl+Enter` |
 | Show / hide the prompt editor; focus terminal or editor | `Ctrl+Option+P` / `Ctrl+Option+I` | `Ctrl+Alt+P` / `Ctrl+Alt+I` |
 | Copy terminal selection | `Cmd+C` | `Ctrl+Shift+C` / `Ctrl+Insert` |

@@ -30,10 +30,7 @@ export function TopBar({
   configuration: ConfigurationProps;
   zenMode: boolean;
   onZenModeChange: (zenMode: boolean) => void;
-  inspector: Pick<
-    WorkspaceInspector,
-    "openFileExplorer" | "openFileExplorerFile" | "openDiffViewer"
-  >;
+  inspector: Pick<WorkspaceInspector, "openEditor" | "openFile">;
   onOpenProjectLauncher: () => void;
 }) {
   return (
@@ -60,12 +57,11 @@ export function TopBar({
       </div>
       <div className="topbar-actions">
         <div className="topbar-command-group">
-          <MessageBoard onOpenFile={inspector.openFileExplorerFile} />
+          <MessageBoard onOpenFile={inspector.openFile} />
           <CommandMenu
             key={`${resourceUiKey}:commands`}
-            onOpenFileExplorer={inspector.openFileExplorer}
-            onOpenFile={inspector.openFileExplorerFile}
-            onOpenDiffViewer={inspector.openDiffViewer}
+            onOpenEditor={inspector.openEditor}
+            onOpenFile={inspector.openFile}
             onOpenProjectLauncher={onOpenProjectLauncher}
           />
           <ConfigMenu

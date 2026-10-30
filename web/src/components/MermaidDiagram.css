@@ -67,8 +67,3 @@
   cursor: pointer;
   margin-top: 8px;
 }
-
-.file-preview-mermaid.mermaid-diagram-error {
-  display: block;
-  margin: 16px;
-}

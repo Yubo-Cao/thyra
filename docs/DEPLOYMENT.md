@@ -718,6 +718,21 @@ The [agent browser](../FEATURES.md#agent-browser) needs two services on the Thyr
 Either may be missing: the button stays hidden for SSH and non-default connections and for non-admins, the view reports a missing display, and Thyra reconnects to the proxy's event stream with backoff.
 Anyone who can open the view drives the host owner's signed-in browser, so it is limited to instance admins.
 
+## VS Code Inspector
+
+The [Inspector](../FEATURES.md#workspace-inspector) shows VS Code when Thyra can reach a VS Code Web server started with Thyra's base path, on loopback, by the same user:
+
+```sh
+code serve-web --host 127.0.0.1 --port 18976 --server-base-path /vscode \
+  --without-connection-token --accept-server-license-terms
+```
+
+Set `THYRA_VSCODE_URL=http://127.0.0.1:18976` and restart Thyra.
+Run the server as a user service (`Restart=always`) so its terminals survive Thyra restarts.
+`--commit-id` pins the server build; pin one whose translations match, since mismatched language packs garble labels (the Inspector starts VS Code in English for this reason).
+Thyra proxies it at `/vscode/` for instance admins only and on local connections only; without it the Inspector is an upload panel.
+The loopback port takes no token, so keep it off shared multi-user hosts.
+
 ## Voice input
 
 The microphone in each pane header (the floating microphone on touch devices) types dictation into the terminal, and the composer's microphone dictates into its draft.

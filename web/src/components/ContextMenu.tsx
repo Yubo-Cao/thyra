@@ -46,15 +46,13 @@ export function ContextMenu({
   state,
   pinnedWorkspaceKeys,
   onPinnedChange,
-  onBrowseFiles,
-  onReviewChanges,
+  onOpenEditor,
   onClose,
 }: {
   state: ContextMenuState | null;
   pinnedWorkspaceKeys: ReadonlySet<string>;
   onPinnedChange: (workspace: Workspace, pinned: boolean) => void;
-  onBrowseFiles?: (workspace: Workspace) => void;
-  onReviewChanges?: (workspace: Workspace) => void;
+  onOpenEditor?: (workspace: Workspace) => void;
   onClose: () => void;
 }) {
   const workspaces = useStoreSelector((state) => state.workspaces);
@@ -150,14 +148,9 @@ export function ContextMenu({
         title: t("Inspect"),
         items: [
           {
-            id: "browse-files",
-            label: t("Browse files"),
-            onAction: () => onBrowseFiles?.(w),
-          },
-          {
-            id: "review-changes",
-            label: t("Review changes"),
-            onAction: () => onReviewChanges?.(w),
+            id: "open-editor",
+            label: t("Open in VS Code"),
+            onAction: () => onOpenEditor?.(w),
           },
         ],
       },

@@ -211,19 +211,15 @@ const CreateWorkspaceDialog = createWorkspaceDialog.Component;
 export function WorkspaceTree({
   agentsFirst = false,
   onSelect,
-  onBrowseFiles,
-  onReviewChanges,
+  onOpenEditor,
   onSelectAgent,
-  onBrowseFilesForAgent,
-  onReviewChangesForAgent,
+  onOpenEditorForAgent,
 }: {
   agentsFirst?: boolean;
   onSelect?: (workspace: Workspace) => void;
-  onBrowseFiles?: (workspace: Workspace) => void;
-  onReviewChanges?: (workspace: Workspace) => void;
+  onOpenEditor?: (workspace: Workspace) => void;
   onSelectAgent?: (pane: Pane) => void;
-  onBrowseFilesForAgent?: (pane: Pane) => void;
-  onReviewChangesForAgent?: (pane: Pane) => void;
+  onOpenEditorForAgent?: (pane: Pane) => void;
 }) {
   const s = useStoreSelector(
     useShallow((state) => ({
@@ -827,8 +823,7 @@ export function WorkspaceTree({
           state={menu}
           pinnedWorkspaceKeys={pinnedWorkspaceSet}
           onPinnedChange={updatePinnedWorkspace}
-          onBrowseFiles={onBrowseFiles}
-          onReviewChanges={onReviewChanges}
+          onOpenEditor={onOpenEditor}
           onClose={() => setMenu(null)}
         />
       </Latched>
@@ -839,8 +834,7 @@ export function WorkspaceTree({
           void store.focusPane(pane.pane_id);
           onSelectAgent?.(pane);
         }}
-        onBrowseFiles={onBrowseFilesForAgent}
-        onReviewChanges={onReviewChangesForAgent}
+        onOpenEditor={onOpenEditorForAgent}
         onClosePane={setPendingClosePane}
       />
       <Latched open={!!pendingClosePane}>

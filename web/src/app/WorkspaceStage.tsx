@@ -5,11 +5,9 @@ import {
   INSPECTOR_MIN_BOTTOM,
   INSPECTOR_MIN_RIGHT,
   inspectorMaximumSize,
-  resourceOwnerKey,
 } from "../workspaceResource";
 import { workspaceInspectorPanel } from "./lazySurfaces";
 import { TerminalLoadingFallback } from "./TerminalPaneLayout";
-import type { MobileView } from "./useShellLayout";
 import type { WorkspaceInspector } from "./useWorkspaceInspector";
 
 const WorkspaceInspectorPanel = workspaceInspectorPanel.Component;
@@ -17,15 +15,11 @@ const WorkspaceInspectorPanel = workspaceInspectorPanel.Component;
 /** The terminal surface with the docked, resizable Workspace Inspector. */
 export function WorkspaceStage({
   inspector,
-  mobile,
-  onMobileViewChange,
   resourceUiKey,
   connectionClient,
   children,
 }: {
   inspector: WorkspaceInspector;
-  mobile: boolean;
-  onMobileViewChange: (view: MobileView) => void;
   resourceUiKey: string;
   connectionClient: ConnectionClient;
   children: ReactNode;
@@ -74,6 +68,7 @@ export function WorkspaceStage({
     const maxSize = inspectorMaximumSize(dock, bounds.width, bounds.height);
     const startSize = Math.min(current.size, maxSize);
     let finalSize = startSize;
+    stage.classList.add("is-resizing");
     const onMove = (event: PointerEvent) => {
       finalSize = Math.min(
         maxSize,
@@ -93,6 +88,7 @@ export function WorkspaceStage({
       });
     };
     const finish = () => {
+      stage.classList.remove("is-resizing");
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
@@ -148,11 +144,9 @@ export function WorkspaceStage({
             }
           >
             <WorkspaceInspectorPanel
-              key={`${resourceUiKey}:${resourceOwnerKey(state.scope)}`}
+              key={resourceUiKey}
               inspector={inspector}
               state={state}
-              mobile={mobile}
-              onMobileViewChange={onMobileViewChange}
               connectionClient={connectionClient}
             />
           </Suspense>

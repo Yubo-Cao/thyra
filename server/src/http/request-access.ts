@@ -370,9 +370,12 @@ export function isSafeMethod(method: string): boolean {
 export function originCheckMode(
   pathname: string,
   method: string,
+  upgrade = false,
 ): "strict" | "read" | "none" {
   if (pathname === "/ws" || pathname === "/ws/browser" || !isSafeMethod(method))
     return "strict";
+  // VS Code's remote sockets; its pages and assets are plain reads.
+  if (upgrade && pathname.startsWith("/vscode/")) return "strict";
   if (pathname === "/api" || pathname.startsWith("/api/")) return "read";
   return "none";
 }

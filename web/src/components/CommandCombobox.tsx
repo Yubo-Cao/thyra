@@ -16,7 +16,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  FileDiff,
+  Code,
   FileText,
   FolderPlus,
   FolderOpen,
@@ -35,7 +35,7 @@ import {
   terminalComposerCloseWarning,
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
-import type { FileExplorerEntry, Pane, Tab, Workspace } from "../types";
+import type { Pane, Tab, Workspace } from "../types";
 import { basename, shortId } from "../utils";
 import { luckyWorktreeBranchName } from "../luckyName";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
@@ -249,18 +249,16 @@ export function runCommandNumberShortcut<T>(
 }
 
 export type CommandComboboxProps = {
-  onOpenFileExplorer?: (workspaceId?: string) => void;
-  onOpenFile?: (workspaceId: string, entry: FileExplorerEntry) => void;
-  onOpenDiffViewer?: (workspaceId?: string) => void;
+  onOpenEditor?: (workspaceId?: string) => void;
+  onOpenFile?: (workspaceId: string, entry: { path: string }) => void;
   onOpenProjectLauncher?: () => void;
   /** Open on mount: the lazy shell mounts this on the first open request. */
   defaultOpen?: boolean;
 };
 
 export function CommandCombobox({
-  onOpenFileExplorer,
+  onOpenEditor,
   onOpenFile,
-  onOpenDiffViewer,
   onOpenProjectLauncher,
   defaultOpen = false,
 }: CommandComboboxProps) {
@@ -449,9 +447,9 @@ export function CommandCombobox({
   }
   if (focusedWorkspace) {
     currentActions.push({
-      key: "current-file-explorer",
-      icon: <FolderOpen size={15} />,
-      title: msg("Open file explorer"),
+      key: "current-editor",
+      icon: <Code size={15} />,
+      title: msg("Open in VS Code"),
       detail:
         focusedWorkspace.worktree?.checkout_path ??
         focusedWorkspace.cwd ??
@@ -462,26 +460,13 @@ export function CommandCombobox({
         "file tree",
         "explorer",
         "browse repository",
-      ],
-      run: () => onOpenFileExplorer?.(focusedWorkspace.workspace_id),
-    });
-    currentActions.push({
-      key: "current-diff-viewer",
-      icon: <FileDiff size={15} />,
-      title: msg("Open Diff Viewer"),
-      detail:
-        focusedWorkspace.worktree?.checkout_path ??
-        focusedWorkspace.cwd ??
-        workspaceName(focusedWorkspace),
-      keywords: [
+        "editor",
+        "vs code",
         "diff",
-        "diff viewer",
         "changes",
-        "git diff",
-        "changed files",
         "source control",
       ],
-      run: () => onOpenDiffViewer?.(focusedWorkspace.workspace_id),
+      run: () => onOpenEditor?.(focusedWorkspace.workspace_id),
     });
   }
   if (focusedWorkspace?.worktree) {
@@ -580,19 +565,13 @@ export function CommandCombobox({
               "quick open",
               "open file",
               "open path",
-              "file explorer",
-              "preview file",
+              "vs code",
               directPathQuery,
               pathLeaf(directPathQuery),
             ],
             run: () =>
               onOpenFile(focusedWorkspace.workspace_id, {
-                name: pathLeaf(directPathQuery),
                 path: directPathQuery,
-                type: "file",
-                size: 0,
-                mtime_ms: 0,
-                hidden: pathLeaf(directPathQuery).startsWith("."),
               }),
           },
         ]

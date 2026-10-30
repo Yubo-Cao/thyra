@@ -162,6 +162,9 @@ export const HTTP_POLICY = {
   "browser.status": { class: "admin", scope: "host" },
   "browser.activate": { class: "admin", scope: "host" },
   "browser.vnc": { class: "dangerous", scope: "host" },
+  // The Inspector's VS Code Web (vscode/proxy.ts): a shell as the host user.
+  "vscode.status": { class: "admin", scope: "host" },
+  vscode: { class: "dangerous", scope: "host" },
   "herdr.setup": { class: "dangerous", scope: "host" },
   // The instance admin page (the application shell at `/admin` and below;
   // others are sent to `/`) and its API (auth/admin-routes.ts): accounts and
@@ -270,6 +273,7 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/ws/browser": { GET: "browser.vnc" },
   "/api/browser": { GET: "browser.status" },
   "/api/browser/activate": { POST: "browser.activate" },
+  "/api/vscode": { GET: "vscode.status" },
   "/api/health": { GET: "api.health" },
   "/api/notifications/push": { GET: "push", POST: "push", DELETE: "push" },
   "/api/voice/status": { GET: "voice.status" },
@@ -341,6 +345,8 @@ export function matchHttpRoute(
       (method === "GET" || method === "HEAD")
       ? "share.page"
       : null;
+  if (pathname === "/vscode" || pathname.startsWith("/vscode/"))
+    return "vscode";
   if (pathname === "/api" || pathname.startsWith("/api/")) return null;
   if (method !== "GET" && method !== "HEAD") return null;
   if (pathname === "/admin" || pathname.startsWith("/admin/"))

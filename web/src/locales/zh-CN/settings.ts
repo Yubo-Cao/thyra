@@ -226,7 +226,6 @@ export default {
   "Command menu": "命令菜单",
   Terminal: "终端",
   "Terminal composer": "终端输入框",
-  "Preview & review": "预览与审阅",
   "Open or close the command menu": "打开或关闭命令菜单",
   "Toggle the desktop sidebar": "切换桌面端侧边栏",
   "Toggle the Workspace Inspector": "切换工作区检查器",
@@ -235,8 +234,6 @@ export default {
   "Open the recent pane switcher": "打开最近窗格切换器",
   "Search panes in the pane switcher": "在窗格切换器中搜索窗格",
   "Open Workspaces": "打开工作区",
-  "Toggle File Explorer": "切换文件浏览器",
-  "Toggle Diff Viewer": "切换差异查看器",
   "Create a tab": "新建标签页",
   "Close the active pane or its single-pane tab":
     "关闭当前窗格或其所在的单窗格标签页",
@@ -276,12 +273,9 @@ export default {
     "在 Agent 窗格的输入框上覆盖本地编辑器，输入不必等待网络连接。自动模式在连接较慢时打开",
   "Voice typing: hold to talk, tap to start or insert":
     "语音输入：按住说话，轻按开始或插入",
-  "Search the raw file preview": "在原始文件预览中搜索",
-  "Select all in the file preview": "在文件预览中全选",
 
   // Shared labels
   Unknown: "未知",
-  "Drag to resize; double-click to reset": "拖动以调整大小；双击以重置",
   Agent: "Agent",
   Refresh: "刷新",
   Close: "关闭",
@@ -293,7 +287,6 @@ export default {
   You: "你",
   "Full {role} message": "完整{role}消息",
 
-  "Copy path": "复制路径",
   // Account and sharing
   Account: "账户",
   "Unknown browser": "未知浏览器",
@@ -340,8 +333,6 @@ export default {
     "将 {keys} 等浏览器快捷键发送到终端（全屏；按住 Esc 退出）",
   "Capture keyboard": "接管键盘",
   "Release keyboard": "释放键盘",
-  "Go to the next change in a diff": "跳到差异中的下一处更改",
-  "Go to the previous change in a diff": "跳到差异中的上一处更改",
 
   // Administration
   Administration: "管理",

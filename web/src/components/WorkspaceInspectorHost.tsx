@@ -1,72 +1,106 @@
 import {
-  FileDiff,
-  FolderTree,
-  GitFork,
+  ExternalLink,
   Maximize2,
   Minimize2,
   PanelBottom,
   PanelRight,
+  Upload,
 } from "lucide-react";
 import {
-  Suspense,
-  useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
+  type DragEvent,
 } from "react";
 import type { ConnectionClient } from "../api";
-import {
-  emptyActiveDiffSelection,
-  emptyActiveFilePreviewSelection,
-  fileEntry,
-  type WorkspaceInspector,
-} from "../app/useWorkspaceInspector";
 import { thyraLocalStorage } from "../browserStorage";
+import type { WorkspaceInspector } from "../app/useWorkspaceInspector";
 import { t } from "../i18n";
-import { lazyWithReload } from "../lazyWithReload";
-import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
-import { store } from "../store";
-import type { GitDiffEntry, Workspace } from "../types";
+import { shortcutTitle } from "../shortcutPreferences";
+import { store, useStoreSelector } from "../store";
+import type { Pane, Workspace } from "../types";
 import {
-  DEFAULT_INSPECTOR_NAVIGATION_RATIO,
-  inspectorNavigationRatioAtPosition,
   readInspectorPreferences,
-  resolveWorkspaceForScope,
-  resourceOwnerKey,
-  resourceStateKey,
-  writeInspectorNavigationRatio,
+  type InspectorFileRequest,
   type InspectorDock,
-  type InspectorSplitView,
-  type InspectorView,
   type WorkspaceInspectorState,
 } from "../workspaceResource";
-import { ChangesList, type ChangesSelection } from "./ChangesList";
-import { SplitResizer } from "./SplitResizer";
-import { FileExplorerPanel } from "./FileExplorerDialog";
-import {
-  type ActiveFilePreviewSelection,
-  FilePreviewContent,
-} from "./FilePreviewContent";
-import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
+import { uploadWorkspaceFile } from "./workspaceFiles";
+import { Button } from "./ui/Button";
 import { CloseButton } from "./ui/CloseButton";
 import { IconButton } from "./ui/IconButton";
-import { Tabs } from "./ui/Tabs";
-import { Token } from "./ui/Token";
+import { Spinner } from "./ui/Spinner";
 import "./WorkspaceInspectorHost.css";
 
-const ChangeDiff = lazyWithReload("change-diff", () =>
-  import("./ChangeDiff").then((module) => ({ default: module.ChangeDiff })),
-);
+/** Editors kept alive at once, so switching back to a workspace is instant. */
+const MAX_EDITORS = 3;
 
-function changedCount(workspace?: Workspace) {
-  const status = workspace?.worktree?.git_status;
-  return status
-    ? status.staged + status.unstaged + status.untracked + status.conflicted
-    : 0;
+let vscodeConnections: Promise<Set<string>> | null = null;
+/** Connections whose files the host's VS Code can open (admins only). */
+function loadVscodeConnections(): Promise<Set<string>> {
+  vscodeConnections ??= fetch("/api/vscode", { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() : { connections: [] }))
+    .then(
+      (body: { connections?: unknown }) =>
+        new Set(
+          Array.isArray(body.connections)
+            ? body.connections.filter((id) => typeof id === "string")
+            : [],
+        ),
+    )
+    .catch(() => new Set<string>());
+  return vscodeConnections;
+}
+
+/**
+ * VS Code Web's zh-CN translations from Microsoft's CDN do not match the
+ * workbench build and garble its labels, so the editor starts in English
+ * unless its own language setting chose otherwise.
+ */
+function defaultEditorLocale() {
+  try {
+    if (localStorage.getItem("vscode.nls.locale")) return;
+    localStorage.setItem("vscode.nls.locale", "en");
+    // biome-ignore lint/suspicious/noDocumentCookie: VS Code reads this cookie.
+    document.cookie = "vscode.nls.locale=en;path=/;max-age=3153600000";
+  } catch {
+    /* Storage disabled: VS Code follows the browser language. */
+  }
+}
+
+function joinPath(root: string, path: string) {
+  if (path.startsWith("/")) return path;
+  return `${root.replace(/\/+$/, "")}/${path.replace(/^\.?\//, "")}`;
+}
+
+function editorUrl(folder: string, file?: InspectorFileRequest) {
+  const url = new URL("/vscode/", window.location.origin);
+  url.searchParams.set("folder", folder);
+  if (file) {
+    const target = `vscode-remote://${window.location.host}${joinPath(folder, file.path)}`;
+    url.searchParams.set(
+      "payload",
+      JSON.stringify([
+        ["openFile", file.line ? `${target}:${file.line}` : target],
+        ...(file.line ? [["gotoLineMode", "true"]] : []),
+      ]),
+    );
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+/** The checkout, else the workspace's directory, else its focused pane's. */
+function checkoutRoot(workspace: Workspace | undefined, panes: Pane[]) {
+  if (!workspace) return "";
+  if (workspace.worktree?.checkout_path)
+    return workspace.worktree.checkout_path;
+  if (workspace.cwd) return workspace.cwd;
+  const own = panes.filter(
+    (pane) => pane.workspace_id === workspace.workspace_id,
+  );
+  const pane = own.find((candidate) => candidate.focused) ?? own[0];
+  return pane?.cwd ?? "";
 }
 
 function checkoutLabel(workspace?: Workspace) {
@@ -79,253 +113,183 @@ function checkoutLabel(workspace?: Workspace) {
   );
 }
 
-const INSPECTOR_RESOURCE_HORIZONTAL_PADDING = 16;
+/** One live VS Code per folder, the most recent first. */
+function useEditorFrames(folder: string, file?: InspectorFileRequest) {
+  const [frames, setFrames] = useState<{ folder: string; src: string }[]>([]);
+  const fileNonce = useRef(0);
+  useLayoutEffect(() => {
+    if (!folder) return;
+    const fresh = !!file && file.nonce !== fileNonce.current;
+    if (file) fileNonce.current = file.nonce;
+    setFrames((current) => {
+      const existing = current.find((frame) => frame.folder === folder);
+      if (existing && !fresh && current[0] === existing) return current;
+      const next = {
+        folder,
+        // A new file request reloads that folder's editor with it open.
+        src: existing && !fresh ? existing.src : editorUrl(folder, file),
+      };
+      return [
+        next,
+        ...current.filter((frame) => frame.folder !== folder),
+      ].slice(0, MAX_EDITORS);
+    });
+  }, [folder, file]);
+  return frames;
+}
+
+function UploadPanel({
+  uploading,
+  root,
+  onChoose,
+}: {
+  uploading: boolean;
+  root: string;
+  onChoose: () => void;
+}) {
+  return (
+    <div className="workspace-inspector-upload">
+      <strong>{t("Upload files")}</strong>
+      <span>
+        {t("Drop files here or choose them to copy into the workspace.")}
+      </span>
+      {root ? <code>{root}</code> : null}
+      <Button variant="secondary" disabled={uploading} onClick={onChoose}>
+        {uploading ? <Spinner size="sm" /> : <Upload size={14} />}
+        {t("Choose files")}
+      </Button>
+    </div>
+  );
+}
 
 export function WorkspaceInspectorHost({
   state,
-  onReady,
   workspace,
-  fileSelection,
-  previewRequestRef,
-  diffSelection,
   connectionClient,
-  onFileSelectionChange,
-  onDiffSelectionChange,
-  onOpenDiffFile,
-  onOpenDocument,
-  onRefreshFile,
-  onViewChange,
   onDockChange,
   onExpandedChange,
   onClose,
-  onBack,
 }: {
   state: WorkspaceInspectorState;
-  onReady?: () => void;
   workspace?: Workspace;
-  fileSelection: ActiveFilePreviewSelection;
-  previewRequestRef: React.MutableRefObject<number>;
-  diffSelection: ChangesSelection;
   connectionClient: ConnectionClient;
-  onFileSelectionChange: Parameters<
-    typeof FileExplorerPanel
-  >[0]["onPreviewChange"];
-  onDiffSelectionChange: Parameters<typeof ChangesList>[0]["onSelectionChange"];
-  onOpenDocument: (path: string, fragment?: string) => void;
-  onRefreshFile: () => void;
-  onOpenDiffFile: (entry: GitDiffEntry) => void;
-  onViewChange: (view: InspectorView) => void;
   onDockChange: (dock: InspectorDock) => void;
   onExpandedChange: (expanded: boolean) => void;
   onClose: () => void;
-  onBack: () => void;
 }) {
-  const hostRef = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    onReady?.();
-  }, [onReady]);
-  const splitId = useId();
-  const [hostWidth, setHostWidth] = useState(0);
-  const [fileDiffState, setFileDiffState] = useState<{
-    resourceKey: string;
-    entries: GitDiffEntry[];
-  }>(() => ({ resourceKey: "", entries: [] }));
-  const [drillInByView, setDrillInByView] = useState<
-    Record<InspectorView, boolean>
-  >(() => ({
-    files: state.view === "files" && !!fileSelection.entry,
-    changes: false,
-  }));
-  const resourceKey = resourceOwnerKey(state.scope);
-  const contentResourceKey = resourceStateKey(state.scope);
-  const fileDiffEntries =
-    fileDiffState.resourceKey === contentResourceKey
-      ? fileDiffState.entries
-      : [];
-  const setFileDiffEntries = useCallback(
-    (entries: GitDiffEntry[]) =>
-      setFileDiffState({ resourceKey: contentResourceKey, entries }),
-    [contentResourceKey],
-  );
-  const [navigationPreferences, setNavigationPreferences] = useState(() =>
-    readInspectorPreferences(thyraLocalStorage, state.scope),
-  );
-  useShortcutPreferences();
-  const defaultNavigationRatio = state.expanded
-    ? inspectorNavigationRatioAtPosition(
-        300,
-        hostWidth - INSPECTOR_RESOURCE_HORIZONTAL_PADDING,
-      )
-    : DEFAULT_INSPECTOR_NAVIGATION_RATIO;
-  const navigationRatios = {
-    files: state.expanded
-      ? (navigationPreferences.expandedNavigationRatios.files ??
-        defaultNavigationRatio)
-      : navigationPreferences.filesNavigationRatio,
-    changes: state.expanded
-      ? (navigationPreferences.expandedNavigationRatios.changes ??
-        defaultNavigationRatio)
-      : navigationPreferences.changesNavigationRatio,
-  };
-  const { compact, splitEnabled } = workspaceInspectorLayout(hostWidth);
-  // The navigation/detail split is draggable whenever both panes fit side by
-  // side, not only in the expanded layout, so docked inspectors can resize
-  // the Files/Changes list too.
-  const navigationIds = {
-    files: `${splitId}-files-navigation`,
-    changes: `${splitId}-changes-navigation`,
-  };
-  const detailIds = {
-    files: `${splitId}-files-detail`,
-    changes: `${splitId}-changes-detail`,
-  };
-
-  const setNavigationRatio = (view: InspectorSplitView, ratio: number) => {
-    setNavigationPreferences((current) =>
-      state.expanded
-        ? {
-            ...current,
-            expandedNavigationRatios: {
-              ...current.expandedNavigationRatios,
-              [view]: ratio,
-            },
-          }
-        : {
-            ...current,
-            [view === "files"
-              ? "filesNavigationRatio"
-              : "changesNavigationRatio"]: ratio,
-          },
-    );
-  };
-  const commitNavigationRatio = (view: InspectorSplitView, ratio: number) => {
-    writeInspectorNavigationRatio(
-      thyraLocalStorage,
-      state.scope,
-      view,
-      ratio,
-      state.expanded,
-    );
-  };
-  const splitStyle = (view: InspectorSplitView) =>
-    ({
-      "--workspace-inspector-navigation-width": `${navigationRatios[view] * 100}%`,
-    }) as CSSProperties;
-  const changeCount = changedCount(workspace);
-  const detailAvailable =
-    state.view === "files"
-      ? !!fileSelection.entry
-      : diffSelection.entries.length > 0;
-  const hasDetail = detailAvailable && drillInByView[state.view];
-  const fileChangesEntries = fileSelection.entry
-    ? fileDiffEntries.filter(
-        (entry) => entry.path === fileSelection.entry?.path,
-      )
-    : [];
-
+  const [editorConnections, setEditorConnections] =
+    useState<Set<string> | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (state.view !== "files" || !fileSelection.entry) return;
-    setDrillInByView((current) => ({ ...current, files: true }));
-  }, [fileSelection.entry, state.view]);
-
-  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowDown" || state.view !== "files") return;
-    if (!(event.target as HTMLElement).matches("[role='tab']")) return;
-    const treeItem = hostRef.current?.querySelector<HTMLElement>(
-      ".inspector-files-resource [data-file-path][tabindex='0']",
-    );
-    if (!treeItem) return;
-    event.preventDefault();
-    treeItem.focus({ preventScroll: true });
-    treeItem.scrollIntoView({ block: "nearest" });
-  };
-
-  useEffect(() => {
-    const preferences = readInspectorPreferences(
-      thyraLocalStorage,
-      state.scope,
-    );
-    setNavigationPreferences(preferences);
-  }, [contentResourceKey, state.scope]);
-
-  useLayoutEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const update = () => setHostWidth(host.clientWidth);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(host);
-    return () => observer.disconnect();
+    let current = true;
+    void loadVscodeConnections().then((ids) => {
+      if (current) setEditorConnections(ids);
+    });
+    return () => {
+      current = false;
+    };
   }, []);
+  const panes = useStoreSelector((current) => current.panes);
+  // A pane's cwd moves with `cd`; the editor keeps the folder it opened.
+  const roots = useRef(new Map<string, string>());
+  const workspaceKey = workspace?.workspace_id ?? "";
+  const root =
+    roots.current.get(workspaceKey) || checkoutRoot(workspace, panes);
+  if (root && workspaceKey) roots.current.set(workspaceKey, root);
+  const editorAvailable =
+    !!root && !!editorConnections?.has(connectionClient.connectionId);
+  if (editorAvailable) defaultEditorLocale();
+  const frames = useEditorFrames(editorAvailable ? root : "", state.file);
+
+  const upload = async (files: FileList | File[]) => {
+    const list = [...files];
+    if (!workspace || !list.length || uploading) return;
+    setUploading(true);
+    try {
+      for (const file of list)
+        await uploadWorkspaceFile(
+          connectionClient,
+          workspace.workspace_id,
+          "",
+          file,
+        );
+      store.notify({
+        kind: "success",
+        message: list.length === 1 ? t("File uploaded") : t("Files uploaded"),
+        detail: root || undefined,
+      });
+    } catch (error) {
+      store.notify({
+        kind: "error",
+        message: t("Upload failed"),
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+  const dropProps = {
+    onDragOver: (event: DragEvent) => {
+      if (!event.dataTransfer.types.includes("Files")) return;
+      event.preventDefault();
+      setDragging(true);
+    },
+    onDragLeave: (event: DragEvent) => {
+      if (event.currentTarget === event.target) setDragging(false);
+    },
+    onDrop: (event: DragEvent) => {
+      if (!event.dataTransfer.files.length) return;
+      event.preventDefault();
+      setDragging(false);
+      void upload(event.dataTransfer.files);
+    },
+  };
 
   return (
     <aside
-      ref={hostRef}
-      className={`workspace-inspector workspace-inspector-${state.dock} ${
-        state.expanded ? "is-expanded" : ""
-      } ${compact ? "is-compact" : ""} ${hasDetail ? "has-detail" : ""}`}
+      className={`workspace-inspector ${dragging ? "is-dropping" : ""}`}
       aria-label={t("Workspace Inspector")}
-      data-view={state.view}
+      {...dropProps}
     >
       <header className="workspace-inspector-head">
         <div className="workspace-inspector-identity">
-          <span className="workspace-inspector-repo">
-            {workspace?.worktree?.repo_name ||
-              workspace?.label ||
-              t("Workspace")}
-          </span>
           <span className="workspace-inspector-checkout">
             {checkoutLabel(workspace)}
-            {workspace?.worktree?.is_linked_worktree ? (
-              <Token
-                tone="accent"
-                icon={<GitFork size={11} aria-hidden="true" />}
-                title={t("Linked worktree")}
-              >
-                {t("Worktree")}
-              </Token>
-            ) : null}
           </span>
-          {workspace?.worktree?.checkout_path || workspace?.cwd ? (
-            <code
-              className="workspace-inspector-path"
-              title={workspace.worktree?.checkout_path ?? workspace.cwd}
-            >
-              {workspace.worktree?.checkout_path ?? workspace.cwd}
+          {root ? (
+            <code className="workspace-inspector-path" title={root}>
+              {root}
             </code>
           ) : null}
         </div>
-        {/* ArrowDown from the Files tab enters the file tree; the other
-            tab keys are handled by Tabs. */}
-        <div className="workspace-inspector-tabs" onKeyDown={handleTabKeyDown}>
-          <Tabs
-            aria-label={t("Inspector view")}
-            value={state.view}
-            onChange={onViewChange}
-            items={[
-              {
-                id: "files",
-                icon: <FolderTree size={14} />,
-                label: t("Files"),
-              },
-              {
-                id: "changes",
-                icon: <FileDiff size={14} />,
-                label: (
-                  <>
-                    {t("Changes")}
-                    {changeCount > 0 ? (
-                      <Token tone="warning">{changeCount}</Token>
-                    ) : null}
-                  </>
-                ),
-              },
-            ]}
-          />
-        </div>
         <div className="workspace-inspector-actions">
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              const input = event.currentTarget;
+              if (input.files) void upload(input.files);
+              input.value = "";
+            }}
+          />
           <IconButton
-            className="workspace-inspector-dock-action"
+            label={t("Upload files")}
+            icon={uploading ? <Spinner size="sm" /> : <Upload size={15} />}
+            disabled={!workspace || uploading}
+            onClick={() => fileInput.current?.click()}
+          />
+          {editorAvailable ? (
+            <IconButton
+              label={t("Open VS Code in a new tab")}
+              icon={<ExternalLink size={15} />}
+              onClick={() => window.open(editorUrl(root), "_blank", "noopener")}
+            />
+          ) : null}
+          <IconButton
             label={
               state.dock === "right"
                 ? t("Dock Inspector at bottom")
@@ -346,7 +310,6 @@ export function WorkspaceInspectorHost({
             }
           />
           <IconButton
-            className="workspace-inspector-expand-action"
             label={
               state.expanded
                 ? t("Restore Inspector dock")
@@ -371,7 +334,6 @@ export function WorkspaceInspectorHost({
           />
         </div>
       </header>
-
       {!workspace ? (
         <div className="workspace-inspector-unavailable">
           <strong>{t("Checkout unavailable")}</strong>
@@ -379,258 +341,51 @@ export function WorkspaceInspectorHost({
             {t("The workspace used to route this Inspector is no longer open.")}
           </span>
         </div>
-      ) : (
-        <div className="workspace-inspector-body">
-          <div
-            className={`workspace-inspector-resource inspector-files-resource ${
-              state.view === "files" ? "" : "is-hidden"
-            } ${splitEnabled ? "has-split-resizer" : ""}`}
-            style={splitEnabled ? splitStyle("files") : undefined}
-          >
-            <div
-              id={navigationIds.files}
-              className="workspace-inspector-navigation"
-            >
-              <FileExplorerPanel
-                open
-                workspaceId={workspace.workspace_id}
-                resourceKey={resourceKey}
-                initialDirectory={state.initialDirectory}
-                activePath={fileSelection.entry?.path}
-                previewRequestRef={previewRequestRef}
-                keyboardActive={
-                  state.view === "files" && (!compact || !hasDetail)
-                }
-                onClose={onClose}
-                onPreviewChange={(selection, meta) => {
-                  if (selection.entry && meta?.userInitiated) {
-                    setDrillInByView((current) => ({
-                      ...current,
-                      files: true,
-                    }));
-                  }
-                  onFileSelectionChange?.(selection, meta);
-                }}
-                onActiveDiffEntriesChange={setFileDiffEntries}
-              />
-            </div>
-            {splitEnabled ? (
-              <SplitResizer
-                ratio={navigationRatios.files}
-                resetRatio={defaultNavigationRatio}
-                inset={INSPECTOR_RESOURCE_HORIZONTAL_PADDING}
-                label={t("Resize file navigation")}
-                controls={`${navigationIds.files} ${detailIds.files}`}
-                onChange={(ratio) => setNavigationRatio("files", ratio)}
-                onCommit={(ratio) => commitNavigationRatio("files", ratio)}
-              />
-            ) : null}
-            <div id={detailIds.files} className="workspace-inspector-detail">
-              <FilePreviewContent
-                entry={fileSelection.entry}
-                preview={fileSelection.preview}
-                loading={fileSelection.loading}
-                error={fileSelection.error}
-                fragment={fileSelection.fragment}
-                onOpenFile={onOpenDocument}
-                onRefresh={onRefreshFile}
-                backAction={
-                  compact && drillInByView.files && fileSelection.entry
-                    ? {
-                        label: t("Files"),
-                        onClick: () => {
-                          setDrillInByView((current) => ({
-                            ...current,
-                            files: false,
-                          }));
-                          onBack();
-                        },
-                      }
-                    : undefined
-                }
-                changesContent={
-                  fileChangesEntries.length ? (
-                    <Suspense
-                      fallback={
-                        <div className="diff-content-state">
-                          <span className="file-loading-spinner" />
-                          {t("Loading diff viewer")}
-                        </div>
-                      }
-                    >
-                      <ChangeDiff
-                        client={connectionClient}
-                        workspaceId={workspace.workspace_id}
-                        mode="working"
-                        entries={fileChangesEntries}
-                        embedded
-                      />
-                    </Suspense>
-                  ) : undefined
-                }
-              />
-            </div>
-          </div>
-          <div
-            className={`workspace-inspector-resource inspector-changes-resource ${
-              state.view === "changes" ? "" : "is-hidden"
-            } ${splitEnabled ? "has-split-resizer" : ""}`}
-            style={splitEnabled ? splitStyle("changes") : undefined}
-          >
-            <div
-              id={navigationIds.changes}
-              className="workspace-inspector-navigation"
-            >
-              <ChangesList
-                client={connectionClient}
-                workspaceId={workspace.workspace_id}
-                resourceKey={resourceKey}
-                selection={diffSelection}
-                onOpenFile={onOpenDiffFile}
-                onSelectionChange={(selection, meta) => {
-                  if (selection.entries.length && meta?.userInitiated) {
-                    setDrillInByView((current) => ({
-                      ...current,
-                      changes: true,
-                    }));
-                  }
-                  onDiffSelectionChange(selection, meta);
-                }}
-              />
-            </div>
-            {splitEnabled ? (
-              <SplitResizer
-                ratio={navigationRatios.changes}
-                resetRatio={defaultNavigationRatio}
-                inset={INSPECTOR_RESOURCE_HORIZONTAL_PADDING}
-                label={t("Resize file navigation")}
-                controls={`${navigationIds.changes} ${detailIds.changes}`}
-                onChange={(ratio) => setNavigationRatio("changes", ratio)}
-                onCommit={(ratio) => commitNavigationRatio("changes", ratio)}
-              />
-            ) : null}
-            <div id={detailIds.changes} className="workspace-inspector-detail">
-              {state.view === "changes" ? (
-                <Suspense
-                  fallback={
-                    <div className="diff-content-state">
-                      <span className="file-loading-spinner" />
-                      {t("Loading Diff Viewer")}
-                    </div>
-                  }
-                >
-                  <ChangeDiff
-                    client={connectionClient}
-                    workspaceId={workspace.workspace_id}
-                    mode={diffSelection.mode}
-                    entries={diffSelection.entries}
-                    onOpenFile={onOpenDiffFile}
-                    onBack={
-                      compact && hasDetail
-                        ? () => {
-                            setDrillInByView((current) => ({
-                              ...current,
-                              changes: false,
-                            }));
-                            onBack();
-                          }
-                        : undefined
-                    }
-                  />
-                </Suspense>
-              ) : null}
-            </div>
-          </div>
+      ) : editorConnections === null ? (
+        <div className="workspace-inspector-unavailable">
+          <Spinner />
         </div>
+      ) : editorAvailable ? (
+        <div className="workspace-inspector-body">
+          {frames.map((frame) => (
+            <iframe
+              key={frame.folder}
+              className={`workspace-inspector-editor ${
+                frame.folder === root ? "" : "is-hidden"
+              }`}
+              title={t("VS Code")}
+              src={frame.src}
+              allow="clipboard-read; clipboard-write"
+            />
+          ))}
+        </div>
+      ) : (
+        <UploadPanel
+          uploading={uploading}
+          root={root}
+          onChoose={() => fileInput.current?.click()}
+        />
       )}
     </aside>
   );
 }
 
-/**
- * The host bound to the app's inspector controller: its view, dock,
- * selection, and navigation callbacks load with the host, not the shell.
- */
+/** The host bound to the app's inspector controller. */
 export function WorkspaceInspectorPanel({
   inspector,
   state,
-  mobile,
-  onMobileViewChange,
   connectionClient,
 }: {
   inspector: WorkspaceInspector;
   state: WorkspaceInspectorState;
-  mobile: boolean;
-  onMobileViewChange: (view: InspectorView) => void;
   connectionClient: ConnectionClient;
 }) {
-  const {
-    stateRef,
-    commitAndSave,
-    workspace,
-    activeFilePreview,
-    openFileExplorerFile,
-    setActiveFilePreview,
-    setActiveDiff,
-  } = inspector;
-  const stateKey = resourceStateKey(state.scope);
-  // Selection reports from a host that has since switched scope are dropped.
-  const isCurrentScope = () => {
-    const current = stateRef.current;
-    return !!current && resourceStateKey(current.scope) === stateKey;
-  };
-  const openDiffFile = useCallback(
-    (entry: GitDiffEntry) => {
-      const current = stateRef.current;
-      if (!current) return;
-      const target = resolveWorkspaceForScope(
-        current.scope,
-        store.get().workspaces,
-      );
-      if (target)
-        openFileExplorerFile(target.workspace_id, fileEntry(entry.path));
-    },
-    [openFileExplorerFile, stateRef],
-  );
+  const { stateRef, commitAndSave } = inspector;
   return (
     <WorkspaceInspectorHost
       state={state}
-      onReady={inspector.finishFocus}
-      workspace={workspace}
-      fileSelection={activeFilePreview}
-      previewRequestRef={inspector.previewRequestRef}
-      diffSelection={inspector.activeDiff}
+      workspace={inspector.workspace}
       connectionClient={connectionClient}
-      onFileSelectionChange={(selection) => {
-        if (isCurrentScope()) setActiveFilePreview(selection);
-      }}
-      onDiffSelectionChange={(selection) => {
-        if (isCurrentScope()) setActiveDiff(selection);
-      }}
-      onRefreshFile={() => {
-        if (workspace && activeFilePreview.entry)
-          inspector.loadFilePreview(
-            workspace.workspace_id,
-            activeFilePreview.entry,
-            activeFilePreview.fragment,
-          );
-      }}
-      onOpenDiffFile={openDiffFile}
-      onOpenDocument={(path, fragment) => {
-        if (workspace)
-          openFileExplorerFile(
-            workspace.workspace_id,
-            fileEntry(path),
-            undefined,
-            fragment,
-          );
-      }}
-      onViewChange={(view) => {
-        const current = stateRef.current;
-        if (!current) return;
-        commitAndSave({ ...current, open: true, view });
-        if (mobile) onMobileViewChange(view);
-      }}
       onDockChange={(dock) => {
         const current = stateRef.current;
         if (!current || current.dock === dock) return;
@@ -648,14 +403,6 @@ export function WorkspaceInspectorPanel({
       }}
       onExpandedChange={inspector.setExpanded}
       onClose={inspector.close}
-      onBack={() => {
-        if (stateRef.current?.view === "files") {
-          inspector.previewRequestRef.current += 1;
-          setActiveFilePreview(emptyActiveFilePreviewSelection());
-        } else {
-          setActiveDiff(emptyActiveDiffSelection());
-        }
-      }}
     />
   );
 }

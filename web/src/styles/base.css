@@ -242,39 +242,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   animation: toast-loading-spin 0.8s linear infinite;
 }
 
-.git-status-code {
-  min-width: 10px;
-  color: var(--muted);
-  font:
-    800 10px / 1 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Consolas,
-    monospace;
-  text-align: center;
-  opacity: 0.72;
-}
-
-.git-status-u {
-  color: var(--blue);
-}
-
-.git-status-a {
-  color: var(--success-text);
-}
-
-.git-status-m {
-  color: var(--warning-text);
-}
-
-.git-status-d {
-  color: var(--danger-text);
-}
-
-.git-status-c {
-  color: var(--danger-text);
-}
-
 .file-loading-spinner {
   width: 12px;
   height: 12px;
@@ -285,15 +252,6 @@ textarea:where(:not([data-rac], [data-slot])):focus {
 
 .is-spinning {
   animation: row-spinner 0.8s linear infinite;
-}
-
-.file-preview-banner {
-  flex: 0 0 auto;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--viewer-border);
-  background: var(--accent-soft);
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .modal-error {
@@ -413,20 +371,7 @@ textarea:where(:not([data-rac], [data-slot])):focus {
   }
 }
 
-/* Shared state blocks (also used as Suspense fallbacks for lazy chunks). */
-.diff-content-state {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.diff-content-state.is-error {
-  color: var(--danger-text);
-}
-
+/* Shared state blocks. */
 .file-preview-state {
   flex: 1 1 auto;
   display: flex;

@@ -68,9 +68,6 @@ SSH tunnel, not Herdr or its workspaces.
 - Browser caches, storage, mount keys, notifications, and async actions are
   connection-scoped. Switching connections retires the browser lease; same-ID
   runtime replacement clears active and inactive sessions before IDs can recur.
-  Inspector RPC results (diff summaries, file previews) are TanStack Query
-  entries keyed by connection and client generation; a new lease drops every
-  other scope and aborts its requests, and previews stay within 16 MiB.
 
 ## Terminal endpoints
 
@@ -395,9 +392,9 @@ A failed send is returned as `start_error` next to the created tab rather than h
 
 ## Workspace resource ownership
 
-A **checkout** owns Files/Changes; a workspace supplies routing, a tab a return
-location, and a pane optional path/session context. Repository groups are not
-merged working trees. Changes do not prove agent ownership.
+A **checkout** owns the Inspector's dock and size; a workspace supplies routing,
+a tab a return location, and a pane optional path context. Repository groups
+are not merged working trees.
 
 Git resource keys pair endpoint-qualified `worktree.gui_settings_key` with the
 normalized checkout path, scoped by connection. Blank keys fall back to the
@@ -405,16 +402,26 @@ trimmed repository key, which cannot distinguish endpoints; enriched identities
 do not inherit fallback state. Persistent keys exclude runtime generations.
 Non-Git resources use workspace identity.
 
-Shared-checkout workspaces may share caches, but requests retain workspace/runtime
-leases and resource revisions. Refresh/removal retires old prefetches. Tab/pane
-IDs never own caches. Legacy repository-wide Inspector state is retained but not
-automatically migrated because it lacks checkout identity.
-
 Actions capture the originating workspace. A vanished workspace can rebind only
-to the same checkout; missing paths never fall back to siblings. Agent cwd is
-used only inside the checkout. Removal clears only that checkout's state; closing
-one workspace retains resources another workspace still uses. Terminals stay
-mounted across Inspector changes; layout preferences and content caches are separate.
+to the same checkout; missing paths never fall back to siblings. Terminals stay
+mounted across Inspector changes.
+
+## VS Code Inspector
+
+The Inspector embeds VS Code Web from the host's `code serve-web`, which runs
+with `--server-base-path /vscode` on loopback (`THYRA_VSCODE_URL`). Thyra
+proxies `/vscode/` and its WebSockets on the same origin, so the editor rides
+the session cookie, the tailnet and public listeners, and the Cloudflare
+tunnel. Requests keep the browser's `Host` (the workbench names its remote
+by it) and lose Thyra's cookies and forwarding headers; responses may be
+framed only by this origin. WebSocket upgrades need this origin's `Origin`.
+
+`vscode` and `vscode.status` are `host`-scoped: the editor is a shell as the
+host user. `GET /api/vscode` lists the connections whose Herdr runs on this
+host; elsewhere, and for everyone else, the Inspector is only the upload panel
+(the connection's `file/upload` route). The page keeps up to three editors
+loaded, one per folder, and opens a file by reloading that folder's editor
+with a `payload=[["openFile", "vscode-remote://<host><path>"]]` query.
 
 ## Filesystem browsing
 
@@ -560,9 +567,6 @@ set; a mismatch fails with "file changed on disk". SSH runs the check, temporary
 write, and rename in one remote script with one-second mtime resolution, matching
 previews. Bodies are limited to 5 MiB. Clean drafts follow reloads; saves
 invalidate the preview cache and refresh rendered previews.
-
-The Monaco editor is a lazy chunk with Monarch grammars and only the base editor
-worker; language-service workers are excluded and nothing loads from a CDN.
 
 ## Agent activity
 

@@ -201,8 +201,6 @@ export default {
   Polish: "润色",
 
   // File link menu
-  "Preview directory": "预览目录",
-  "Preview file": "预览文件",
   "Open directory as workspace...": "将目录作为工作区打开...",
   "Checking directory...": "正在检查目录...",
 

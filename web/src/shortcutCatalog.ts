@@ -22,8 +22,6 @@ const descriptions: Description[] = [
   ["panes.recent", msg("Open the recent pane switcher"), msg("Global")],
   ["panes.search", msg("Search panes in the pane switcher"), msg("Global")],
   ["workspaces.open", msg("Open Workspaces"), msg("Global")],
-  ["files.toggle", msg("Toggle File Explorer"), msg("Global")],
-  ["diff.toggle", msg("Toggle Diff Viewer"), msg("Global")],
   ["tab.create", msg("Create a tab"), msg("Tabs & panes")],
   [
     "tab.close",
@@ -131,26 +129,6 @@ const descriptions: Description[] = [
     "voice.pushToTalk",
     msg("Voice typing: hold to talk, tap to start or insert"),
     msg("Terminal"),
-  ],
-  [
-    "preview.search",
-    msg("Search the raw file preview"),
-    msg("Preview & review"),
-  ],
-  [
-    "diff.nextChange",
-    msg("Go to the next change in a diff"),
-    msg("Preview & review"),
-  ],
-  [
-    "diff.previousChange",
-    msg("Go to the previous change in a diff"),
-    msg("Preview & review"),
-  ],
-  [
-    "preview.selectAll",
-    msg("Select all in the file preview"),
-    msg("Preview & review"),
   ],
 ];
 export const SHORTCUT_CATALOG: ShortcutDescription[] = descriptions.map(
