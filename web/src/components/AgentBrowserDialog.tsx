@@ -7,6 +7,7 @@ import {
   closeAgentBrowser,
   fetchAgentBrowser,
   keysymOf,
+  landsOnPixels,
   useAgentBrowserOpen,
   viewerScale,
 } from "../agentBrowser";
@@ -60,6 +61,28 @@ function sizeRemote(rfb: RFB, scale: number) {
     } finally {
       internal._screenSize = screenSize;
     }
+  };
+}
+
+/** Copy the remote picture pixel for pixel whenever it lands 1:1 on screen. */
+function keepCrisp(canvas: HTMLCanvasElement): () => void {
+  const update = () => {
+    const exact = landsOnPixels(
+      canvas.getBoundingClientRect(),
+      canvas,
+      window.devicePixelRatio,
+    );
+    canvas.style.imageRendering = exact ? "pixelated" : "";
+  };
+  // noVNC changes the CSS size on scaling, the pixel size on remote resize.
+  const resized = new ResizeObserver(update);
+  resized.observe(canvas);
+  const redrawn = new MutationObserver(update);
+  redrawn.observe(canvas, { attributeFilter: ["width", "height"] });
+  update();
+  return () => {
+    resized.disconnect();
+    redrawn.disconnect();
   };
 }
 
@@ -125,9 +148,12 @@ export function AgentBrowserDialog() {
     rfb.compressionLevel = 6;
     rfb.addEventListener("connect", () => setState("connected"));
     rfb.addEventListener("disconnect", () => setState("closed"));
+    const canvas = screen.querySelector("canvas");
+    const stopCrisp = canvas ? keepCrisp(canvas) : undefined;
     rfbRef.current = rfb;
     setState("connecting");
     return () => {
+      stopCrisp?.();
       rfbRef.current = null;
       rfb.disconnect();
     };

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { keysymOf, viewerScale } from "./agentBrowser";
+import { keysymOf, landsOnPixels, viewerScale } from "./agentBrowser";
 import { isTaskNotificationTarget } from "./taskNotifications";
 
 test("typed characters map to X11 keysyms", () => {
@@ -27,4 +27,11 @@ test("draws the remote at the screen's pixel density, 1 to 3", () => {
   expect(viewerScale(2)).toBe(2);
   expect(viewerScale(3.5)).toBe(3);
   expect(viewerScale(0.9)).toBe(1);
+});
+
+test("copies the picture only when it maps 1:1 to screen pixels", () => {
+  const pixels = { width: 1260, height: 796 };
+  expect(landsOnPixels({ width: 1008, height: 636.797 }, pixels, 1.25)).toBe(true);
+  expect(landsOnPixels({ width: 1008, height: 636.797 }, pixels, 1)).toBe(false);
+  expect(landsOnPixels({ width: 900, height: 568 }, pixels, 1.25)).toBe(false);
 });

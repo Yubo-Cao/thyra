@@ -120,6 +120,23 @@ export function viewerScale(devicePixelRatio: number): number {
   return Number.isFinite(scale) ? Math.min(3, Math.max(1, scale)) : 1;
 }
 
+/**
+ * Whether a canvas of `pixels` drawn over `css` CSS pixels lands 1:1 on
+ * screen pixels. Then it should be copied (nearest neighbour), not smoothed:
+ * at 125% or 150% the canvas sits at a fractional device-pixel offset, and
+ * smoothing resamples the whole picture into blur.
+ */
+export function landsOnPixels(
+  css: { width: number; height: number },
+  pixels: { width: number; height: number },
+  devicePixelRatio: number,
+): boolean {
+  return (
+    Math.abs(css.width * devicePixelRatio - pixels.width) <= 1 &&
+    Math.abs(css.height * devicePixelRatio - pixels.height) <= 1
+  );
+}
+
 /** X11 keysym of a typed character (Latin-1 direct, else Unicode). */
 export function keysymOf(char: string): number {
   const code = char.codePointAt(0) ?? 0;
