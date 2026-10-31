@@ -7,6 +7,7 @@ import {
   agentBrowserConfig,
   createAgentBrowser,
   createSseParser,
+  parseViewerScale,
   type ReviewRequest,
   relevantTab,
 } from "./agent-browser";
@@ -19,6 +20,16 @@ const tab = (targetId: string, state?: string) => ({
 });
 
 describe("agent browser", () => {
+  test("viewer scale: 1 to 3 in quarter steps", () => {
+    expect(parseViewerScale("1.25")).toBe(1.25);
+    expect(parseViewerScale("1.3")).toBe(1.25);
+    expect(parseViewerScale("2")).toBe(2);
+    expect(parseViewerScale("0.5")).toBe(1);
+    expect(parseViewerScale("4")).toBe(1);
+    expect(parseViewerScale(null)).toBe(1);
+    expect(parseViewerScale("x")).toBe(1);
+  });
+
   test("defaults and THYRA_ overrides", () => {
     expect(agentBrowserConfig({ XDG_RUNTIME_DIR: "/run/user/7" })).toEqual({
       vncSocket: "/run/user/7/chromium-virtual-display/vnc.sock",
@@ -262,6 +273,7 @@ describe("agent browser", () => {
       expect(browser.status().hidpi).toBe(true);
       const peer = () => ({ send() {}, close() {} });
       const sharp = browser.openVnc(peer(), 2);
+      browser.openVnc(peer(), 1.5).close();
       const plain = browser.openVnc(peer(), 1);
       await browser.scaleSettled();
       sharp.close();

@@ -9,6 +9,7 @@ import { createVscodeProxy, isVscodePath, vscodeConfig } from "./vscode/proxy";
 import {
   agentBrowserConfig,
   createAgentBrowser,
+  parseViewerScale,
   type ReviewRequest,
   type VncPeer,
 } from "./browser/agent-browser";
@@ -258,6 +259,8 @@ const voice = createVoiceHandlers({
 });
 const webPush = createWebPushService({
   warn: (message) => logger.warn(message),
+  // Declared below; read at delivery time.
+  launchOrigin: () => publicListener?.origin ?? null,
 });
 const downstreamConnectionConfig = {
   socketPath: config.socketPath,
@@ -2421,7 +2424,7 @@ async function routeAuthenticated(
         clientSession: null,
         directOrigin: null,
         rtc: false,
-        vnc: { scale: url.searchParams.get("scale") === "2" ? 2 : 1 },
+        vnc: { scale: parseViewerScale(url.searchParams.get("scale")) },
       },
     })
       ? undefined

@@ -1,3 +1,4 @@
+import { thyraLocalStorage } from "./browserStorage";
 import { t } from "./i18n";
 import { prepareTaskNotifications } from "./taskNotifications";
 
@@ -49,7 +50,48 @@ async function rememberPushPreferences(
   }
 }
 
+// The direct path names this browser's subscription on the origin it left
+// (`?push-twin=`). Registering with it retires that one on the server, so the
+// device is notified by the origin its window lives on, and a click finds it.
+export const PUSH_TWIN_PARAM = "push-twin";
+const PUSH_TWIN_KEY = "pushTwin";
+
+function adoptPushTwin() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  const twin = url.searchParams.get(PUSH_TWIN_PARAM);
+  if (twin === null) return;
+  url.searchParams.delete(PUSH_TWIN_PARAM);
+  window.history.replaceState(window.history.state, "", url);
+  if (twin) thyraLocalStorage.setItem(PUSH_TWIN_KEY, twin);
+}
+adoptPushTwin();
+
 let updates: Promise<unknown> = Promise.resolve();
+
+/**
+ * This origin's push endpoint once pending changes settle, for the direct path
+ * to hand over; null without one or when the browser does not answer.
+ */
+export function taskPushEndpoint(timeoutMs = 1500): Promise<string | null> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.serviceWorker ||
+    !("PushManager" in window) ||
+    // See syncTaskPush: without permission, leave the Push API alone.
+    globalThis.Notification?.permission !== "granted"
+  )
+    return Promise.resolve(null);
+  return Promise.race([
+    updates
+      .catch(() => {})
+      .then(() => navigator.serviceWorker.getRegistration("/"))
+      .then((registration) => registration?.pushManager?.getSubscription())
+      .then((subscription) => subscription?.endpoint ?? null)
+      .catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+}
 
 /**
  * Serialize subscription changes so a late enable cannot undo a device
@@ -135,9 +177,11 @@ export function syncTaskPush(
       }
       if (!subscription) return "local" as const;
       try {
+        const twin = thyraLocalStorage.getItem(PUSH_TWIN_KEY);
         await pushRequest("POST", {
           subscription: subscription.toJSON(),
           preferences,
+          ...(twin && twin !== subscription.endpoint ? { twin } : {}),
         });
       } catch (error) {
         if (created) await subscription.unsubscribe();

@@ -141,6 +141,16 @@ export async function showTaskNotification(
   }
 }
 
+let startupNotificationHash = "";
+
+/**
+ * The notification deep link this page opened with, already cleared from the
+ * address bar, so a move to another origin can carry it along.
+ */
+export function openedNotificationHash(): string {
+  return startupNotificationHash;
+}
+
 /** Route worker clicks and newly opened notification windows through the same UI. */
 export function listenForTaskNotificationActivation(
   activate: (target: TaskNotificationTarget) => void,
@@ -156,6 +166,7 @@ export function listenForTaskNotificationActivation(
   };
   navigator.serviceWorker?.addEventListener("message", receive);
   if (window.location.hash.startsWith(NOTIFICATION_HASH)) {
+    startupNotificationHash = window.location.hash;
     const encoded = window.location.hash.slice(NOTIFICATION_HASH.length);
     window.history.replaceState(
       window.history.state,

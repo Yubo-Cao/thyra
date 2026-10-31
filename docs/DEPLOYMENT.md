@@ -715,8 +715,8 @@ The [agent browser](../FEATURES.md#agent-browser) needs two services on the Thyr
 - The web-access CDP proxy that records which Herdr pane owns each tab (`GET /targets?pane=`, `GET /events`, `POST /activate?target=`).
   Default: `http://127.0.0.1:3456`; override with `THYRA_BROWSER_PROXY_URL`.
 
-- Optional, for sharp pages on HiDPI screens: a command that takes `1` or `2` and sets the display's device scale, set as `THYRA_BROWSER_SCALE_COMMAND`.
-  Thyra runs it with `2` while a viewer on a 2x screen is open and with `1` after the last viewer closes, and that viewer asks for twice the pixels.
+- Optional, for sharp pages on HiDPI screens: a command that takes a scale (1 to 3 in steps of 0.25) and sets the display's device scale, set as `THYRA_BROWSER_SCALE_COMMAND`.
+  While a viewer is open Thyra runs it with that screen's pixel density (the largest among open viewers) and asks for that many pixels, so pages keep their layout and land 1:1 on screen pixels; after the last viewer closes it runs it with `1`.
   With Chromium on X11, run an XSETTINGS daemon such as `xsettingsd` on the display and have the command set `Xft/DPI` to 96×1024×scale and reload it; Chromium follows without a restart.
 Either may be missing: the button stays hidden for SSH and non-default connections and for non-admins, the view reports a missing display, and Thyra reconnects to the proxy's event stream with backoff.
 Anyone who can open the view drives the host owner's signed-in browser, so it is limited to instance admins.

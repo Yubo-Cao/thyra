@@ -111,6 +111,15 @@ export function useAgentBrowserOpen() {
   return useStore(agentBrowserStore, (state) => state.open);
 }
 
+/**
+ * Device scale to draw the remote at for this screen: its pixel density in
+ * quarter steps from 1 to 3, so remote pixels land 1:1 on screen pixels.
+ */
+export function viewerScale(devicePixelRatio: number): number {
+  const scale = Math.round(devicePixelRatio * 4) / 4;
+  return Number.isFinite(scale) ? Math.min(3, Math.max(1, scale)) : 1;
+}
+
 /** X11 keysym of a typed character (Latin-1 direct, else Unicode). */
 export function keysymOf(char: string): number {
   const code = char.codePointAt(0) ?? 0;

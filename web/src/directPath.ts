@@ -1,5 +1,7 @@
 import { type BridgeHello, bridge } from "./api";
 import { thyraLocalStorage } from "./browserStorage";
+import { openedNotificationHash } from "./taskNotifications";
+import { PUSH_TWIN_PARAM, taskPushEndpoint } from "./taskPush";
 
 // The direct path: a signed-in page on the public origin (through a tunnel)
 // moves to the tailnet origin the bridge names in its hello when this device
@@ -58,9 +60,13 @@ async function tryDirectPath(hello: BridgeHello) {
   const userId = hello.principal?.user?.id;
   if (!target || !userId) return;
   if ((await tailnetUserId(target)) !== userId) return;
-  location.replace(
-    `${target}${location.pathname}${location.search}${location.hash}`,
+  const url = new URL(
+    `${location.pathname}${location.search}${location.hash || openedNotificationHash()}`,
+    target,
   );
+  const endpoint = await taskPushEndpoint();
+  if (endpoint) url.searchParams.set(PUSH_TWIN_PARAM, endpoint);
+  location.replace(url.href);
 }
 
 /** Once per page load, after the first hello. */

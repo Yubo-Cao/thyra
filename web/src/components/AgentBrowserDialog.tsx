@@ -8,6 +8,7 @@ import {
   fetchAgentBrowser,
   keysymOf,
   useAgentBrowserOpen,
+  viewerScale,
 } from "../agentBrowser";
 import { t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
@@ -33,9 +34,9 @@ const NAMED_KEYS: Record<string, number> = {
 const MIN_REMOTE_WIDTH = 500;
 
 /**
- * Ask the remote for this view's size times `scale` (2 on a HiDPI screen,
- * where the display also draws at 2x, so pages keep their layout and come
- * out sharp), and at least MIN_REMOTE_WIDTH wide at the same aspect, so a
+ * Ask the remote for this view's size times `scale` (the screen's pixel
+ * density, which the display also draws at, so pages keep their layout and
+ * land 1:1 on screen pixels), and at least MIN_REMOTE_WIDTH wide at the same aspect, so a
  * phone gets the whole window scaled down rather than a cut-off one. Wraps
  * noVNC 1.7 internals: `_requestRemoteResize` reads the size from
  * `_screenSize`, which scaling also uses, so swap it only there.
@@ -105,7 +106,7 @@ export function AgentBrowserDialog() {
   }, [open, paneId, target?.targetId]);
 
   const vnc = info?.vnc === true;
-  const scale = info?.hidpi && window.devicePixelRatio >= 1.5 ? 2 : 1;
+  const scale = info?.hidpi ? viewerScale(window.devicePixelRatio) : 1;
   useEffect(() => {
     if (!vnc || !screen) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -119,8 +120,8 @@ export function AgentBrowserDialog() {
     rfb.scaleViewport = true;
     sizeRemote(rfb, scale);
     rfb.resizeSession = true;
-    // Tight JPEG at modest quality keeps slow links usable.
-    rfb.qualityLevel = 5;
+    // Text is the point: JPEG at 5 smeared it. 8 still keeps slow links usable.
+    rfb.qualityLevel = 8;
     rfb.compressionLevel = 6;
     rfb.addEventListener("connect", () => setState("connected"));
     rfb.addEventListener("disconnect", () => setState("closed"));

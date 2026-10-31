@@ -26,6 +26,12 @@ interface Device {
   preferences: PushPreferences;
   /** Principal that registered it (`user:<id>` or `local`). */
   owner?: string;
+  /**
+   * The same browser's subscription on the public origin, which the page left
+   * through the direct path. Only the most recently registered of the pair
+   * stays, so a device is notified once, by the origin its window lives on.
+   */
+  twin?: string;
 }
 interface Registry {
   version: 1;
@@ -107,6 +113,9 @@ export function validatePushDevice(value: unknown): Device {
     /^(local|user:[\w-]{1,64})$/.test(input.owner)
       ? { owner: input.owner }
       : {}),
+    ...(input.twin === undefined
+      ? {}
+      : { twin: validatePushEndpoint(input.twin) }),
   };
 }
 
@@ -138,6 +147,8 @@ export function createWebPushService(
     path?: string;
     send?: typeof webpush.sendNotification;
     warn?: (message: string) => void;
+    /** Where the installed app lives, for devices that moved off it (`twin`). */
+    launchOrigin?: () => string | null;
   } = {},
 ) {
   const subject =
@@ -291,6 +302,9 @@ export function createWebPushService(
             task.paneId,
           ]),
           target,
+          ...(device.twin && options.launchOrigin?.()
+            ? { launchOrigin: options.launchOrigin() }
+            : {}),
         }),
         {
           // A sleeping phone may wait a while for delivery; an alert this
@@ -383,7 +397,15 @@ export function createWebPushService(
         );
       }
       const devices = registry.devices.filter(
-        (entry) => entry.subscription.endpoint !== endpoint,
+        (entry) =>
+          entry.subscription.endpoint !== endpoint &&
+          // The other half of this device's origin pair is now stale.
+          !(
+            device &&
+            (entry.owner ?? "local") === owner &&
+            (entry.twin === endpoint ||
+              entry.subscription.endpoint === device.twin)
+          ),
       );
       if (device) devices.push(device);
       if (devices.length > MAX_DEVICES)

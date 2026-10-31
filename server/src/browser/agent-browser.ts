@@ -35,6 +35,14 @@ export type VncPeer = {
   close(code?: number, reason?: string): void;
 };
 
+/** A viewer's device scale: 1 to 3 in steps of 0.25, else 1. */
+export function parseViewerScale(raw: string | null): number {
+  const scale = Number(raw);
+  return Number.isFinite(scale) && scale >= 1 && scale <= 3
+    ? Math.round(scale * 4) / 4
+    : 1;
+}
+
 export function agentBrowserConfig(env = process.env) {
   const runtime = env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.()}`;
   return {
@@ -44,7 +52,7 @@ export function agentBrowserConfig(env = process.env) {
     proxyUrl: (
       thyraEnv("BROWSER_PROXY_URL", env) || "http://127.0.0.1:3456"
     ).replace(/\/+$/, ""),
-    /** Run with 1 or 2 to set the display's device scale (HiDPI viewers). */
+    /** Run with a scale (1-3, steps of 0.25) to set the display's device scale. */
     scaleCommand: thyraEnv("BROWSER_SCALE_COMMAND", env) || undefined,
   };
 }
@@ -315,7 +323,8 @@ export function createAgentBrowser(options: {
 
   /**
    * One VNC socket connection per peer; either end closing closes both.
-   * `scale` 2 asks for a HiDPI display while this peer is open.
+   * `scale` (the viewer's pixel density) sets the display's device scale
+   * while this peer is open.
    */
   function openVnc(peer: VncPeer, scale = 1) {
     let socket: Socket<undefined> | null = null;
@@ -347,7 +356,7 @@ export function createAgentBrowser(options: {
       return { message() {}, close() {} };
     }
     if (options.scaleCommand) {
-      viewerScales.set(peer, scale === 2 ? 2 : 1);
+      viewerScales.set(peer, scale);
       applyScale();
     }
     connect({

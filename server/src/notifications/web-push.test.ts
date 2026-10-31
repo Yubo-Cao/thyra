@@ -665,3 +665,55 @@ test("notifications reach only subscribers who may see the workspace", async () 
     f.cleanup();
   }
 });
+
+test("a device's origin twins keep only the latest registration", async () => {
+  const calls: Array<{ endpoint: string; payload: string }> = [];
+  const f = fixture(async (subscription, payload) => {
+    calls.push({ endpoint: subscription.endpoint, payload: String(payload) });
+    return { statusCode: 201, body: "", headers: {} };
+  });
+  const service = createWebPushService({
+    ...f.options,
+    launchOrigin: () => "https://public.example",
+  });
+  const endpoints = () =>
+    (
+      JSON.parse(readFileSync(f.path, "utf8")).devices as Array<{
+        subscription: { endpoint: string };
+      }>
+    ).map((entry) => entry.subscription.endpoint.split("/").at(-1));
+  try {
+    const publicDevice = device("public");
+    const direct = {
+      ...device("direct"),
+      twin: publicDevice.subscription.endpoint,
+    };
+    const other = device("other");
+    await service.handle(request("POST", publicDevice), "user:a");
+    await service.handle(request("POST", other), "user:b");
+    // Another account cannot retire someone else's subscription.
+    await service.handle(request("POST", direct), "user:b");
+    expect(endpoints()).toEqual(["public", "other", "direct"]);
+    await service.handle(request("POST", direct), "user:a");
+    expect(endpoints()).toEqual(["other", "direct"]);
+    // Back on the public origin (off the tailnet): the direct twin retires.
+    await service.handle(request("POST", publicDevice), "user:a");
+    expect(endpoints()).toEqual(["other", "public"]);
+    await service.handle(request("POST", direct), "user:a");
+    service.notify(task, () => true);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    const sent = Object.fromEntries(
+      calls.map((call) => [
+        call.endpoint.split("/").at(-1),
+        JSON.parse(call.payload).launchOrigin,
+      ]),
+    );
+    expect(sent).toEqual({
+      other: undefined,
+      direct: "https://public.example",
+    });
+  } finally {
+    service.stop();
+    f.cleanup();
+  }
+});
