@@ -1,0 +1,120 @@
+/* Above panes and menus, below tooltips (5000) and modal dialogs. */
+.ui-floating-window {
+  position: fixed;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--shell-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.ui-floating-window.is-dragging {
+  user-select: none;
+}
+
+.ui-floating-window-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ui-bar-height);
+  padding: 6px 8px 6px 14px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ui-floating-window.is-dragging .ui-floating-window-header {
+  cursor: grabbing;
+}
+
+.ui-floating-window-titles {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ui-floating-window-title,
+.ui-floating-window-description {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-floating-window-title {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.ui-floating-window-description {
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+  line-height: 1.4;
+}
+
+.ui-floating-window-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Invisible edge and corner grips, slightly outside the window. */
+.ui-floating-window-grip {
+  position: absolute;
+  touch-action: none;
+}
+.ui-floating-window-grip.is-n,
+.ui-floating-window-grip.is-s {
+  left: 8px;
+  right: 8px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.ui-floating-window-grip.is-e,
+.ui-floating-window-grip.is-w {
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.ui-floating-window-grip.is-n {
+  top: -4px;
+}
+.ui-floating-window-grip.is-s {
+  bottom: -4px;
+}
+.ui-floating-window-grip.is-e {
+  right: -4px;
+}
+.ui-floating-window-grip.is-w {
+  left: -4px;
+}
+.ui-floating-window-grip.is-ne,
+.ui-floating-window-grip.is-nw,
+.ui-floating-window-grip.is-se,
+.ui-floating-window-grip.is-sw {
+  width: 14px;
+  height: 14px;
+}
+.ui-floating-window-grip.is-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.ui-floating-window-grip.is-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.ui-floating-window-grip.is-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.ui-floating-window-grip.is-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}

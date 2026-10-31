@@ -12,6 +12,7 @@ import {
 import { t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
 import { Dialog } from "./ui/Dialog";
+import { FloatingWindow } from "./ui/FloatingWindow";
 import { IconButton } from "./ui/IconButton";
 import { Select } from "./ui/Select";
 import "./AgentBrowserDialog.css";
@@ -158,70 +159,91 @@ export function AgentBrowserDialog() {
     tabs.find((tab) => tab.targetId === activeId) ??
     tabs.find((tab) => tab.review?.state === "pending");
   const review = tabs.find((tab) => tab.review?.state === "pending")?.review;
+  const title = t("Agent browser");
+  const description = review?.message || current?.title || undefined;
+  const headerActions = (
+    <>
+      {tabs.length > (paneId ? 1 : 0) ? (
+        <Select
+          aria-label={t("Browser tab")}
+          variant="ghost"
+          value={current?.targetId ?? ""}
+          placeholder={t("Choose a tab")}
+          options={tabs.map((tab) => ({
+            value: tab.targetId,
+            label: tab.title || tab.url,
+            description: tab.url,
+          }))}
+          onChange={(id) => {
+            setActiveId(id);
+            void activateAgentBrowserTab(paneId, id);
+            rfbRef.current?.focus();
+          }}
+        />
+      ) : null}
+      {mobile && vnc ? (
+        <IconButton
+          label={t("Open device keyboard")}
+          icon={<Keyboard size={15} />}
+          onClick={() => keys?.focus()}
+        />
+      ) : null}
+    </>
+  );
+  const content =
+    info && !vnc ? (
+      <p className="agent-browser-note">
+        {t("The browser display is not available on this host.")}
+      </p>
+    ) : (
+      <>
+        <div ref={setScreen} className="agent-browser-screen" />
+        {state !== "connected" ? (
+          <p className="agent-browser-note">
+            {state === "closed"
+              ? t("Browser display disconnected.")
+              : t("Connecting to the browser display...")}
+          </p>
+        ) : null}
+        <textarea
+          ref={setKeys}
+          className="agent-browser-keys"
+          aria-label={t("Type into the browser")}
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </>
+    );
+  // Desktop: a window to move and resize while the terminals stay usable;
+  // the remote display follows its size. Phones: a bottom sheet.
+  if (!mobile)
+    return open ? (
+      <FloatingWindow
+        title={title}
+        description={description}
+        headerActions={headerActions}
+        onClose={closeAgentBrowser}
+        storageKey="agentBrowser.window"
+        className="agent-browser-window"
+        bodyClassName="agent-browser-body"
+      >
+        {content}
+      </FloatingWindow>
+    ) : null;
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => !next && closeAgentBrowser()}
-      title={t("Agent browser")}
-      description={review?.message || current?.title || undefined}
+      title={title}
+      description={description}
       keyboardDismissable={false}
       size="lg"
       className="agent-browser-dialog"
       bodyClassName="agent-browser-body"
-      headerActions={
-        <>
-          {tabs.length > (paneId ? 1 : 0) ? (
-            <Select
-              aria-label={t("Browser tab")}
-              variant="ghost"
-              value={current?.targetId ?? ""}
-              placeholder={t("Choose a tab")}
-              options={tabs.map((tab) => ({
-                value: tab.targetId,
-                label: tab.title || tab.url,
-                description: tab.url,
-              }))}
-              onChange={(id) => {
-                setActiveId(id);
-                void activateAgentBrowserTab(paneId, id);
-                rfbRef.current?.focus();
-              }}
-            />
-          ) : null}
-          {mobile && vnc ? (
-            <IconButton
-              label={t("Open device keyboard")}
-              icon={<Keyboard size={15} />}
-              onClick={() => keys?.focus()}
-            />
-          ) : null}
-        </>
-      }
+      headerActions={headerActions}
     >
-      {info && !vnc ? (
-        <p className="agent-browser-note">
-          {t("The browser display is not available on this host.")}
-        </p>
-      ) : (
-        <>
-          <div ref={setScreen} className="agent-browser-screen" />
-          {state !== "connected" ? (
-            <p className="agent-browser-note">
-              {state === "closed"
-                ? t("Browser display disconnected.")
-                : t("Connecting to the browser display...")}
-            </p>
-          ) : null}
-          <textarea
-            ref={setKeys}
-            className="agent-browser-keys"
-            aria-label={t("Type into the browser")}
-            autoCapitalize="off"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </>
-      )}
+      {content}
     </Dialog>
   );
 }
