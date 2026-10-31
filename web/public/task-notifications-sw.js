@@ -430,7 +430,13 @@ self.addEventListener("push", (event) => {
           tag: typeof message?.tag === "string" ? message.tag : "thyra-task",
           timestamp: Date.now(),
           data: valid
-            ? { type: "thyra:task-notification-activate", target }
+            ? {
+                type: "thyra:task-notification-activate",
+                target,
+                ...(typeof message.launchOrigin === "string"
+                  ? { launchOrigin: message.launchOrigin }
+                  : {}),
+              }
             : null,
         },
       );
@@ -504,37 +510,70 @@ self.addEventListener("pushsubscriptionchange", (event) => {
   );
 });
 
+function isAppPath(url) {
+  return url.pathname === "/" || url.pathname === "/index.html";
+}
+
+/** The installed app's origin when the push says the page moved off it. */
+function launchOriginOf(data) {
+  try {
+    const url = new URL(data.launchOrigin);
+    if (url.protocol === "https:" && url.origin === data.launchOrigin)
+      return url.origin;
+  } catch {
+    /* Fall back to this worker's origin. */
+  }
+  return self.location.origin;
+}
+
+// Bring the existing Thyra window forward and switch it to the pane; open a
+// window only when none is left. Other origins' windows are out of reach, so
+// the server keeps one subscription per device: the origin the page lives on.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data;
   if (data?.type !== "thyra:task-notification-activate") return;
   event.waitUntil(
     (async () => {
+      const deepLink = (origin) => {
+        const url = new URL("/", origin);
+        url.hash =
+          "thyra-task=" + encodeURIComponent(JSON.stringify(data.target));
+        return url.href;
+      };
       const windows = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
       });
-      const appWindows = windows.filter((client) => {
-        const url = new URL(client.url);
-        return (
-          url.origin === self.location.origin &&
-          (url.pathname === "/" || url.pathname === "/index.html")
-        );
-      });
-      appWindows.sort((a, b) => Number(b.focused) - Number(a.focused));
-      for (const client of appWindows) {
+      const rank = (client) =>
+        (client.focused ? 2 : 0) +
+        (client.visibilityState === "visible" ? 1 : 0);
+      // matchAll lists the most recently focused first; keep that order on ties.
+      const appWindows = windows
+        .filter((client) => new URL(client.url).origin === self.location.origin)
+        .map((client, index) => ({ client, index }))
+        .sort((a, b) => rank(b.client) - rank(a.client) || a.index - b.index)
+        .map(({ client }) => client);
+      for (let client of appWindows) {
         try {
+          if (!isAppPath(new URL(client.url))) {
+            // Settings and other pages do not switch panes; load the app there.
+            if (!client.navigate) continue;
+            client =
+              (await client.navigate(deepLink(self.location.origin))) ?? client;
+            await client.focus().catch(() => {});
+            return;
+          }
           await client.focus().catch(() => {});
           client.postMessage(data);
           return;
         } catch {
-          // A window can close between discovery and activation.
+          // A window can close or refuse navigation between discovery and activation.
         }
       }
-      const url = new URL("/", self.location.origin);
-      url.hash =
-        "thyra-task=" + encodeURIComponent(JSON.stringify(data.target));
-      await self.clients.openWindow(url.href);
+      // An origin with an installed app opens it in the app window; the direct
+      // path then carries the deep link to the tailnet origin.
+      await self.clients.openWindow(deepLink(launchOriginOf(data)));
     })(),
   );
 });

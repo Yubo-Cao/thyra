@@ -632,6 +632,62 @@ describe("notification service worker clicks", () => {
       origin + "/#thyra-task=" + encodeURIComponent(JSON.stringify(target)),
     );
   });
+  test("loads the app in a settings window and opens the installed origin", async () => {
+    const listeners: Record<string, (event: any) => void> = {};
+    const link = "/#thyra-task=" + encodeURIComponent(JSON.stringify(target));
+    const focus = mock(async () => {});
+    const navigate = mock(async () => ({ focus }));
+    let windows: any[] = [
+      { url: origin + "/", focused: false, focus: mock(), postMessage: mock() },
+      { url: origin + "/admin", focused: true, navigate },
+    ];
+    const openWindow = mock(async () => {});
+    runInNewContext(
+      await readFile(
+        new URL("../public/task-notifications-sw.js", import.meta.url),
+        "utf8",
+      ),
+      {
+        URL,
+        self: {
+          location: { origin },
+          addEventListener: (name: string, handler: (event: any) => void) => {
+            listeners[name] = handler;
+          },
+          clients: { matchAll: async () => windows, openWindow },
+        },
+      },
+    );
+    let pending: Promise<void> | undefined;
+    const click = (data: unknown) => {
+      listeners.notificationclick({
+        notification: { close: () => {}, data },
+        waitUntil: (promise: Promise<void>) => {
+          pending = promise;
+        },
+      });
+      return pending;
+    };
+    await click({ type: TASK_NOTIFICATION_ACTIVATE_EVENT, target });
+    expect(navigate).toHaveBeenCalledWith(origin + link);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(openWindow).not.toHaveBeenCalled();
+    windows = [];
+    await click({
+      type: TASK_NOTIFICATION_ACTIVATE_EVENT,
+      target,
+      launchOrigin: "https://public.example",
+    });
+    expect(openWindow).toHaveBeenLastCalledWith(
+      "https://public.example" + link,
+    );
+    await click({
+      type: TASK_NOTIFICATION_ACTIVATE_EVENT,
+      target,
+      launchOrigin: "javascript:alert(1)",
+    });
+    expect(openWindow).toHaveBeenLastCalledWith(origin + link);
+  });
 });
 
 describe("task notification activation", () => {
