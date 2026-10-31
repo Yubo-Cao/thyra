@@ -23,13 +23,19 @@ describe("agent browser", () => {
     expect(agentBrowserConfig({ XDG_RUNTIME_DIR: "/run/user/7" })).toEqual({
       vncSocket: "/run/user/7/chromium-virtual-display/vnc.sock",
       proxyUrl: "http://127.0.0.1:3456",
+      scaleCommand: undefined,
     });
     expect(
       agentBrowserConfig({
         THYRA_BROWSER_VNC_SOCKET: "/tmp/v.sock",
         THYRA_BROWSER_PROXY_URL: "http://127.0.0.1:9/",
+        THYRA_BROWSER_SCALE_COMMAND: "/bin/scale",
       }),
-    ).toEqual({ vncSocket: "/tmp/v.sock", proxyUrl: "http://127.0.0.1:9" });
+    ).toEqual({
+      vncSocket: "/tmp/v.sock",
+      proxyUrl: "http://127.0.0.1:9",
+      scaleCommand: "/bin/scale",
+    });
   });
 
   test("SSE parser joins data lines and skips comments and ids", () => {
@@ -72,7 +78,36 @@ describe("agent browser", () => {
     expect(await browser.activate(null)).toBeNull();
     expect(await browser.activate(null, "b")).toBe("b");
     expect(calls.some((call) => call.includes("/close"))).toBe(false);
-    expect(browser.status()).toEqual({ vnc: false, proxy: false });
+  });
+
+  test("lists windows by their front tab, biggest first", async () => {
+    const browser = createAgentBrowser({
+      vncSocket: "/nonexistent",
+      proxyUrl: "http://proxy",
+      logger: silentLogger,
+      onReview: () => {},
+      fetch: (async () =>
+        Response.json({
+          contexts: [
+            {
+              windows: [
+                { activeTargetId: "a", tabs: [tab("a")] },
+                { activeTargetId: "c", tabs: [tab("b"), tab("c")] },
+                { tabs: [] },
+              ],
+            },
+          ],
+        })) as unknown as typeof fetch,
+    });
+    expect(await browser.windows()).toEqual([
+      { targetId: "c", url: "https://example.com/c", title: "c", tabs: 2 },
+      { targetId: "a", url: "https://example.com/a", title: "a", tabs: 1 },
+    ]);
+    expect(browser.status()).toEqual({
+      vnc: false,
+      proxy: false,
+      hidpi: false,
+    });
   });
 
   test("a proxy that is down yields no tabs", async () => {
@@ -208,5 +243,36 @@ describe("agent browser", () => {
     let code: number | undefined;
     browser.openVnc({ send() {}, close: (value) => (code = value) });
     expect(code).toBe(4404);
+  });
+
+  test("the display runs at the largest open viewer's scale, then 1", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "thyra-vnc-scale-"));
+    const path = join(dir, "vnc.sock");
+    const listener = Bun.listen({ unix: path, socket: { data() {} } });
+    try {
+      const runs: number[] = [];
+      const browser = createAgentBrowser({
+        vncSocket: path,
+        proxyUrl: "http://proxy",
+        logger: silentLogger,
+        onReview: () => {},
+        scaleCommand: "scale-display",
+        runScale: async (_command, scale) => runs.push(scale),
+      });
+      expect(browser.status().hidpi).toBe(true);
+      const peer = () => ({ send() {}, close() {} });
+      const sharp = browser.openVnc(peer(), 2);
+      const plain = browser.openVnc(peer(), 1);
+      await browser.scaleSettled();
+      sharp.close();
+      await browser.scaleSettled();
+      plain.close();
+      plain.close();
+      await browser.scaleSettled();
+      expect(runs).toEqual([2, 1]);
+    } finally {
+      listener.stop(true);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -12,7 +12,13 @@ export type AgentBrowserInfo = {
   connection_id: string | null;
   vnc: boolean;
   proxy: boolean;
+  /** The display can switch to 2x device scale for a HiDPI viewer. */
+  hidpi?: boolean;
   tabs?: AgentBrowserTab[] | null;
+  /** Without a pane: the windows, each by its front tab. */
+  windows?:
+    | { targetId: string; url: string; title: string; tabs: number }[]
+    | null;
 };
 /** A pane's tabs; without `paneId`, the whole browser with every tab. */
 export type AgentBrowserTarget = {

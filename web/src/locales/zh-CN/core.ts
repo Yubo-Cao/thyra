@@ -203,6 +203,9 @@ export default {
   "Open browser": "打开浏览器",
   "Browser tab": "浏览器标签页",
   "Choose a tab": "选择标签页",
+  "Browser window": "浏览器窗口",
+  "Choose a window": "选择窗口",
+  "{count} tabs": "{count} 个标签页",
   "The browser display is not available on this host.":
     "此主机上的浏览器画面不可用。",
   "Browser display disconnected.": "浏览器画面已断开。",

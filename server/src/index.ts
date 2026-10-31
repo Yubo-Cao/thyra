@@ -2285,8 +2285,8 @@ type SocketData = {
    * RTC socket copies its negotiating socket's data with this off.
    */
   rtc: boolean;
-  /** An agent-browser VNC socket (see browser/agent-browser.ts). */
-  vnc?: true;
+  /** An agent-browser VNC socket and the device scale its viewer wants. */
+  vnc?: { scale: number };
   /** A VS Code remote socket and the request it opens upstream. */
   vscode?: { req: Request; url: URL };
 };
@@ -2421,7 +2421,7 @@ async function routeAuthenticated(
         clientSession: null,
         directOrigin: null,
         rtc: false,
-        vnc: true,
+        vnc: { scale: url.searchParams.get("scale") === "2" ? 2 : 1 },
       },
     })
       ? undefined
@@ -2439,9 +2439,12 @@ async function routeAuthenticated(
         {
           connection_id: connectionId,
           ...agentBrowser.status(),
-          // `all=1`: every tab, for the browser opened without a pane.
-          ...(connectionId && (pane || url.searchParams.get("all") === "1")
+          ...(connectionId && pane
             ? { tabs: await agentBrowser.tabs(pane) }
+            : {}),
+          // `all=1`: the windows, for the browser opened without a pane.
+          ...(connectionId && !pane && url.searchParams.get("all") === "1"
+            ? { windows: await agentBrowser.windows() }
             : {}),
         },
         { headers },
@@ -2883,7 +2886,10 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     }
     if (ws.data.vnc) {
       socketPrincipals.set(ws, ws.data.principal);
-      vncSockets.set(ws, agentBrowser.openVnc(ws as VncPeer));
+      vncSockets.set(
+        ws,
+        agentBrowser.openVnc(ws as VncPeer, ws.data.vnc.scale),
+      );
       return;
     }
     clients.add(ws);

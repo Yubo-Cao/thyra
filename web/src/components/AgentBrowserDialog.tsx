@@ -33,12 +33,14 @@ const NAMED_KEYS: Record<string, number> = {
 const MIN_REMOTE_WIDTH = 500;
 
 /**
- * Ask the remote for this view's size, but at least MIN_REMOTE_WIDTH wide at
- * the same aspect, so a phone gets the whole window scaled down rather than
- * a cut-off one. Wraps noVNC 1.7 internals: `_requestRemoteResize` reads the
- * size from `_screenSize`, which scaling also uses, so swap it only there.
+ * Ask the remote for this view's size times `scale` (2 on a HiDPI screen,
+ * where the display also draws at 2x, so pages keep their layout and come
+ * out sharp), and at least MIN_REMOTE_WIDTH wide at the same aspect, so a
+ * phone gets the whole window scaled down rather than a cut-off one. Wraps
+ * noVNC 1.7 internals: `_requestRemoteResize` reads the size from
+ * `_screenSize`, which scaling also uses, so swap it only there.
  */
-function keepMinimumRemoteWidth(rfb: RFB) {
+function sizeRemote(rfb: RFB, scale: number) {
   type Size = { w: number; h: number };
   const internal = rfb as unknown as {
     _screenSize(): Size;
@@ -49,7 +51,7 @@ function keepMinimumRemoteWidth(rfb: RFB) {
   internal._requestRemoteResize = () => {
     internal._screenSize = () => {
       const { w, h } = screenSize();
-      const k = w > 0 ? Math.max(1, MIN_REMOTE_WIDTH / w) : 1;
+      const k = (w > 0 ? Math.max(1, MIN_REMOTE_WIDTH / w) : 1) * scale;
       return { w: Math.round(w * k), h: Math.round(h * k) };
     };
     try {
@@ -87,9 +89,7 @@ export function AgentBrowserDialog() {
     if (!open) return;
     let live = true;
     const load = async () => {
-      const next = await fetchAgentBrowser(
-        paneId ? { paneId } : { all: true },
-      );
+      const next = await fetchAgentBrowser(paneId ? { paneId } : { all: true });
       if (live) setInfo(next);
     };
     void activateAgentBrowserTab(paneId, target?.targetId).then((id) => {
@@ -105,16 +105,19 @@ export function AgentBrowserDialog() {
   }, [open, paneId, target?.targetId]);
 
   const vnc = info?.vnc === true;
+  const scale = info?.hidpi && window.devicePixelRatio >= 1.5 ? 2 : 1;
   useEffect(() => {
     if (!vnc || !screen) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const rfb = new RFB(screen, `${proto}://${location.host}/ws/browser`, {
-      shared: true,
-    });
+    const rfb = new RFB(
+      screen,
+      `${proto}://${location.host}/ws/browser?scale=${scale}`,
+      { shared: true },
+    );
     // The remote desktop follows this view's size (Xvnc accepts
     // SetDesktopSize; maximized windows follow it), so pages render 1:1.
     rfb.scaleViewport = true;
-    keepMinimumRemoteWidth(rfb);
+    sizeRemote(rfb, scale);
     rfb.resizeSession = true;
     // Tight JPEG at modest quality keeps slow links usable.
     rfb.qualityLevel = 5;
@@ -127,7 +130,7 @@ export function AgentBrowserDialog() {
       rfbRef.current = null;
       rfb.disconnect();
     };
-  }, [vnc, screen]);
+  }, [vnc, scale, screen]);
 
   const press = (keysym: number) => rfbRef.current?.sendKey(keysym, null);
   useEffect(() => {
@@ -155,25 +158,36 @@ export function AgentBrowserDialog() {
   }, [keys]);
 
   const tabs = info?.tabs ?? [];
+  // The whole browser picks a window: Chromium's own tab strip covers the
+  // tabs inside it. A pane picks among the tabs it owns.
+  const windows = info?.windows ?? [];
   const current =
     tabs.find((tab) => tab.targetId === activeId) ??
-    tabs.find((tab) => tab.review?.state === "pending");
+    tabs.find((tab) => tab.review?.state === "pending") ??
+    windows.find((window) => window.targetId === activeId);
   const review = tabs.find((tab) => tab.review?.state === "pending")?.review;
   const title = t("Agent browser");
   const description = review?.message || current?.title || undefined;
+  const choices = paneId
+    ? tabs.map((tab) => ({
+        value: tab.targetId,
+        label: tab.title || tab.url,
+        description: tab.url,
+      }))
+    : windows.map((window) => ({
+        value: window.targetId,
+        label: window.title || window.url,
+        description: `${t("{count} tabs", { count: window.tabs })} · ${window.url}`,
+      }));
   const headerActions = (
     <>
-      {tabs.length > (paneId ? 1 : 0) ? (
+      {choices.length > 1 ? (
         <Select
-          aria-label={t("Browser tab")}
+          aria-label={paneId ? t("Browser tab") : t("Browser window")}
           variant="ghost"
           value={current?.targetId ?? ""}
-          placeholder={t("Choose a tab")}
-          options={tabs.map((tab) => ({
-            value: tab.targetId,
-            label: tab.title || tab.url,
-            description: tab.url,
-          }))}
+          placeholder={paneId ? t("Choose a tab") : t("Choose a window")}
+          options={choices}
           onChange={(id) => {
             setActiveId(id);
             void activateAgentBrowserTab(paneId, id);

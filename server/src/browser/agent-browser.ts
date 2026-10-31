@@ -14,6 +14,13 @@ export type BrowserTab = {
   title: string;
   review?: BrowserReview;
 };
+/** A browser window, shown by its front tab; fronting that tab raises it. */
+export type BrowserWindow = {
+  targetId: string;
+  url: string;
+  title: string;
+  tabs: number;
+};
 export type BrowserOwner = { paneId: string; workspaceId?: string };
 export type ReviewRequest = {
   targetId: string;
@@ -37,6 +44,8 @@ export function agentBrowserConfig(env = process.env) {
     proxyUrl: (
       thyraEnv("BROWSER_PROXY_URL", env) || "http://127.0.0.1:3456"
     ).replace(/\/+$/, ""),
+    /** Run with 1 or 2 to set the display's device scale (HiDPI viewers). */
+    scaleCommand: thyraEnv("BROWSER_SCALE_COMMAND", env) || undefined,
   };
 }
 
@@ -92,6 +101,9 @@ export function createAgentBrowser(options: {
   proxyUrl: string;
   logger: Logger;
   onReview: (request: ReviewRequest) => void;
+  scaleCommand?: string;
+  /** Runs the scale command; resolves when it exits. */
+  runScale?: (command: string, scale: number) => Promise<unknown>;
   fetch?: typeof fetch;
   connect?: typeof Bun.connect;
   backoffMs?: (attempt: number) => number;
@@ -106,6 +118,36 @@ export function createAgentBrowser(options: {
   const reviews = new Map<string, string>();
   let events: AbortController | null = null;
   let proxyUp = false;
+
+  // Device scale each open viewer asked for. The display runs at the largest
+  // while any viewer is open and returns to 1 after the last one closes, so
+  // agents' own screenshots stay at 1x.
+  const viewerScales = new Map<object, number>();
+  let appliedScale = 1;
+  let scaling: Promise<unknown> = Promise.resolve();
+  const runScale =
+    options.runScale ??
+    ((command: string, scale: number) =>
+      Bun.spawn([command, String(scale)], {
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exited);
+  function applyScale() {
+    const command = options.scaleCommand;
+    if (!command) return;
+    scaling = scaling.then(async () => {
+      const scale = Math.max(1, ...viewerScales.values());
+      if (scale === appliedScale) return;
+      try {
+        await runScale(command, scale);
+        appliedScale = scale;
+      } catch (error) {
+        logger.debug("browser scale command failed", {
+          error: (error as Error).message,
+        });
+      }
+    });
+  }
 
   function vncAvailable() {
     try {
@@ -128,6 +170,46 @@ export function createAgentBrowser(options: {
       return Array.isArray(listed)
         ? listed.flatMap((tab) => parseTab(tab) ?? []).slice(0, 100)
         : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Every browser window, the one with the most tabs first. */
+  async function windows(): Promise<BrowserWindow[] | null> {
+    try {
+      const response = await fetchProxy(`${options.proxyUrl}/contexts`, {
+        signal: AbortSignal.timeout(3000),
+        redirect: "error",
+      });
+      if (!response.ok) return null;
+      const listed = (await response.json()) as {
+        contexts?: { windows?: unknown[] }[];
+      };
+      const found: BrowserWindow[] = [];
+      for (const context of listed?.contexts ?? [])
+        for (const raw of context?.windows ?? []) {
+          const window = raw as {
+            activeTargetId?: unknown;
+            anchorTargetId?: unknown;
+            tabs?: unknown[];
+          };
+          const tabs = (Array.isArray(window.tabs) ? window.tabs : []).flatMap(
+            (tab) => parseTab(tab) ?? [],
+          );
+          const front =
+            tabs.find((tab) => tab.targetId === window.activeTargetId) ??
+            tabs.find((tab) => tab.targetId === window.anchorTargetId) ??
+            tabs[0];
+          if (front)
+            found.push({
+              targetId: front.targetId,
+              url: front.url,
+              title: front.title,
+              tabs: tabs.length,
+            });
+        }
+      return found.sort((a, b) => b.tabs - a.tabs).slice(0, 100);
     } catch {
       return null;
     }
@@ -231,8 +313,11 @@ export function createAgentBrowser(options: {
     }
   }
 
-  /** One VNC socket connection per peer; either end closing closes both. */
-  function openVnc(peer: VncPeer) {
+  /**
+   * One VNC socket connection per peer; either end closing closes both.
+   * `scale` 2 asks for a HiDPI display while this peer is open.
+   */
+  function openVnc(peer: VncPeer, scale = 1) {
     let socket: Socket<undefined> | null = null;
     let closed = false;
     const queued: Uint8Array[] = [];
@@ -247,7 +332,11 @@ export function createAgentBrowser(options: {
         queued.shift();
       }
     };
+    const release = () => {
+      if (viewerScales.delete(peer)) applyScale();
+    };
     const close = () => {
+      release();
       if (closed) return;
       closed = true;
       socket?.end();
@@ -256,6 +345,10 @@ export function createAgentBrowser(options: {
     if (!vncAvailable()) {
       peer.close(4404, "VNC display unavailable");
       return { message() {}, close() {} };
+    }
+    if (options.scaleCommand) {
+      viewerScales.set(peer, scale === 2 ? 2 : 1);
+      applyScale();
     }
     connect({
       unix: options.vncSocket,
@@ -273,6 +366,7 @@ export function createAgentBrowser(options: {
         error: close,
       },
     }).catch(() => {
+      release();
       if (!closed) peer.close(4404, "VNC display unavailable");
       closed = true;
     });
@@ -284,6 +378,7 @@ export function createAgentBrowser(options: {
         flush();
       },
       close() {
+        release();
         closed = true;
         socket?.end();
       },
@@ -291,8 +386,15 @@ export function createAgentBrowser(options: {
   }
 
   return {
-    status: () => ({ vnc: vncAvailable(), proxy: proxyUp }),
+    status: () => ({
+      vnc: vncAvailable(),
+      proxy: proxyUp,
+      hidpi: Boolean(options.scaleCommand),
+    }),
+    /** Settles once queued scale changes have run (tests). */
+    scaleSettled: () => scaling,
     tabs,
+    windows,
     activate,
     openVnc,
     start() {
