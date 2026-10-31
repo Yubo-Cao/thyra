@@ -168,7 +168,7 @@ export function MobileTerminalControls({
   onShowSession: () => void;
   onOpenWorkspaces: () => void;
   onOpenProjectLauncher: () => void;
-  /** The active agent pane's browser, when this host offers it. */
+  /** The active agent pane's browser, else the whole one, when offered. */
   onOpenAgentBrowser?: () => void;
 }) {
   const { collapsed, tabSheetOpen, composerDraftKey, composerOpen } = controls;

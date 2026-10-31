@@ -225,13 +225,18 @@ export default function App() {
         onOpenWorkspaces={shell.openWorkspaces}
         onOpenProjectLauncher={() => setProjectLauncherOpen(true)}
         onOpenAgentBrowser={
-          agentBrowserAvailable && activePane?.agent
+          agentBrowserAvailable
             ? () =>
-                openAgentBrowser({
-                  connectionId: s.activeConnectionId,
-                  workspaceId: activePane.workspace_id,
-                  paneId: activePane.pane_id,
-                })
+                // An agent pane opens its own tabs; otherwise the whole browser.
+                openAgentBrowser(
+                  activePane?.agent
+                    ? {
+                        connectionId: s.activeConnectionId,
+                        workspaceId: activePane.workspace_id,
+                        paneId: activePane.pane_id,
+                      }
+                    : { connectionId: s.activeConnectionId },
+                )
             : undefined
         }
       />

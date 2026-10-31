@@ -66,6 +66,12 @@ describe("agent browser", () => {
     expect(await browser.activate("w1:p1", "other")).toBeNull();
     expect(calls).toContain("POST http://proxy/activate?target=a");
     expect(calls).toContain("GET http://proxy/targets?pane=w1%3Ap1");
+    // Without a pane: list every tab, front only a named one.
+    expect(await browser.tabs(null)).toHaveLength(2);
+    expect(calls).toContain("GET http://proxy/targets");
+    expect(await browser.activate(null)).toBeNull();
+    expect(await browser.activate(null, "b")).toBe("b");
+    expect(calls.some((call) => call.includes("/close"))).toBe(false);
     expect(browser.status()).toEqual({ vnc: false, proxy: false });
   });
 

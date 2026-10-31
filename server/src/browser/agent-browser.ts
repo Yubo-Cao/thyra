@@ -115,10 +115,12 @@ export function createAgentBrowser(options: {
     }
   }
 
-  async function tabs(paneId: string): Promise<BrowserTab[] | null> {
+  /** The pane's tabs, or every tab in the browser when `paneId` is null. */
+  async function tabs(paneId: string | null): Promise<BrowserTab[] | null> {
+    const query = paneId ? `?pane=${encodeURIComponent(paneId)}` : "";
     try {
       const response = await fetchProxy(
-        `${options.proxyUrl}/targets?pane=${encodeURIComponent(paneId)}`,
+        `${options.proxyUrl}/targets${query}`,
         { signal: AbortSignal.timeout(3000), redirect: "error" },
       );
       if (!response.ok) return null;
@@ -131,8 +133,12 @@ export function createAgentBrowser(options: {
     }
   }
 
-  /** Bring `targetId` (or the pane's most relevant tab) to the front. */
-  async function activate(paneId: string, targetId?: string | null) {
+  /**
+   * Bring `targetId` (or the pane's most relevant tab) to the front. Without a
+   * pane any open tab may be fronted. Only fronts: never closes another tab.
+   */
+  async function activate(paneId: string | null, targetId?: string | null) {
+    if (!paneId && !targetId) return null;
     const listed = (await tabs(paneId)) ?? [];
     const tab = targetId
       ? listed.find((entry) => entry.targetId === targetId)

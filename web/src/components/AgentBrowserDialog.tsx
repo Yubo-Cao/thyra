@@ -28,7 +28,41 @@ const NAMED_KEYS: Record<string, number> = {
   ArrowDown: 0xff54,
 };
 
-/** The pane's tabs in the host's headed Chromium, over VNC. */
+/** Chromium will not make a window narrower than this many pixels. */
+const MIN_REMOTE_WIDTH = 500;
+
+/**
+ * Ask the remote for this view's size, but at least MIN_REMOTE_WIDTH wide at
+ * the same aspect, so a phone gets the whole window scaled down rather than
+ * a cut-off one. Wraps noVNC 1.7 internals: `_requestRemoteResize` reads the
+ * size from `_screenSize`, which scaling also uses, so swap it only there.
+ */
+function keepMinimumRemoteWidth(rfb: RFB) {
+  type Size = { w: number; h: number };
+  const internal = rfb as unknown as {
+    _screenSize(): Size;
+    _requestRemoteResize(): void;
+  };
+  const screenSize = internal._screenSize.bind(rfb);
+  const request = internal._requestRemoteResize.bind(rfb);
+  internal._requestRemoteResize = () => {
+    internal._screenSize = () => {
+      const { w, h } = screenSize();
+      const k = w > 0 ? Math.max(1, MIN_REMOTE_WIDTH / w) : 1;
+      return { w: Math.round(w * k), h: Math.round(h * k) };
+    };
+    try {
+      request();
+    } finally {
+      internal._screenSize = screenSize;
+    }
+  };
+}
+
+/**
+ * The host's headed Chromium over VNC: a pane's tabs, or (opened without a
+ * pane) the whole browser with every agent's tabs. Viewing only fronts tabs.
+ */
 export function AgentBrowserDialog() {
   const target = useAgentBrowserOpen();
   const { mobile } = useLayoutPreferences();
@@ -41,16 +75,20 @@ export function AgentBrowserDialog() {
   const [screen, setScreen] = useState<HTMLDivElement | null>(null);
   const [keys, setKeys] = useState<HTMLTextAreaElement | null>(null);
   const rfbRef = useRef<RFB | null>(null);
+  const open = !!target;
   const paneId = target?.paneId;
 
-  // Front the most relevant tab (or the requested one), then poll the list.
+  // Front the pane's most relevant tab (or the requested one), then poll the
+  // list. The whole browser stays on whatever tab is already in front.
   useEffect(() => {
     setInfo(null);
     setActiveId(null);
-    if (!paneId) return;
+    if (!open) return;
     let live = true;
     const load = async () => {
-      const next = await fetchAgentBrowser(paneId);
+      const next = await fetchAgentBrowser(
+        paneId ? { paneId } : { all: true },
+      );
       if (live) setInfo(next);
     };
     void activateAgentBrowserTab(paneId, target?.targetId).then((id) => {
@@ -63,7 +101,7 @@ export function AgentBrowserDialog() {
       live = false;
       window.clearInterval(timer);
     };
-  }, [paneId, target?.targetId]);
+  }, [open, paneId, target?.targetId]);
 
   const vnc = info?.vnc === true;
   useEffect(() => {
@@ -72,9 +110,11 @@ export function AgentBrowserDialog() {
     const rfb = new RFB(screen, `${proto}://${location.host}/ws/browser`, {
       shared: true,
     });
+    // The remote desktop follows this view's size (Xvnc accepts
+    // SetDesktopSize; maximized windows follow it), so pages render 1:1.
     rfb.scaleViewport = true;
-    // A phone-sized remote would reflow the page the agent is driving.
-    rfb.resizeSession = !mobile;
+    keepMinimumRemoteWidth(rfb);
+    rfb.resizeSession = true;
     // Tight JPEG at modest quality keeps slow links usable.
     rfb.qualityLevel = 5;
     rfb.compressionLevel = 6;
@@ -86,7 +126,7 @@ export function AgentBrowserDialog() {
       rfbRef.current = null;
       rfb.disconnect();
     };
-  }, [vnc, mobile, screen]);
+  }, [vnc, screen]);
 
   const press = (keysym: number) => rfbRef.current?.sendKey(keysym, null);
   useEffect(() => {
@@ -120,8 +160,8 @@ export function AgentBrowserDialog() {
   const review = tabs.find((tab) => tab.review?.state === "pending")?.review;
   return (
     <Dialog
-      open={!!target}
-      onOpenChange={(open) => !open && closeAgentBrowser()}
+      open={open}
+      onOpenChange={(next) => !next && closeAgentBrowser()}
       title={t("Agent browser")}
       description={review?.message || current?.title || undefined}
       keyboardDismissable={false}
@@ -130,7 +170,7 @@ export function AgentBrowserDialog() {
       bodyClassName="agent-browser-body"
       headerActions={
         <>
-          {tabs.length > 1 ? (
+          {tabs.length > (paneId ? 1 : 0) ? (
             <Select
               aria-label={t("Browser tab")}
               variant="ghost"
@@ -143,7 +183,7 @@ export function AgentBrowserDialog() {
               }))}
               onChange={(id) => {
                 setActiveId(id);
-                if (paneId) void activateAgentBrowserTab(paneId, id);
+                void activateAgentBrowserTab(paneId, id);
                 rfbRef.current?.focus();
               }}
             />

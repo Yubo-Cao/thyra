@@ -540,6 +540,15 @@ export function CommandCombobox({
         }),
     });
   }
+  if (browserAvailable) {
+    currentActions.push({
+      key: "agent-browser-all",
+      icon: <Globe size={15} />,
+      title: msg("Open browser"),
+      keywords: ["browser", "chromium", "vnc", "all tabs"],
+      run: () => openAgentBrowser({ connectionId: s.activeConnectionId }),
+    });
+  }
   if (activePane) {
     currentActions.push({
       key: "current-toggle-pane-zoom",

@@ -14,10 +14,11 @@ export type AgentBrowserInfo = {
   proxy: boolean;
   tabs?: AgentBrowserTab[] | null;
 };
+/** A pane's tabs; without `paneId`, the whole browser with every tab. */
 export type AgentBrowserTarget = {
   connectionId: string;
-  workspaceId: string;
-  paneId: string;
+  workspaceId?: string;
+  paneId?: string;
   targetId?: string;
 };
 
@@ -27,10 +28,15 @@ export const agentBrowserStore = createStore<{
   open: AgentBrowserTarget | null;
 }>()(() => ({ connectionId: null, open: null }));
 
+/** Status only by default; `{ paneId }` adds its tabs, `{ all }` every tab. */
 export async function fetchAgentBrowser(
-  paneId?: string,
+  scope: { paneId?: string; all?: boolean } = {},
 ): Promise<AgentBrowserInfo | null> {
-  const query = paneId ? `?pane=${encodeURIComponent(paneId)}` : "";
+  const query = scope.paneId
+    ? `?pane=${encodeURIComponent(scope.paneId)}`
+    : scope.all
+      ? "?all=1"
+      : "";
   try {
     const response = await fetch(`/api/browser${query}`, {
       credentials: "same-origin",
@@ -48,11 +54,14 @@ export async function refreshAgentBrowserStatus(host: boolean) {
   agentBrowserStore.setState({ connectionId: info?.connection_id ?? null });
 }
 
+/** Fronts a tab; never closes one, so other agents' tabs stay open. */
 export async function activateAgentBrowserTab(
-  paneId: string,
+  paneId: string | undefined,
   targetId?: string,
 ): Promise<string | null> {
-  const query = new URLSearchParams({ pane: paneId });
+  if (!paneId && !targetId) return null;
+  const query = new URLSearchParams();
+  if (paneId) query.set("pane", paneId);
   if (targetId) query.set("target", targetId);
   try {
     const response = await fetch(`/api/browser/activate?${query}`, {
@@ -85,6 +94,11 @@ export function useAgentBrowserAvailable(connectionId: string): boolean {
     (state) =>
       state.connectionId !== null && state.connectionId === connectionId,
   );
+}
+
+/** The connection whose host serves the agent browser, if any. */
+export function useAgentBrowserConnection() {
+  return useStore(agentBrowserStore, (state) => state.connectionId);
 }
 
 export function useAgentBrowserOpen() {

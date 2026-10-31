@@ -1,4 +1,8 @@
+import { Globe } from "lucide-react";
+import { openAgentBrowser, useAgentBrowserConnection } from "../agentBrowser";
 import { MessageBoard } from "../components/MessageBoard";
+import { IconButton } from "../components/ui/IconButton";
+import { t } from "../i18n";
 import { Suspense } from "react";
 import packageJson from "../../package.json";
 import { CommandMenu } from "../components/CommandMenu";
@@ -33,6 +37,7 @@ export function TopBar({
   inspector: Pick<WorkspaceInspector, "openEditor" | "openFile">;
   onOpenProjectLauncher: () => void;
 }) {
+  const browserConnection = useAgentBrowserConnection();
   return (
     <header className="topbar">
       <div className="topbar-start">
@@ -57,6 +62,15 @@ export function TopBar({
       </div>
       <div className="topbar-actions">
         <div className="topbar-command-group">
+          {browserConnection ? (
+            <IconButton
+              label={t("Open browser")}
+              icon={<Globe size={16} aria-hidden="true" />}
+              onClick={() =>
+                openAgentBrowser({ connectionId: browserConnection })
+              }
+            />
+          ) : null}
           <MessageBoard onOpenFile={inspector.openFile} />
           <CommandMenu
             key={`${resourceUiKey}:commands`}

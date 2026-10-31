@@ -2439,14 +2439,15 @@ async function routeAuthenticated(
         {
           connection_id: connectionId,
           ...agentBrowser.status(),
-          ...(connectionId && pane
+          // `all=1`: every tab, for the browser opened without a pane.
+          ...(connectionId && (pane || url.searchParams.get("all") === "1")
             ? { tabs: await agentBrowser.tabs(pane) }
             : {}),
         },
         { headers },
       );
     }
-    if (!connectionId || !pane)
+    if (!connectionId || (!pane && !url.searchParams.get("target")))
       return Response.json(
         { error: "agent browser unavailable" },
         { status: 404, headers },
