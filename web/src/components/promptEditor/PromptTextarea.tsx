@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { PASSWORD_MANAGER_IGNORE } from "../../passwordManagerIgnore";
 import type { PromptEditorSurface, PromptEditorSurfaceProps } from "./surface";
 
 /**
@@ -95,6 +96,7 @@ export function PromptTextarea({
       spellCheck={false}
       autoComplete="off"
       autoCapitalize="off"
+      {...PASSWORD_MANAGER_IGNORE}
       placeholder={placeholder}
       aria-label={label}
       aria-controls={controls}

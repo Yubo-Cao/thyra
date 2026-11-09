@@ -33,6 +33,7 @@ import {
 } from "../terminalComposer";
 import { useTerminalComposerDraft } from "../useTerminalComposerDraft";
 import { msg, t } from "../i18n";
+import { PASSWORD_MANAGER_IGNORE } from "../passwordManagerIgnore";
 import { useVoiceDictation } from "../voice/useVoiceDictation";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
@@ -344,6 +345,7 @@ export function TerminalComposer({
           rows={1}
           placeholder={t("Compose input for the terminal…")}
           autoComplete="off"
+          {...PASSWORD_MANAGER_IGNORE}
           aria-label={t("Terminal input draft")}
           onChange={(e) => updateText(e.currentTarget)}
           onSelect={(e) =>

@@ -24,6 +24,7 @@ import {
 } from "@codemirror/view";
 import { useLayoutEffect, useRef } from "react";
 import { t } from "../../i18n";
+import { PASSWORD_MANAGER_IGNORE } from "../../passwordManagerIgnore";
 import { livePreview, webImageUrl } from "./livePreview";
 import type {
   PromptEditorFont,
@@ -214,6 +215,7 @@ export function PromptCodeMirror({
             autocapitalize: "off",
             autocorrect: "off",
             spellcheck: "false",
+            ...PASSWORD_MANAGER_IGNORE,
           }),
           livePreview({
             url: (source) =>

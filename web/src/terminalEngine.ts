@@ -1,6 +1,7 @@
 import type { PtyTransport } from "restty";
 import type { ResttyRuntime } from "restty/internal/runtime";
 import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_OPTIONS } from "./appearance";
+import { PASSWORD_MANAGER_IGNORE } from "./passwordManagerIgnore";
 import { TerminalLinkHover } from "./terminalLinkHover";
 import { afterStartup, holdStartup } from "./startupGate";
 import { redirectScreenFocus } from "./terminalFocus";
@@ -732,6 +733,8 @@ export class TerminalEngine {
     this.textarea.autocapitalize = "off";
     this.textarea.autocomplete = "off";
     this.textarea.spellcheck = false;
+    for (const [name, value] of Object.entries(PASSWORD_MANAGER_IGNORE))
+      this.textarea.setAttribute(name, value);
     this.textarea.readOnly = this.opts.disableStdin;
     this.preview = doc.createElement("pre");
     this.preview.className = "terminal-engine-preview";
