@@ -2,7 +2,7 @@
 // Maple Mono NF CN (OFL-1.1, LICENSES/MAPLE-MONO.txt), sliced by unicode-range.
 // ASCII, Latin-1 and Powerline chunks.
 export const TERMINAL_FONT_CORE_STYLESHEET =
-  "/assets/fonts/maple-mono-nf-cn/fonts-core-486860428f.css";
+  "/assets/fonts/maple-mono-nf-cn/fonts-core-a206e0a616.css";
 // Every other chunk (CJK, Nerd Font icons, ...).
 export const TERMINAL_FONT_STYLESHEET =
-  "/assets/fonts/maple-mono-nf-cn/fonts-55fa96cf1e.css";
+  "/assets/fonts/maple-mono-nf-cn/fonts-628b03e11b.css";

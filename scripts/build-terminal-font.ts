@@ -14,6 +14,9 @@
 //   (cd node_modules/cn-font-split && node ./dist/cli.js i default)
 //   CN_FONT_SPLIT=/tmp/cfs/node_modules/cn-font-split/dist/auto.mjs \
 //     bun scripts/build-terminal-font.ts /usr/share/fonts/maple-mono-nf-cn
+// then enlarge the CJK glyphs to fill their two cells and rehash:
+//   python scripts/scale-terminal-font-cjk.py
+//   bun scripts/build-terminal-font.ts --split
 // To only re-split the existing stylesheets (no font tooling needed):
 //   bun scripts/build-terminal-font.ts --split
 
