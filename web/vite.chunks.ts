@@ -66,6 +66,9 @@ export function vendorChunk(
   id: string,
   meta: ManualChunkMeta,
 ): string | undefined {
+  // Keeps the engine's own re-exports with the engine; left alone, Rollup
+  // merges this tiny module into a chunk the first screen loads statically.
+  if (/\/src\/terminalEngineInternals\.ts$/.test(id)) return "vendor-terminal";
   const name = packageName(id);
   if (!name) return undefined;
   if (REACT_PACKAGES.has(name)) return "vendor-react";

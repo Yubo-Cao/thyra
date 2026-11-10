@@ -489,7 +489,7 @@ export function loadTerminalEngine(): Promise<EngineModules> {
     core.catch(() => {});
     const [restty, internal] = await Promise.all([
       import("restty/internal/runtime"),
-      import("restty/internal"),
+      import("./terminalEngineInternals"),
     ]);
     const createSession = restty.createResttyRuntimeSession as (options: {
       wasmModule: () => Promise<WebAssembly.Module>;
