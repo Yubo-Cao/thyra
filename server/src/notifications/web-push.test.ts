@@ -717,3 +717,90 @@ test("a device's origin twins keep only the latest registration", async () => {
     f.cleanup();
   }
 });
+
+test("device limits are per principal and only the owner removes a subscription", async () => {
+  const f = fixture();
+  const stored = () =>
+    (
+      JSON.parse(readFileSync(f.path, "utf8")).devices as Array<{
+        owner?: string;
+        subscription: { endpoint: string };
+      }>
+    ).map(
+      (entry) =>
+        `${entry.owner}:${entry.subscription.endpoint.split("/").at(-1)}`,
+    );
+  try {
+    for (let index = 0; index < 32; index++)
+      expect(
+        (await f.service.handle(request("POST", device(`a${index}`)), "user:a"))
+          .status,
+      ).toBe(200);
+    // One account at its limit is refused; another still registers.
+    expect(
+      (await f.service.handle(request("POST", device("a32")), "user:a")).status,
+    ).toBe(409);
+    const bob = device("bob");
+    expect(
+      (await f.service.handle(request("POST", bob), "user:b")).status,
+    ).toBe(200);
+    // Removing at the limit still works, and frees a slot.
+    expect(
+      (
+        await f.service.handle(
+          request("DELETE", {
+            endpoint: "https://fcm.googleapis.com/fcm/send/a0",
+          }),
+          "user:a",
+        )
+      ).status,
+    ).toBe(200);
+    expect(stored()).toHaveLength(32);
+
+    // Another account can neither remove nor replace bob's subscription.
+    const { endpoint } = bob.subscription;
+    expect(
+      (await f.service.handle(request("DELETE", { endpoint }), "user:a"))
+        .status,
+    ).toBe(200);
+    const forged = { ...device("bob"), preferences: bob.preferences };
+    expect(
+      (await f.service.handle(request("POST", forged), "user:a")).status,
+    ).toBe(409);
+    expect(stored()).toContain("user:b:bob");
+    // The browser that holds the subscription (same keys) may re-register
+    // it after signing in as someone else.
+    expect(
+      (await f.service.handle(request("POST", bob), "user:a")).status,
+    ).toBe(200);
+    expect(stored()).toContain("user:a:bob");
+    expect(stored()).not.toContain("user:b:bob");
+    expect(
+      (await f.service.handle(request("DELETE", { endpoint }), "user:a"))
+        .status,
+    ).toBe(200);
+    expect(stored()).not.toContain("user:a:bob");
+
+    // A guest's subscription keeps its owner across a restart.
+    await f.service.handle(request("POST", device("guest")), "guest:g_1");
+    f.service.stop();
+    const sent: string[] = [];
+    const reloaded = createWebPushService({
+      ...f.options,
+      send: mock(async (subscription: webpush.PushSubscription) => {
+        sent.push(subscription.endpoint.split("/").at(-1)!);
+        return { statusCode: 201, body: "", headers: {} };
+      }) as unknown as typeof webpush.sendNotification,
+    });
+    reloaded.notify(
+      task,
+      () => true,
+      (owner) => owner === "guest:g_1",
+    );
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(sent).toEqual(["guest"]);
+    reloaded.stop();
+  } finally {
+    f.cleanup();
+  }
+});

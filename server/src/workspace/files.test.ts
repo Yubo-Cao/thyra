@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { shQuote } from "../utils/process-utils";
-import { createFileHandlers } from "./files";
+import { createFileHandlers, FILE_UPLOAD_MAX_BYTES } from "./files";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>) {
   const dir = await mkdtemp(join(tmpdir(), "thyra-handler-test-"));
@@ -249,5 +249,60 @@ describe("workspace file handlers", () => {
     await expect(handlers.resolveWorkspaceFiles({ paths: [] })).rejects.toThrow(
       "file.resolve requires workspace_id",
     );
+  });
+});
+
+test("an upload over the size limit is refused before its body is read", async () => {
+  await withTempDir(async (root) => {
+    const handlers = createFileHandlers({
+      herdr: {
+        call: async (method: string) => {
+          if (method === "workspace.get")
+            return { workspace: { workspace_id: "w1", label: "Repo" } };
+          if (method === "pane.list")
+            return {
+              panes: [
+                { workspace_id: "w1", focused: true, foreground_cwd: root },
+              ],
+            };
+          throw new Error(`unexpected call ${method}`);
+        },
+      } as any,
+      sshHost: () => undefined,
+      runProcessWithCodeTimeout: async () => ({
+        code: 0,
+        stdout: root,
+        stderr: "",
+      }),
+      shQuote,
+    });
+    const params = { workspace_id: "w1", directory: "", filename: "big.bin" };
+    let pulled = 0;
+    await expect(
+      handlers.uploadWorkspaceFile(
+        params,
+        new Request("http://test", {
+          method: "POST",
+          headers: { "content-length": String(FILE_UPLOAD_MAX_BYTES + 1) },
+          body: new ReadableStream(
+            {
+              pull(controller) {
+                pulled += 1;
+                controller.enqueue(new Uint8Array(1));
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+        }),
+      ),
+    ).rejects.toThrow("file too large");
+    expect(pulled).toBe(0);
+    expect(await readdir(root)).toEqual([]);
+    expect(
+      await handlers.uploadWorkspaceFile(
+        params,
+        new Request("http://test", { method: "POST", body: "ok" }),
+      ),
+    ).toMatchObject({ size: 2, overwritten: false });
   });
 });

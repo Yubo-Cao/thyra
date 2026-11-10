@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { sameDigest } from "./digest";
 import { escapeHtml } from "./html";
-import { parseCookie, readJsonObject, RequestError } from "./request";
+import {
+  parseCookie,
+  readBodyBytes,
+  readJsonObject,
+  RequestError,
+} from "./request";
 
 const post = (body: string, type = "application/json; charset=utf-8") =>
   new Request("http://x/", {
@@ -23,6 +28,67 @@ describe("readJsonObject", () => {
     expect(await status(post(`{"a":"${"x".repeat(20)}"}`))).toBe(413);
     expect(await status(post("{"))).toBe(400);
     expect(await status(post("[]"))).toBe(400);
+  });
+});
+
+describe("readBodyBytes", () => {
+  test("returns the body up to the limit", async () => {
+    const body = await readBodyBytes(post("hello"), 5);
+    expect(new TextDecoder().decode(body)).toBe("hello");
+    expect(
+      (await readBodyBytes(new Request("http://x/", { method: "POST" }), 5))
+        .byteLength,
+    ).toBe(0);
+  });
+
+  test("refuses a larger Content-Length without reading the body", async () => {
+    let pulled = 0;
+    const req = new Request("http://x/", {
+      method: "POST",
+      headers: { "content-length": "11" },
+      body: new ReadableStream(
+        {
+          pull(controller) {
+            pulled += 1;
+            controller.enqueue(new Uint8Array(1));
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    });
+    const error = await readBodyBytes(req, 10).catch((e: RequestError) => e);
+    expect((error as RequestError).status).toBe(413);
+    expect(pulled).toBe(0);
+  });
+
+  test("stops reading a stream that passes the limit", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const req = new Request("http://x/", {
+      method: "POST",
+      body: new ReadableStream(
+        {
+          pull(controller) {
+            pulled += 1;
+            controller.enqueue(new Uint8Array(4));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    });
+    const error = await readBodyBytes(req, 10).catch((e: RequestError) => e);
+    expect((error as RequestError).status).toBe(413);
+    expect(pulled).toBe(3);
+    expect(cancelled).toBe(true);
+  });
+
+  test("counts bytes, not characters", async () => {
+    const status = (req: Request) =>
+      readJsonObject(req, 12).catch((e: RequestError) => e.status);
+    expect(await status(post('{"a":"\u00e9\u00e9\u00e9"}'))).toBe(413);
   });
 });
 

@@ -792,6 +792,34 @@ describe("invitations", () => {
       .find((entry) => entry.provider === "email")!;
     expect(identity.emailVerified).toBe(true);
   });
+
+  test("an invitation cannot take an address another account now has", async () => {
+    const ctx = setup();
+    const { cookie } = await signedIn(ctx);
+    await ctx.call("POST", "/api/invites?connection_id=c1&workspace_id=w1", {
+      body: { email: "mate@example.com" },
+      cookie,
+    });
+    const token = stub
+      .lastMailTo("mate@example.com")!
+      .text.match(/\/invite#(\S+)/)![1]!;
+    const invited = ctx.store.findIdentity("email", "mate@example.com")!;
+    const other = ctx.store.createUser({ name: "other", role: "member" });
+    ctx.store.unlinkIdentity("email", "mate@example.com", invited.id, null);
+    ctx.store.linkIdentity({
+      provider: "email",
+      subject: "mate@example.com",
+      userId: other.id,
+      emailVerified: true,
+    });
+    const refused = await ctx.call("POST", "/auth/invite/accept", {
+      body: { token },
+    });
+    expect(refused.status).toBe(409);
+    expect(ctx.store.findIdentity("email", "mate@example.com")?.id).toBe(
+      other.id,
+    );
+  });
 });
 
 describe("the account page", () => {

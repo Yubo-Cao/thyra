@@ -6,6 +6,7 @@ import {
   normalizeUpdateBaseUrl,
   parseUpdateManifest,
   resolveUpdateTarget,
+  runProcessUntilExit,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
 } from "./update";
 import { shQuote } from "../utils/process-utils";
@@ -15,7 +16,20 @@ const darwinRuntime = {
   arch: "arm64",
   execPath: "/Applications/thyra",
   argv: ["bun", "/$bunfs/root/thyra-darwin-arm64", "--port", "8781"],
+  // launchd starts its jobs as children of PID 1.
+  pid: 4242,
+  ppid: 1,
 };
+
+/** Handlers whose install script runs through the same fake as curl. */
+function createFakeUpdateHandlers(
+  options: Parameters<typeof createUpdateHandlers>[0],
+) {
+  return createUpdateHandlers({
+    ...options,
+    runInstallProcess: options.runProcessWithCodeTimeout,
+  });
+}
 
 const linuxRuntime = {
   platform: "linux",
@@ -169,10 +183,9 @@ describe("update helpers", () => {
     expect(
       isSupervisorManagedEnvironment({ INVOCATION_ID: "invocation-id" }),
     ).toBe(true);
+    const self = { pid: 4242, ppid: 1 };
     expect(
-      isSupervisorManagedEnvironment({
-        XPC_SERVICE_NAME: "dev.thyra",
-      }),
+      isSupervisorManagedEnvironment({ XPC_SERVICE_NAME: "dev.thyra" }, self),
     ).toBe(true);
     expect(isSupervisorManagedEnvironment({ XPC_SERVICE_NAME: "0" })).toBe(
       false,
@@ -188,6 +201,86 @@ describe("update helpers", () => {
         THYRA_RESTART_SUPERVISOR: "1",
       }),
     ).toBe(true);
+  });
+
+  test("ignores supervisor variables inherited from another process", () => {
+    const service = { pid: 4242, ppid: 1 };
+    const fromShell = { pid: 4242, ppid: 900 };
+    // systemd names the process it started; a wrapper may be the parent.
+    const systemd = {
+      INVOCATION_ID: "invocation-id",
+      SYSTEMD_EXEC_PID: "4242",
+    };
+    expect(isSupervisorManagedEnvironment(systemd, service)).toBe(true);
+    expect(
+      isSupervisorManagedEnvironment(systemd, { pid: 4300, ppid: 4242 }),
+    ).toBe(true);
+    // A shell in a pane of some other unit hands both variables down.
+    expect(
+      isSupervisorManagedEnvironment(systemd, { pid: 5000, ppid: 4900 }),
+    ).toBe(false);
+    // launchd jobs are children of PID 1; app launches are `application.*`.
+    expect(
+      isSupervisorManagedEnvironment(
+        { XPC_SERVICE_NAME: "dev.thyra" },
+        fromShell,
+      ),
+    ).toBe(false);
+    expect(
+      isSupervisorManagedEnvironment(
+        { XPC_SERVICE_NAME: "application.com.apple.Terminal.1.2" },
+        service,
+      ),
+    ).toBe(false);
+    expect(
+      isSupervisorManagedEnvironment(
+        { ...systemd, THYRA_RESTART_SUPERVISOR: "1" },
+        { pid: 5000, ppid: 4900 },
+      ),
+    ).toBe(true);
+  });
+
+  test("an install past its deadline is ended and reported only after it exits", async () => {
+    const result = await runProcessUntilExit(
+      ["sh", "-c", "trap 'echo cleaned; exit 1' TERM; sleep 30 & wait"],
+      50,
+      2000,
+    );
+    expect(result.code).toBe(124);
+    expect(result.stdout).toContain("cleaned");
+    expect(result.stderr).toContain("timed out after 50ms");
+    expect(
+      await runProcessUntilExit(
+        ["sh", "-c", "echo out; echo err >&2; exit 3"],
+        5000,
+      ),
+    ).toEqual({ code: 3, stdout: "out\n", stderr: "err\n" });
+  });
+
+  test("bounds the archive download in size and time", async () => {
+    let script = "";
+    const handlers = createFakeUpdateHandlers({
+      appVersion: "0.2.16",
+      runProcessWithCodeTimeout: async (argv) => {
+        if (argv[0] === "curl")
+          return {
+            code: 0,
+            stdout: updateManifest("0.2.17", "darwin-arm64"),
+            stderr: "",
+          };
+        script = argv[2];
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      shQuote,
+      runtime: darwinRuntime,
+      environment: launchdEnvironment,
+      scheduleProcessExit: () => undefined,
+    });
+    expect(
+      (await handlers.handleUpdateInstall(updateInstallRequest())).status,
+    ).toBe(200);
+    expect(script).toContain("--max-filesize 536870912");
+    expect(script).toContain("--max-time 90");
   });
 
   test("checks the package matching a Darwin arm64 standalone binary", async () => {
@@ -553,7 +646,7 @@ describe("update helpers", () => {
   test("installs a Darwin update and schedules only the managed process exit", async () => {
     const commands: string[][] = [];
     let exitScheduled = false;
-    const handlers = createUpdateHandlers({
+    const handlers = createFakeUpdateHandlers({
       appVersion: "0.2.16",
       runProcessWithCodeTimeout: async (argv) => {
         commands.push(argv);
@@ -619,7 +712,7 @@ describe("update helpers", () => {
       releaseVersionCheck = resolve;
     });
     let callCount = 0;
-    const handlers = createUpdateHandlers({
+    const handlers = createFakeUpdateHandlers({
       appVersion: "0.2.16",
       runProcessWithCodeTimeout: async () => {
         callCount += 1;
@@ -698,7 +791,7 @@ describe("update helpers", () => {
   test("returns an install failure without scheduling a restart", async () => {
     let callCount = 0;
     let exitScheduled = false;
-    const handlers = createUpdateHandlers({
+    const handlers = createFakeUpdateHandlers({
       appVersion: "0.2.16",
       runProcessWithCodeTimeout: async () => {
         callCount += 1;

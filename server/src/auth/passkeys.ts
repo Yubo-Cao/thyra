@@ -15,11 +15,15 @@ import type { AccountStore, User } from "../accounts/store";
  * (resident), so login needs no user name. The relying party is the host
  * the browser uses (from the request-access policy, so a trusted proxy's
  * public host counts); a passkey works only on the host it was created on.
- * Challenges are single-use, held in memory for five minutes.
+ * Challenges are single-use, held in memory for five minutes. Each requester
+ * (a client address for login, an account for registration) holds a bounded
+ * number of them, and when the table is full login challenges, which need no
+ * credential to request, give way before registration ones.
  */
 
 const FLOW_TTL_MS = 5 * 60_000;
-const MAX_FLOWS = 1000;
+const MAX_FLOWS = 10_000;
+const MAX_FLOWS_PER_REQUESTER = 16;
 const TRANSPORTS = new Set<string>([
   "ble",
   "cable",
@@ -55,6 +59,8 @@ export function passkeyOrigin(ownOrigin: string | null): PasskeyOrigin | null {
 
 type Flow = {
   kind: "login" | "register";
+  /** Who asked: `client:<address key>` or `user:<id>`. */
+  requester: string;
   challenge: string;
   origin: PasskeyOrigin;
   userId?: string;
@@ -81,21 +87,40 @@ export function createPasskeyService(args: {
   const now = args.now ?? Date.now;
   const flows = new Map<string, Flow>();
 
-  function prune() {
-    const at = now();
-    for (const [id, flow] of flows) if (flow.expiresAt <= at) flows.delete(id);
-    while (flows.size > MAX_FLOWS) {
-      const oldest = flows.keys().next().value;
-      if (oldest === undefined) break;
-      flows.delete(oldest);
+  /** Drop the oldest flows matching `match` until at most `keep` remain. */
+  function trim(match: (flow: Flow) => boolean, keep: number) {
+    let excess = -keep;
+    for (const flow of flows.values()) if (match(flow)) excess += 1;
+    if (excess <= 0) return;
+    for (const [id, flow] of flows) {
+      if (!match(flow)) continue;
+      flows.delete(id);
+      excess -= 1;
+      if (excess <= 0) return;
     }
   }
 
   function startFlow(flow: Omit<Flow, "expiresAt">): string {
-    prune();
+    const at = now();
+    for (const [id, entry] of flows)
+      if (entry.expiresAt <= at) flows.delete(id);
+    // A requester displaces only its own challenges.
+    trim(
+      (entry) => entry.requester === flow.requester,
+      MAX_FLOWS_PER_REQUESTER - 1,
+    );
+    if (flows.size >= MAX_FLOWS)
+      trim((entry) => entry.kind === "login", MAX_FLOWS - 1 - registering());
+    if (flows.size >= MAX_FLOWS) trim(() => true, MAX_FLOWS - 1);
     const id = randomBytes(18).toString("base64url");
-    flows.set(id, { ...flow, expiresAt: now() + FLOW_TTL_MS });
+    flows.set(id, { ...flow, expiresAt: at + FLOW_TTL_MS });
     return id;
+  }
+
+  function registering() {
+    let count = 0;
+    for (const flow of flows.values()) if (flow.kind === "register") count += 1;
+    return count;
   }
 
   function takeFlow(
@@ -125,13 +150,15 @@ export function createPasskeyService(args: {
   }
 
   return {
-    async loginOptions(origin: PasskeyOrigin) {
+    /** `client` is the requester's rate-limit key. */
+    async loginOptions(origin: PasskeyOrigin, client = "unknown") {
       const options = await generateAuthenticationOptions({
         rpID: origin.rpId,
         userVerification: "preferred",
       });
       const flow = startFlow({
         kind: "login",
+        requester: `client:${client}`,
         challenge: options.challenge,
         origin,
       });
@@ -221,6 +248,7 @@ export function createPasskeyService(args: {
       });
       const flow = startFlow({
         kind: "register",
+        requester: `user:${user.id}`,
         challenge: options.challenge,
         origin,
         userId: user.id,
@@ -257,14 +285,15 @@ export function createPasskeyService(args: {
       }
       if (!verification.verified)
         throw new PasskeyError("passkey registration failed");
+      const credential = verification.registrationInfo.credential;
+      if (args.store.getPasskey(credential.id))
+        throw new PasskeyError("this passkey is already registered", 409);
+      // Consumed last, so a refused registration leaves the link usable.
       if (
         flow.enrollmentSecret &&
         !args.store.consumeEnrollment(flow.enrollmentSecret)
       )
         throw new PasskeyError("this enrollment link was already used", 410);
-      const credential = verification.registrationInfo.credential;
-      if (args.store.getPasskey(credential.id))
-        throw new PasskeyError("this passkey is already registered", 409);
       args.store.addPasskey({
         credentialId: credential.id,
         userId: user.id,

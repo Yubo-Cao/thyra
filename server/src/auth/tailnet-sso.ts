@@ -15,6 +15,7 @@ import {
 } from "../http/login-rate-limit";
 import { publicCookie, readPublicCookie } from "../http/public-auth";
 import type { RequestAccess } from "../http/request-access";
+import { rateLimitKey } from "../identity/client-address";
 import {
   createRequestRateLimiter,
   rateLimitedResponse,
@@ -364,7 +365,7 @@ export function createTailnetSso(args: {
         headers["access-control-allow-private-network"] = "true";
       return new Response(null, { status: 204, headers });
     }
-    const retry = issueLimiter.take(access.clientAddress ?? "unknown");
+    const retry = issueLimiter.take(rateLimitKey(access.clientAddress));
     if (retry) {
       const limited = rateLimitedResponse(retry);
       for (const [name, value] of Object.entries(corsHeaders()))
@@ -430,7 +431,7 @@ export function createTailnetSso(args: {
     const challenge = url.searchParams.get("code_challenge") ?? "";
     if (!TOKEN_PATTERN.test(state) || !TOKEN_PATTERN.test(challenge))
       return redirect(loginUrl("failed"));
-    const retry = issueLimiter.take(access.clientAddress ?? "unknown");
+    const retry = issueLimiter.take(rateLimitKey(access.clientAddress));
     if (retry) return rateLimitedResponse(retry);
     const user = await args.tailnetAccount(req, access);
     if (!user) {
@@ -462,7 +463,7 @@ export function createTailnetSso(args: {
     args.store.audit(user.id, "session.create", user.id, {
       method: "tailnet-sso",
     });
-    redeemLimiter.success(access.clientAddress ?? "unknown");
+    redeemLimiter.success(rateLimitKey(access.clientAddress));
     logger.info("tailnet sign-in", { user: user.name });
     return [
       args.sessionCookie(token, access),
@@ -472,7 +473,7 @@ export function createTailnetSso(args: {
   }
 
   function redeemFailed(access: RequestAccess, reason: SsoRejection) {
-    redeemLimiter.failure(access.clientAddress ?? "unknown");
+    redeemLimiter.failure(rateLimitKey(access.clientAddress));
     reject(reason);
   }
 
@@ -494,7 +495,7 @@ export function createTailnetSso(args: {
     const clearFlow = publicCookie(FLOW_COOKIE, "", 0);
     const fail = (message: TailnetSsoLogin["message"]) =>
       redirect("/login?tailnet=" + message, [clearFlow]);
-    if (redeemLimiter.retryAfterSeconds(access.clientAddress ?? "unknown"))
+    if (redeemLimiter.retryAfterSeconds(rateLimitKey(access.clientAddress)))
       return fail("failed");
     const [state = "", verifier = ""] = (
       readPublicCookie(req, FLOW_COOKIE) ?? ""
@@ -522,7 +523,7 @@ export function createTailnetSso(args: {
     access: RequestAccess,
   ): Promise<Response> {
     const retry = redeemLimiter.retryAfterSeconds(
-      access.clientAddress ?? "unknown",
+      rateLimitKey(access.clientAddress),
     );
     if (retry) return tooManyAttemptsResponse(retry);
     const body = await readJson(req);

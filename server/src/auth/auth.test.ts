@@ -191,6 +191,43 @@ describe("passkeys", () => {
     expect(ctx.store.passkeysOf(user.id)[0]?.counter).toBe(2);
   });
 
+  test("a refused duplicate passkey leaves the enrollment link usable", async () => {
+    const ctx = setup();
+    const alice = ctx.store.createUser({ name: "alice", role: "member" });
+    const bob = ctx.store.createUser({ name: "bob", role: "member" });
+    const key = await createSoftwareAuthenticator();
+    await enroll(ctx, ctx.store.createEnrollment(alice.id, null).secret, key);
+    // Bob's link, presented with the authenticator Alice already registered.
+    const { secret } = ctx.store.createEnrollment(bob.id, null);
+    expect((await enroll(ctx, secret, key))?.status).toBe(409);
+    expect(ctx.store.enrollmentUser(secret)?.id).toBe(bob.id);
+    const own = await createSoftwareAuthenticator();
+    expect((await enroll(ctx, secret, own))?.status).toBe(200);
+    expect(ctx.store.enrollmentUser(secret)).toBeNull();
+  });
+
+  test("one client's login challenges cannot displace another's", async () => {
+    const store = createAccountStore(openAccountDatabase(":memory:"));
+    const passkeys = createPasskeyService({ store });
+    const origin = passkeyOrigin(ORIGIN)!;
+    const verify = (flow: string) =>
+      passkeys.loginVerify(origin, { flow }).then(
+        () => new Error("verified"),
+        (error: Error) => error,
+      );
+    const victim = await passkeys.loginOptions(origin, "198.51.100.7");
+    const first = await passkeys.loginOptions(origin, "203.0.113.9");
+    let last = first;
+    for (let index = 0; index < 200; index++)
+      last = await passkeys.loginOptions(origin, "203.0.113.9");
+    // The flooding client lost its own oldest challenge, nobody else's.
+    expect((await verify(first.flow)).message).toContain("expired");
+    expect((await verify(last.flow)).message).toBe("passkey response required");
+    expect((await verify(victim.flow)).message).toBe(
+      "passkey response required",
+    );
+  });
+
   test("a passkey from another site or origin is refused", async () => {
     const ctx = setup();
     const user = ctx.store.createUser({ name: "eve", role: "member" });

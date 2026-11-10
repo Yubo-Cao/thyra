@@ -14,6 +14,7 @@ import {
   tooManyAttemptsResponse,
 } from "../http/login-rate-limit";
 import type { RequestAccess } from "../http/request-access";
+import { rateLimitKey } from "../identity/client-address";
 import { HTML_SECURITY_HEADERS } from "../http/security-headers";
 import { type Logger, silentLogger } from "../utils/logger";
 import { pageLocale, renderSharePage } from "./pages";
@@ -117,7 +118,7 @@ export function createShareRoutes(args: {
   }
 
   async function redeem(req: Request, access: RequestAccess) {
-    const client = access.clientAddress ?? "unknown";
+    const client = rateLimitKey(access.clientAddress);
     const retry = args.limiter.retryAfterSeconds(client);
     if (retry) return tooManyAttemptsResponse(retry);
     const body = await readJsonObject(req, MAX_BODY_BYTES);

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { basename } from "node:path";
 import { thyraEnv } from "../config/environment";
 
@@ -36,6 +37,9 @@ interface UpdateRuntime {
   arch: string;
   execPath: string;
   argv: string[];
+  /** This process and its parent; default to the running process. */
+  pid?: number;
+  ppid?: number;
 }
 
 const DEFAULT_UPDATE_BASE_URL =
@@ -44,6 +48,12 @@ const UPDATE_METADATA_MAX_BYTES = 4096;
 const UPDATE_CHECK_CACHE_MS = 5 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 15000;
 const UPDATE_INSTALL_TIMEOUT_MS = 120000;
+/** Largest release archive the installer downloads. */
+const UPDATE_ARCHIVE_MAX_BYTES = 512 * 1024 * 1024;
+/** Download deadline, inside the install budget so curl ends on its own. */
+const UPDATE_DOWNLOAD_TIMEOUT_SECONDS = 90;
+const UPDATE_KILL_GRACE_MS = 5000;
+const UPDATE_OUTPUT_MAX_CHARS = 64 * 1024;
 function hasUpdateConfirmation(req: Request): boolean {
   return req.headers.get("x-thyra-update") === "1";
 }
@@ -188,15 +198,101 @@ export function compareVersion(a: string, b: string): number {
   return 0;
 }
 
+/**
+ * Whether a supervisor restarts this process when it exits. The supervisor's
+ * variables are inherited by everything a service starts (a shell in a
+ * terminal that is itself a unit, an app opened by launchd), so they count
+ * only when they describe this process:
+ *
+ * - systemd sets `SYSTEMD_EXEC_PID` to the process it started; it must be
+ *   this process or its parent (an `ExecStart` wrapper). A systemd too old
+ *   to set it (before 248) is trusted on `INVOCATION_ID` alone.
+ * - launchd starts its jobs as children of PID 1, and names app launches
+ *   `application.*`.
+ *
+ * `THYRA_RESTART_SUPERVISOR` (`1` or `0`) overrides detection.
+ */
 export function isSupervisorManagedEnvironment(
   environment: Record<string, string | undefined>,
+  self: { pid: number; ppid: number } = {
+    pid: process.pid,
+    ppid: process.ppid,
+  },
 ): boolean {
   const override = thyraEnv("RESTART_SUPERVISOR", environment);
   if (override === "1") return true;
   if (override === "0") return false;
-  if (environment.INVOCATION_ID) return true;
+  if (environment.INVOCATION_ID) {
+    const execPid = environment.SYSTEMD_EXEC_PID;
+    if (!execPid) return true;
+    return execPid === String(self.pid) || execPid === String(self.ppid);
+  }
   const xpcServiceName = environment.XPC_SERVICE_NAME;
-  return Boolean(xpcServiceName && xpcServiceName !== "0");
+  return Boolean(
+    xpcServiceName &&
+      xpcServiceName !== "0" &&
+      !xpcServiceName.startsWith("application.") &&
+      self.ppid === 1,
+  );
+}
+
+/**
+ * Run a command in its own process group and resolve only once it has
+ * exited. At the deadline the whole group gets SIGTERM, then SIGKILL after
+ * `killGraceMs`, and the result is a failure (exit code 124).
+ */
+export function runProcessUntilExit(
+  argv: string[],
+  timeoutMs: number,
+  killGraceMs = UPDATE_KILL_GRACE_MS,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(argv[0], argv.slice(1), {
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+    const signalGroup = (signal: NodeJS.Signals) => {
+      if (child.pid === undefined) return;
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        // The group is already gone.
+      }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      signalGroup("SIGTERM");
+      killTimer = setTimeout(() => signalGroup("SIGKILL"), killGraceMs);
+    }, timeoutMs);
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      if (stdout.length < UPDATE_OUTPUT_MAX_CHARS) stdout += chunk;
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      if (stderr.length < UPDATE_OUTPUT_MAX_CHARS) stderr += chunk;
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(
+        timedOut
+          ? {
+              code: 124,
+              stdout,
+              stderr: `${argv[0]} timed out after ${timeoutMs}ms\n${stderr}`,
+            }
+          : { code: code ?? 1, stdout, stderr },
+      );
+    });
+  });
 }
 
 function updateJson(body: unknown, init: ResponseInit = {}): Response {
@@ -208,6 +304,7 @@ function updateJson(body: unknown, init: ResponseInit = {}): Response {
 export function createUpdateHandlers({
   appVersion,
   runProcessWithCodeTimeout,
+  runInstallProcess = runProcessUntilExit,
   shQuote,
   runtime: runtimeOverride,
   scheduleProcessExit: scheduleProcessExitOverride,
@@ -215,6 +312,12 @@ export function createUpdateHandlers({
 }: {
   appVersion: string;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
+  /**
+   * Runs the install script. It must resolve only after the script has
+   * exited (also at the deadline), because the install lock is released
+   * when it resolves.
+   */
+  runInstallProcess?: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
   runtime?: UpdateRuntime;
   scheduleProcessExit?: () => void;
@@ -299,7 +402,12 @@ export function createUpdateHandlers({
         reason: "Auto update is only available in the standalone binary.",
       };
     }
-    if (!isSupervisorManagedEnvironment(environment)) {
+    if (
+      !isSupervisorManagedEnvironment(environment, {
+        pid: runtime.pid ?? process.pid,
+        ppid: runtime.ppid ?? process.ppid,
+      })
+    ) {
       return {
         canAutoUpdate: false,
         reason:
@@ -538,7 +646,15 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 archive="$tmp/${updateTarget.archiveName}"
 expected_sha256=${shQuote(latest.sha256)}
-curl ${curlTransportCommand()} -fsSL ${shQuote(updateArchiveUrl())} -o "$archive"
+curl ${curlTransportCommand()} -fsSL \
+  --max-filesize ${UPDATE_ARCHIVE_MAX_BYTES} \
+  --connect-timeout 15 --max-time ${UPDATE_DOWNLOAD_TIMEOUT_SECONDS} \
+  ${shQuote(updateArchiveUrl())} -o "$archive"
+# curl enforces --max-filesize only when the server declares a length.
+if [ "$(wc -c < "$archive")" -gt ${UPDATE_ARCHIVE_MAX_BYTES} ]; then
+  echo "downloaded archive is larger than the update size limit" >&2
+  exit 1
+fi
 if command -v shasum >/dev/null 2>&1; then
   actual_sha256="$(shasum -a 256 "$archive" | awk 'NR == 1 { print $1 }')"
 elif command -v sha256sum >/dev/null 2>&1; then
@@ -599,7 +715,10 @@ fi
 mv -f "$target_tmp" "$target"
 target_tmp=""
 `;
-      const result = await runProcessWithCodeTimeout(
+      // The lock (released in `finally`) holds until the script has really
+      // exited: a script that outlived its deadline could otherwise replace
+      // the binary alongside a second install.
+      const result = await runInstallProcess(
         ["sh", "-c", command],
         UPDATE_INSTALL_TIMEOUT_MS,
       );

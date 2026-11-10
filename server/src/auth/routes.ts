@@ -12,6 +12,7 @@ import {
   tooManyAttemptsResponse,
 } from "../http/login-rate-limit";
 import type { RequestAccess } from "../http/request-access";
+import { rateLimitKey } from "../identity/client-address";
 import { HTML_SECURITY_HEADERS } from "../http/security-headers";
 import { type Logger, silentLogger } from "../utils/logger";
 import type { ShareLinkStore } from "../accounts/share-links";
@@ -122,7 +123,7 @@ export function createAuthRoutes(args: {
 
   function limited(access: RequestAccess): Response | null {
     const retry = args.limiter.retryAfterSeconds(
-      access.clientAddress ?? "unknown",
+      rateLimitKey(access.clientAddress),
     );
     return retry ? tooManyAttemptsResponse(retry) : null;
   }
@@ -134,7 +135,7 @@ export function createAuthRoutes(args: {
         caught.status === 403 ||
         caught.status === 410
       )
-        args.limiter.failure(access.clientAddress ?? "unknown");
+        args.limiter.failure(rateLimitKey(access.clientAddress));
       return error(caught.message, caught.status);
     }
     if (caught instanceof SyntaxError) return error("invalid JSON", 400);
@@ -166,7 +167,7 @@ export function createAuthRoutes(args: {
       userAgent: req.headers.get("user-agent"),
     });
     args.store.audit(user.id, "session.create", user.id, { method });
-    args.limiter.success(access.clientAddress ?? "unknown");
+    args.limiter.success(rateLimitKey(access.clientAddress));
     const headers = new Headers({
       ...NO_STORE,
       "set-cookie": args.authenticator.sessionCookie(token, access),
@@ -306,7 +307,12 @@ export function createAuthRoutes(args: {
           if (blocked) return blocked;
           const origin = originOrError(access);
           if (url.pathname.endsWith("/options"))
-            return json(await args.passkeys.loginOptions(origin));
+            return json(
+              await args.passkeys.loginOptions(
+                origin,
+                rateLimitKey(access.clientAddress),
+              ),
+            );
           const user = await args.passkeys.loginVerify(
             origin,
             await readJsonObject(req, MAX_BODY_BYTES, PasskeyError),

@@ -51,6 +51,7 @@ import {
 import { HtmlPreviewError, readHtmlPreviewFile } from "./html-preview-files";
 import { HTML_PREVIEW_CSP, renderHtmlPreview } from "./html-preview";
 import { optionalString } from "../utils/rpc-params";
+import { readBodyBytes, RequestError } from "../utils/request";
 import {
   type ConflictPolicy,
   TRANSFER_MAX_PATHS,
@@ -77,6 +78,11 @@ import {
   type ThumbnailService,
 } from "./file-thumbnails";
 
+/**
+ * Largest file one upload request may carry: Bun's default request-body cap,
+ * stated here so it holds whatever the listener is configured with.
+ */
+export const FILE_UPLOAD_MAX_BYTES = 128 * 1024 * 1024;
 const MAX_FILE_RESOLUTION_CANDIDATES = 32;
 const MAX_FILE_RESOLUTION_PATH_LENGTH = 4096;
 
@@ -697,7 +703,14 @@ export function createFileHandlers({
       path: directory,
       filesystem,
     } = await mutationTarget(params, "file.upload", "directory");
-    const body = Buffer.from(await request.arrayBuffer());
+    const bytes = await readBodyBytes(request, FILE_UPLOAD_MAX_BYTES).catch(
+      (error) => {
+        throw error instanceof RequestError && error.status === 413
+          ? new Error("file too large (limit 128 MiB)")
+          : error;
+      },
+    );
+    const body = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const host = sshHost();
     const upload = host
       ? await uploadRemoteFile({

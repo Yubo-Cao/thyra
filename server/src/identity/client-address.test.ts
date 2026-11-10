@@ -3,6 +3,7 @@ import {
   isLoopbackAddress,
   normalizeAddress,
   parseTrustedProxies,
+  rateLimitKey,
   resolveClientAddress,
 } from "./client-address";
 
@@ -109,5 +110,30 @@ describe("forwarded header trust", () => {
     const parsed = parseTrustedProxies("10.0.0.0/8, nope, 10.0.0.0/33, ::1");
     expect(parsed.invalid).toEqual(["nope", "10.0.0.0/33"]);
     expect(parsed.ranges).toHaveLength(2);
+  });
+});
+
+describe("rateLimitKey", () => {
+  test("keys IPv6 clients by their /64", () => {
+    expect(rateLimitKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe(
+      "2001:db8:1:2::/64",
+    );
+    expect(rateLimitKey("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(rateLimitKey("[2001:DB8:1:2::9]")).toBe("2001:db8:1:2::/64");
+    expect(rateLimitKey("2001:db8:1:3::1")).toBe("2001:db8:1:3::/64");
+  });
+
+  test("keeps IPv4, IPv4-mapped and tailnet addresses whole", () => {
+    expect(rateLimitKey("198.51.100.7")).toBe("198.51.100.7");
+    expect(rateLimitKey("::ffff:198.51.100.7")).toBe("198.51.100.7");
+    // Tailscale assigns one address per node, all inside one /64.
+    expect(rateLimitKey("fd7a:115c:a1e0::1234:5678")).toBe(
+      "fd7a:115c:a1e0::1234:5678",
+    );
+  });
+
+  test("an absent or malformed address is one shared key", () => {
+    expect(rateLimitKey(null)).toBe("unknown");
+    expect(rateLimitKey("garbage")).toBe("unknown");
   });
 });

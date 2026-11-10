@@ -24,7 +24,7 @@ export interface PushPreferences {
 interface Device {
   subscription: webpush.PushSubscription;
   preferences: PushPreferences;
-  /** Principal that registered it (`user:<id>` or `local`). */
+  /** Principal that registered it (`user:<id>`, `guest:<id>` or `local`). */
   owner?: string;
   /**
    * The same browser's subscription on the public origin, which the page left
@@ -44,7 +44,15 @@ export interface PushTask extends TaskEvent {
   connectionLabel?: string;
   runtimeGeneration: number;
 }
-const MAX_DEVICES = 128;
+/** Subscriptions one principal may hold, so no account can crowd out another. */
+const MAX_DEVICES_PER_OWNER = 32;
+/** Subscriptions all share-link guests may hold together. */
+const MAX_GUEST_DEVICES = 64;
+/** Sanity bound on the whole registry. */
+const MAX_DEVICES = 1024;
+const MAX_REGISTRY_BYTES = 16 * 1024 * 1024;
+
+const ownerOf = (device: Device) => device.owner ?? "local";
 
 /** A browser review asks for input, so it follows the `blocked` choice. */
 const preferenceOf = (kind: TaskEvent["kind"]): keyof PushPreferences =>
@@ -110,7 +118,7 @@ export function validatePushDevice(value: unknown): Device {
       blocked: preferences.blocked,
     },
     ...(typeof input.owner === "string" &&
-    /^(local|user:[\w-]{1,64})$/.test(input.owner)
+    /^(local|(user|guest):[\w-]{1,64})$/.test(input.owner)
       ? { owner: input.owner }
       : {}),
     ...(input.twin === undefined
@@ -226,7 +234,7 @@ export function createWebPushService(
             devices: [],
           }),
         );
-      if (statSync(path).size > 1024 * 1024)
+      if (statSync(path).size > MAX_REGISTRY_BYTES)
         throw new Error("Push registry too large");
       const stored = JSON.parse(readFileSync(path, "utf8")) as Registry;
       if (
@@ -396,19 +404,46 @@ export function createWebPushService(
           { status: 400, headers },
         );
       }
+      const existing = registry.devices.find(
+        (entry) => entry.subscription.endpoint === endpoint,
+      );
+      if (existing && ownerOf(existing) !== owner) {
+        // Another principal's subscription: removing it is a no-op, and
+        // re-registering needs the subscription's own keys, which only the
+        // browser that holds it (now signed in as someone else) has.
+        if (!device) return Response.json({ ok: true }, { headers });
+        if (
+          existing.subscription.keys.p256dh !==
+            device.subscription.keys.p256dh ||
+          existing.subscription.keys.auth !== device.subscription.keys.auth
+        )
+          return Response.json(
+            { error: "Push subscription belongs to another account" },
+            { status: 409, headers },
+          );
+      }
       const devices = registry.devices.filter(
         (entry) =>
           entry.subscription.endpoint !== endpoint &&
           // The other half of this device's origin pair is now stale.
           !(
             device &&
-            (entry.owner ?? "local") === owner &&
+            ownerOf(entry) === owner &&
             (entry.twin === endpoint ||
               entry.subscription.endpoint === device.twin)
           ),
       );
       if (device) devices.push(device);
-      if (devices.length > MAX_DEVICES)
+      const guest = owner.startsWith("guest:");
+      if (
+        device &&
+        (devices.length > MAX_DEVICES ||
+          devices.filter((entry) => ownerOf(entry) === owner).length >
+            MAX_DEVICES_PER_OWNER ||
+          (guest &&
+            devices.filter((entry) => ownerOf(entry).startsWith("guest:"))
+              .length > MAX_GUEST_DEVICES))
+      )
         return Response.json(
           { error: "Push device limit reached" },
           { status: 409, headers },

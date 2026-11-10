@@ -15,6 +15,7 @@ import {
 } from "../accounts/store";
 import type { HttpRouteId } from "../authz/http-policy";
 import type { RequestAccess } from "../http/request-access";
+import { rateLimitKey } from "../identity/client-address";
 import {
   createRequestRateLimiter,
   rateLimitedResponse,
@@ -262,7 +263,7 @@ export function createAccountRoutes(args: {
         )
     )
       throw new RequestError("this address is already a sign-in method", 409);
-    const retry = sendLimiter.take(access.clientAddress ?? "unknown");
+    const retry = sendLimiter.take(rateLimitKey(access.clientAddress));
     if (retry) return rateLimitedResponse(retry);
     const issued = args.codes.issue({
       email,
@@ -343,7 +344,7 @@ export function createAccountRoutes(args: {
       throw new RequestError("role must be owner, editor or viewer");
     const origin = args.inviteOrigin(access);
     if (!origin) throw new RequestError("no address to invite to", 400);
-    const retry = sendLimiter.take(access.clientAddress ?? "unknown");
+    const retry = sendLimiter.take(rateLimitKey(access.clientAddress));
     if (retry) return rateLimitedResponse(retry);
     const actor = principal.kind === "user" ? principal.user.id : "local";
     const known =

@@ -66,7 +66,10 @@ export type RequestAccess = {
   local: boolean;
   /** Effective scheme is HTTPS (native TLS or trusted `X-Forwarded-Proto`). */
   secure: boolean;
-  /** Client address for rate limiting (forwarded only by trusted proxies). */
+  /**
+   * Client address (forwarded only by trusted proxies). Rate limiters key
+   * on `rateLimitKey(clientAddress)`, which groups an IPv6 /64.
+   */
   clientAddress: string | null;
   /**
    * The request carries Cloudflare edge headers: it came through a tunnel,

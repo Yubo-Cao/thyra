@@ -227,6 +227,13 @@ function toPasskey(row: PasskeyRow): PasskeyRecord {
   };
 }
 
+/** `linkIdentity` refused: another account already has the identity. */
+export class IdentityLinkedElsewhereError extends Error {
+  constructor() {
+    super("this sign-in method belongs to another account");
+  }
+}
+
 export type AccountStore = ReturnType<typeof createAccountStore>;
 
 export function createAccountStore(
@@ -397,6 +404,12 @@ export function createAccountStore(
     return getUser(id)!;
   }
 
+  /**
+   * Link an identity to an account, or refresh what is stored for it. An
+   * identity that already belongs to another account stays there and this
+   * throws `IdentityLinkedElsewhereError`, unless `move` says the caller
+   * means to take it over.
+   */
   function linkIdentity(args: {
     provider: string;
     subject: string;
@@ -407,26 +420,33 @@ export function createAccountStore(
     emailVerified?: boolean;
     avatarUrl?: string | null;
     actor?: string | null;
+    /** Take the identity from the account that has it now. */
+    move?: boolean;
   }) {
     const at = now();
-    db.query(
-      `INSERT INTO identities (provider, subject, user_id, email, display_name, email_verified, avatar_url, created_at, last_used_at)
+    const result = db
+      .query(
+        `INSERT INTO identities (provider, subject, user_id, email, display_name, email_verified, avatar_url, created_at, last_used_at)
        VALUES ($provider, $subject, $user, $email, $display, $verified, $avatar, $at, NULL)
        ON CONFLICT (provider, subject) DO UPDATE SET user_id = excluded.user_id,
          email = COALESCE(excluded.email, identities.email),
          display_name = COALESCE(excluded.display_name, identities.display_name),
          email_verified = MAX(excluded.email_verified, identities.email_verified),
-         avatar_url = COALESCE(excluded.avatar_url, identities.avatar_url)`,
-    ).run({
-      provider: args.provider,
-      subject: args.subject,
-      user: args.userId,
-      email: args.email ?? null,
-      display: args.displayName ?? null,
-      verified: args.emailVerified ? 1 : 0,
-      avatar: args.avatarUrl ?? null,
-      at,
-    });
+         avatar_url = COALESCE(excluded.avatar_url, identities.avatar_url)
+       WHERE identities.user_id = excluded.user_id OR $move`,
+      )
+      .run({
+        move: args.move ? 1 : 0,
+        provider: args.provider,
+        subject: args.subject,
+        user: args.userId,
+        email: args.email ?? null,
+        display: args.displayName ?? null,
+        verified: args.emailVerified ? 1 : 0,
+        avatar: args.avatarUrl ?? null,
+        at,
+      });
+    if (result.changes === 0) throw new IdentityLinkedElsewhereError();
     audit(args.actor ?? null, "identity.link", args.userId, {
       provider: args.provider,
       subject: args.subject,

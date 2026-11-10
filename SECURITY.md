@@ -14,7 +14,9 @@ If unavailable, use the maintainer's GitHub-profile contact address.
 Thyra runs as one operating-system user and drives that user's Herdr.
 **A terminal is that user's shell:** anyone who may type into a pane can run any command the Thyra user can, read any file it can, and reach anything on its network.
 Workspace grants decide which terminals, files and events a person sees and whether they may type; they are not a sandbox.
-Grant **editor** only to people you would give a shell account on the host.
+**Reading files is not confined to the checkout:** `file.read` and `file.resolve` accept an absolute host path in workspace scope, so every role with file access, a viewer and a whole-workspace share-link guest included, can preview any file the Thyra user can read and test whether a path exists.
+Listing, downloading and every change take checkout-relative paths; absolute paths there need an instance admin's `scope: "filesystem"`.
+Grant any role, and hand out a whole-workspace link, only to people you trust with the host's readable files; grant **editor** only to people you would give a shell account on the host.
 
 ### Who is logged in
 
@@ -52,6 +54,7 @@ Grant **editor** only to people you would give a shell account on the host.
   Redeeming it creates a guest session (a random 256-bit cookie, `thyra_guest` or `__Host-thyra_guest` on the public listener, stored as a digest) that is the viewer of that one workspace, or of one pane of it, until the link expires (24 hours by default, 30 days at most) or is revoked; both disconnect the guest within a second.
   Links may be limited to a number of uses; failed redemptions count toward the same per-address limit as passkey attempts; creating, redeeming and revoking are audited, never with a secret.
   **Anyone holding the link can watch** the shared terminals, their scrollback and agent status, and for a whole-workspace link its files and Git changes, until it ends; share it privately and keep it short-lived.
+  A whole-workspace guest has a viewer's file reads, including host files outside the checkout by absolute path; a pane link gives no file access.
   An account (direct local use, a session cookie or tailnet login) always wins over a guest cookie in the same browser: a signed-in visitor keeps its own account and grants, and the landing page offers **Open with my account** or **Open as guest**; only that explicit choice (an extra `thyra_as_guest` cookie) makes the guest session win until the guest leaves.
   **Leave shared view** in the guest badge ends the guest session on the server, clears its cookies and returns to the login page.
 
@@ -63,6 +66,8 @@ Cookies are `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, and last 30 days.
 When a user's role, grants or status change, their sessions are rotated to a new id on the next request, and their open pages are disconnected (close code 4003) and reconnect under the new authority.
 **Log out** and **Sign out** (Configuration > Account), `thyra session revoke`, `thyra user disable` and `thyra user remove` end sessions at once: live connections close within a second, including sessions ended from the CLI while the server runs.
 Passkey and enrollment attempts allow 10 failures a minute per client address (forwarded only by trusted proxies), then block that address for a minute, doubling up to 15 minutes.
+Every per-address limit counts an IPv6 client by its /64; tailnet addresses, which Tailscale assigns one per device, are counted singly.
+Pending passkey challenges are bounded per client address (login) and per account (registration), so one requester displaces only its own.
 
 **Listeners decide trust, never headers.**
 The primary listener (`HOST`/`PORT`) is `tailnet` when tailnet login is on and `local` otherwise.
@@ -81,7 +86,7 @@ Instance **admins** (and direct local use) may do everything, including host-wid
 
 | Workspace role | May |
 | --- | --- |
-| viewer | list and watch its terminals, browse their history, read its files, Git state and agent status |
+| viewer | list and watch its terminals, browse their history, read its files (and, by absolute path, other host files; see [trust model](#trust-model)), Git state and agent status |
 | editor | also type (single writer, below), change layout, edit files, run Git actions, use voice input |
 | owner | also rename, close and share the workspace, and take control of a pane at any time |
 
@@ -140,11 +145,16 @@ Updates trust the configured HTTPS release origin (or explicit loopback test mir
 Checksums detect corruption and bind the archive, **not independently verify publisher identity**.
 Custom mirrors are trusted executable-code infrastructure.
 Update requests need an instance admin plus `x-thyra-update: 1`.
+The archive download is limited to 512 MiB and 90 seconds, and one installation runs at a time until its process has exited.
+
+Pasted images (25 MiB at most) are written to the host's `/tmp` under a random name, created exclusively with mode `0600`.
+File uploads are limited to 128 MiB per file; both limits are enforced while the request body is read.
 
 The account database (`~/.config/thyra/thyra.db`, mode `0600`) holds accounts, passkey public keys, session digests, grants, share-link and guest-session digests, agent messages, agent credential digests and an audit log; protect it and its backups.
 
 Web Push subscription mutations require a login, JSON, and `x-thyra-push: 1`; cross-site browser requests are rejected.
 Each subscription records the account that created it and receives notifications only for workspaces that account may see.
+An account holds at most 32 subscriptions; only it removes one of them, and another account takes one over only from the browser that holds its keys.
 Push endpoints are restricted to supported browser-provider HTTPS hosts and are never followed through redirects.
 Treat the private push registry as credentials.
 Logging out does not remove device subscriptions: disable Web Push or remove subscriptions separately.

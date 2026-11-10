@@ -120,6 +120,27 @@ export function normalizeAddress(value: string | null | undefined) {
   return bytes ? formatBytes(bytes) : null;
 }
 
+/** Tailscale's IPv6 range: one assigned address per node, all in one /64. */
+const TAILNET_V6_PREFIX = [0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0];
+
+/**
+ * Rate-limit key for a client address. An IPv6 client usually controls a
+ * whole /64, so it is keyed by that prefix; IPv4 (including IPv4-mapped)
+ * keeps the full address, and so do tailnet addresses, which Tailscale
+ * assigns one per node. An absent or unparsable address is `unknown`.
+ */
+export function rateLimitKey(address: string | null | undefined): string {
+  const normalized = normalizeAddress(address);
+  if (!normalized) return "unknown";
+  const bytes = addressBytes(normalized);
+  if (!bytes || bytes.length !== 16) return normalized;
+  if (TAILNET_V6_PREFIX.every((byte, index) => bytes[index] === byte))
+    return normalized;
+  const prefix = new Uint8Array(16);
+  prefix.set(bytes.subarray(0, 8));
+  return `${formatBytes(prefix)}/64`;
+}
+
 export function parseAddressRange(value: string): AddressRange | null {
   const [address, prefixText, ...extra] = value.trim().split("/");
   if (extra.length > 0 || !address) return null;

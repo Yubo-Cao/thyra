@@ -9,6 +9,7 @@ import {
 } from "../http/login-rate-limit";
 import { publicCookie, readPublicCookie } from "../http/public-auth";
 import type { RequestAccess } from "../http/request-access";
+import { rateLimitKey } from "../identity/client-address";
 import {
   createRequestRateLimiter,
   rateLimitedResponse,
@@ -112,7 +113,8 @@ export function createSignInRoutes(args: {
   const sendLimiter =
     args.sendLimiter ??
     createRequestRateLimiter({ limit: 10, windowMs: 10 * 60_000 });
-  const clientOf = (access: RequestAccess) => access.clientAddress ?? "unknown";
+  const clientOf = (access: RequestAccess) =>
+    rateLimitKey(access.clientAddress);
 
   function htmlPage(req: Request, render: (locale: PageLocale) => string) {
     return new Response(
@@ -563,7 +565,18 @@ export function createSignInRoutes(args: {
     const retry = limiter.retryAfterSeconds(clientOf(access));
     if (retry) return tooManyAttemptsResponse(retry);
     const body = await readJsonObject(req, MAX_BODY_BYTES);
-    const invite = args.invites.consume(body.token);
+    const pending = args.invites.peek(body.token);
+    // The address may have moved to another account since the invitation
+    // was mailed; it stays there, and the invitation is left for an admin.
+    const owner = pending
+      ? args.store.findIdentity("email", pending.email)
+      : null;
+    if (pending && owner && owner.id !== pending.user.id)
+      return json(
+        { error: "this address now belongs to another account" },
+        409,
+      );
+    const invite = pending ? args.invites.consume(body.token) : null;
     if (!invite) {
       limiter.failure(clientOf(access));
       return json({ error: "this invitation is invalid or expired" }, 404);

@@ -6,6 +6,7 @@ import { migrate, openAccountDatabase } from "./database";
 import {
   createAccountStore,
   hashSecret,
+  IdentityLinkedElsewhereError,
   randomToken,
   suggestUserName,
 } from "./store";
@@ -253,6 +254,27 @@ describe("account store", () => {
     expect(store.deleteUser(user.id, "cli")).toBe(true);
     expect(store.findIdentity("tailscale", "carol@gh")).toBeNull();
     expect(store.grantsOn("c1", "w1")).toEqual([]);
+  });
+
+  test("an identity stays with its account unless a link says to move it", () => {
+    const store = memoryStore();
+    const a = store.createUser({ name: "a", role: "member" });
+    const b = store.createUser({ name: "b", role: "member" });
+    const identity = { provider: "github", subject: "101" };
+    store.linkIdentity({ ...identity, userId: a.id, email: "a@example.com" });
+    // The owner refreshes its own identity.
+    store.linkIdentity({ ...identity, userId: a.id, displayName: "@a" });
+    expect(store.identitiesOf(a.id)[0]).toMatchObject({
+      email: "a@example.com",
+      displayName: "@a",
+    });
+    expect(() => store.linkIdentity({ ...identity, userId: b.id })).toThrow(
+      IdentityLinkedElsewhereError,
+    );
+    expect(store.findIdentity("github", "101")?.id).toBe(a.id);
+    expect(store.identitiesOf(b.id)).toEqual([]);
+    store.linkIdentity({ ...identity, userId: b.id, move: true });
+    expect(store.findIdentity("github", "101")?.id).toBe(b.id);
   });
 
   test("grants change roles, report no-ops, and go when a workspace closes", () => {
