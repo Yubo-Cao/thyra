@@ -89,7 +89,25 @@ export type CollaborationSnapshot = {
   lease_ttl_ms: number;
   people?: Record<string, CollaborationPerson>;
   devices?: Record<string, CollaborationDevice>;
+  /** The server's clock when it sent this; absent from an older server. */
+  server_now_unix_ms?: number;
+  /**
+   * Set on receipt, not sent: the server's clock minus this browser's. The
+   * snapshot's `*_unix_ms` deadlines are on the server's clock.
+   */
+  clock_offset_ms?: number;
 };
+
+/**
+ * This moment on the clock the snapshot's deadlines use. The browser's own
+ * clock when the server sent no time (an older server).
+ */
+export function collaborationNow(
+  snapshot: Pick<CollaborationSnapshot, "clock_offset_ms"> | null | undefined,
+  now = Date.now(),
+): number {
+  return now + (snapshot?.clock_offset_ms ?? 0);
+}
 
 export type CollaborationProfile = {
   participantId: string;
@@ -377,7 +395,10 @@ export async function saveCollaborationAvatar(picture: Blob | null) {
   applySelfIdentity(result?.identity);
 }
 
-function parseSnapshot(result: unknown): CollaborationSnapshot | null {
+export function parseSnapshot(
+  result: unknown,
+  now = Date.now(),
+): CollaborationSnapshot | null {
   if (!result || typeof result !== "object") return null;
   const snapshot = (result as { snapshot?: unknown }).snapshot;
   if (!snapshot || typeof snapshot !== "object") return null;
@@ -399,6 +420,13 @@ function parseSnapshot(result: unknown): CollaborationSnapshot | null {
     ...(people ? { people } : {}),
     ...(devices ? { devices } : {}),
     ...(displayOwners ? { display_owners: displayOwners } : {}),
+    ...(typeof value.server_now_unix_ms === "number" &&
+    Number.isFinite(value.server_now_unix_ms)
+      ? {
+          server_now_unix_ms: value.server_now_unix_ms,
+          clock_offset_ms: value.server_now_unix_ms - now,
+        }
+      : {}),
   };
 }
 

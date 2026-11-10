@@ -56,6 +56,36 @@ test("control is pane-specific, exclusive, expires, and does not grant input in 
     canResize: true,
   });
 });
+test("claims expire by the server's clock, not a browser clock that is off", () => {
+  // This browser runs 10 s ahead of the server: locally it is 10_300 when the
+  // server says 300. Alice's claim (until 500) is still live.
+  const ahead = {
+    ...snapshot,
+    server_now_unix_ms: 300,
+    clock_offset_ms: -10_000,
+  };
+  const live = paneControlState(ahead, "p1", "bob", false, 10_300);
+  expect(live.viewOnly).toBe(true);
+  expect(live.ownerName).toBe("Alice");
+  // Protection ended at 250 on the server: 10_250 here, already past.
+  expect(live.protectedUntil).toBe(10_250);
+  expect(
+    paneControlState(ahead, "p1", "bob", false, 10_501).ownerName,
+  ).toBeNull();
+  // A browser 10 s behind must not keep an expired claim alive.
+  const behind = {
+    ...snapshot,
+    server_now_unix_ms: 600,
+    clock_offset_ms: 10_000,
+  };
+  expect(
+    paneControlState(behind, "p1", "bob", false, -9_400).ownerName,
+  ).toBeNull();
+  // An older server sends no time: the browser's clock is all there is.
+  expect(paneControlState(snapshot, "p1", "bob", false, 499).viewOnly).toBe(
+    true,
+  );
+});
 test("the same person's other page may type but not resize; viewers never write", () => {
   const annotated: CollaborationSnapshot = {
     ...snapshot,

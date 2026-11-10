@@ -501,4 +501,48 @@ describe("endpoint row updates", () => {
     show(["one", "222", "three"]);
     expect(writes[writes.length - 1]).toContain("\x1b[2J");
   });
+
+  test("row frames are written without building the full repaint", () => {
+    const writes: string[] = [];
+    const presentation = new TerminalEndpointPresentation(
+      () => false,
+      (text, parsed) => {
+        writes.push(text);
+        parsed();
+      },
+      () => ({ cols: 12, rows: 3 }),
+    );
+    const size = { cols: 12, rows: 3 };
+    const show = (rows: string[], cursor = tail, link?: string) =>
+      presentation.update(null, false, size, undefined, link, {
+        rows,
+        tail: cursor,
+      })!;
+    const first = show(["one", "two", "three"], tail, "L1");
+    // Nothing on screen yet: the first frame is the whole repaint.
+    expect(writes).toEqual([`\x1b[?1002l\x1b[?1006l${first.text}`]);
+    expect(presentation.shows(first)).toBe(true);
+
+    const second = show(["one", "TWO", "three"], tail, "L2");
+    expect(writes[1]).toBe(`\x1b[0m\x1b[?7l\x1b[2;1H\x1b[0m\x1b[2KTWO${tail}`);
+    expect(presentation.shows(second)).toBe(true);
+    expect(presentation.shows(first)).toBe(false);
+
+    // Same rows and tail: only metadata advances, nothing is written.
+    const same = show(["one", "TWO", "three"], tail, "L3");
+    expect(writes).toHaveLength(2);
+    expect(presentation.displayedFrame).toBe(same);
+
+    // Same link frame, cursor moved: just the tail, keeping the links.
+    const moved = `${tail}\x1b[2;2H`;
+    show(["one", "TWO", "three"], moved, "L3");
+    expect(writes[2]).toBe(moved);
+
+    // The repaint text is still there for a reader that wants it.
+    expect(second.text).toBe(
+      terminalFrameText({ rows: ["one", "TWO", "three"], tail }),
+    );
+    // Neither text nor rows is not a frame.
+    expect(presentation.update(null, false, size)).toBeNull();
+  });
 });

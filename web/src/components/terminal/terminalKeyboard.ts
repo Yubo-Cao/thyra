@@ -31,6 +31,8 @@ import {
 import { isEditableElement } from "../../utils";
 
 const CLIPBOARD_READ_TIMEOUT_MS = 2000;
+// One encoder for every keystroke.
+const inputEncoder = new TextEncoder();
 
 function withClipboardTimeout<T>(promise: Promise<T>, message: string) {
   return new Promise<T>((resolve, reject) => {
@@ -75,7 +77,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     if (session.replayingWheel && session.acceptsEndpointInput()) {
       queueTerminalInput(
         client,
-        new TextEncoder().encode(data),
+        inputEncoder.encode(data),
         desiredTerminal.current!,
       );
       return;
@@ -94,11 +96,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   const sendInput = (input: TerminalModifiedInput, terminalId: string) => {
     if ("key" in input) queueTerminalInput(client, [input.key], terminalId);
     else
-      queueTerminalInput(
-        client,
-        new TextEncoder().encode(input.bytes),
-        terminalId,
-      );
+      queueTerminalInput(client, inputEncoder.encode(input.bytes), terminalId);
   };
   const sendText = (text: string) => {
     if (!acceptsInput()) return;

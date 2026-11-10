@@ -40,14 +40,34 @@ function filterResultSnapshot(
   return { ...result, snapshot: filter(snapshot) };
 }
 
-/** Apply `filter` to the snapshot of a `collaboration_updated` event. */
+/**
+ * Stamps a snapshot with the clock its `*_unix_ms` deadlines are read
+ * against, so a browser whose clock is off still expires claims on time. A
+ * stamp already there (from Herdr, whose clock set the deadlines) is kept.
+ */
+function stampServerTime<T>(snapshot: T, now: number): T {
+  if (
+    typeof (snapshot as { server_now_unix_ms?: unknown }).server_now_unix_ms ===
+    "number"
+  )
+    return snapshot;
+  return { ...snapshot, server_now_unix_ms: now };
+}
+
+/**
+ * Apply `filter` to the snapshot of a `collaboration_updated` event and stamp
+ * it with the server time. Call when the event is sent, not when it is queued.
+ */
 export function filterCollaborationEvent(
   event: unknown,
   filter: <T>(snapshot: T) => T,
+  now = Date.now(),
 ): unknown {
   if (!event || typeof event !== "object") return event;
   const data = (event as { data?: unknown }).data;
-  const filtered = filterResultSnapshot(data, filter);
+  const filtered = filterResultSnapshot(data, (snapshot) =>
+    stampServerTime(filter(snapshot), now),
+  );
   return filtered === data ? event : { ...event, data: filtered };
 }
 
@@ -234,9 +254,10 @@ export function createCollaborationService(args: {
 
   const presentResult = (result: unknown) => {
     const presence = args.presence;
-    return presence
-      ? filterResultSnapshot(result, (snapshot) => presence.annotate(snapshot))
-      : result;
+    const now = args.now?.() ?? Date.now();
+    return filterResultSnapshot(result, (snapshot) =>
+      stampServerTime(presence ? presence.annotate(snapshot) : snapshot, now),
+    );
   };
 
   async function call(

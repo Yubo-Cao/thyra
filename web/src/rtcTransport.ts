@@ -171,6 +171,9 @@ export async function openRtcSocket(
         reject(new Error("rtc channel closed"));
       });
     });
+    // A failure below abandons this promise; its later rejection (the timer,
+    // or the close that pc.close() causes) must not go unhandled.
+    opened.catch(() => {});
     await pc.setLocalDescription(await pc.createOffer());
     await waitForGathering(pc);
     const local = pc.localDescription?.sdp;

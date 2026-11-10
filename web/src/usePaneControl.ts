@@ -2,6 +2,7 @@ import { t } from "./i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConnectionClient } from "./api";
 import {
+  collaborationNow,
   collaborationProfile,
   collaborationSelfIdentity,
   parseDisplayOwners,
@@ -52,16 +53,18 @@ export function usePaneControl(
   useEffect(() => {
     const claim = snapshot?.pane_claims.find((item) => item.pane_id === paneId);
     if (!claim) return;
+    // Deadlines are on the server's clock.
+    const serverNow = collaborationNow(snapshot);
     const deadline = Math.min(
       ...[claim.expires_at_unix_ms, claim.protected_until_unix_ms].filter(
         (value): value is number =>
-          typeof value === "number" && value > Date.now(),
+          typeof value === "number" && value > serverNow,
       ),
     );
     if (!Number.isFinite(deadline)) return;
     const timer = setTimeout(
       () => setNow(Date.now()),
-      deadline - Date.now() + 20,
+      deadline - serverNow + 20,
     );
     return () => clearTimeout(timer);
   }, [snapshot, paneId, now]);

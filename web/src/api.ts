@@ -302,6 +302,8 @@ export interface ConnectionClient {
 
 const LEGACY_DEFAULT_CONNECTION_ID = "legacy-default";
 const RPC_TIMEOUT_MS = 30000;
+/** How long a replaced socket may stay open for replies it still owes. */
+export const RETIRED_SOCKET_MAX_MS = 10 * 60_000;
 const CONNECT_TIMEOUT_MS = 8000;
 // Keep well under proxy idle timeouts (Cloudflare closes a WebSocket after
 // 100 seconds without traffic); any close, including an edge restart,
@@ -742,7 +744,14 @@ export class Bridge {
     this.swapHelloTimer = null;
   }
 
-  /** Close a replaced socket once the replies it still owes have arrived. */
+  /**
+   * Close a replaced socket once the replies it still owes have arrived.
+   * Each owed request leaves on its reply or its own timeout. The deadline
+   * here is only a backstop for a request without a timeout on a socket that
+   * died silently: the RPC timeout used to stand in for it and failed
+   * long-running calls (a worktree being created) with "disconnected" on a
+   * healthy connection.
+   */
   private retireSocket(old: WebSocket) {
     const owed = new Set(this.pending.keys());
     const startedAt = performance.now();
@@ -768,7 +777,10 @@ export class Bridge {
     };
     const check = () => {
       for (const id of owed) if (!this.pending.has(id)) owed.delete(id);
-      if (owed.size === 0 || performance.now() - startedAt > RPC_TIMEOUT_MS)
+      if (
+        owed.size === 0 ||
+        performance.now() - startedAt > RETIRED_SOCKET_MAX_MS
+      )
         finish(true);
     };
     old.onmessage = (ev) => {
@@ -1036,15 +1048,15 @@ export class Bridge {
     const hasClipboard = owns("terminal_clipboard");
     const hasTerminalClosed = owns("terminal_closed");
     const hasControl = owns("control");
-    const kindCount = [
-      hasHello,
-      hasReply,
-      hasEvent,
-      hasTerminal,
-      hasClipboard,
-      hasTerminalClosed,
-      hasControl,
-    ].filter(Boolean).length;
+    // Counted without an array: this runs for every message, frames included.
+    const kindCount =
+      Number(hasHello) +
+      Number(hasReply) +
+      Number(hasEvent) +
+      Number(hasTerminal) +
+      Number(hasClipboard) +
+      Number(hasTerminalClosed) +
+      Number(hasControl);
     if (kindCount !== 1) return;
     if (repliesOnly && !hasReply) return;
 

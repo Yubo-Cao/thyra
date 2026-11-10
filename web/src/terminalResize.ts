@@ -18,6 +18,10 @@ export type TerminalViewportLayout = {
 };
 
 export const TERMINAL_RESIZE_DEBOUNCE_MS = 90;
+/** Waits before each retry of a size whose `terminal.resize` was rejected. */
+export const TERMINAL_RESIZE_RETRY_DELAYS_MS: readonly number[] = [
+  250, 1000, 3000,
+];
 
 function sameSize(a: TerminalSize | null, b: TerminalSize | null): boolean {
   return !!a && !!b && a.cols === b.cols && a.rows === b.rows;
@@ -86,21 +90,29 @@ export function terminalEndpointViewportSize(
  *
  * `send` must return false when the resize could not be dispatched (e.g. no
  * terminal is currently attached); the size then stays "unsynced" so a later
- * schedule/sendNow retries it.
+ * schedule/sendNow retries it. A dispatched size the server rejected
+ * (`markFailed`) is sent again on its own a bounded number of times, since no
+ * further size change may ever come to retry it.
  */
 export class TerminalResizeSync {
   private synced: TerminalSize | null = null;
   private pending: TerminalSize | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  // Consecutive rejections of `retrySize`; another size starts over.
+  private retrySize: TerminalSize | null = null;
+  private retries = 0;
 
   constructor(
     private send: (size: TerminalSize) => boolean,
     private debounceMs = TERMINAL_RESIZE_DEBOUNCE_MS,
+    private retryDelaysMs = TERMINAL_RESIZE_RETRY_DELAYS_MS,
   ) {}
 
   /** Records the size an attach RPC already carried to the server. */
   markAttached(size: TerminalSize) {
     this.cancelPending();
+    this.retrySize = null;
+    this.retries = 0;
     this.synced = validSize(size) ? size : null;
   }
 
@@ -125,9 +137,27 @@ export class TerminalResizeSync {
     return this.deliver(size);
   }
 
-  /** Makes a rejected dispatch eligible for a later retry. */
+  /**
+   * A dispatched size was rejected: forget it as synced and send it again
+   * after a growing delay. After the last delay it waits for the next size
+   * change (or `sendNow`), so a server that keeps refusing is not hammered.
+   */
   markFailed(size: TerminalSize) {
-    if (sameSize(size, this.synced)) this.synced = null;
+    // A newer size was dispatched since; its own outcome decides.
+    if (!sameSize(size, this.synced)) return;
+    this.synced = null;
+    if (!sameSize(size, this.retrySize)) {
+      this.retrySize = size;
+      this.retries = 0;
+    }
+    // A newer size is already queued and will be sent instead.
+    if (this.timer !== null || this.retries >= this.retryDelaysMs.length)
+      return;
+    this.pending = size;
+    this.timer = setTimeout(
+      () => this.fire(),
+      this.retryDelaysMs[this.retries++],
+    );
   }
 
   dispose() {
@@ -154,6 +184,10 @@ export class TerminalResizeSync {
     if (sameSize(size, this.synced)) return false;
     if (!this.send(size)) return false;
     this.synced = size;
+    if (!sameSize(size, this.retrySize)) {
+      this.retrySize = null;
+      this.retries = 0;
+    }
     return true;
   }
 }
@@ -174,10 +208,16 @@ export class TerminalAttachFrameWatchdog {
     return attempt === this.attempt;
   }
 
-  /** Records a matching frame whether it arrives before or after the RPC. */
-  markFrame() {
+  /**
+   * Records a matching frame whether it arrives before or after the RPC.
+   * True for the first frame of the current attempt: the moment the view
+   * stops loading. Later frames of a stream return false.
+   */
+  markFrame(): boolean {
+    const first = this.frameAttempt !== this.attempt;
     this.frameAttempt = this.attempt;
     this.clearTimer();
+    return first;
   }
 
   /**

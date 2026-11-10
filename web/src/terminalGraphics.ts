@@ -102,6 +102,8 @@ export function attachTerminalGraphics(term: TerminalEngine) {
   const resized = term.onResize(() => void draw());
   return {
     update(next?: TerminalGraphics) {
+      // No images before or after, as on every frame of most panes.
+      if (!next && !scene) return;
       const key = JSON.stringify([
         next?.placements,
         next?.assets.map((a) => a.id),

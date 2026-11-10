@@ -29,8 +29,14 @@ import {
   decodeTerminalClipboard,
   type PendingClipboardWrite,
 } from "../../terminalClipboard";
-import { TerminalEndpointPresentation } from "../../terminalEndpointPresentation";
-import { TerminalFrameDecoder } from "../../terminalFrameDecoder";
+import {
+  TerminalEndpointPresentation,
+  type TerminalPresentationFrame,
+} from "../../terminalEndpointPresentation";
+import {
+  TerminalFrameDecoder,
+  TerminalResyncRetry,
+} from "../../terminalFrameDecoder";
 import { TerminalHistorySelection } from "../../terminalHistorySelection";
 import type { TerminalKey } from "../../../../shared/terminalKey";
 import type { TerminalModifiedInput } from "../../terminalModifiers";
@@ -53,10 +59,7 @@ import {
   zoomedTerminalFontSize,
 } from "../../touchGestures";
 import type { PaneLayout } from "../../types";
-import {
-  type TerminalFrameParts,
-  terminalFrameText,
-} from "../../../../shared/terminalFrame";
+import type { TerminalFrameParts } from "../../../../shared/terminalFrame";
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import type { TerminalFileLinkMenuState } from "../TerminalFileLinkMenu";
 import {
@@ -413,8 +416,8 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       !desiredTerminal.current ||
       presentation?.linkWritePending ||
       (!session.latestLinkFrame &&
-        session.latestEndpointText !== undefined &&
-        presentation?.displayedFrame?.text !== session.latestEndpointText) ||
+        session.latestEndpointFrame &&
+        !presentation?.shows(session.latestEndpointFrame)) ||
       (session.latestLinkFrame &&
         presentation?.displayedFrame?.linkFrame !== session.latestLinkFrame)
     )
@@ -667,7 +670,8 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     touch,
     disposed: false,
     latestLinkFrame: undefined as string | undefined,
-    latestEndpointText: undefined as string | undefined,
+    // The newest frame received, whether or not it is on screen yet.
+    latestEndpointFrame: null as TerminalPresentationFrame | null,
     // A clipboard write reserved inside a gesture for a later OSC 52 copy.
     reservedClipboard: null as PendingClipboardWrite | null,
     replayingWheel: false,
@@ -685,6 +689,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       session.disposed = true;
       abort.abort();
       off();
+      for (const stream of frameStreams.values()) stream.resync.cancel();
       offClipboard();
       offClosed();
       unregisterConnectionDisposer();
@@ -723,18 +728,42 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       desiredTerminal.current,
       push,
     );
-  const frameDecoders = new Map<string, TerminalFrameDecoder>();
+  const frameStreams = new Map<
+    string,
+    { decoder: TerminalFrameDecoder; resync: TerminalResyncRetry }
+  >();
+  const frameStream = (terminalId: string) => {
+    let stream = frameStreams.get(terminalId);
+    if (!stream) {
+      const decoder = new TerminalFrameDecoder();
+      const resync = new TerminalResyncRetry(decoder, () => {
+        // Only a terminal still being shown has a stream to ask; a later
+        // attach starts with a full frame anyway.
+        if (
+          session.disposed ||
+          !client.isCurrent() ||
+          desiredTerminal.current !== terminalId ||
+          (attachedTerminal.current !== terminalId &&
+            attachingTerminal.current !== terminalId)
+        )
+          return false;
+        void client
+          .call("terminal.frame_ack", { terminal_id: terminalId, resync: true })
+          .catch(() => {});
+        return true;
+      });
+      stream = { decoder, resync };
+      frameStreams.set(terminalId, stream);
+    }
+    return stream;
+  };
   const graphicsStore = new TerminalGraphicsStore();
   const off = bridge.onTerminal((frame) => {
     if (!current(frame)) return;
-    let text: string | null;
+    let text: string | null = null;
     let parts: TerminalFrameParts | undefined;
     if (frame.frame_seq !== undefined) {
-      let decoder = frameDecoders.get(frame.terminal_id);
-      if (!decoder) {
-        decoder = new TerminalFrameDecoder();
-        frameDecoders.set(frame.terminal_id, decoder);
-      }
+      const { decoder, resync } = frameStream(frame.terminal_id);
       const decoded = decoder.decode(frame);
       if (decoded.kind === "none") return;
       // Acknowledge on receipt: the bridge sends the next frame only once
@@ -747,25 +776,34 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
             : { terminal_id: frame.terminal_id, seq: decoded.seq },
         )
         .catch(() => {});
-      if (decoded.kind === "resync") return;
+      if (decoded.kind === "resync") {
+        // The request or its full frame can be lost too, and a quiet pane
+        // sends no later row update to notice: ask again on a timer.
+        resync.arm();
+        return;
+      }
+      if (resync.armed) resync.cancel();
+      // The repaint text is built only if a row update cannot be written.
       parts = decoded.parts;
-      text = terminalFrameText(parts);
     } else {
-      text = frame.bytes === undefined ? null : b64toText(frame.bytes);
+      if (frame.bytes === undefined) return;
+      text = b64toText(frame.bytes);
+      if (text === null) return;
     }
-    if (text === null) return;
     if (!frame.link_frame || frame.link_frame !== session.latestLinkFrame)
       invalidateLinks();
     refs.linkReady.current = true;
-    session.latestEndpointText = text;
     session.latestLinkFrame = frame.link_frame;
-    // An explicitly chosen path is a stable action target, even as a TUI repaints.
-    attachWatchdog.markFrame();
     firstFrame();
     noteTerminalFrame();
-    attachTimeouts.current = 0;
-    ui.setTerminalLoading(false);
-    ui.setTerminalAttachError("");
+    // The first frame of an attach ends its loading state and clears its
+    // error. Every writer of those starts or cancels a watchdog attempt, so
+    // later frames of the same stream have nothing to reset.
+    if (attachWatchdog.markFrame()) {
+      attachTimeouts.current = 0;
+      ui.setTerminalLoading(false);
+      ui.setTerminalAttachError("");
+    }
     // Mirror the displaying device's size; the bridge sends the whole surface.
     if (
       refs.followShared.current &&
@@ -776,7 +814,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       term.resize(frame.width, frame.height);
       applyTerminalFollowScale(term, container, true, refs.followPan.current);
     }
-    presentation.update(
+    session.latestEndpointFrame = presentation.update(
       text,
       frame.mouse_reporting === true,
       {

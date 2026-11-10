@@ -1,6 +1,7 @@
 import {
   type CollaborationParticipant,
   type CollaborationSnapshot,
+  collaborationNow,
   participantIsTyping,
 } from "./collaboration";
 import { t } from "./i18n";
@@ -47,7 +48,8 @@ export function deviceName(
 export function collaboratorGroups(
   snapshot: CollaborationSnapshot | null,
   self: PresenceSelf,
-  now = Date.now(),
+  // Expiry deadlines are on the server's clock.
+  now = collaborationNow(snapshot),
 ): Collaborator[] {
   if (!snapshot) return [];
   const groups = new Map<string, Collaborator>();
@@ -192,7 +194,8 @@ export function panePresence(
   snapshot: CollaborationSnapshot | null,
   paneIds: readonly string[],
   self: PresenceSelf,
-  now = Date.now(),
+  // Expiry deadlines are on the server's clock.
+  now = collaborationNow(snapshot),
 ): PanePresence {
   if (!snapshot || paneIds.length === 0) return EMPTY_PRESENCE;
   const panes = new Set(paneIds);

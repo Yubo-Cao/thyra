@@ -1,10 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import {
   encodeRtcClose,
   encodeRtcMessage,
   RtcFrameDecoder,
 } from "../../shared/rtcFrames";
-import { Bridge, type BridgeTransport, type ConnectionStatus } from "./api";
+import {
+  Bridge,
+  type BridgeTransport,
+  type ConnectionStatus,
+  RETIRED_SOCKET_MAX_MS,
+} from "./api";
 import { rtcOptedOut, rtcRetryDelay } from "./rtcPath";
 import { RtcBridgeSocket } from "./rtcTransport";
 
@@ -153,6 +158,43 @@ describe("bridge socket swap", () => {
     expect(ws.closedWith).toBe(1000);
 
     expect(statuses).toEqual(["disconnected", "connecting", "connected"]);
+  });
+
+  test("a slow owed call survives the swap; only a dead socket's is failed", async () => {
+    jest.useFakeTimers();
+    try {
+      const { bridge, ws } = connectedBridge();
+      // No timeout of its own, as for a worktree being created.
+      const slow = bridge.call("bridge.status", {}, { timeoutMs: null });
+      const slowId = ws.lastCall().id;
+      const lost = bridge.call("bridge.status", {}, { timeoutMs: null });
+      const failure = lost.catch((error: Error) => error.message);
+      const channel = new FakeSocket().open();
+      const send = channel.send.bind(channel);
+      channel.send = (data) => {
+        send(data);
+        const call = JSON.parse(data) as { id: string; method: string };
+        // Keep the heartbeat on the new transport answered.
+        if (call.method === "bridge.ping")
+          channel.receive({ id: call.id, result: { ok: true } });
+      };
+      bridge.adoptSocket(channel as unknown as WebSocket, "p2p");
+      channel.hello();
+      // Well past the RPC timeout that used to fail it as "disconnected".
+      jest.advanceTimersByTime(45_000);
+      expect(ws.closedWith).toBeNull();
+      ws.receive({ id: slowId, result: { ok: true } });
+      expect(await slow).toEqual({ ok: true });
+      expect(bridge.status).toBe("connected");
+      // The other reply never comes: the old socket is not kept for good.
+      expect(ws.closedWith).toBeNull();
+      jest.advanceTimersByTime(RETIRED_SOCKET_MAX_MS);
+      expect(ws.closedWith).toBe(1000);
+      expect(await failure).toContain("disconnected");
+      expect(bridge.status).toBe("connected");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("a dropped channel falls back to a WebSocket reconnect", () => {

@@ -21,6 +21,7 @@ import {
 } from "../mobileTerminalShortcuts";
 import {
   clipboardImageFiles,
+  commitTextComposition,
   insertIntoTerminalComposerDraft,
   readTerminalComposerDraft,
   readTerminalComposerSelection,
@@ -252,19 +253,33 @@ export function TerminalComposer({
     }
   };
 
+  const committingRef = useRef(false);
   const submit = async (sendEnter: boolean, commitComposition = false) => {
+    // A second press while the IME is still committing the first.
+    if (committingRef.current) return;
     let draft = text;
     if (composingRef.current) {
       // The IME owns Enter while it composes; only the buttons commit.
       if (!commitComposition) return;
       // Android keyboards keep the word being typed in composition until a
-      // space follows. Leaving the field makes the IME commit it as shown.
+      // space follows. Leaving the field makes the IME commit it as shown;
+      // a desktop IME may do so just after the blur, so wait for it rather
+      // than send the unconverted pre-edit text.
       const textarea = textareaRef.current;
-      textarea?.blur();
-      composingRef.current = false;
       if (textarea) {
+        committingRef.current = true;
+        try {
+          await commitTextComposition(textarea, () => composingRef.current);
+        } finally {
+          committingRef.current = false;
+        }
+        // The pane changed while waiting: this draft is no longer shown.
+        if (activeDraftKeyRef.current !== draftKey) return;
+        composingRef.current = false;
         updateText(textarea);
         draft = textarea.value;
+      } else {
+        composingRef.current = false;
       }
     }
     try {

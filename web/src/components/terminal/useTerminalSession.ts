@@ -49,20 +49,31 @@ export function useTerminalBindings(
   const { container, client, identity, refs, ui } = view;
   const { applyModifiers, applyKeyModifiers } = view;
   const { assertInputAllowed, closeTerminalInput, openTerminalInput } = view;
+  // One deferred focus attempt at a time: every frame asks for one.
+  const focusPending = useRef(false);
   const focusTerminalSoon = useCallback(() => {
+    if (focusPending.current || !refs.isActivePane.current) return;
     // Touch devices keep the terminal's input shut until a tap there; with a
     // hardware keyboard only a local editor may take focus for the user.
     const blocked = () =>
       shouldAvoidVirtualKeyboard() && keyboardKindNow() !== "hardware";
     if (
-      !refs.isActivePane.current ||
       refs.composerOpen.current ||
       refs.touchSelection.current?.active === true ||
       blocked()
     )
       return;
+    // Already typing here, as while frames stream in: nothing to schedule.
+    const focused = document.activeElement;
+    if (
+      refs.promptEditor.current?.hasFocus() ||
+      (focused && refs.term.current?.element.contains(focused))
+    )
+      return;
+    focusPending.current = true;
     requestAnimationFrame(() => {
       window.setTimeout(() => {
+        focusPending.current = false;
         if (
           !client.isCurrent() ||
           !refs.isActivePane.current ||

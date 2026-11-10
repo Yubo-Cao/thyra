@@ -16,6 +16,12 @@ import { Token } from "./ui/Token";
 import { toastController } from "./ui/toastQueue";
 import { Latched } from "./LazyBoundary";
 import { lazyPanel } from "../lazyWithReload";
+import {
+  appendMessageBoardPage,
+  applyMessageBoardChange,
+  messageBoardRefreshLimit,
+  refreshMessageBoardPages,
+} from "../messageBoardList";
 const messageBoardPanel = lazyPanel("message-board", () =>
   import("./MessageBoardDialog").then((module) => module.MessageBoardDialog),
 );
@@ -45,6 +51,13 @@ function MessageBoardController({ onOpenFile }: MessageBoardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // What is shown, and for which tab: a refresh keeps the pages loaded past
+  // its own so the list does not shrink (and scroll back) under the reader.
+  const pages = useRef({
+    archived,
+    messages: [] as BoardMessage[],
+    cursor: null as string | null,
+  });
   const request = useRef(0);
   const invalidateRequests = useCallback(() => {
     ++request.current;
@@ -68,23 +81,32 @@ function MessageBoardController({ onOpenFile }: MessageBoardProps) {
       const generation = ++request.current;
       setLoading(true);
       try {
+        const shown =
+          pages.current.archived === archived
+            ? pages.current
+            : { messages: [], cursor: null };
         const result: MessageBoardList = await bridge.call(
           "message_board.list",
-          { archived, limit: 50, ...(next ? { cursor: next } : {}) },
+          next
+            ? { archived, limit: 50, cursor: next }
+            : {
+                archived,
+                limit: messageBoardRefreshLimit(shown.messages.length),
+              },
         );
         if (generation !== request.current) return;
-        setMessages((current) =>
-          next
-            ? [
-                ...current,
-                ...result.messages.filter(
-                  (message) => !current.some((item) => item.id === message.id),
-                ),
-              ]
-            : result.messages,
-        );
+        // Read again: a change saved while this was loading was applied.
+        const current =
+          pages.current.archived === archived
+            ? pages.current
+            : { messages: [], cursor: null };
+        const merged = next
+          ? appendMessageBoardPage(current, result)
+          : refreshMessageBoardPages(current, result);
+        pages.current = { archived, ...merged };
+        setMessages(merged.messages);
         setUnread(result.unread_count);
-        setCursor(result.next_cursor);
+        setCursor(merged.cursor);
         setError("");
       } catch (cause) {
         if (generation === request.current)
@@ -129,10 +151,24 @@ function MessageBoardController({ onOpenFile }: MessageBoardProps) {
       stopMessages();
     };
   }, [refresh, invalidateRequests]);
+  // The other tab's messages are not this tab's: load it when it is chosen.
+  const loadedArchived = useRef(archived);
+  useEffect(() => {
+    if (loadedArchived.current === archived) return;
+    loadedArchived.current = archived;
+    setMessages([]);
+    setCursor(null);
+    void refresh();
+  }, [archived, refresh]);
   const update = async (change: UpdateBoardMessage) => {
     setBusy(change.id);
     try {
       await bridge.call("message_board.update", change);
+      // A message kept from a later page is not reloaded by the refresh.
+      pages.current = {
+        ...pages.current,
+        messages: applyMessageBoardChange(pages.current.messages, change),
+      };
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

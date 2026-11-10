@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 import {
   activateTerminalComposerDraftScope,
   terminalComposerDraftKey,
@@ -13,7 +13,11 @@ import {
   writeTerminalComposerDraft,
   resolveComposerImages,
   resetPastedImageHistory,
+  resetTerminalComposerForTest,
 } from "./terminalComposer";
+
+// The draft store is module state shared with other test files in a run.
+beforeAll(resetTerminalComposerForTest);
 
 test("thumbnail exists during upload, survives failed send and clears on success", async () => {
   activateTerminalComposerDraftScope("images", 1);

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import {
   TerminalAttachFrameWatchdog,
   TerminalResizeSync,
@@ -115,6 +115,79 @@ describe("TerminalResizeSync", () => {
     expect(sync.sendNow(size)).toBe(true);
     expect(sent).toEqual([size, size]);
     sync.dispose();
+  });
+
+  test("a rejected size is sent again on its own, a bounded number of times", () => {
+    jest.useFakeTimers();
+    try {
+      const sent: Array<{ cols: number; rows: number }> = [];
+      const sync = new TerminalResizeSync(
+        (size) => {
+          sent.push(size);
+          return true;
+        },
+        10,
+        [100, 400],
+      );
+      const size = { cols: 120, rows: 40 };
+      sync.markAttached({ cols: 100, rows: 30 });
+      sync.sendNow(size);
+      sync.markFailed(size);
+      jest.advanceTimersByTime(99);
+      expect(sent).toHaveLength(1);
+      jest.advanceTimersByTime(1);
+      expect(sent).toHaveLength(2);
+      sync.markFailed(size);
+      jest.advanceTimersByTime(400);
+      expect(sent).toHaveLength(3);
+      // Out of retries: no loop against a server that keeps refusing.
+      sync.markFailed(size);
+      jest.advanceTimersByTime(60_000);
+      expect(sent).toHaveLength(3);
+      // The next observed size still goes out, with a fresh retry budget.
+      const next = { cols: 90, rows: 20 };
+      sync.schedule(next);
+      jest.advanceTimersByTime(10);
+      expect(sent[3]).toEqual(next);
+      sync.markFailed(next);
+      jest.advanceTimersByTime(100);
+      expect(sent).toHaveLength(5);
+      sync.dispose();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a stale rejection or a newer size cancels the retry", () => {
+    jest.useFakeTimers();
+    try {
+      const sent: Array<{ cols: number; rows: number }> = [];
+      const sync = new TerminalResizeSync(
+        (size) => {
+          sent.push(size);
+          return true;
+        },
+        10,
+        [100],
+      );
+      const old = { cols: 120, rows: 40 };
+      const newer = { cols: 130, rows: 42 };
+      sync.markAttached({ cols: 100, rows: 30 });
+      sync.sendNow(old);
+      sync.sendNow(newer);
+      // The older call fails after a newer size was dispatched.
+      sync.markFailed(old);
+      jest.advanceTimersByTime(1000);
+      expect(sent).toEqual([old, newer]);
+      // A size change during the retry wait replaces the retried size.
+      sync.markFailed(newer);
+      sync.schedule(old);
+      jest.advanceTimersByTime(1000);
+      expect(sent).toEqual([old, newer, old]);
+      sync.dispose();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("rejects zero sizes", () => {
@@ -234,6 +307,20 @@ describe("TerminalAttachFrameWatchdog", () => {
     watchdog.dispose();
     expect(watchdog.isCurrent(next)).toBe(false);
   });
+  test("only the first frame of an attempt reports the transition", () => {
+    const watchdog = new TerminalAttachFrameWatchdog();
+    watchdog.begin();
+    expect(watchdog.markFrame()).toBe(true);
+    expect(watchdog.markFrame()).toBe(false);
+    // A new attach, a cancelled one and a timed-out one all start over.
+    watchdog.begin();
+    expect(watchdog.markFrame()).toBe(true);
+    watchdog.cancel();
+    expect(watchdog.markFrame()).toBe(true);
+    expect(watchdog.markFrame()).toBe(false);
+    watchdog.dispose();
+  });
+
   test("does not arm when the frame arrived before the RPC response", async () => {
     const watchdog = new TerminalAttachFrameWatchdog();
     const attempt = watchdog.begin();

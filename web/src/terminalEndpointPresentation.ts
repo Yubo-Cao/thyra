@@ -1,17 +1,78 @@
 import {
+  TERMINAL_FRAME_TAIL_MARK,
   type TerminalFrameParts,
   terminalFrameRowUpdate,
+  terminalFrameText,
 } from "../../shared/terminalFrame";
+import type { TerminalGraphics } from "../../shared/terminalGraphics";
 import type { TerminalHistoryViewport } from "./terminalHistorySelection";
 
 export interface TerminalPresentationFrame {
-  graphics?: import("../../shared/terminalGraphics").TerminalGraphics;
+  graphics?: TerminalGraphics;
+  /** The full repaint; built on first use for a frame that came as rows. */
   text: string;
   size?: { cols: number; rows: number };
   history?: TerminalHistoryViewport;
   linkFrame?: string;
   /** Row structure of `text`, when the bridge sent row updates. */
   parts?: TerminalFrameParts;
+}
+
+/**
+ * A frame the bridge sent as rows. Nearly all of them are written as a row
+ * update and never need the full repaint text, so it is built only on demand.
+ */
+class RowFrame implements TerminalPresentationFrame {
+  private repaint: string | undefined;
+
+  constructor(
+    readonly parts: TerminalFrameParts,
+    readonly size: TerminalPresentationFrame["size"],
+    readonly history: TerminalHistoryViewport | undefined,
+    readonly linkFrame: string | undefined,
+    readonly graphics: TerminalGraphics | undefined,
+  ) {}
+
+  get text(): string {
+    return (this.repaint ??= terminalFrameText(this.parts));
+  }
+}
+
+function sameRows(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  // Unchanged rows of a row update are the same string objects.
+  for (let y = 0; y < a.length; y++) if (a[y] !== b[y]) return false;
+  return true;
+}
+
+/**
+ * How `next` differs from `shown`: not at all, or (looked for only with
+ * `wantTail`) just in the tail after the rows.
+ */
+function frameChange(
+  shown: TerminalPresentationFrame,
+  next: TerminalPresentationFrame,
+  wantTail: boolean,
+): { same: boolean; tail: string | null } {
+  if (shown.parts && next.parts) {
+    if (!sameRows(shown.parts.rows, next.parts.rows))
+      return { same: false, tail: null };
+    return shown.parts.tail === next.parts.tail
+      ? { same: true, tail: null }
+      : { same: false, tail: next.parts.tail };
+  }
+  const text = next.text;
+  if (text === shown.text) return { same: true, tail: null };
+  if (!wantTail) return { same: false, tail: null };
+  // frameToAnsi ends its cell grid with DECAWM, then only cursor controls.
+  const cursor = text.lastIndexOf(TERMINAL_FRAME_TAIL_MARK);
+  return {
+    same: false,
+    tail:
+      cursor >= 0 && text.slice(0, cursor) === shown.text.slice(0, cursor)
+        ? text.slice(cursor)
+        : null,
+  };
 }
 
 /** xterm's native selection escape: Shift on non-Mac, Option on Mac. */
@@ -86,19 +147,39 @@ export class TerminalEndpointPresentation {
     this.flush();
   }
 
+  /**
+   * Presents a frame and returns it (null once disposed). `text` may be null
+   * for a frame given as `parts`.
+   */
   update(
-    text: string,
+    text: string | null,
     mouseReporting: boolean,
     size?: { cols: number; rows: number },
     history?: TerminalHistoryViewport,
     linkFrame?: string,
     parts?: TerminalFrameParts,
-    graphics?: import("../../shared/terminalGraphics").TerminalGraphics,
-  ): void {
-    if (this.disposed) return;
+    graphics?: TerminalGraphics,
+  ): TerminalPresentationFrame | null {
+    if (this.disposed) return null;
+    let frame: TerminalPresentationFrame;
+    if (text !== null)
+      frame = { text, size, history, linkFrame, parts, graphics };
+    else if (parts)
+      frame = new RowFrame(parts, size, history, linkFrame, graphics);
+    else return null;
     this.mouseReporting = mouseReporting;
-    this.pendingFrame = { text, size, history, linkFrame, parts, graphics };
+    this.pendingFrame = frame;
     this.flush();
+    return frame;
+  }
+
+  /** Whether the screen shows exactly this frame's content. */
+  shows(frame: TerminalPresentationFrame): boolean {
+    const displayed = this.displayedFrame;
+    return (
+      !!displayed &&
+      (displayed === frame || frameChange(displayed, frame, false).same)
+    );
   }
 
   flush(): void {
@@ -135,27 +216,27 @@ export class TerminalEndpointPresentation {
         : "\x1b[?1002l\x1b[?1006l";
       this.appliedMouseReporting = this.mouseReporting;
     }
-    let text = frame?.text ?? "";
+    // What to write; the full repaint is built only if nothing shorter does.
+    let text: string | null = null;
     let linksChanged = true;
     const displayed = this.displayedFrame;
     if (frame && displayed && !prefix) {
-      if (text === displayed.text) {
+      const change = frameChange(
+        displayed,
+        frame,
+        !!frame.linkFrame && frame.linkFrame === displayed.linkFrame,
+      );
+      if (change.same) {
         // Metadata may advance without changing the physical xterm buffer.
         this.displayedFrame = frame;
         this.selectionHistory?.presented(frame);
         return;
       }
-      if (frame.linkFrame && frame.linkFrame === displayed.linkFrame) {
-        // frameToAnsi ends its cell grid with DECAWM, then only cursor controls.
-        // Updating just that suffix preserves OSC8 IDs and the pressed link.
-        const cursor = text.lastIndexOf("\x1b[?7h");
-        if (
-          cursor >= 0 &&
-          text.slice(0, cursor) === displayed.text.slice(0, cursor)
-        ) {
-          text = text.slice(cursor);
-          linksChanged = false;
-        }
+      if (change.tail !== null) {
+        // Only the cursor controls after the cell grid changed. Updating just
+        // that suffix preserves OSC8 IDs and the pressed link.
+        text = change.tail;
+        linksChanged = false;
       }
     }
     const viewportKey = viewport ? `${viewport.cols}x${viewport.rows}` : null;
@@ -179,7 +260,7 @@ export class TerminalEndpointPresentation {
       this.changingLinks = linksChanged;
       const generation = this.generation;
       this.write(
-        prefix + text,
+        prefix + (text ?? frame?.text ?? ""),
         () => {
           // reset() cannot cancel the physical xterm write. Its completion must
           // still release the gate for current intent, never restore old state.

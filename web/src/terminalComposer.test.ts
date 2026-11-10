@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, jest, test } from "bun:test";
 import {
   activateTerminalComposerDraftScope,
   beginTerminalComposerSubmission,
@@ -28,7 +28,13 @@ import {
   uploadTerminalComposerImages,
   terminalComposerSend,
   terminalComposerTypedText,
+  commitTextComposition,
+  COMPOSITION_COMMIT_TIMEOUT_MS,
+  resetTerminalComposerForTest,
 } from "./terminalComposer";
+
+// The draft store is module state shared with other test files in a run.
+beforeAll(resetTerminalComposerForTest);
 
 describe("terminal composer drafts", () => {
   test("scopes drafts by connection, generation, and pane", () => {
@@ -467,4 +473,79 @@ describe("terminal composer send encoding", () => {
         expect(send.request).toEqual(terminalComposerRequest("p1", text, true));
     }
   });
+});
+
+describe("committing an IME composition before sending", () => {
+  const field = () => {
+    const target = new EventTarget();
+    let blurred = 0;
+    return Object.assign(target, {
+      blur: () => void blurred++,
+      blurs: () => blurred,
+    }) as unknown as HTMLElement & { blurs: () => number };
+  };
+
+  test("resolves at once when the blur committed synchronously", async () => {
+    let composing = true;
+    const input = field();
+    input.blur = () => {
+      composing = false;
+    };
+    let settled = false;
+    void commitTextComposition(input, () => composing).then(
+      () => (settled = true),
+    );
+    await Promise.resolve();
+    expect(settled).toBe(true);
+  });
+
+  test("waits for compositionend when the IME commits after the blur", async () => {
+    jest.useFakeTimers();
+    try {
+      const input = field();
+      let settled = false;
+      void commitTextComposition(input, () => true).then(
+        () => (settled = true),
+      );
+      expect(input.blurs()).toBe(1);
+      jest.advanceTimersByTime(COMPOSITION_COMMIT_TIMEOUT_MS - 1);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      input.dispatchEvent(new Event("compositionend"));
+      await Promise.resolve();
+      expect(settled).toBe(true);
+      // The timeout was cleared with the listener.
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("sends what is there when the IME never ends the composition", async () => {
+    jest.useFakeTimers();
+    try {
+      const input = field();
+      let settled = false;
+      void commitTextComposition(input, () => true).then(
+        () => (settled = true),
+      );
+      jest.advanceTimersByTime(COMPOSITION_COMMIT_TIMEOUT_MS);
+      await Promise.resolve();
+      expect(settled).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+test("the test reset leaves no draft scope behind", () => {
+  activateTerminalComposerDraftScope("other", 9);
+  const key = terminalComposerDraftKey("fresh", 1, "pane");
+  writeTerminalComposerDraft(key, "kept out by the scope");
+  expect(readTerminalComposerDraft(key)).toBe("");
+  resetTerminalComposerForTest();
+  writeTerminalComposerDraft(key, "draft");
+  expect(readTerminalComposerDraft(key)).toBe("draft");
+  resetTerminalComposerForTest();
+  expect(terminalComposerDraftCount()).toBe(0);
 });

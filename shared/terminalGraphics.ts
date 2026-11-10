@@ -31,7 +31,8 @@ export class TerminalGraphicsStore {
   private assets = new Map<string, TerminalImageAsset>();
   update(scene?: TerminalGraphics): TerminalGraphics | undefined {
     if (!scene) {
-      this.assets.clear();
+      // Nearly every frame of a pane without images takes this path.
+      if (this.assets.size > 0) this.assets.clear();
       return;
     }
     const live = new Set(scene.placements.map((p) => p.asset));

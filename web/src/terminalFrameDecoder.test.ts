@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import {
   TERMINAL_FRAME_HEAD,
   terminalFrameRowUpdate,
@@ -7,6 +7,7 @@ import {
 import {
   TERMINAL_RESYNC_RETRY_MS,
   TerminalFrameDecoder,
+  TerminalResyncRetry,
 } from "./terminalFrameDecoder";
 
 const tail = "\x1b[?7h\x1b[0m\x1b[1;2H\x1b[2 q\x1b[?25h";
@@ -83,5 +84,76 @@ describe("TerminalFrameDecoder", () => {
     expect(
       decoder.decode({ frame_seq: 2, base_seq: 1, changed: [[5, "x"]] }),
     ).toEqual({ kind: "resync" });
+  });
+});
+
+describe("TerminalResyncRetry", () => {
+  const lose = (decoder: TerminalFrameDecoder) => {
+    decoder.decode({ frame_seq: 1, rows: ["a"], tail }, 0);
+    expect(
+      decoder.decode({ frame_seq: 3, base_seq: 2, changed: [[0, "x"]] }, 0),
+    ).toEqual({ kind: "resync" });
+  };
+
+  test("a quiet pane asks again until the full frame arrives", () => {
+    jest.useFakeTimers();
+    try {
+      const decoder = new TerminalFrameDecoder();
+      let requests = 0;
+      const retry = new TerminalResyncRetry(decoder, () => {
+        requests++;
+        return true;
+      });
+      lose(decoder);
+      retry.arm();
+      jest.advanceTimersByTime(TERMINAL_RESYNC_RETRY_MS - 1);
+      expect(requests).toBe(0);
+      jest.advanceTimersByTime(1);
+      expect(requests).toBe(1);
+      // That request was lost as well.
+      jest.advanceTimersByTime(TERMINAL_RESYNC_RETRY_MS);
+      expect(requests).toBe(2);
+      expect(decoder.decode({ frame_seq: 9, rows: ["z"], tail }).kind).toBe(
+        "frame",
+      );
+      jest.advanceTimersByTime(TERMINAL_RESYNC_RETRY_MS * 3);
+      expect(requests).toBe(2);
+      expect(retry.armed).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("stops when asking is pointless or it is cancelled", () => {
+    jest.useFakeTimers();
+    try {
+      const decoder = new TerminalFrameDecoder();
+      let requests = 0;
+      const retry = new TerminalResyncRetry(decoder, () => {
+        requests++;
+        return false;
+      });
+      lose(decoder);
+      retry.arm();
+      jest.advanceTimersByTime(TERMINAL_RESYNC_RETRY_MS * 4);
+      expect(requests).toBe(1);
+      retry.arm();
+      retry.cancel();
+      jest.advanceTimersByTime(TERMINAL_RESYNC_RETRY_MS * 4);
+      expect(requests).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a timed request restarts the decoder's own wait", () => {
+    const decoder = new TerminalFrameDecoder();
+    lose(decoder);
+    decoder.resyncRequested(TERMINAL_RESYNC_RETRY_MS);
+    const delta = { frame_seq: 5, base_seq: 4, changed: [] };
+    expect(decoder.decode(delta, TERMINAL_RESYNC_RETRY_MS + 1)).toEqual({
+      kind: "none",
+    });
+    expect(decoder.awaitingResync).toBe(true);
   });
 });

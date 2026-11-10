@@ -6,6 +6,8 @@ import {
   participantIsTyping,
   shouldTakeOverPaneFromMouse,
   subscribeCollaborationSnapshot,
+  collaborationNow,
+  parseSnapshot,
 } from "./collaboration";
 import type { ConnectionClient } from "./api";
 import type { CollaborationSnapshot } from "./collaboration";
@@ -265,5 +267,31 @@ describe("display owner events", () => {
     expect(acceptCollaborationEvent(client, displayEvent([]))).toBe(true);
     expect(current()?.display_owners).toEqual([]);
     unsubscribe();
+  });
+});
+
+describe("snapshot server time", () => {
+  const wire = { participants: [], pane_claims: [], lease_ttl_ms: 45_000 };
+
+  test("records the server's clock offset on receipt", () => {
+    const parsed = parseSnapshot(
+      { snapshot: { ...wire, server_now_unix_ms: 70_000 } },
+      100_000,
+    )!;
+    expect(parsed.server_now_unix_ms).toBe(70_000);
+    expect(parsed.clock_offset_ms).toBe(-30_000);
+    // 5 s later here is 5 s later there.
+    expect(collaborationNow(parsed, 105_000)).toBe(75_000);
+  });
+
+  test("an older server sends no time and the browser clock is used", () => {
+    const parsed = parseSnapshot({ snapshot: wire }, 100_000)!;
+    expect(parsed.clock_offset_ms).toBeUndefined();
+    expect(collaborationNow(parsed, 100_000)).toBe(100_000);
+    expect(collaborationNow(null, 5)).toBe(5);
+    expect(
+      parseSnapshot({ snapshot: { ...wire, server_now_unix_ms: "soon" } })!
+        .clock_offset_ms,
+    ).toBeUndefined();
   });
 });

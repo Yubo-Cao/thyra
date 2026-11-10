@@ -1,6 +1,6 @@
 import { t } from "./i18n";
 import type { ConnectionClient } from "./api";
-import type { CollaborationSnapshot } from "./collaboration";
+import { type CollaborationSnapshot, collaborationNow } from "./collaboration";
 
 /** The device that sizes the pane, as this page sees it. */
 export type PaneDisplayOwner = {
@@ -22,6 +22,7 @@ export type PaneControlState = {
   ownsLayout: boolean;
   canResize: boolean;
   ownerName: string | null;
+  /** On this browser's clock; 0 when taking control is not held off. */
   protectedUntil: number;
   /** Set while the pane has a display owner; only it sizes the pane. */
   display: PaneDisplayOwner | null;
@@ -79,6 +80,7 @@ function displayOwnerState(
   };
 }
 
+/** `now` is this browser's clock; the snapshot carries the server's offset. */
 export function paneControlState(
   snapshot: CollaborationSnapshot | null,
   paneId: string | undefined,
@@ -91,8 +93,11 @@ export function paneControlState(
     personId?: string | null;
   } = {},
 ): PaneControlState {
+  // Deadlines are on the server's clock: a browser clock that runs ahead
+  // would drop a live claim early, one that runs behind would keep a dead one.
+  const serverNow = collaborationNow(snapshot, now);
   const claim = snapshot?.pane_claims.find(
-    (item) => item.pane_id === paneId && item.expires_at_unix_ms > now,
+    (item) => item.pane_id === paneId && item.expires_at_unix_ms > serverNow,
   );
   const ownsLayout = claim?.participant_id === participantId;
   const display = displayOwnerState(snapshot, paneId, participantId);
@@ -120,7 +125,11 @@ export function paneControlState(
     protectedUntil:
       // Protection guards against other people, not this person's windows.
       claim && !ownsLayout && !samePerson && !options.overridesProtection
-        ? (claim.protected_until_unix_ms ?? 0)
+        ? Math.max(
+            0,
+            (claim.protected_until_unix_ms ?? 0) -
+              (snapshot?.clock_offset_ms ?? 0),
+          )
         : 0,
     display,
     inputOnly: !blocked && ownsLayout && !!display && !display.mine,

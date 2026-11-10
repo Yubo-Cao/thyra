@@ -71,6 +71,16 @@ export class TerminalFrameDecoder {
     return { kind: "frame", seq, parts };
   }
 
+  /** A requested full frame has not arrived yet. */
+  get awaitingResync(): boolean {
+    return this.awaitingFull;
+  }
+
+  /** The caller asked for the full frame again (see TerminalResyncRetry). */
+  resyncRequested(now = performance.now()): void {
+    if (this.awaitingFull) this.requestedAt = now;
+  }
+
   reset(): void {
     this.current = null;
     this.awaitingFull = false;
@@ -81,5 +91,45 @@ export class TerminalFrameDecoder {
     this.awaitingFull = true;
     this.requestedAt = now;
     return { kind: "resync" };
+  }
+}
+
+/**
+ * Asks for a missing full frame again on a timer. The decoder alone re-asks
+ * only when a later row update arrives, so a pane that went quiet after its
+ * request was lost (a dropped call, a bridge that restarted) would stay stale
+ * until the application printed something.
+ *
+ * `request` sends the resync and returns false once asking is pointless (the
+ * terminal was detached or the session disposed), which ends the retries.
+ */
+export class TerminalResyncRetry {
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly decoder: TerminalFrameDecoder,
+    private readonly request: () => boolean,
+    private readonly retryMs = TERMINAL_RESYNC_RETRY_MS,
+  ) {}
+
+  get armed(): boolean {
+    return this.timer !== null;
+  }
+
+  /** Call after each resync request; restarts the wait. */
+  arm(): void {
+    this.cancel();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (!this.decoder.awaitingResync || !this.request()) return;
+      this.decoder.resyncRequested();
+      this.arm();
+    }, this.retryMs);
+  }
+
+  cancel(): void {
+    if (this.timer === null) return;
+    clearTimeout(this.timer);
+    this.timer = null;
   }
 }

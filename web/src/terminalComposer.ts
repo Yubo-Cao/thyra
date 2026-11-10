@@ -727,3 +727,44 @@ export function terminalComposerInsertAtCaret(
     caret: before.length + inserted.length,
   };
 }
+
+/** How long Send waits for an IME to finish committing after the blur. */
+export const COMPOSITION_COMMIT_TIMEOUT_MS = 300;
+
+/**
+ * Makes the IME commit what it is composing in `input` and resolves once the
+ * field holds the committed text. Leaving the field commits: Android
+ * keyboards do it inside `blur()`, while desktop IMEs may end the composition
+ * a moment later, where reading the value at once returns the pre-edit text
+ * (unconverted kana or pinyin). `composing` reports whether a composition is
+ * still open, as tracked from the field's composition events. Gives up after
+ * `timeoutMs` and lets the caller send what is there.
+ */
+export function commitTextComposition(
+  input: Pick<HTMLElement, "blur" | "addEventListener" | "removeEventListener">,
+  composing: () => boolean,
+  timeoutMs = COMPOSITION_COMMIT_TIMEOUT_MS,
+): Promise<void> {
+  input.blur();
+  if (!composing()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      input.removeEventListener("compositionend", done);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    input.addEventListener("compositionend", done);
+  });
+}
+
+/** Forgets every draft, scope and pending state. Tests only. */
+export function resetTerminalComposerForTest(): void {
+  activeDraftScopePrefix = null;
+  drafts.clear();
+  selections.clear();
+  retiredDraftKeys.clear();
+  pendingSubmissions.clear();
+  pendingUploads.clear();
+  imagesByDraft.clear();
+}

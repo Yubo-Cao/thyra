@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createCollaborationService } from "./collaboration";
+import {
+  createCollaborationService,
+  filterCollaborationEvent,
+} from "./collaboration";
 
 function participant(participantId: string) {
   return {
@@ -168,5 +171,60 @@ describe("collaboration compatibility service", () => {
     const snapshot = await service.call("collaboration.list");
     expect(snapshot.snapshot.participants[0].typing).toBe(false);
     expect(snapshot.snapshot.participants).toHaveLength(1);
+  });
+
+  test("stamps snapshots with the server time, keeping one from the core", async () => {
+    const coreSnapshot: Record<string, unknown> = { participants: [] };
+    const core = createCollaborationService({
+      herdrCall: async () => ({
+        type: "collaboration_snapshot",
+        snapshot: coreSnapshot,
+      }),
+      now: () => 5_000,
+    });
+    expect((await core.call("collaboration.list")).snapshot).toEqual({
+      participants: [],
+      server_now_unix_ms: 5_000,
+    });
+    coreSnapshot.server_now_unix_ms = 42;
+    expect(
+      (await core.call("collaboration.list")).snapshot.server_now_unix_ms,
+    ).toBe(42);
+
+    const fallback = createCollaborationService({
+      herdrCall: async () => {
+        throw new Error("unknown method");
+      },
+      now: () => 7_000,
+    });
+    expect(
+      (await fallback.call("collaboration.list")).snapshot.server_now_unix_ms,
+    ).toBe(7_000);
+
+    // Events are stamped when sent, after the filter.
+    const event = {
+      event: "collaboration.updated",
+      data: { type: "collaboration_updated", snapshot: { participants: [] } },
+    };
+    expect(
+      filterCollaborationEvent(
+        event,
+        (snapshot) => ({ ...snapshot, filtered: true }),
+        9_000,
+      ),
+    ).toEqual({
+      event: "collaboration.updated",
+      data: {
+        type: "collaboration_updated",
+        snapshot: {
+          participants: [],
+          filtered: true,
+          server_now_unix_ms: 9_000,
+        },
+      },
+    });
+    expect(filterCollaborationEvent({ event: "other" }, (x) => x)).toEqual({
+      event: "other",
+    });
   });
 });
