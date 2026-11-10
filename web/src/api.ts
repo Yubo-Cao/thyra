@@ -309,6 +309,24 @@ const CONNECT_TIMEOUT_MS = 8000;
 const HEARTBEAT_INTERVAL_MS = 10000;
 const HEARTBEAT_TIMEOUT_MS = 6000;
 const MAX_WS_BUFFERED_BYTES = 4 * 1024 * 1024;
+const MAX_RECONNECT_DELAY_MS = 30000;
+
+/**
+ * How long to wait before reconnect attempt `attempt` (0 for the first):
+ * the base delay doubled per failed attempt up to a cap, with the upper half
+ * jittered so pages do not all return to a restarted server at once.
+ */
+export function reconnectDelay(
+  baseMs: number,
+  attempt: number,
+  random = Math.random(),
+): number {
+  const ceiling = Math.min(
+    Math.max(baseMs, MAX_RECONNECT_DELAY_MS),
+    baseMs * 2 ** Math.min(attempt, 16),
+  );
+  return Math.round(ceiling * (0.5 + random / 2));
+}
 
 export function isBridgeGlobalMethod(method: string): boolean {
   return (
@@ -430,6 +448,9 @@ export class Bridge {
   /** An adopted socket's hello is still due; it re-arms per-socket state. */
   private swapHelloTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Sockets that closed before a hello since the last accepted one. */
+  private reconnectAttempts = 0;
+  private sessionProbe: Promise<void> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatInFlight = false;
@@ -608,6 +629,10 @@ export class Bridge {
     ) {
       return;
     }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.setStatus("connecting");
     let ws: WebSocket;
     try {
@@ -764,6 +789,7 @@ export class Bridge {
     },
   ) {
     this.reconnectEnabled = false;
+    this.reconnectAttempts = 0;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -841,7 +867,11 @@ export class Bridge {
    * tick would be the first time a dead connection is noticed.
    */
   probeConnectionNow() {
-    if (this._status !== "connected") return;
+    if (this._status !== "connected") {
+      // Back in the foreground or online again: do not wait out the backoff.
+      if (this.reconnectEnabled && this.reconnectTimer) this.connect();
+      return;
+    }
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // The close event never fired (the OS froze the page first), so drop
       // the stale socket instead of waiting for the heartbeat interval.
@@ -888,6 +918,7 @@ export class Bridge {
     // the client generation twice without a status transition: listeners
     // captured the first advance and would never learn the second.
     if (!ws && this.ws === null && this._status === "disconnected") return;
+    const reachedHello = this.helloAcceptedForSocket;
     this.ws = null;
     this._hello = null;
     this.helloAcceptedForSocket = false;
@@ -897,12 +928,54 @@ export class Bridge {
     this.advanceActiveConnectionGeneration();
     this.setStatus("disconnected");
     this.rejectPending(reason);
-    if (this.reconnectEnabled && !this.reconnectTimer) {
+    if (!this.reconnectEnabled) return;
+    // A socket the server refused never says why (the browser hides the
+    // upgrade's status), so ask over HTTP whether the session still exists.
+    if (!reachedHello) this.probeSession();
+    if (!this.reconnectTimer) {
+      const delay = reconnectDelay(
+        this.reconnectDelayMs,
+        reachedHello ? 0 : this.reconnectAttempts,
+      );
+      if (!reachedHello) this.reconnectAttempts++;
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
         this.connect();
-      }, this.reconnectDelayMs);
+      }, delay);
     }
+  }
+
+  /**
+   * Leaves for the sign-in page when the session ended while the socket was
+   * down: every later upgrade would be refused, and reconnecting would spin
+   * on it for good.
+   */
+  private probeSession() {
+    if (this.sessionProbe || typeof fetch !== "function") return;
+    let probe: Promise<Response>;
+    try {
+      probe = fetch("/api/health", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+    } catch {
+      return;
+    }
+    this.sessionProbe = probe
+      .then(
+        (response) => {
+          if (response.status !== 401 || !this.reconnectEnabled) return;
+          if (this._status === "connected") return;
+          this.disconnect({ code: "logged_out", message: msg("logged out") });
+          location.replace("/login");
+        },
+        () => {
+          // Offline or the server is down: keep reconnecting.
+        },
+      )
+      .finally(() => {
+        this.sessionProbe = null;
+      });
   }
 
   private forceReconnect(reason: BridgeFailure) {
@@ -998,6 +1071,7 @@ export class Bridge {
       }
       this.helloHandlers.forEach((handler) => handler(msg));
       this.setStatus("connected");
+      this.reconnectAttempts = 0;
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;

@@ -20,6 +20,7 @@ import type {
 import { paneLayoutNeedsSwitcher } from "../paneLayoutSizing";
 import { useWorkspaceCan } from "../capabilities";
 import { type State, store, useStoreSelector } from "../store";
+import { selectPanesWithoutActivity } from "../agentOrder";
 import { terminalMountKey } from "../terminalConnection";
 import { blurActiveInput } from "./MobileControls";
 import { useShallow } from "zustand/react/shallow";
@@ -204,7 +205,7 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       layout: state.layout,
-      panes: state.panes,
+      panes: selectPanesWithoutActivity(state),
       selectedPaneId: state.selectedPaneId,
     })),
   );

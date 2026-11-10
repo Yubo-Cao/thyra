@@ -30,9 +30,8 @@ import {
 import type { TerminalKey } from "../../../../shared/terminalKey";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
+import { queueTerminalInput } from "../../terminalInputBatcher";
 import {
-  sendTerminalBytes,
-  sendTerminalKeys,
   shouldAvoidVirtualKeyboard,
   type TerminalSessionBindings,
 } from "./terminalSession";
@@ -123,9 +122,9 @@ export function terminalShortcutActions(
       const input = key
         ? { key: applyKeyModifiers(key) }
         : applyModifiers(data);
-      if ("key" in input) sendTerminalKeys(client, [input.key], target);
+      if ("key" in input) queueTerminalInput(client, [input.key], target);
       else
-        sendTerminalBytes(
+        queueTerminalInput(
           client,
           new TextEncoder().encode(input.bytes),
           target,

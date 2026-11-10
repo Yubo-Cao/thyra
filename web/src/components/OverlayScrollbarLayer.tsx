@@ -8,6 +8,8 @@ import {
 } from "react";
 import {
   calculateOverlayThumb,
+  createRefreshQueue,
+  createWheelTargetCache,
   overlayScrollbarExcludedElement,
   type OverlayThumbGeometry,
 } from "./overlayScrollbar";
@@ -62,13 +64,24 @@ function findScrollableElement(target: EventTarget | null) {
   return null;
 }
 
+/** The fixed, viewport-sized layer's box; it moves only when resized. */
+type LayerBox = { rect: DOMRect; offsetWidth: number; offsetHeight: number };
+
+function measureLayer(layer: HTMLElement): LayerBox {
+  return {
+    rect: layer.getBoundingClientRect(),
+    offsetWidth: layer.offsetWidth,
+    offsetHeight: layer.offsetHeight,
+  };
+}
+
 function measureScrollbars(
   target: HTMLElement,
-  layer: HTMLElement,
+  layer: LayerBox,
 ): ScrollbarLayout | null {
   if (!target.isConnected) return null;
   const rect = target.getBoundingClientRect();
-  const layerRect = layer.getBoundingClientRect();
+  const layerRect = layer.rect;
   if (
     !layer.offsetWidth ||
     !layer.offsetHeight ||
@@ -182,18 +195,40 @@ export function OverlayScrollbarLayer() {
 
   useEffect(() => {
     let frame = 0;
-    let pendingTarget: HTMLElement | null = null;
+    // "direct" names the element to measure; a scroll or wheel event names
+    // where it happened, and the frame works out what scrolls there.
+    const queue = createRefreshQueue<
+      "direct" | "scroll" | "wheel",
+      EventTarget | null
+    >();
+    // A wheel gesture resolves its scroll container once, not per event.
+    const wheelTargets = createWheelTargetCache<EventTarget, HTMLElement>(
+      findScrollableElement,
+    );
+    let layerBox: LayerBox | null = null;
+    const forgetMeasurements = () => {
+      layerBox = null;
+      wheelTargets.clear();
+    };
 
-    // Measure scroll and drag updates at most once per frame.
-    const refresh = (target: HTMLElement) => {
-      pendingTarget = target;
+    // Style and layout reads for scroll, wheel and drag updates happen here,
+    // at most once per frame.
+    const schedule = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        const nextTarget = pendingTarget;
-        pendingTarget = null;
-        if (!nextTarget || !layerRef.current) return;
-        const nextLayout = measureScrollbars(nextTarget, layerRef.current);
+        const nextTarget = queue.take((kind, target) =>
+          kind === "wheel"
+            ? target && wheelTargets.get(target)
+            : target instanceof HTMLElement &&
+                (kind === "direct" || hasScrollableOverflow(target))
+              ? target
+              : null,
+        );
+        const layer = layerRef.current;
+        if (!nextTarget || !layer) return;
+        layerBox ??= measureLayer(layer);
+        const nextLayout = measureScrollbars(nextTarget, layerBox);
         targetRef.current = nextTarget;
         setLayout((current) =>
           sameLayout(current, nextLayout) ? current : nextLayout,
@@ -201,6 +236,10 @@ export function OverlayScrollbarLayer() {
         setVisible(Boolean(nextLayout));
         if (nextLayout) scheduleHide();
       });
+    };
+    const refresh = (target: HTMLElement) => {
+      queue.add("direct", target);
+      schedule();
     };
     refreshRef.current = refresh;
 
@@ -218,15 +257,19 @@ export function OverlayScrollbarLayer() {
         }
         return;
       }
-      if (hasScrollableOverflow(target)) refresh(target);
+      queue.add("scroll", target);
+      schedule();
     };
     const onWheel = (event: WheelEvent) => {
-      const target = findScrollableElement(event.target);
-      if (target) refresh(target);
+      queue.add("wheel", event.target);
+      schedule();
     };
     const onResize = () => {
+      forgetMeasurements();
       if (targetRef.current) refresh(targetRef.current);
     };
+    const layerObserver = new ResizeObserver(forgetMeasurements);
+    if (layerRef.current) layerObserver.observe(layerRef.current);
 
     document.addEventListener("scroll", onScroll, true);
     document.addEventListener("wheel", onWheel, {
@@ -236,6 +279,7 @@ export function OverlayScrollbarLayer() {
     window.addEventListener("resize", onResize);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
+      layerObserver.disconnect();
       clearHideTimers();
       refreshRef.current = () => undefined;
       document.removeEventListener("scroll", onScroll, true);

@@ -3,6 +3,7 @@ import {
   findTerminalHttpLinks,
   sanitizeTerminalHttpUrl,
   terminalFileUriPath,
+  terminalHyperlinkUrl,
 } from "./terminalLinks";
 
 describe("terminal HTTP links", () => {
@@ -125,5 +126,44 @@ describe("terminal OSC 8 local file URIs", () => {
     "vscode://file/tmp/docs",
   ])("rejects unsupported or unsafe target %s", (uri) => {
     expect(terminalFileUriPath(uri)).toBeNull();
+  });
+});
+
+describe("terminal OSC 8 web links", () => {
+  test("keeps the whole URI where prose detection would stop", () => {
+    const uri = "https://example.com/users/O'Brien/notes?q=it's#top";
+    // The prose scanner ends a URL at the apostrophe.
+    expect(sanitizeTerminalHttpUrl(uri)).toBe("https://example.com/users/O");
+    expect(terminalHyperlinkUrl(uri)).toBe(
+      "https://example.com/users/O'Brien/notes?q=it%27s#top",
+    );
+    expect(terminalHyperlinkUrl("https://example.com/a,b;c!")).toBe(
+      "https://example.com/a,b;c!",
+    );
+    expect(terminalHyperlinkUrl("HTTP://Example.com")).toBe(
+      "http://example.com/",
+    );
+  });
+
+  test.each([
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "file:///etc/passwd",
+    "vscode://file/tmp/a",
+    "//example.com/path",
+    "https://",
+    "https://example.com/a b",
+    " https://example.com",
+    "https://example.com/\u001b]8;;",
+    "https://example.com/\n",
+    "",
+  ])("rejects %j", (uri) => {
+    expect(terminalHyperlinkUrl(uri)).toBeNull();
+  });
+
+  test("a local file path keeps its apostrophe", () => {
+    expect(terminalFileUriPath("file:///home/O'Brien/notes.md")).toBe(
+      "/home/O'Brien/notes.md",
+    );
   });
 });

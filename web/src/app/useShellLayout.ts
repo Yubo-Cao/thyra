@@ -16,6 +16,24 @@ function normalizeSidebarWidth(value: number): number {
     : DEFAULT_SIDEBAR;
 }
 
+const SIDEBAR_RESIZE_END_EVENTS = [
+  "pointerup",
+  "pointercancel",
+  "lostpointercapture",
+] as const;
+
+/** The sidebar width for a drag that began at `startX` with `startWidth`. */
+function sidebarResizeWidth(
+  startWidth: number,
+  startX: number,
+  clientX: number,
+): number {
+  return Math.min(
+    MAX_SIDEBAR,
+    Math.max(MIN_SIDEBAR, startWidth + (clientX - startX)),
+  );
+}
+
 function loadSidebarWidth(): number {
   return normalizeSidebarWidth(
     Number(thyraLocalStorage.getItem("sidebarWidth")),
@@ -91,21 +109,37 @@ export function useShellLayout(mobile: boolean) {
 
   const startSidebarResize = (e: React.PointerEvent) => {
     e.preventDefault();
+    const handle = e.currentTarget;
+    const { pointerId } = e;
     const startX = e.clientX;
     const startW = sidebarWidth;
-    const onMove = (ev: PointerEvent) => {
-      const w = Math.min(
-        MAX_SIDEBAR,
-        Math.max(MIN_SIDEBAR, startW + (ev.clientX - startX)),
-      );
-      setSidebarWidth(w);
+    // Capture keeps the drag's events on the handle wherever the pointer
+    // goes: over an embedded editor's iframe the window would see none, and
+    // a release there would leave the sidebar following the pointer.
+    try {
+      handle.setPointerCapture(pointerId);
+    } catch {
+      // The pointer is already gone; the listeners below still end the drag.
+    }
+    const onMove = (ev: Event) => {
+      const move = ev as PointerEvent;
+      if (move.pointerId !== pointerId) return;
+      setSidebarWidth(sidebarResizeWidth(startW, startX, move.clientX));
     };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+    const onEnd = (ev: Event) => {
+      if ((ev as PointerEvent).pointerId !== pointerId) return;
+      handle.removeEventListener("pointermove", onMove);
+      for (const type of SIDEBAR_RESIZE_END_EVENTS)
+        handle.removeEventListener(type, onEnd);
+      try {
+        handle.releasePointerCapture(pointerId);
+      } catch {
+        // Capture already ended (cancel, lost capture or a removed handle).
+      }
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointermove", onMove);
+    for (const type of SIDEBAR_RESIZE_END_EVENTS)
+      handle.addEventListener(type, onEnd);
   };
 
   return {

@@ -89,6 +89,7 @@ export function ProjectLauncher({
   const [browseError, setBrowseError] = useState<string | null>(null);
   const mounted = useRef(true);
   const loadSequence = useRef(0);
+  const browseSequence = useRef(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -121,16 +122,19 @@ export function ProjectLauncher({
 
   const openBrowse = useCallback(
     async (path?: string) => {
+      // Folders answer at different speeds: only the newest request counts.
+      const request = ++browseSequence.current;
       setView("browse");
       setBrowseError(null);
       try {
         const result: BrowseListing = await client.call("launcher.browse", {
           path: path ?? "~",
         });
-        if (!live()) return;
+        if (!live() || request !== browseSequence.current) return;
         setBrowse(result);
       } catch (reason) {
-        if (live()) setBrowseError((reason as Error).message);
+        if (live() && request === browseSequence.current)
+          setBrowseError((reason as Error).message);
       }
     },
     [client, live],

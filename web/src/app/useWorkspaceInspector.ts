@@ -48,7 +48,8 @@ export function useWorkspaceInspector({
   mobile,
   setMobileView,
 }: {
-  s: Pick<State, "lastRefresh" | "status" | "workspaces">;
+  /** `refreshed`: a metadata refresh has listed the open workspaces. */
+  s: Pick<State, "status" | "workspaces"> & { refreshed: boolean };
   connectionClient: ConnectionClient;
   resourceUiKey: string;
   mobile: boolean;
@@ -312,7 +313,7 @@ export function useWorkspaceInspector({
     if (!current) return;
     const workspace = resolveWorkspaceForScope(current.scope, s.workspaces);
     if (!workspace) {
-      if (s.status === "connected" && s.lastRefresh > 0) reset();
+      if (s.status === "connected" && s.refreshed) reset();
       return;
     }
     if (workspace.workspace_id === current.scope.workspaceId) return;
@@ -323,7 +324,7 @@ export function useWorkspaceInspector({
         workspace,
       ),
     });
-  }, [commit, connectionClient, reset, s.lastRefresh, s.status, s.workspaces]);
+  }, [commit, connectionClient, reset, s.refreshed, s.status, s.workspaces]);
 
   const workspace = state
     ? resolveWorkspaceForScope(state.scope, s.workspaces)

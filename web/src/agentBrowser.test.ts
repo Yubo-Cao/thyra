@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { keysymOf, landsOnPixels, viewerScale } from "./agentBrowser";
+import {
+  compositionEdit,
+  keysymOf,
+  landsOnPixels,
+  viewerScale,
+} from "./agentBrowser";
 import { isTaskNotificationTarget } from "./taskNotifications";
 
 test("typed characters map to X11 keysyms", () => {
@@ -38,4 +43,14 @@ test("copies the picture only when it maps 1:1 to screen pixels", () => {
     false,
   );
   expect(landsOnPixels({ width: 900, height: 568 }, pixels, 1.25)).toBe(false);
+});
+
+test("an IME composition is typed as the difference from its last state", () => {
+  expect(compositionEdit("", "n")).toEqual({ backspaces: 0, text: "n" });
+  expect(compositionEdit("n", "ni")).toEqual({ backspaces: 0, text: "i" });
+  expect(compositionEdit("ni", "你")).toEqual({ backspaces: 2, text: "你" });
+  expect(compositionEdit("hel", "he")).toEqual({ backspaces: 1, text: "" });
+  expect(compositionEdit("你好", "你好")).toEqual({ backspaces: 0, text: "" });
+  // Astral characters are one remote character each.
+  expect(compositionEdit("a😀", "a")).toEqual({ backspaces: 1, text: "" });
 });

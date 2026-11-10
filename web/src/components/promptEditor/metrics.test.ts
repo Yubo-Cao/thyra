@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { TerminalEngine } from "../../terminalEngine";
-import { liftOffset, measureTerminal } from "./metrics";
+import { liftOffset, measureTerminal, sameTerminalMetrics } from "./metrics";
 
 test("prompt width is clipped to the visible pane and coordinates undo ancestor zoom", () => {
   const term = {
@@ -39,4 +39,20 @@ test("the terminal lifts by whole device pixels", () => {
   // A follow scale's fractional rows still land on the pixel grid.
   expect(liftOffset(2, 10.3, 2) * 2).toBe(41);
   expect(liftOffset(0, 17, 1)).toBe(0);
+});
+
+test("equal measurements compare as the same grid", () => {
+  const metrics = {
+    left: 10,
+    top: 20,
+    width: 290,
+    rows: 20,
+    rowHeight: 20,
+    cellWidth: 5,
+    fontSize: 28,
+  };
+  expect(sameTerminalMetrics(metrics, { ...metrics })).toBe(true);
+  expect(sameTerminalMetrics(metrics, { ...metrics, top: 21 })).toBe(false);
+  expect(sameTerminalMetrics(null, null)).toBe(true);
+  expect(sameTerminalMetrics(metrics, null)).toBe(false);
 });

@@ -2,9 +2,11 @@ import RFB from "@novnc/novnc";
 import { Keyboard } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
+  AGENT_BROWSER_POLL_MISSES,
   type AgentBrowserInfo,
   activateAgentBrowserTab,
   closeAgentBrowser,
+  compositionEdit,
   fetchAgentBrowser,
   keysymOf,
   landsOnPixels,
@@ -112,9 +114,14 @@ export function AgentBrowserDialog() {
     setActiveId(null);
     if (!open) return;
     let live = true;
+    let misses = 0;
     const load = async () => {
       const next = await fetchAgentBrowser(paneId ? { paneId } : { all: true });
-      if (live) setInfo(next);
+      if (!live) return;
+      // One slow or dropped poll must not end the display session: keep the
+      // last answer until several polls in a row have failed.
+      misses = next ? 0 : misses + 1;
+      if (next || misses >= AGENT_BROWSER_POLL_MISSES) setInfo(next);
     };
     void activateAgentBrowserTab(paneId, target?.targetId).then((id) => {
       if (!live) return;
@@ -162,7 +169,35 @@ export function AgentBrowserDialog() {
   const press = (keysym: number) => rfbRef.current?.sendKey(keysym, null);
   useEffect(() => {
     if (!keys) return;
+    // An IME composes inside the field; the remote follows it as edits to
+    // what it was last sent, so on-screen keyboards that compose every word
+    // still type live and a CJK choice replaces its own pre-edit.
+    let composing = false;
+    let composed = "";
+    const follow = (next: string) => {
+      const edit = compositionEdit(composed, next);
+      for (let i = 0; i < edit.backspaces; i++) press(0xff08);
+      for (const char of edit.text) press(keysymOf(char));
+      composed = next;
+    };
+    const onCompositionStart = () => {
+      composing = true;
+      composed = "";
+    };
+    const onCompositionUpdate = (event: CompositionEvent) => {
+      if (composing) follow(event.data);
+    };
+    const onCompositionEnd = (event: CompositionEvent) => {
+      if (!composing) return;
+      follow(event.data);
+      composing = false;
+      composed = "";
+      keys.value = "";
+    };
     const onBeforeInput = (event: InputEvent) => {
+      // Cancelling or clearing here would break the composition.
+      if (composing || event.isComposing || /Composition/.test(event.inputType))
+        return;
       if (event.inputType === "deleteContentBackward") press(0xff08);
       else if (/^insert(LineBreak|Paragraph)$/.test(event.inputType))
         press(0xff0d);
@@ -171,16 +206,31 @@ export function AgentBrowserDialog() {
       keys.value = "";
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      // The IME takes Enter, arrows and Backspace while it composes.
+      if (composing || event.isComposing || event.keyCode === 229) return;
       const keysym = NAMED_KEYS[event.key];
       if (keysym === undefined) return;
       event.preventDefault();
       press(keysym);
     };
+    const onBlur = () => {
+      composing = false;
+      composed = "";
+      keys.value = "";
+    };
+    keys.addEventListener("compositionstart", onCompositionStart);
+    keys.addEventListener("compositionupdate", onCompositionUpdate);
+    keys.addEventListener("compositionend", onCompositionEnd);
     keys.addEventListener("beforeinput", onBeforeInput);
     keys.addEventListener("keydown", onKeyDown);
+    keys.addEventListener("blur", onBlur);
     return () => {
+      keys.removeEventListener("compositionstart", onCompositionStart);
+      keys.removeEventListener("compositionupdate", onCompositionUpdate);
+      keys.removeEventListener("compositionend", onCompositionEnd);
       keys.removeEventListener("beforeinput", onBeforeInput);
       keys.removeEventListener("keydown", onKeyDown);
+      keys.removeEventListener("blur", onBlur);
     };
   }, [keys]);
 

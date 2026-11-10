@@ -187,6 +187,134 @@ export function withAgentActivity(
   });
 }
 
+/**
+ * A pane as everything but the attention sort reads it. The bridge moves
+ * `last_activity_at` whenever an idle agent writes its session file; a view
+ * that does not sort by it must not re-render for it.
+ */
+export type PaneWithoutActivity = Omit<Pane, "last_activity_at">;
+
+function sameFieldValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  return (
+    typeof left === "object" &&
+    typeof right === "object" &&
+    left !== null &&
+    right !== null &&
+    JSON.stringify(left) === JSON.stringify(right)
+  );
+}
+
+function sameFields(left: object, right: object): boolean {
+  const leftKeys = Object.keys(left);
+  if (leftKeys.length !== Object.keys(right).length) return false;
+  const a = left as Record<string, unknown>;
+  const b = right as Record<string, unknown>;
+  return leftKeys.every((key) => key in b && sameFieldValue(a[key], b[key]));
+}
+
+/**
+ * Derives activity-free panes whose identity follows their content: a pane
+ * keeps its object, and the list its array, across refreshes that change
+ * nothing but activity timestamps. `previous` is the last list derived.
+ */
+export function stablePanesWithoutActivity(
+  panes: readonly Pane[],
+  previous: readonly PaneWithoutActivity[],
+): readonly PaneWithoutActivity[] {
+  const previousById = new Map(previous.map((pane) => [pane.pane_id, pane]));
+  let changed = panes.length !== previous.length;
+  const next = panes.map((pane, index) => {
+    const stripped: Pane = { ...pane };
+    delete stripped.last_activity_at;
+    const prior = previousById.get(pane.pane_id);
+    const kept = prior && sameFields(prior, stripped) ? prior : stripped;
+    if (kept !== previous[index]) changed = true;
+    return kept;
+  });
+  return changed ? next : previous;
+}
+
+let activityFreeSource: readonly Pane[] | null = null;
+let activityFreePanes: readonly PaneWithoutActivity[] = [];
+
+/**
+ * Store selector for the panes without their activity timestamps. Select
+ * this instead of `state.panes` unless the view sorts by activity.
+ */
+export function selectPanesWithoutActivity(state: {
+  panes: readonly Pane[];
+}): PaneWithoutActivity[] {
+  if (state.panes !== activityFreeSource) {
+    activityFreePanes = stablePanesWithoutActivity(
+      state.panes,
+      activityFreePanes,
+    );
+    activityFreeSource = state.panes;
+  }
+  // Consumers hold the list as the store's own pane array type.
+  return activityFreePanes as PaneWithoutActivity[];
+}
+
+type AgentOrderWorkspace = { workspace_id: string; number: number };
+
+/** Agent pane ids in the order the agent list shows them. */
+export function orderedAgentPaneIds(
+  panes: readonly Pane[],
+  workspaces: readonly AgentOrderWorkspace[],
+  preferredPaneIds: readonly string[],
+  sort: AgentSort,
+): string[] {
+  const workspaceNumbers = new Map(
+    workspaces.map((workspace) => [workspace.workspace_id, workspace.number]),
+  );
+  const agents = panes
+    .filter((pane) => typeof pane.agent === "string" && pane.agent.trim())
+    .sort((left, right) => {
+      const workspaceOrder =
+        (workspaceNumbers.get(left.workspace_id) ?? 0) -
+        (workspaceNumbers.get(right.workspace_id) ?? 0);
+      return workspaceOrder || left.pane_id.localeCompare(right.pane_id);
+    });
+  return sortAgentPanes(agents, preferredPaneIds, sort).map(
+    (pane) => pane.pane_id,
+  );
+}
+
+/**
+ * A store selector for `orderedAgentPaneIds` that returns the same array
+ * until the order itself changes, so activity that does not reorder the
+ * list re-renders nothing.
+ */
+export function agentPaneOrderSelector(
+  preferredPaneIds: readonly string[],
+  sort: AgentSort,
+) {
+  let panes: readonly Pane[] | null = null;
+  let workspaces: readonly AgentOrderWorkspace[] | null = null;
+  let order: string[] = [];
+  return (state: {
+    panes: readonly Pane[];
+    workspaces: readonly AgentOrderWorkspace[];
+  }): string[] => {
+    if (state.panes === panes && state.workspaces === workspaces) return order;
+    const next = orderedAgentPaneIds(
+      state.panes,
+      state.workspaces,
+      preferredPaneIds,
+      sort,
+    );
+    panes = state.panes;
+    workspaces = state.workspaces;
+    if (
+      next.length !== order.length ||
+      next.some((paneId, index) => paneId !== order[index])
+    )
+      order = next;
+    return order;
+  };
+}
+
 export function sortAgentPanes<
   T extends {
     pane_id: string;

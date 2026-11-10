@@ -9,7 +9,15 @@ import {
   terminalComposerCloseWarning,
   terminalComposerDraftPaneIds,
 } from "../terminalComposer";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLongPress } from "./useLongPress";
 import type { ContextMenuState } from "./ContextMenu";
 import { LazyThemedSelect } from "./LazyThemedSelect";
@@ -50,8 +58,9 @@ import { pruneClosedWorkspacePreferenceKeys } from "../workspacePreferences";
 import { connectionStorageKey } from "../connectionStorage";
 import {
   AGENT_ORDER_STORAGE_KEY,
+  agentPaneOrderSelector,
   moveAgentPane,
-  sortAgentPanes,
+  selectPanesWithoutActivity,
   groupOrderedAgentPanes,
   AGENT_LIST_PREFERENCES_STORAGE_KEY,
   parseAgentListPreferences,
@@ -71,8 +80,9 @@ import {
   AgentContextMenu,
   type AgentMenuState,
   AgentRow,
+  type AgentRowDragHandlers,
 } from "./WorkspaceAgentRows";
-import { groupAgentPanesByWorkspace, paneHasAgent } from "./agentSession";
+import { groupAgentPanesByWorkspace } from "./agentSession";
 import {
   focusTreeItem,
   keyboardContextMenuPoint,
@@ -96,6 +106,17 @@ function stringArraysEqual(left: readonly string[], right: readonly string[]) {
     left.length === right.length &&
     left.every((value, index) => value === right[index])
   );
+}
+
+/** A callback with one identity that always runs the latest closure. */
+function useStableCallback<Args extends unknown[], Result>(
+  callback: (...args: Args) => Result,
+) {
+  const latest = useRef(callback);
+  useLayoutEffect(() => {
+    latest.current = callback;
+  });
+  return useCallback((...args: Args) => latest.current(...args), []);
 }
 
 function gitChangedCount(status: GitStatusSummary) {
@@ -225,9 +246,10 @@ export function WorkspaceTree({
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
-      lastRefresh: state.lastRefresh,
       layout: state.layout,
-      panes: state.panes,
+      // Activity timestamps reach this tree only through the agent order.
+      panes: selectPanesWithoutActivity(state),
+      refreshed: state.lastRefresh !== 0,
       selectedPaneId: state.selectedPaneId,
       status: state.status,
       tabs: state.tabs,
@@ -284,7 +306,6 @@ export function WorkspaceTree({
   const [lifecycleWorkspaceId, setLifecycleWorkspaceId] = useState<
     string | null
   >(null);
-  const lastPrunedWorkspaceRefresh = useRef(0);
   const pinsStorageKey = connectionStorageKey(
     s.activeConnectionId,
     WORKSPACE_PINS_STORAGE_KEY,
@@ -303,8 +324,14 @@ export function WorkspaceTree({
       thyraLocalStorage.getItem(collapsedGroupsStorageKey),
     ),
   );
-  const pinnedWorkspaceSet = new Set(pinnedWorkspaceKeys);
-  const collapsedWorktreeGroupSet = new Set(collapsedWorktreeGroupKeys);
+  const pinnedWorkspaceSet = useMemo(
+    () => new Set(pinnedWorkspaceKeys),
+    [pinnedWorkspaceKeys],
+  );
+  const collapsedWorktreeGroupSet = useMemo(
+    () => new Set(collapsedWorktreeGroupKeys),
+    [collapsedWorktreeGroupKeys],
+  );
   const activePaneId = activePaneIdForSnapshot(s) ?? null;
   const agentsByWorkspace = useMemo(
     () => groupAgentPanesByWorkspace(s.panes),
@@ -317,29 +344,17 @@ export function WorkspaceTree({
     }
     return counts;
   }, [s.tabs]);
-  const defaultAgentPanes = useMemo(() => {
-    const workspaceNumbers = new Map(
-      s.workspaces.map((workspace) => [
-        workspace.workspace_id,
-        workspace.number,
-      ]),
-    );
-    return s.panes.filter(paneHasAgent).sort((left, right) => {
-      const workspaceOrder =
-        (workspaceNumbers.get(left.workspace_id) ?? 0) -
-        (workspaceNumbers.get(right.workspace_id) ?? 0);
-      return workspaceOrder || left.pane_id.localeCompare(right.pane_id);
-    });
-  }, [s.panes, s.workspaces]);
-  const agentPanes = useMemo(
-    () =>
-      sortAgentPanes(
-        defaultAgentPanes,
-        agentPaneOrder,
-        agentListPreferences.sort,
-      ),
-    [agentPaneOrder, defaultAgentPanes, agentListPreferences.sort],
+  // The order is selected on its own so that activity which leaves it
+  // unchanged re-renders neither this tree nor its rows.
+  const selectAgentPaneOrder = useMemo(
+    () => agentPaneOrderSelector(agentPaneOrder, agentListPreferences.sort),
+    [agentPaneOrder, agentListPreferences.sort],
   );
+  const agentPaneIds = useStoreSelector(selectAgentPaneOrder);
+  const agentPanes = useMemo(() => {
+    const panesById = new Map(s.panes.map((pane) => [pane.pane_id, pane]));
+    return agentPaneIds.flatMap((paneId) => panesById.get(paneId) ?? []);
+  }, [agentPaneIds, s.panes]);
 
   const agentGroups = groupOrderedAgentPanes(
     agentPanes,
@@ -389,14 +404,8 @@ export function WorkspaceTree({
     );
   }, [collapsedGroupsStorageKey, collapsedWorktreeGroupKeys]);
   useEffect(() => {
-    if (
-      s.status !== "connected" ||
-      s.lastRefresh === 0 ||
-      s.lastRefresh <= lastPrunedWorkspaceRefresh.current
-    ) {
-      return;
-    }
-    lastPrunedWorkspaceRefresh.current = s.lastRefresh;
+    // Closed workspaces only show once a refresh has listed the open ones.
+    if (s.status !== "connected" || !s.refreshed) return;
     setPinnedWorkspaceKeys((current) => {
       const next = pruneClosedWorkspacePreferenceKeys(current, s.workspaces);
       return stringArraysEqual(current, next) ? current : next;
@@ -405,7 +414,7 @@ export function WorkspaceTree({
       const next = pruneClosedWorkspacePreferenceKeys(current, s.workspaces);
       return stringArraysEqual(current, next) ? current : next;
     });
-  }, [s.lastRefresh, s.status, s.workspaces]);
+  }, [s.refreshed, s.status, s.workspaces]);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       const key = thyraStorageEventKey(event);
@@ -440,109 +449,159 @@ export function WorkspaceTree({
       }
     }
   };
-  const updateCollapsedWorktreeGroup = (
-    workspace: Workspace,
-    collapsed: boolean,
-  ) => {
-    setCollapsedWorktreeGroupKeys((current) =>
-      setWorktreeGroupCollapsed(current, workspace, collapsed),
-    );
-  };
+  const updateCollapsedWorktreeGroup = useCallback(
+    (workspace: Workspace, collapsed: boolean) => {
+      setCollapsedWorktreeGroupKeys((current) =>
+        setWorktreeGroupCollapsed(current, workspace, collapsed),
+      );
+    },
+    [],
+  );
 
-  const clearWorkspaceDrag = () => {
+  const clearWorkspaceDrag = useCallback(() => {
     setDraggedWorkspaceId(null);
     setWorkspaceDropTarget(null);
-  };
-  const clearAgentDrag = () => {
+  }, []);
+  const clearAgentDrag = useCallback(() => {
     setDraggedAgentPaneId(null);
     setAgentDropTarget(null);
-  };
+  }, []);
   const workspaceDropPosition = (e: React.DragEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     return e.clientY < rect.top + rect.height / 2 ? "before" : "after";
   };
-  const onWorkspaceDragStart = (
-    workspace: Workspace,
-    e: React.DragEvent<HTMLDivElement>,
-  ) => {
-    clearAgentDrag();
-    setDraggedWorkspaceId(workspace.workspace_id);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", workspace.workspace_id);
-  };
-  const onWorkspaceDragOver = (
-    workspace: Workspace,
-    e: React.DragEvent<HTMLDivElement>,
-  ) => {
-    if (!draggedWorkspaceId || draggedWorkspaceId === workspace.workspace_id) {
-      return;
-    }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const position = workspaceDropPosition(e);
-    setWorkspaceDropTarget((current) =>
-      current?.workspaceId === workspace.workspace_id &&
-      current.position === position
-        ? current
-        : { workspaceId: workspace.workspace_id, position },
-    );
-  };
-  const onWorkspaceDrop = (
-    workspace: Workspace,
-    e: React.DragEvent<HTMLDivElement>,
-  ) => {
-    e.preventDefault();
-    const draggedId = draggedWorkspaceId;
-    const position = workspaceDropPosition(e);
-    clearWorkspaceDrag();
-    if (!draggedId || draggedId === workspace.workspace_id) return;
-    const orderedIds = [...s.workspaces]
-      .sort((a, b) => a.number - b.number)
-      .map((candidate) => candidate.workspace_id);
-    const from = orderedIds.indexOf(draggedId);
-    const to = orderedIds.indexOf(workspace.workspace_id);
-    if (from < 0 || to < 0) return;
-    // workspace.move inserts before the entry currently at insert_index, so
-    // an insertion point past the dragged row lands one slot earlier.
-    const insertIndex = position === "before" ? to : to + 1;
-    if (from < insertIndex ? insertIndex - 1 === from : insertIndex === from) {
-      return;
-    }
-    void store.moveWorkspace(draggedId, insertIndex);
-  };
-  const onAgentDragStart = (pane: Pane, e: React.DragEvent<HTMLDivElement>) => {
-    clearWorkspaceDrag();
-    setDraggedAgentPaneId(pane.pane_id);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", pane.pane_id);
-  };
-  const onAgentDragOver = (pane: Pane, e: React.DragEvent<HTMLDivElement>) => {
-    if (!draggedAgentPaneId || draggedAgentPaneId === pane.pane_id) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const position = workspaceDropPosition(e);
-    setAgentDropTarget((current) =>
-      current?.paneId === pane.pane_id && current.position === position
-        ? current
-        : { paneId: pane.pane_id, position },
-    );
-  };
-  const onAgentDrop = (pane: Pane, e: React.DragEvent<HTMLDivElement>) => {
-    if (!draggedAgentPaneId) return;
-    e.preventDefault();
-    const draggedPaneId = draggedAgentPaneId;
-    const position = workspaceDropPosition(e);
-    clearAgentDrag();
-    if (draggedPaneId === pane.pane_id) return;
-    setAgentPaneOrder(
-      moveAgentPane(
-        agentPanes.map((candidate) => candidate.pane_id),
-        draggedPaneId,
-        pane.pane_id,
-        position,
-      ),
-    );
-  };
+  const onWorkspaceDragStart = useStableCallback(
+    (workspace: Workspace, e: React.DragEvent<HTMLDivElement>) => {
+      clearAgentDrag();
+      setDraggedWorkspaceId(workspace.workspace_id);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", workspace.workspace_id);
+    },
+  );
+  const onWorkspaceDragOver = useStableCallback(
+    (workspace: Workspace, e: React.DragEvent<HTMLDivElement>) => {
+      if (
+        !draggedWorkspaceId ||
+        draggedWorkspaceId === workspace.workspace_id
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const position = workspaceDropPosition(e);
+      setWorkspaceDropTarget((current) =>
+        current?.workspaceId === workspace.workspace_id &&
+        current.position === position
+          ? current
+          : { workspaceId: workspace.workspace_id, position },
+      );
+    },
+  );
+  const onWorkspaceDrop = useStableCallback(
+    (workspace: Workspace, e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const draggedId = draggedWorkspaceId;
+      const position = workspaceDropPosition(e);
+      clearWorkspaceDrag();
+      if (!draggedId || draggedId === workspace.workspace_id) return;
+      const orderedIds = [...s.workspaces]
+        .sort((a, b) => a.number - b.number)
+        .map((candidate) => candidate.workspace_id);
+      const from = orderedIds.indexOf(draggedId);
+      const to = orderedIds.indexOf(workspace.workspace_id);
+      if (from < 0 || to < 0) return;
+      // workspace.move inserts before the entry currently at insert_index, so
+      // an insertion point past the dragged row lands one slot earlier.
+      const insertIndex = position === "before" ? to : to + 1;
+      if (
+        from < insertIndex ? insertIndex - 1 === from : insertIndex === from
+      ) {
+        return;
+      }
+      void store.moveWorkspace(draggedId, insertIndex);
+    },
+  );
+  const onAgentDragStart = useStableCallback(
+    (pane: Pane, e: React.DragEvent<HTMLDivElement>) => {
+      clearWorkspaceDrag();
+      setDraggedAgentPaneId(pane.pane_id);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", pane.pane_id);
+    },
+  );
+  const onAgentDragOver = useStableCallback(
+    (pane: Pane, e: React.DragEvent<HTMLDivElement>) => {
+      if (!draggedAgentPaneId || draggedAgentPaneId === pane.pane_id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const position = workspaceDropPosition(e);
+      setAgentDropTarget((current) =>
+        current?.paneId === pane.pane_id && current.position === position
+          ? current
+          : { paneId: pane.pane_id, position },
+      );
+    },
+  );
+  const onAgentDrop = useStableCallback(
+    (pane: Pane, e: React.DragEvent<HTMLDivElement>) => {
+      if (!draggedAgentPaneId) return;
+      e.preventDefault();
+      const draggedPaneId = draggedAgentPaneId;
+      const position = workspaceDropPosition(e);
+      clearAgentDrag();
+      if (draggedPaneId === pane.pane_id) return;
+      setAgentPaneOrder(
+        moveAgentPane(
+          agentPanes.map((candidate) => candidate.pane_id),
+          draggedPaneId,
+          pane.pane_id,
+          position,
+        ),
+      );
+    },
+  );
+  // Rows are memoized: everything handed to them keeps its identity, and the
+  // row an event came from arrives as an argument instead of a closure.
+  const workspaceDrag = useMemo<WorkspaceDragHandlers>(
+    () => ({
+      onDragStart: onWorkspaceDragStart,
+      onDragOver: onWorkspaceDragOver,
+      onDrop: onWorkspaceDrop,
+      onDragEnd: clearWorkspaceDrag,
+    }),
+    [
+      clearWorkspaceDrag,
+      onWorkspaceDragOver,
+      onWorkspaceDragStart,
+      onWorkspaceDrop,
+    ],
+  );
+  const agentDrag = useMemo<AgentRowDragHandlers>(
+    () => ({
+      onDragStart: onAgentDragStart,
+      onDragOver: onAgentDragOver,
+      onDrop: onAgentDrop,
+      onDragEnd: clearAgentDrag,
+    }),
+    [clearAgentDrag, onAgentDragOver, onAgentDragStart, onAgentDrop],
+  );
+  const selectWorkspace = useStableCallback((workspace: Workspace) =>
+    onSelect?.(workspace),
+  );
+  const selectAgent = useStableCallback((pane: Pane) => onSelectAgent?.(pane));
+  const openAgentMenu = useCallback(
+    (pane: Pane, x: number, y: number) => setAgentMenu({ pane, x, y }),
+    [],
+  );
+  const openWorkspaceMenu = useCallback(
+    (workspace: Workspace, x: number, y: number) =>
+      setMenu({ workspace, x, y }),
+    [],
+  );
+  const { topLevel, childrenByParent } = useMemo(
+    () => buildWorkspaceHierarchy(s.workspaces, pinnedWorkspaceSet),
+    [pinnedWorkspaceSet, s.workspaces],
+  );
 
   if (s.workspaces.length === 0) {
     return (
@@ -581,10 +640,6 @@ export function WorkspaceTree({
     );
   }
 
-  const { topLevel, childrenByParent } = buildWorkspaceHierarchy(
-    s.workspaces,
-    pinnedWorkspaceSet,
-  );
   const focusedRepoWorkspace = s.workspaces.find(
     (workspace) => workspace.focused && workspace.worktree,
   );
@@ -640,25 +695,17 @@ export function WorkspaceTree({
             pinnedWorkspaceKeys={pinnedWorkspaceSet}
             collapsedWorktreeGroupKeys={collapsedWorktreeGroupSet}
             onCollapsedChange={updateCollapsedWorktreeGroup}
-            onSelect={onSelect}
-            onSelectAgent={onSelectAgent}
-            onAgentContextMenu={(pane, x, y) => setAgentMenu({ pane, x, y })}
-            onContextMenu={(w, x, y) => setMenu({ workspace: w, x, y })}
+            onSelect={selectWorkspace}
+            onSelectAgent={selectAgent}
+            onAgentContextMenu={openAgentMenu}
+            onContextMenu={openWorkspaceMenu}
             // Reordering changes every user's list: instance admins only.
-            workspaceDrag={
-              host
-                ? {
-                    isDragging: draggedWorkspaceId === w.workspace_id,
-                    dropPosition:
-                      workspaceDropTarget?.workspaceId === w.workspace_id
-                        ? workspaceDropTarget.position
-                        : null,
-                    onDragStart: (e) => onWorkspaceDragStart(w, e),
-                    onDragOver: (e) => onWorkspaceDragOver(w, e),
-                    onDrop: (e) => onWorkspaceDrop(w, e),
-                    onDragEnd: clearWorkspaceDrag,
-                  }
-                : undefined
+            workspaceDrag={host ? workspaceDrag : undefined}
+            isDragging={host && draggedWorkspaceId === w.workspace_id}
+            dropPosition={
+              host && workspaceDropTarget?.workspaceId === w.workspace_id
+                ? workspaceDropTarget.position
+                : null
             }
           />
         ))}
@@ -781,25 +828,18 @@ export function WorkspaceTree({
                               ? workspaceDisplayName(workspace)
                               : pane.workspace_id
                           }
-                          onSelect={onSelectAgent}
-                          onOpenMenu={(x, y) => setAgentMenu({ pane, x, y })}
-                          drag={
-                            manualAgentOrder
-                              ? {
-                                  isDragging:
-                                    draggedAgentPaneId === pane.pane_id,
-                                  dropPosition:
-                                    agentDropTarget?.paneId === pane.pane_id
-                                      ? agentDropTarget.position
-                                      : null,
-                                  onDragStart: (event) =>
-                                    onAgentDragStart(pane, event),
-                                  onDragOver: (event) =>
-                                    onAgentDragOver(pane, event),
-                                  onDrop: (event) => onAgentDrop(pane, event),
-                                  onDragEnd: clearAgentDrag,
-                                }
-                              : undefined
+                          onSelect={selectAgent}
+                          onOpenMenu={openAgentMenu}
+                          drag={manualAgentOrder ? agentDrag : undefined}
+                          isDragging={
+                            manualAgentOrder &&
+                            draggedAgentPaneId === pane.pane_id
+                          }
+                          dropPosition={
+                            manualAgentOrder &&
+                            agentDropTarget?.paneId === pane.pane_id
+                              ? agentDropTarget.position
+                              : null
                           }
                         />
                       );
@@ -887,12 +927,11 @@ export function WorkspaceTree({
   );
 }
 
-type WorkspaceDragProps = {
-  isDragging: boolean;
-  dropPosition: "before" | "after" | null;
-  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+/** Drag handlers shared by every row; each is told which workspace it is for. */
+type WorkspaceDragHandlers = {
+  onDragStart: (w: Workspace, e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (w: Workspace, e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (w: Workspace, e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd: () => void;
 };
 
@@ -922,7 +961,7 @@ function workspaceSubtreeContainsActiveItem(
   );
 }
 
-function WorkspaceRow({
+const WorkspaceRow = memo(function WorkspaceRowView({
   w,
   depth,
   childrenByParent,
@@ -938,6 +977,8 @@ function WorkspaceRow({
   onAgentContextMenu,
   onContextMenu,
   workspaceDrag,
+  isDragging = false,
+  dropPosition = null,
 }: {
   w: Workspace;
   depth: number;
@@ -953,7 +994,9 @@ function WorkspaceRow({
   onSelectAgent?: (pane: Pane) => void;
   onAgentContextMenu: (pane: Pane, x: number, y: number) => void;
   onContextMenu: (w: Workspace, x: number, y: number) => void;
-  workspaceDrag?: WorkspaceDragProps;
+  workspaceDrag?: WorkspaceDragHandlers;
+  isDragging?: boolean;
+  dropPosition?: "before" | "after" | null;
 }) {
   const children = childrenByParent.get(w.workspace_id) ?? [];
   const agents = agentsByWorkspace.get(w.workspace_id) ?? EMPTY_AGENT_PANES;
@@ -1016,17 +1059,19 @@ function WorkspaceRow({
           hasActiveAgent ? "has-active-agent" : ""
         } ${isChild ? "is-child" : ""} ${pinned ? "is-pinned" : ""} ${
           tabCountVisible ? "has-tab-count" : ""
-        } ${workspaceDrag?.isDragging ? "is-dragging" : ""} ${
-          workspaceDrag?.dropPosition
-            ? `drop-${workspaceDrag.dropPosition}`
-            : ""
+        } ${isDragging ? "is-dragging" : ""} ${
+          dropPosition ? `drop-${dropPosition}` : ""
         }`}
         style={{ paddingLeft: 8 + depth * TREE_DEPTH_INDENT }}
         role="treeitem"
         draggable={!!workspaceDrag}
-        onDragStart={workspaceDrag?.onDragStart}
-        onDragOver={workspaceDrag?.onDragOver}
-        onDrop={workspaceDrag?.onDrop}
+        onDragStart={
+          workspaceDrag ? (e) => workspaceDrag.onDragStart(w, e) : undefined
+        }
+        onDragOver={
+          workspaceDrag ? (e) => workspaceDrag.onDragOver(w, e) : undefined
+        }
+        onDrop={workspaceDrag ? (e) => workspaceDrag.onDrop(w, e) : undefined}
         onDragEnd={workspaceDrag?.onDragEnd}
         tabIndex={
           workspaceTreeItemIsTabStop({
@@ -1170,7 +1215,7 @@ function WorkspaceRow({
                   (!activePaneId && pane.focused)
                 }
                 onSelect={onSelectAgent}
-                onOpenMenu={(x, y) => onAgentContextMenu(pane, x, y)}
+                onOpenMenu={onAgentContextMenu}
               />
             ));
             if (!showTabGroups) return rows;
@@ -1247,4 +1292,4 @@ function WorkspaceRow({
       ) : null}
     </>
   );
-}
+});

@@ -7,10 +7,10 @@ import {
 } from "../shortcutPreferences";
 import { SHORTCUT_NUMBERS, type ShortcutNumber } from "../shortcutBindings";
 import { endpointCreationReason } from "../store";
-import { agentStatusText } from "../agentOrder";
+import { agentStatusText, selectPanesWithoutActivity } from "../agentOrder";
 import { msg, t } from "../i18n";
 import { normalizeSearchText } from "../searchText";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -248,6 +248,18 @@ export function runCommandNumberShortcut<T>(
   return true;
 }
 
+type CommandListModel = {
+  displayedActionGroups: ActionGroupDefinition[];
+  numberedActions: ActionDefinition[];
+  numberShortcutIndexByKey: Map<string, number>;
+};
+
+const EMPTY_COMMAND_LIST: CommandListModel = {
+  displayedActionGroups: [],
+  numberedActions: [],
+  numberShortcutIndexByKey: new Map(),
+};
+
 export type CommandComboboxProps = {
   onOpenEditor?: (workspaceId?: string) => void;
   onOpenFile?: (workspaceId: string, entry: { path: string }) => void;
@@ -268,7 +280,7 @@ export function CommandCombobox({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
       layout: state.layout,
-      panes: state.panes,
+      panes: selectPanesWithoutActivity(state),
       selectedPaneId: state.selectedPaneId,
       tabs: state.tabs,
       workspaces: state.workspaces,
@@ -413,572 +425,609 @@ export function CommandCombobox({
             }
           : null;
 
-  const allWorkspaces = [...s.workspaces].sort((a, b) => a.number - b.number);
-  const otherWorkspaces = focusedWorkspace
-    ? allWorkspaces.filter(
-        (workspace) => workspace.workspace_id !== focusedWorkspace.workspace_id,
-      )
-    : allWorkspaces;
+  // Every action, ranked and filtered for the search. Built only while the
+  // menu is open: the store re-renders this component far more often.
+  const buildCommandList = (): CommandListModel => {
+    const allWorkspaces = [...s.workspaces].sort((a, b) => a.number - b.number);
+    const otherWorkspaces = focusedWorkspace
+      ? allWorkspaces.filter(
+          (workspace) =>
+            workspace.workspace_id !== focusedWorkspace.workspace_id,
+        )
+      : allWorkspaces;
 
-  const currentActions: ActionDefinition[] = [];
-  if (focusedWorkspace && focusedWorktreeSource) {
-    currentActions.push({
-      key: "current-new-worktree",
-      icon: <GitBranch size={15} />,
-      title: msg("New worktree"),
-      detail:
-        focusedWorktreeSource.worktree?.checkout_path ??
-        workspaceName(focusedWorktreeSource),
-      keywords: [
-        "create worktree",
-        "add worktree",
-        "branch",
-        "new branch",
-        workspaceName(focusedWorkspace),
-        workspaceName(focusedWorktreeSource),
-      ],
-      run: () =>
-        setTextAction({
-          type: "create-worktree",
-          workspace: focusedWorktreeSource,
-          branch: luckyWorktreeBranchName(),
-        }),
-    });
-  }
-  if (focusedWorkspace) {
-    currentActions.push({
-      key: "current-editor",
-      icon: <Code size={15} />,
-      title: msg("Open in VS Code"),
-      detail:
-        focusedWorkspace.worktree?.checkout_path ??
-        focusedWorkspace.cwd ??
-        workspaceName(focusedWorkspace),
-      keywords: [
-        "files",
-        "file browser",
-        "file tree",
-        "explorer",
-        "browse repository",
-        "editor",
-        "vs code",
-        "diff",
-        "changes",
-        "source control",
-      ],
-      run: () => onOpenEditor?.(focusedWorkspace.workspace_id),
-    });
-  }
-  if (focusedWorkspace?.worktree) {
-    currentActions.push({
-      key: "current-worktree-lifecycle",
-      icon: <GitCommitHorizontal size={15} />,
-      title: msg("Open worktree lifecycle"),
-      detail: focusedWorkspace.worktree.repo_name,
-      keywords: [
-        "worktree center",
-        "manage worktrees",
-        "repository lifecycle",
-        "git worktree status",
-      ],
-      run: () => setLifecycleWorkspaceId(focusedWorkspace.workspace_id),
-    });
-    currentActions.push({
-      key: "current-open-worktree",
-      icon: <FolderOpen size={15} />,
-      title: msg("Open worktree"),
-      detail: workspaceName(focusedWorkspace),
-      keywords: ["existing worktree", "open existing", "checkout", "branch"],
-      run: () => setOpenWorktreeWorkspaceId(focusedWorkspace.workspace_id),
-    });
-    if (focusedWorkspace.worktree.is_linked_worktree) {
+    const currentActions: ActionDefinition[] = [];
+    if (focusedWorkspace && focusedWorktreeSource) {
       currentActions.push({
-        key: "current-remove-worktree",
-        icon: <X size={15} />,
-        title: msg("Remove worktree"),
-        detail: focusedWorkspace.worktree.checkout_path,
+        key: "current-new-worktree",
+        icon: <GitBranch size={15} />,
+        title: msg("New worktree"),
+        detail:
+          focusedWorktreeSource.worktree?.checkout_path ??
+          workspaceName(focusedWorktreeSource),
         keywords: [
-          "delete worktree",
-          "close worktree",
-          "teardown worktree",
-          "remove branch",
+          "create worktree",
+          "add worktree",
+          "branch",
+          "new branch",
           workspaceName(focusedWorkspace),
-          focusedWorkspace.worktree.repo_name,
+          workspaceName(focusedWorktreeSource),
         ],
-        danger: true,
-        run: () => setPendingRemoveWorktree(focusedWorkspace),
+        run: () =>
+          setTextAction({
+            type: "create-worktree",
+            workspace: focusedWorktreeSource,
+            branch: luckyWorktreeBranchName(),
+          }),
       });
     }
-  }
-  if (activeTab && focusedWorkspace) {
-    currentActions.push({
-      key: "current-create-tab",
-      icon: <PanelTop size={15} />,
-      title: msg("Create tab"),
-      detail: workspaceName(focusedWorkspace),
-      keywords: ["new tab", "add tab", "open tab"],
-      disabledReason: endpointCreationReason(
-        store.get(),
-        "tab.create",
-        focusedWorkspace.workspace_id,
-      ),
-      run: () => store.createTab(focusedWorkspace.workspace_id),
-    });
-  }
-  if (activePane?.agent && browserAvailable) {
-    currentActions.push({
-      key: "current-agent-browser",
-      icon: <Globe size={15} />,
-      title: msg("Open agent browser"),
-      detail: shortId(activePane.pane_id),
-      keywords: ["browser", "chromium", "vnc", "review", "tab"],
-      run: () =>
-        openAgentBrowser({
-          connectionId: s.activeConnectionId,
-          workspaceId: activePane.workspace_id,
-          paneId: activePane.pane_id,
-        }),
-    });
-  }
-  if (browserAvailable) {
-    currentActions.push({
-      key: "agent-browser-all",
-      icon: <Globe size={15} />,
-      title: msg("Open browser"),
-      keywords: ["browser", "chromium", "vnc", "all tabs"],
-      run: () => openAgentBrowser({ connectionId: s.activeConnectionId }),
-    });
-  }
-  if (activePane) {
-    currentActions.push({
-      key: "current-toggle-pane-zoom",
-      icon: <Maximize2 size={15} />,
-      title: msg("Toggle pane zoom"),
-      detail: shortId(activePane.pane_id),
-      keywords: ["maximize pane", "unmaximize pane", "zoom pane", "full pane"],
-      run: () => store.zoomPane(activePane.pane_id),
-    });
-  }
+    if (focusedWorkspace) {
+      currentActions.push({
+        key: "current-editor",
+        icon: <Code size={15} />,
+        title: msg("Open in VS Code"),
+        detail:
+          focusedWorkspace.worktree?.checkout_path ??
+          focusedWorkspace.cwd ??
+          workspaceName(focusedWorkspace),
+        keywords: [
+          "files",
+          "file browser",
+          "file tree",
+          "explorer",
+          "browse repository",
+          "editor",
+          "vs code",
+          "diff",
+          "changes",
+          "source control",
+        ],
+        run: () => onOpenEditor?.(focusedWorkspace.workspace_id),
+      });
+    }
+    if (focusedWorkspace?.worktree) {
+      currentActions.push({
+        key: "current-worktree-lifecycle",
+        icon: <GitCommitHorizontal size={15} />,
+        title: msg("Open worktree lifecycle"),
+        detail: focusedWorkspace.worktree.repo_name,
+        keywords: [
+          "worktree center",
+          "manage worktrees",
+          "repository lifecycle",
+          "git worktree status",
+        ],
+        run: () => setLifecycleWorkspaceId(focusedWorkspace.workspace_id),
+      });
+      currentActions.push({
+        key: "current-open-worktree",
+        icon: <FolderOpen size={15} />,
+        title: msg("Open worktree"),
+        detail: workspaceName(focusedWorkspace),
+        keywords: ["existing worktree", "open existing", "checkout", "branch"],
+        run: () => setOpenWorktreeWorkspaceId(focusedWorkspace.workspace_id),
+      });
+      if (focusedWorkspace.worktree.is_linked_worktree) {
+        currentActions.push({
+          key: "current-remove-worktree",
+          icon: <X size={15} />,
+          title: msg("Remove worktree"),
+          detail: focusedWorkspace.worktree.checkout_path,
+          keywords: [
+            "delete worktree",
+            "close worktree",
+            "teardown worktree",
+            "remove branch",
+            workspaceName(focusedWorkspace),
+            focusedWorkspace.worktree.repo_name,
+          ],
+          danger: true,
+          run: () => setPendingRemoveWorktree(focusedWorkspace),
+        });
+      }
+    }
+    if (activeTab && focusedWorkspace) {
+      currentActions.push({
+        key: "current-create-tab",
+        icon: <PanelTop size={15} />,
+        title: msg("Create tab"),
+        detail: workspaceName(focusedWorkspace),
+        keywords: ["new tab", "add tab", "open tab"],
+        disabledReason: endpointCreationReason(
+          store.get(),
+          "tab.create",
+          focusedWorkspace.workspace_id,
+        ),
+        run: () => store.createTab(focusedWorkspace.workspace_id),
+      });
+    }
+    if (activePane?.agent && browserAvailable) {
+      currentActions.push({
+        key: "current-agent-browser",
+        icon: <Globe size={15} />,
+        title: msg("Open agent browser"),
+        detail: shortId(activePane.pane_id),
+        keywords: ["browser", "chromium", "vnc", "review", "tab"],
+        run: () =>
+          openAgentBrowser({
+            connectionId: s.activeConnectionId,
+            workspaceId: activePane.workspace_id,
+            paneId: activePane.pane_id,
+          }),
+      });
+    }
+    if (browserAvailable) {
+      currentActions.push({
+        key: "agent-browser-all",
+        icon: <Globe size={15} />,
+        title: msg("Open browser"),
+        keywords: ["browser", "chromium", "vnc", "all tabs"],
+        run: () => openAgentBrowser({ connectionId: s.activeConnectionId }),
+      });
+    }
+    if (activePane) {
+      currentActions.push({
+        key: "current-toggle-pane-zoom",
+        icon: <Maximize2 size={15} />,
+        title: msg("Toggle pane zoom"),
+        detail: shortId(activePane.pane_id),
+        keywords: [
+          "maximize pane",
+          "unmaximize pane",
+          "zoom pane",
+          "full pane",
+        ],
+        run: () => store.zoomPane(activePane.pane_id),
+      });
+    }
 
-  const directPathQuery = commandPathQuery(search);
-  const fileActions: ActionDefinition[] =
-    focusedWorkspace && onOpenFile && directPathQuery
+    const directPathQuery = commandPathQuery(search);
+    const fileActions: ActionDefinition[] =
+      focusedWorkspace && onOpenFile && directPathQuery
+        ? [
+            {
+              key: `quick-open-path-${focusedWorkspace.workspace_id}-${directPathQuery}`,
+              icon: <FileText size={15} />,
+              title: msg("Open path: {name}"),
+              titleValues: { name: pathLeaf(directPathQuery) },
+              detail: directPathQuery,
+              keywords: [
+                "quick open",
+                "open file",
+                "open path",
+                "vs code",
+                directPathQuery,
+                pathLeaf(directPathQuery),
+              ],
+              run: () =>
+                onOpenFile(focusedWorkspace.workspace_id, {
+                  path: directPathQuery,
+                }),
+            },
+          ]
+        : [];
+
+    const workspaceActions: ActionDefinition[] = [
+      ...(onOpenProjectLauncher
+        ? [
+            {
+              key: "launch-agent",
+              icon: <FolderOpen size={15} />,
+              title: msg("Launch agent in folder"),
+              keywords: [
+                "launcher",
+                "project",
+                "claude",
+                "codex",
+                "start agent",
+              ],
+              run: onOpenProjectLauncher,
+            },
+          ]
+        : []),
+      {
+        key: "create-workspace",
+        icon: <FolderPlus size={15} />,
+        title: msg("Create workspace"),
+        detail: t("Open a new Herdr workspace"),
+        keywords: ["new workspace", "add workspace", "open workspace"],
+        run: () => setCreateWorkspaceOpen(true),
+      },
+      ...(focusedWorkspace
+        ? [
+            {
+              key: "rename-workspace",
+              icon: <PanelTop size={15} />,
+              title: msg("Rename workspace"),
+              detail: workspaceName(focusedWorkspace),
+              keywords: ["edit workspace", "workspace name"],
+              run: () =>
+                setTextAction({
+                  type: "rename-workspace",
+                  workspace: focusedWorkspace,
+                }),
+            },
+            {
+              key: "close-workspace",
+              icon: <X size={15} />,
+              title: msg("Close workspace"),
+              detail: workspaceName(focusedWorkspace),
+              keywords: [
+                "delete workspace",
+                "remove workspace",
+                "close current workspace",
+              ],
+              danger: true,
+              run: () => setPendingCloseWorkspace(focusedWorkspace),
+            },
+          ]
+        : []),
+      ...otherWorkspaces.map((workspace) => ({
+        key: `focus-workspace-${workspace.workspace_id}`,
+        icon: <PanelTop size={15} />,
+        title: msg("Focus workspace: {name}"),
+        titleValues: { name: workspaceName(workspace) },
+        detail: workspace.workspace_id,
+        keywords: [
+          "switch workspace",
+          "open workspace",
+          workspaceName(workspace),
+        ],
+        run: () => store.focusWorkspace(workspace.workspace_id),
+      })),
+    ];
+
+    const worktreeActions: ActionDefinition[] = [];
+    for (const workspace of mainWorktreeWorkspaces.filter(
+      (workspace) =>
+        workspace.workspace_id !== focusedWorktreeSource?.workspace_id,
+    )) {
+      worktreeActions.push({
+        key: `new-worktree-${workspace.workspace_id}`,
+        icon: <GitBranch size={15} />,
+        title:
+          workspace.workspace_id === focusedWorkspace?.workspace_id
+            ? msg("New worktree")
+            : msg("New worktree: {name}"),
+        titleValues: { name: workspaceName(workspace) },
+        detail: workspace.worktree?.checkout_path,
+        keywords: [
+          "create worktree",
+          "add worktree",
+          "new branch",
+          "branch",
+          workspaceName(workspace),
+          workspace.worktree?.repo_name ?? "",
+        ],
+        run: () =>
+          setTextAction({
+            type: "create-worktree",
+            workspace,
+            branch: luckyWorktreeBranchName(),
+          }),
+      });
+    }
+    for (const workspace of allWorkspaces.filter(
+      (workspace) =>
+        workspace.worktree &&
+        workspace.workspace_id !== focusedWorkspace?.workspace_id,
+    )) {
+      worktreeActions.push({
+        key: `open-worktree-${workspace.workspace_id}`,
+        icon: <FolderOpen size={15} />,
+        title:
+          workspace.workspace_id === focusedWorkspace?.workspace_id
+            ? msg("Open worktree")
+            : msg("Open worktree: {name}"),
+        titleValues: { name: workspaceName(workspace) },
+        detail: workspace.worktree?.checkout_path,
+        keywords: [
+          "existing worktree",
+          "open existing",
+          "checkout",
+          "branch",
+          workspaceName(workspace),
+          workspace.worktree?.repo_name ?? "",
+        ],
+        run: () => setOpenWorktreeWorkspaceId(workspace.workspace_id),
+      });
+    }
+    const tabActions: ActionDefinition[] = [];
+    if (focusedWorkspace) {
+      tabActions.push({
+        key: "create-tab",
+        icon: <PanelTop size={15} />,
+        title: msg("Create tab"),
+        detail: workspaceName(focusedWorkspace),
+        keywords: ["new tab", "add tab", "open tab"],
+        disabledReason: endpointCreationReason(
+          store.get(),
+          "tab.create",
+          focusedWorkspace.workspace_id,
+        ),
+        run: () => store.createTab(focusedWorkspace.workspace_id),
+      });
+      for (const workspace of otherWorkspaces) {
+        tabActions.push({
+          key: `create-tab-${workspace.workspace_id}`,
+          icon: <PanelTop size={15} />,
+          title: msg("Create tab: {name}"),
+          titleValues: { name: workspaceName(workspace) },
+          detail: workspace.workspace_id,
+          keywords: [
+            "new tab",
+            "add tab",
+            "open tab",
+            workspaceName(workspace),
+          ],
+          disabledReason: endpointCreationReason(
+            store.get(),
+            "tab.create",
+            workspace.workspace_id,
+          ),
+          run: () => store.createTab(workspace.workspace_id),
+        });
+      }
+    }
+    if (activeTab) {
+      tabActions.push(
+        {
+          key: "rename-tab",
+          icon: <PanelTop size={15} />,
+          title: msg("Rename tab"),
+          detail: tabName(activeTab),
+          keywords: ["edit tab", "tab name"],
+          run: () => setTextAction({ type: "rename-tab", tab: activeTab }),
+        },
+        {
+          key: "close-active-tab",
+          icon: <X size={15} />,
+          title: msg("Close active tab"),
+          detail: tabName(activeTab),
+          keywords: ["delete tab", "remove tab"],
+          danger: true,
+          run: () => setPendingCloseTab(activeTab),
+        },
+      );
+    }
+    for (const tab of focusedWorkspaceTabs) {
+      tabActions.push({
+        key: `focus-tab-${tab.tab_id}`,
+        icon: <PanelTop size={15} />,
+        title: msg("Focus tab: {name}"),
+        titleValues: { name: tabName(tab) },
+        detail: tab.tab_id,
+        keywords: ["switch tab", "open tab", "go tab", tabName(tab)],
+        run: () => store.focusTab(tab.tab_id),
+      });
+    }
+    for (const tab of focusedWorkspaceTabs.filter(
+      (tab) => tab.tab_id !== activeTab?.tab_id,
+    )) {
+      tabActions.push({
+        key: `close-tab-${tab.tab_id}`,
+        icon: <X size={15} />,
+        title: msg("Close tab: {name}"),
+        titleValues: { name: tabName(tab) },
+        detail: tab.tab_id,
+        keywords: ["delete tab", "remove tab", tabName(tab)],
+        danger: true,
+        run: () => setPendingCloseTab(tab),
+      });
+    }
+
+    const paneActions: ActionDefinition[] = activePane
       ? [
           {
-            key: `quick-open-path-${focusedWorkspace.workspace_id}-${directPathQuery}`,
-            icon: <FileText size={15} />,
-            title: msg("Open path: {name}"),
-            titleValues: { name: pathLeaf(directPathQuery) },
-            detail: directPathQuery,
+            key: "focus-pane-left",
+            icon: <ArrowLeft size={15} />,
+            title: msg("Focus pane left"),
+            detail: shortId(activePane.pane_id),
             keywords: [
-              "quick open",
-              "open file",
-              "open path",
-              "vs code",
-              directPathQuery,
-              pathLeaf(directPathQuery),
+              "switch pane left",
+              "select pane left",
+              "move pane left",
             ],
-            run: () =>
-              onOpenFile(focusedWorkspace.workspace_id, {
-                path: directPathQuery,
-              }),
+            run: () => store.focusPaneDirection(activePane.pane_id, "left"),
+          },
+          {
+            key: "focus-pane-right",
+            icon: <ArrowRight size={15} />,
+            title: msg("Focus pane right"),
+            detail: shortId(activePane.pane_id),
+            keywords: [
+              "switch pane right",
+              "select pane right",
+              "move pane right",
+            ],
+            run: () => store.focusPaneDirection(activePane.pane_id, "right"),
+          },
+          {
+            key: "focus-pane-up",
+            icon: <ArrowUp size={15} />,
+            title: msg("Focus pane up"),
+            detail: shortId(activePane.pane_id),
+            keywords: ["switch pane up", "select pane up", "move pane up"],
+            run: () => store.focusPaneDirection(activePane.pane_id, "up"),
+          },
+          {
+            key: "focus-pane-down",
+            icon: <ArrowDown size={15} />,
+            title: msg("Focus pane down"),
+            detail: shortId(activePane.pane_id),
+            keywords: [
+              "switch pane down",
+              "select pane down",
+              "move pane down",
+            ],
+            run: () => store.focusPaneDirection(activePane.pane_id, "down"),
+          },
+          {
+            key: "split-pane-right",
+            icon: <SplitSquareHorizontal size={15} />,
+            title: msg("Split pane right"),
+            detail: shortId(activePane.pane_id),
+            keywords: ["new pane right", "create pane right", "vertical split"],
+            run: () => store.splitPane(activePane.pane_id, "right"),
+          },
+          {
+            key: "split-pane-down",
+            icon: <SplitSquareVertical size={15} />,
+            title: msg("Split pane down"),
+            detail: shortId(activePane.pane_id),
+            keywords: ["new pane down", "create pane down", "horizontal split"],
+            run: () => store.splitPane(activePane.pane_id, "down"),
+          },
+          {
+            key: "toggle-pane-zoom",
+            icon: <Maximize2 size={15} />,
+            title: msg("Toggle pane zoom"),
+            detail: shortId(activePane.pane_id),
+            keywords: [
+              "maximize pane",
+              "unmaximize pane",
+              "zoom pane",
+              "full pane",
+            ],
+            run: () => store.zoomPane(activePane.pane_id),
+          },
+          {
+            key: "close-pane",
+            icon: <X size={15} />,
+            title: msg("Close pane"),
+            detail: shortId(activePane.pane_id),
+            keywords: ["delete pane", "remove pane"],
+            danger: true,
+            run: () => setPendingClosePane(activePane),
           },
         ]
       : [];
 
-  const workspaceActions: ActionDefinition[] = [
-    ...(onOpenProjectLauncher
-      ? [
-          {
-            key: "launch-agent",
-            icon: <FolderOpen size={15} />,
-            title: msg("Launch agent in folder"),
-            keywords: ["launcher", "project", "claude", "codex", "start agent"],
-            run: onOpenProjectLauncher,
-          },
-        ]
-      : []),
-    {
-      key: "create-workspace",
-      icon: <FolderPlus size={15} />,
-      title: msg("Create workspace"),
-      detail: t("Open a new Herdr workspace"),
-      keywords: ["new workspace", "add workspace", "open workspace"],
-      run: () => setCreateWorkspaceOpen(true),
-    },
-    ...(focusedWorkspace
-      ? [
-          {
-            key: "rename-workspace",
-            icon: <PanelTop size={15} />,
-            title: msg("Rename workspace"),
-            detail: workspaceName(focusedWorkspace),
-            keywords: ["edit workspace", "workspace name"],
-            run: () =>
-              setTextAction({
-                type: "rename-workspace",
-                workspace: focusedWorkspace,
-              }),
-          },
-          {
-            key: "close-workspace",
-            icon: <X size={15} />,
-            title: msg("Close workspace"),
-            detail: workspaceName(focusedWorkspace),
-            keywords: [
-              "delete workspace",
-              "remove workspace",
-              "close current workspace",
-            ],
-            danger: true,
-            run: () => setPendingCloseWorkspace(focusedWorkspace),
-          },
-        ]
-      : []),
-    ...otherWorkspaces.map((workspace) => ({
-      key: `focus-workspace-${workspace.workspace_id}`,
-      icon: <PanelTop size={15} />,
-      title: msg("Focus workspace: {name}"),
-      titleValues: { name: workspaceName(workspace) },
-      detail: workspace.workspace_id,
-      keywords: [
-        "switch workspace",
-        "open workspace",
-        workspaceName(workspace),
-      ],
-      run: () => store.focusWorkspace(workspace.workspace_id),
-    })),
-  ];
-
-  const worktreeActions: ActionDefinition[] = [];
-  for (const workspace of mainWorktreeWorkspaces.filter(
-    (workspace) =>
-      workspace.workspace_id !== focusedWorktreeSource?.workspace_id,
-  )) {
-    worktreeActions.push({
-      key: `new-worktree-${workspace.workspace_id}`,
-      icon: <GitBranch size={15} />,
-      title:
-        workspace.workspace_id === focusedWorkspace?.workspace_id
-          ? msg("New worktree")
-          : msg("New worktree: {name}"),
-      titleValues: { name: workspaceName(workspace) },
-      detail: workspace.worktree?.checkout_path,
-      keywords: [
-        "create worktree",
-        "add worktree",
-        "new branch",
-        "branch",
-        workspaceName(workspace),
-        workspace.worktree?.repo_name ?? "",
-      ],
-      run: () =>
-        setTextAction({
-          type: "create-worktree",
-          workspace,
-          branch: luckyWorktreeBranchName(),
-        }),
-    });
-  }
-  for (const workspace of allWorkspaces.filter(
-    (workspace) =>
-      workspace.worktree &&
-      workspace.workspace_id !== focusedWorkspace?.workspace_id,
-  )) {
-    worktreeActions.push({
-      key: `open-worktree-${workspace.workspace_id}`,
-      icon: <FolderOpen size={15} />,
-      title:
-        workspace.workspace_id === focusedWorkspace?.workspace_id
-          ? msg("Open worktree")
-          : msg("Open worktree: {name}"),
-      titleValues: { name: workspaceName(workspace) },
-      detail: workspace.worktree?.checkout_path,
-      keywords: [
-        "existing worktree",
-        "open existing",
-        "checkout",
-        "branch",
-        workspaceName(workspace),
-        workspace.worktree?.repo_name ?? "",
-      ],
-      run: () => setOpenWorktreeWorkspaceId(workspace.workspace_id),
-    });
-  }
-  const tabActions: ActionDefinition[] = [];
-  if (focusedWorkspace) {
-    tabActions.push({
-      key: "create-tab",
-      icon: <PanelTop size={15} />,
-      title: msg("Create tab"),
-      detail: workspaceName(focusedWorkspace),
-      keywords: ["new tab", "add tab", "open tab"],
-      disabledReason: endpointCreationReason(
-        store.get(),
-        "tab.create",
-        focusedWorkspace.workspace_id,
-      ),
-      run: () => store.createTab(focusedWorkspace.workspace_id),
-    });
-    for (const workspace of otherWorkspaces) {
-      tabActions.push({
-        key: `create-tab-${workspace.workspace_id}`,
-        icon: <PanelTop size={15} />,
-        title: msg("Create tab: {name}"),
-        titleValues: { name: workspaceName(workspace) },
-        detail: workspace.workspace_id,
-        keywords: ["new tab", "add tab", "open tab", workspaceName(workspace)],
-        disabledReason: endpointCreationReason(
-          store.get(),
-          "tab.create",
-          workspace.workspace_id,
-        ),
-        run: () => store.createTab(workspace.workspace_id),
+    const agentActions: ActionDefinition[] = [];
+    if (activeAgent) {
+      agentActions.push({
+        key: "close-active-agent-pane",
+        icon: <X size={15} />,
+        title: msg("Close active agent pane"),
+        detail: agentName(activeAgent),
+        keywords: ["close agent", "delete agent", "remove agent", "close pane"],
+        danger: true,
+        run: () => setPendingClosePane(activeAgent),
       });
     }
-  }
-  if (activeTab) {
-    tabActions.push(
-      {
-        key: "rename-tab",
-        icon: <PanelTop size={15} />,
-        title: msg("Rename tab"),
-        detail: tabName(activeTab),
-        keywords: ["edit tab", "tab name"],
-        run: () => setTextAction({ type: "rename-tab", tab: activeTab }),
-      },
-      {
-        key: "close-active-tab",
-        icon: <X size={15} />,
-        title: msg("Close active tab"),
-        detail: tabName(activeTab),
-        keywords: ["delete tab", "remove tab"],
-        danger: true,
-        run: () => setPendingCloseTab(activeTab),
-      },
-    );
-  }
-  for (const tab of focusedWorkspaceTabs) {
-    tabActions.push({
-      key: `focus-tab-${tab.tab_id}`,
-      icon: <PanelTop size={15} />,
-      title: msg("Focus tab: {name}"),
-      titleValues: { name: tabName(tab) },
-      detail: tab.tab_id,
-      keywords: ["switch tab", "open tab", "go tab", tabName(tab)],
-      run: () => store.focusTab(tab.tab_id),
-    });
-  }
-  for (const tab of focusedWorkspaceTabs.filter(
-    (tab) => tab.tab_id !== activeTab?.tab_id,
-  )) {
-    tabActions.push({
-      key: `close-tab-${tab.tab_id}`,
-      icon: <X size={15} />,
-      title: msg("Close tab: {name}"),
-      titleValues: { name: tabName(tab) },
-      detail: tab.tab_id,
-      keywords: ["delete tab", "remove tab", tabName(tab)],
-      danger: true,
-      run: () => setPendingCloseTab(tab),
-    });
-  }
+    for (const pane of agents) {
+      agentActions.push({
+        key: `focus-agent-${pane.pane_id}`,
+        icon: <AgentIcon agent={pane.agent} compact />,
+        title: msg("Focus agent: {name}"),
+        titleValues: { name: agentName(pane) },
+        detail: agentStatusText(pane.agent_status),
+        keywords: [
+          "switch agent",
+          "open agent",
+          "select agent",
+          pane.agent ?? "",
+        ],
+        run: () => store.focusPane(pane.pane_id),
+      });
+    }
 
-  const paneActions: ActionDefinition[] = activePane
-    ? [
-        {
-          key: "focus-pane-left",
-          icon: <ArrowLeft size={15} />,
-          title: msg("Focus pane left"),
-          detail: shortId(activePane.pane_id),
-          keywords: ["switch pane left", "select pane left", "move pane left"],
-          run: () => store.focusPaneDirection(activePane.pane_id, "left"),
-        },
-        {
-          key: "focus-pane-right",
-          icon: <ArrowRight size={15} />,
-          title: msg("Focus pane right"),
-          detail: shortId(activePane.pane_id),
-          keywords: [
-            "switch pane right",
-            "select pane right",
-            "move pane right",
-          ],
-          run: () => store.focusPaneDirection(activePane.pane_id, "right"),
-        },
-        {
-          key: "focus-pane-up",
-          icon: <ArrowUp size={15} />,
-          title: msg("Focus pane up"),
-          detail: shortId(activePane.pane_id),
-          keywords: ["switch pane up", "select pane up", "move pane up"],
-          run: () => store.focusPaneDirection(activePane.pane_id, "up"),
-        },
-        {
-          key: "focus-pane-down",
-          icon: <ArrowDown size={15} />,
-          title: msg("Focus pane down"),
-          detail: shortId(activePane.pane_id),
-          keywords: ["switch pane down", "select pane down", "move pane down"],
-          run: () => store.focusPaneDirection(activePane.pane_id, "down"),
-        },
-        {
-          key: "split-pane-right",
-          icon: <SplitSquareHorizontal size={15} />,
-          title: msg("Split pane right"),
-          detail: shortId(activePane.pane_id),
-          keywords: ["new pane right", "create pane right", "vertical split"],
-          run: () => store.splitPane(activePane.pane_id, "right"),
-        },
-        {
-          key: "split-pane-down",
-          icon: <SplitSquareVertical size={15} />,
-          title: msg("Split pane down"),
-          detail: shortId(activePane.pane_id),
-          keywords: ["new pane down", "create pane down", "horizontal split"],
-          run: () => store.splitPane(activePane.pane_id, "down"),
-        },
-        {
-          key: "toggle-pane-zoom",
-          icon: <Maximize2 size={15} />,
-          title: msg("Toggle pane zoom"),
-          detail: shortId(activePane.pane_id),
-          keywords: [
-            "maximize pane",
-            "unmaximize pane",
-            "zoom pane",
-            "full pane",
-          ],
-          run: () => store.zoomPane(activePane.pane_id),
-        },
-        {
-          key: "close-pane",
-          icon: <X size={15} />,
-          title: msg("Close pane"),
-          detail: shortId(activePane.pane_id),
-          keywords: ["delete pane", "remove pane"],
-          danger: true,
-          run: () => setPendingClosePane(activePane),
-        },
-      ]
-    : [];
-
-  const agentActions: ActionDefinition[] = [];
-  if (activeAgent) {
-    agentActions.push({
-      key: "close-active-agent-pane",
-      icon: <X size={15} />,
-      title: msg("Close active agent pane"),
-      detail: agentName(activeAgent),
-      keywords: ["close agent", "delete agent", "remove agent", "close pane"],
-      danger: true,
-      run: () => setPendingClosePane(activeAgent),
-    });
-  }
-  for (const pane of agents) {
-    agentActions.push({
-      key: `focus-agent-${pane.pane_id}`,
-      icon: <AgentIcon agent={pane.agent} compact />,
-      title: msg("Focus agent: {name}"),
-      titleValues: { name: agentName(pane) },
-      detail: agentStatusText(pane.agent_status),
-      keywords: [
-        "switch agent",
-        "open agent",
-        "select agent",
-        pane.agent ?? "",
-      ],
-      run: () => store.focusPane(pane.pane_id),
-    });
-  }
-
-  // Viewers (and share-link guests) keep navigation and reading only.
-  const can = {
-    host: store.get().host !== false,
-    manage: workspaceCan(focusedWorkspace, "manage"),
-    edit: workspaceCan(focusedWorkspace, "edit"),
-  };
-  const actionGroups: ActionGroupDefinition[] = [
-    { heading: t("Current"), actions: currentActions },
-    { heading: t("Files"), actions: fileActions },
-    { heading: t("Workspaces"), actions: workspaceActions },
-    { heading: t("Worktrees"), actions: worktreeActions },
-    { heading: t("Tabs"), actions: tabActions },
-    { heading: t("Panes"), actions: paneActions },
-    { heading: t("Agents"), actions: agentActions },
-  ]
-    .map((group) => ({
-      ...group,
-      actions: group.actions.filter((action) => {
-        const needs = ACTION_CAPABILITIES.find(([pattern]) =>
-          pattern.test(action.key),
-        )?.[1];
-        return !needs || can[needs];
-      }),
-    }))
-    .filter((group) => group.actions.length > 0);
-
-  const normalizedSearch = normalizeSearchText(search);
-  const rankedActions = normalizedSearch
-    ? (() => {
-        const seen = new Set<string>();
-        return actionGroups
-          .flatMap((group) =>
-            group.actions.map((action) => ({
-              action,
-              group: group.heading,
-              score: rankAction(action, search),
-            })),
-          )
-          .filter((entry) => entry.score > 0)
-          .sort(
-            (a, b) =>
-              b.score - a.score ||
-              a.group.localeCompare(b.group) ||
-              actionTitle(a.action).localeCompare(actionTitle(b.action)),
-          )
-          .filter((entry) => {
-            const signature = actionDisplaySignature(entry.action);
-            if (seen.has(signature)) return false;
-            seen.add(signature);
-            return true;
-          })
-          .slice(0, 3);
-      })()
-    : [];
-  const topActionKeys = new Set(rankedActions.map((entry) => entry.action.key));
-  const displayedSignatures = new Set(
-    rankedActions.map((entry) => actionDisplaySignature(entry.action)),
-  );
-  const displayedActionGroups: ActionGroupDefinition[] = [
-    ...(rankedActions.length > 0
-      ? [
-          {
-            heading:
-              rankedActions.length === 1 ? t("Top result") : t("Top results"),
-            actions: rankedActions.map((entry) => entry.action),
-          },
-        ]
-      : []),
-    ...actionGroups
+    // Viewers (and share-link guests) keep navigation and reading only.
+    const can = {
+      host: store.get().host !== false,
+      manage: workspaceCan(focusedWorkspace, "manage"),
+      edit: workspaceCan(focusedWorkspace, "edit"),
+    };
+    const actionGroups: ActionGroupDefinition[] = [
+      { heading: t("Current"), actions: currentActions },
+      { heading: t("Files"), actions: fileActions },
+      { heading: t("Workspaces"), actions: workspaceActions },
+      { heading: t("Worktrees"), actions: worktreeActions },
+      { heading: t("Tabs"), actions: tabActions },
+      { heading: t("Panes"), actions: paneActions },
+      { heading: t("Agents"), actions: agentActions },
+    ]
       .map((group) => ({
         ...group,
         actions: group.actions.filter((action) => {
-          if (topActionKeys.has(action.key)) return false;
-          if (!normalizedSearch) return true;
-          if (rankAction(action, search) <= 0) return false;
-          const signature = actionDisplaySignature(action);
-          if (displayedSignatures.has(signature)) return false;
-          displayedSignatures.add(signature);
-          return true;
+          const needs = ACTION_CAPABILITIES.find(([pattern]) =>
+            pattern.test(action.key),
+          )?.[1];
+          return !needs || can[needs];
         }),
       }))
-      .filter((group) => group.actions.length > 0),
-  ];
-  const numberedActions = commandNumberedActions(displayedActionGroups);
-  const numberShortcutIndexByKey = new Map(
-    numberedActions.map((action, index) => [action.key, index]),
-  );
+      .filter((group) => group.actions.length > 0);
+
+    const normalizedSearch = normalizeSearchText(search);
+    const rankedActions = normalizedSearch
+      ? (() => {
+          const seen = new Set<string>();
+          return actionGroups
+            .flatMap((group) =>
+              group.actions.map((action) => ({
+                action,
+                group: group.heading,
+                score: rankAction(action, search),
+              })),
+            )
+            .filter((entry) => entry.score > 0)
+            .sort(
+              (a, b) =>
+                b.score - a.score ||
+                a.group.localeCompare(b.group) ||
+                actionTitle(a.action).localeCompare(actionTitle(b.action)),
+            )
+            .filter((entry) => {
+              const signature = actionDisplaySignature(entry.action);
+              if (seen.has(signature)) return false;
+              seen.add(signature);
+              return true;
+            })
+            .slice(0, 3);
+        })()
+      : [];
+    const topActionKeys = new Set(
+      rankedActions.map((entry) => entry.action.key),
+    );
+    const displayedSignatures = new Set(
+      rankedActions.map((entry) => actionDisplaySignature(entry.action)),
+    );
+    const displayedActionGroups: ActionGroupDefinition[] = [
+      ...(rankedActions.length > 0
+        ? [
+            {
+              heading:
+                rankedActions.length === 1 ? t("Top result") : t("Top results"),
+              actions: rankedActions.map((entry) => entry.action),
+            },
+          ]
+        : []),
+      ...actionGroups
+        .map((group) => ({
+          ...group,
+          actions: group.actions.filter((action) => {
+            if (topActionKeys.has(action.key)) return false;
+            if (!normalizedSearch) return true;
+            if (rankAction(action, search) <= 0) return false;
+            const signature = actionDisplaySignature(action);
+            if (displayedSignatures.has(signature)) return false;
+            displayedSignatures.add(signature);
+            return true;
+          }),
+        }))
+        .filter((group) => group.actions.length > 0),
+    ];
+    const numberedActions = commandNumberedActions(displayedActionGroups);
+    const numberShortcutIndexByKey = new Map(
+      numberedActions.map((action, index) => [action.key, index]),
+    );
+    return { displayedActionGroups, numberedActions, numberShortcutIndexByKey };
+  };
+  // A closing menu keeps the list it showed while it animates out.
+  const commandList = useRef(EMPTY_COMMAND_LIST);
+  if (open) commandList.current = buildCommandList();
+  const { displayedActionGroups, numberedActions, numberShortcutIndexByKey } =
+    commandList.current;
   const setCommandOpen = (next: boolean) => {
     setOpen(next);
     if (!next) setSearch("");

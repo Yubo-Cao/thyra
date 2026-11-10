@@ -19,6 +19,7 @@ import type { WorkspaceInspector } from "../app/useWorkspaceInspector";
 import { getLocale, t } from "../i18n";
 import { shortcutTitle } from "../shortcutPreferences";
 import { store, useStoreSelector } from "../store";
+import { selectPanesWithoutActivity } from "../agentOrder";
 import type { Pane, Workspace } from "../types";
 import {
   readInspectorPreferences,
@@ -61,8 +62,8 @@ const EDITOR_LOCALE_KEY = "thyra.vscodeLocale";
  * (its server picks the translation file from the cookie). In between, a
  * language chosen inside VS Code stays.
  */
-function syncEditorLocale() {
-  const locale = getLocale() === "zh-CN" ? "zh-cn" : "en";
+function syncEditorLocale(thyraLocale: ReturnType<typeof getLocale>) {
+  const locale = thyraLocale === "zh-CN" ? "zh-cn" : "en";
   try {
     if (localStorage.getItem(EDITOR_LOCALE_KEY) === locale) return;
     localStorage.setItem(EDITOR_LOCALE_KEY, locale);
@@ -196,16 +197,23 @@ export function WorkspaceInspectorHost({
       current = false;
     };
   }, []);
-  const panes = useStoreSelector((current) => current.panes);
+  const panes = useStoreSelector(selectPanesWithoutActivity);
   // A pane's cwd moves with `cd`; the editor keeps the folder it opened.
   const roots = useRef(new Map<string, string>());
   const workspaceKey = workspace?.workspace_id ?? "";
   const root =
     roots.current.get(workspaceKey) || checkoutRoot(workspace, panes);
-  if (root && workspaceKey) roots.current.set(workspaceKey, root);
+  useEffect(() => {
+    if (root && workspaceKey) roots.current.set(workspaceKey, root);
+  }, [root, workspaceKey]);
   const editorAvailable =
     !!root && !!editorConnections?.has(connectionClient.connectionId);
-  if (editorAvailable) syncEditorLocale();
+  const locale = getLocale();
+  // A layout effect declared before the frames' own: the cookie has to be
+  // in place before an editor iframe requests its page.
+  useLayoutEffect(() => {
+    if (editorAvailable) syncEditorLocale(locale);
+  }, [editorAvailable, locale]);
   const frames = useEditorFrames(editorAvailable ? root : "", state.file);
 
   const upload = async (files: FileList | File[]) => {
@@ -360,6 +368,8 @@ export function WorkspaceInspectorHost({
               }`}
               title={t("VS Code")}
               src={frame.src}
+              // A kept-alive editor takes no focus, keys or pointer.
+              inert={frame.folder !== root}
               allow="clipboard-read; clipboard-write"
             />
           ))}

@@ -37,6 +37,23 @@ export function measureTerminal(
   };
 }
 
+/** Whether two measurements describe the same grid, so state can keep one. */
+export function sameTerminalMetrics(
+  a: TerminalMetrics | null,
+  b: TerminalMetrics | null,
+): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.rows === b.rows &&
+    a.rowHeight === b.rowHeight &&
+    a.cellWidth === b.cellWidth &&
+    a.fontSize === b.fontSize
+  );
+}
+
 /** Rows a local editor covers, in the pane's coordinates. */
 export type EditorSpan = { top: number; bottom: number };
 

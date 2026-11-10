@@ -58,3 +58,61 @@ export function calculateOverlayThumb({
     maxScroll,
   };
 }
+
+/**
+ * Remembers what one wheel gesture resolved to. A gesture fires many events
+ * at the same target, and resolving one walks its ancestors reading styles
+ * and scroll sizes; the answer holds until the pointer moves to another
+ * target, the gesture pauses for `idleMs`, or `clear` is called (on resize).
+ */
+export function createWheelTargetCache<Target extends object, Resolved>(
+  resolve: (target: Target) => Resolved | null,
+  now: () => number = () => performance.now(),
+  idleMs = 250,
+) {
+  let cached: { target: Target; resolved: Resolved | null; at: number } | null =
+    null;
+  return {
+    get(target: Target): Resolved | null {
+      const time = now();
+      if (cached && cached.target === target && time - cached.at <= idleMs) {
+        cached.at = time;
+        return cached.resolved;
+      }
+      cached = { target, resolved: resolve(target), at: time };
+      return cached.resolved;
+    },
+    clear() {
+      cached = null;
+    },
+  };
+}
+
+/**
+ * Collects the scrollbar refreshes asked for within a frame so the layout
+ * reads behind them happen once, when the frame runs. `take` resolves the
+ * newest request that still yields a target, as resolving each on arrival
+ * and keeping the last hit did.
+ */
+export function createRefreshQueue<Kind extends string, Target>() {
+  let requests: { kind: Kind; target: Target }[] = [];
+  return {
+    add(kind: Kind, target: Target) {
+      const last = requests[requests.length - 1];
+      if (last && last.kind === kind && last.target === target) return;
+      requests.push({ kind, target });
+    },
+    take<Resolved>(
+      resolve: (kind: Kind, target: Target) => Resolved | null,
+    ): Resolved | null {
+      const taken = requests;
+      requests = [];
+      for (let index = taken.length - 1; index >= 0; index--) {
+        const request = taken[index]!;
+        const resolved = resolve(request.kind, request.target);
+        if (resolved !== null) return resolved;
+      }
+      return null;
+    },
+  };
+}

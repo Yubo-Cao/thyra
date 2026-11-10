@@ -1,3 +1,4 @@
+import { selectPanesWithoutActivity } from "../agentOrder";
 import { keepFocus } from "./ui/keepFocus";
 import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
@@ -102,7 +103,6 @@ import { usePaneSwipe } from "./terminal/paneSwipe";
 import { setTerminalZoom } from "../touchGestures";
 import {
   focusTerminalEndpoint,
-  sendTerminalBytes,
   setTerminalStdinDisabled,
   type TerminalTouchLinkState,
   type TerminalViewSetters,
@@ -112,6 +112,7 @@ import {
   useTerminalRefs,
 } from "./terminal/terminalSession";
 import { bytesToB64 } from "../utils";
+import { queueTerminalCall, queueTerminalInput } from "../terminalInputBatcher";
 import {
   useTerminalAppearance,
   useTerminalAttach,
@@ -214,7 +215,7 @@ export function TerminalView({
       connectionPaused: state.connectionPaused,
       connections: state.connections,
       layout: state.layout,
-      panes: state.panes,
+      panes: selectPanesWithoutActivity(state),
       selectedPaneId: state.selectedPaneId,
       status: state.status,
       terminalAttachEpoch: state.terminalAttachEpoch,
@@ -763,17 +764,26 @@ export function TerminalView({
     const targetPaneId = refs.paneId.current;
     if (!targetPaneId) throw new Error(t("No active pane"));
     const send = terminalComposerSend(targetPaneId, text, submit);
+    const terminalId =
+      refs.desiredTerminal.current ?? refs.paneTerminalId.current;
+    // Composer sends take their turn behind keys already typed into the pane.
+    const ordered = <T,>(call: () => Promise<T>) =>
+      terminalId
+        ? queueTerminalCall(connectionClient, terminalId, call)
+        : call();
     if (send.kind === "paste") {
-      await connectionClient.call(send.request.method, send.request.params);
+      await ordered(() =>
+        connectionClient.call(send.request.method, send.request.params),
+      );
     } else {
-      const terminalId =
-        refs.desiredTerminal.current ?? refs.paneTerminalId.current;
       if (!terminalId) throw new Error(t("No active pane"));
       const type = (data: string) =>
-        connectionClient.call("terminal.input", {
-          terminal_id: terminalId,
-          data: bytesToB64(new TextEncoder().encode(data)),
-        });
+        ordered(() =>
+          connectionClient.call("terminal.input", {
+            terminal_id: terminalId,
+            data: bytesToB64(new TextEncoder().encode(data)),
+          }),
+        );
       if (send.text) await type(send.text);
       if (send.enter) {
         // Codex reads an Enter that arrives with a burst of characters as a
@@ -959,7 +969,7 @@ export function TerminalView({
                   const terminalId =
                     refs.desiredTerminal.current ?? pane.terminal_id;
                   if (terminalId)
-                    sendTerminalBytes(
+                    queueTerminalInput(
                       connectionClient,
                       new TextEncoder().encode(data),
                       terminalId,
@@ -1007,7 +1017,7 @@ export function TerminalView({
                   const terminalId =
                     refs.desiredTerminal.current ?? pane.terminal_id;
                   if (control.access.viewOnly || !terminalId) return;
-                  sendTerminalBytes(
+                  queueTerminalInput(
                     connectionClient,
                     new TextEncoder().encode(data),
                     terminalId,

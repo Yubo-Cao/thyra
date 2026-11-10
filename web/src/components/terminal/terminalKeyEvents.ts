@@ -224,6 +224,23 @@ function trackKeyboardState() {
   window.addEventListener("focus", loadLayout);
 }
 
+/**
+ * Empties the hidden input a semantic key was typed into. The engine clears
+ * that field only for the keys and input it handles itself, so text left by
+ * an abandoned composition would otherwise sit in front of the next one.
+ * Never called while composing: those keys stay with the engine.
+ */
+export function clearStaleInputText(target: unknown) {
+  const input = target as { tagName?: unknown; value?: unknown } | null;
+  if (
+    input &&
+    (input.tagName === "TEXTAREA" || input.tagName === "INPUT") &&
+    typeof input.value === "string" &&
+    input.value !== ""
+  )
+    input.value = "";
+}
+
 export type TerminalKeyHandlers = {
   apple: boolean;
   signal: AbortSignal;
@@ -272,6 +289,7 @@ export function installTerminalKeyEvents(
     if (!key) return;
     event.preventDefault();
     event.stopPropagation();
+    clearStaleInputText(event.target);
     pressed.set(event.code, key);
     handlers.send(key);
   };

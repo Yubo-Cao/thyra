@@ -56,11 +56,11 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  /* Sits over the terminal canvas: nearly opaque, with no backdrop blur to
+     redo on every frame the terminal draws. */
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
   color: var(--text-strong);
   box-shadow: var(--shadow-lg);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
 }
 
 /* Clear the floating keyboard and microphone buttons on touch layouts. */

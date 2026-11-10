@@ -11,6 +11,11 @@ import { terminalShortcutKey } from "../../terminalKeys";
 import type { TerminalKey } from "../../../../shared/terminalKey";
 import type { TerminalModifiedInput } from "../../terminalModifiers";
 import { installTerminalKeyEvents } from "./terminalKeyEvents";
+import { keyboardKindNow } from "../../hardwareKeyboard";
+import {
+  queueTerminalCall,
+  queueTerminalInput,
+} from "../../terminalInputBatcher";
 import {
   createTerminalPasteRunner,
   type TerminalPasteTextareaSnapshot,
@@ -19,8 +24,6 @@ import {
 } from "../../terminalPaste";
 import {
   cancelEvent,
-  sendTerminalBytes,
-  sendTerminalKeys,
   shouldAvoidVirtualKeyboard,
   swallowEvent,
   type TerminalSession,
@@ -70,7 +73,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   const data = term.onData((data) => {
     session.invalidateLinks();
     if (session.replayingWheel && session.acceptsEndpointInput()) {
-      sendTerminalBytes(
+      queueTerminalInput(
         client,
         new TextEncoder().encode(data),
         desiredTerminal.current!,
@@ -89,9 +92,9 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   });
 
   const sendInput = (input: TerminalModifiedInput, terminalId: string) => {
-    if ("key" in input) sendTerminalKeys(client, [input.key], terminalId);
+    if ("key" in input) queueTerminalInput(client, [input.key], terminalId);
     else
-      sendTerminalBytes(
+      queueTerminalInput(
         client,
         new TextEncoder().encode(input.bytes),
         terminalId,
@@ -112,7 +115,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       term.clearSelection();
       presentation.cancelSelection();
     }
-    sendTerminalKeys(client, [applyKeyModifiers(key)], terminalId);
+    queueTerminalInput(client, [applyKeyModifiers(key)], terminalId);
   };
   const pasteText = async (
     text: string,
@@ -128,7 +131,11 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       return;
     if (destinationPaneId) {
       const request = terminalPasteRequest(destinationPaneId, text);
-      await client.call(request.method, request.params);
+      const send = () => client.call(request.method, request.params);
+      // Behind the keys already typed: on a slow link they may still be
+      // waiting their turn, and a direct call would overtake them.
+      const terminalId = desiredTerminal.current;
+      await (terminalId ? queueTerminalCall(client, terminalId, send) : send());
       return;
     }
     const activeTerm = refs.term.current;
@@ -310,10 +317,20 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
   });
 
   const onTerminalBlur = () => {
+    cancelPasteRecovery();
+    // Leaving the window (an app switch) keeps the input as activeElement;
+    // focus moving within the page does not. A touch device typing on a
+    // hardware keyboard keeps its input open across the switch, so the
+    // browser's own focus restoration resumes typing as on a desktop.
+    if (
+      shouldAvoidVirtualKeyboard() &&
+      keyboardKindNow() === "hardware" &&
+      document.activeElement === term.textarea
+    )
+      return;
     // Desktop window blur retains activeElement for native focus restoration.
     // Explicitly blurring it would discard that target when switching apps.
     session.closeTerminalInput(shouldAvoidVirtualKeyboard());
-    cancelPasteRecovery();
   };
   // Capture listeners on the input run before the engine's own; stopping
   // them there keeps it from also inserting what Thyra pastes.

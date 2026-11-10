@@ -4,6 +4,7 @@ import {
   type ConnectionStatus,
   logoutBrowserSession,
   parseConnectionSummary,
+  reconnectDelay,
 } from "./api";
 import { BridgeError, type BridgeFailure } from "./bridgeError";
 import { installCatalog } from "./i18n";
@@ -1542,5 +1543,105 @@ describe("bridge connection lifecycle", () => {
     } as MessageEvent);
     await Bun.sleep(5);
     expect(bridge.status).toBe("connected");
+  });
+});
+
+describe("reconnect backoff", () => {
+  test("doubles per failed attempt up to a cap, jittered downward", () => {
+    expect(reconnectDelay(1500, 0, 1)).toBe(1500);
+    expect(reconnectDelay(1500, 0, 0)).toBe(750);
+    expect(reconnectDelay(1500, 1, 1)).toBe(3000);
+    expect(reconnectDelay(1500, 3, 1)).toBe(12000);
+    expect(reconnectDelay(1500, 10, 1)).toBe(30000);
+    expect(reconnectDelay(1500, 1000, 0)).toBe(15000);
+  });
+
+  class CountingSocket extends HangingWebSocket {
+    static instances: CountingSocket[] = [];
+    constructor() {
+      super();
+      CountingSocket.instances.push(this);
+    }
+  }
+  const refuse = (socket: CountingSocket) => {
+    socket.readyState = WebSocket.CLOSED;
+    socket.onclose?.({ code: 1006 });
+  };
+  const reconnectState = (bridge: Bridge) =>
+    bridge as unknown as {
+      reconnectAttempts: number;
+      reconnectEnabled: boolean;
+    };
+
+  test("refused sockets back off and a hello resets the count", () => {
+    CountingSocket.instances = [];
+    installBrowserGlobals(CountingSocket as unknown as typeof WebSocket);
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: () => new Promise<Response>(() => {}),
+    });
+    const bridge = createTestBridge(60_000, 1000);
+    bridge.connect();
+    refuse(CountingSocket.instances[0]);
+    expect(reconnectState(bridge).reconnectAttempts).toBe(1);
+    // A return to the foreground reconnects without waiting out the delay.
+    bridge.probeConnectionNow();
+    expect(CountingSocket.instances).toHaveLength(2);
+    refuse(CountingSocket.instances[1]);
+    expect(reconnectState(bridge).reconnectAttempts).toBe(2);
+    bridge.probeConnectionNow();
+    const socket = CountingSocket.instances[2];
+    socket.readyState = WebSocket.OPEN;
+    sendHello(socket);
+    expect(bridge.status).toBe("connected");
+    expect(reconnectState(bridge).reconnectAttempts).toBe(0);
+    // A drop of a working connection retries promptly.
+    refuse(socket);
+    expect(reconnectState(bridge).reconnectAttempts).toBe(0);
+  });
+
+  test("a refused socket with an ended session leaves for sign-in", async () => {
+    CountingSocket.instances = [];
+    installBrowserGlobals(CountingSocket as unknown as typeof WebSocket);
+    const navigated = Promise.withResolvers<string>();
+    Object.assign(location, { replace: navigated.resolve });
+    const requested: string[] = [];
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: async (url: string) => {
+        requested.push(url);
+        return new Response("unauthorized", { status: 401 });
+      },
+    });
+    const bridge = createTestBridge(60_000, 1000);
+    bridge.connect();
+    refuse(CountingSocket.instances[0]);
+    expect(await navigated.promise).toBe("/login");
+    expect(requested).toEqual(["/api/health"]);
+    expect(bridge.status).toBe("disconnected");
+    expect(reconnectState(bridge).reconnectEnabled).toBe(false);
+    expect(CountingSocket.instances).toHaveLength(1);
+  });
+
+  test("an unreachable server keeps reconnecting", async () => {
+    CountingSocket.instances = [];
+    installBrowserGlobals(CountingSocket as unknown as typeof WebSocket);
+    let navigated = false;
+    Object.assign(location, { replace: () => (navigated = true) });
+    for (const answer of [
+      () => Promise.reject(new TypeError("offline")),
+      async () => new Response("bad gateway", { status: 502 }),
+    ]) {
+      Object.defineProperty(globalThis, "fetch", {
+        configurable: true,
+        value: answer,
+      });
+      const bridge = createTestBridge(60_000, 1000);
+      bridge.connect();
+      refuse(CountingSocket.instances[CountingSocket.instances.length - 1]);
+      await Bun.sleep(0);
+      expect(reconnectState(bridge).reconnectEnabled).toBe(true);
+      expect(navigated).toBe(false);
+    }
   });
 });

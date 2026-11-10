@@ -1,5 +1,5 @@
 import { BellRing } from "lucide-react";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import { useLongPress } from "./useLongPress";
 import {
   focusTreeItem,
@@ -49,7 +49,19 @@ export interface AgentMenuState {
   y: number;
 }
 
-export function AgentRow({
+/** Drag handlers shared by every row; each is told which pane it is for. */
+export type AgentRowDragHandlers = {
+  onDragStart: (pane: Pane, event: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (pane: Pane, event: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (pane: Pane, event: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
+};
+
+/**
+ * One agent pane in the tree or the agent list. Memoized: pass handlers
+ * with a stable identity so a row re-renders only when its own pane does.
+ */
+export const AgentRow = memo(function AgentRow({
   pane,
   selected,
   depth = 0,
@@ -59,6 +71,8 @@ export function AgentRow({
   onSelect,
   onOpenMenu,
   drag,
+  isDragging = false,
+  dropPosition = null,
 }: {
   pane: Pane;
   selected: boolean;
@@ -67,15 +81,10 @@ export function AgentRow({
   variant?: "nested" | "standalone";
   workspaceLabel?: string;
   onSelect?: (pane: Pane) => void;
-  onOpenMenu: (x: number, y: number) => void;
-  drag?: {
-    isDragging: boolean;
-    dropPosition: "before" | "after" | null;
-    onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDragEnd: () => void;
-  };
+  onOpenMenu: (pane: Pane, x: number, y: number) => void;
+  drag?: AgentRowDragHandlers;
+  isDragging?: boolean;
+  dropPosition?: "before" | "after" | null;
 }) {
   const tab = useStoreSelector((state) =>
     state.tabs.find(
@@ -88,7 +97,7 @@ export function AgentRow({
   const watched = usePaneWatched(connectionId, pane.pane_id);
   const tabLabel = customTabLabel(tab?.label);
   const openMenu = (x: number, y: number) => {
-    onOpenMenu(x, y);
+    onOpenMenu(pane, x, y);
   };
   const longPress = useLongPress(openMenu);
   const showStatus = shouldShowAgentStatusLabel(pane.agent_status);
@@ -105,17 +114,17 @@ export function AgentRow({
       className={`agent-row ${nested ? "is-nested" : "is-standalone"} ${
         selected ? "is-selected" : ""
       } ${pane.focused ? "is-focused" : ""} ${
-        drag?.isDragging ? "is-dragging" : ""
-      } ${drag?.dropPosition ? `drop-${drag.dropPosition}` : ""}`}
+        isDragging ? "is-dragging" : ""
+      } ${dropPosition ? `drop-${dropPosition}` : ""}`}
       style={
         nested ? { paddingLeft: 18 + depth * TREE_DEPTH_INDENT } : undefined
       }
       role={nested ? "treeitem" : "button"}
       data-pane-id={pane.pane_id}
       draggable={!!drag}
-      onDragStart={drag?.onDragStart}
-      onDragOver={drag?.onDragOver}
-      onDrop={drag?.onDrop}
+      onDragStart={drag ? (event) => drag.onDragStart(pane, event) : undefined}
+      onDragOver={drag ? (event) => drag.onDragOver(pane, event) : undefined}
+      onDrop={drag ? (event) => drag.onDrop(pane, event) : undefined}
       onDragEnd={drag?.onDragEnd}
       tabIndex={nested ? (selected ? 0 : -1) : 0}
       aria-level={nested ? depth + 1 : undefined}
@@ -256,7 +265,7 @@ export function AgentRow({
       </div>
     </div>
   );
-}
+});
 
 export function AgentContextMenu({
   state,

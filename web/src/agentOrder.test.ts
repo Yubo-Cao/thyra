@@ -330,3 +330,133 @@ describe("session activity ordering", () => {
     }
   });
 });
+
+import {
+  agentPaneOrderSelector,
+  orderedAgentPaneIds,
+  selectPanesWithoutActivity,
+  stablePanesWithoutActivity,
+} from "./agentOrder";
+import type { Pane } from "./types";
+
+describe("activity-stable pane selection", () => {
+  const pane = (pane_id: string, fields: Partial<Pane> = {}): Pane => ({
+    pane_id,
+    terminal_id: `term-${pane_id}`,
+    workspace_id: "w1",
+    tab_id: "w1:t1",
+    focused: false,
+    agent: "claude",
+    agent_status: "idle",
+    revision: 1,
+    ...fields,
+  });
+
+  test("an activity tick keeps every pane and the list itself", () => {
+    const first = stablePanesWithoutActivity(
+      [pane("p1", { last_activity_at: 10 }), pane("p2")],
+      [],
+    );
+    expect(first.map((entry) => "last_activity_at" in entry)).toEqual([
+      false,
+      false,
+    ]);
+    const ticked = stablePanesWithoutActivity(
+      [pane("p1", { last_activity_at: 99 }), pane("p2")],
+      first,
+    );
+    expect(ticked).toBe(first);
+  });
+
+  test("a real change replaces only the pane that changed", () => {
+    const incident = { processes: 1, limit_bytes: 1024 };
+    const first = stablePanesWithoutActivity(
+      [
+        pane("p1"),
+        pane("p2", { memory_incident: { ...incident } }),
+        pane("p3"),
+      ],
+      [],
+    );
+    const next = stablePanesWithoutActivity(
+      [
+        pane("p1", { last_activity_at: 5 }),
+        pane("p2", { memory_incident: { ...incident } }),
+        pane("p3", { agent_status: "working" }),
+      ],
+      first,
+    );
+    expect(next).not.toBe(first);
+    expect(next[0]).toBe(first[0]);
+    expect(next[1]).toBe(first[1]);
+    expect(next[2]).not.toBe(first[2]);
+    expect(next[2]?.agent_status).toBe("working");
+  });
+
+  test("added, removed and reordered panes produce a new list", () => {
+    const first = stablePanesWithoutActivity([pane("p1"), pane("p2")], []);
+    const reordered = stablePanesWithoutActivity(
+      [pane("p2"), pane("p1")],
+      first,
+    );
+    expect(reordered).not.toBe(first);
+    expect(reordered[0]).toBe(first[1]);
+    expect(stablePanesWithoutActivity([pane("p1")], first)).toEqual([
+      first[0]!,
+    ]);
+  });
+
+  test("the store selector is memoized on the panes array", () => {
+    const state = { panes: [pane("p1", { last_activity_at: 1 })] };
+    const selected = selectPanesWithoutActivity(state);
+    expect(selectPanesWithoutActivity(state)).toBe(selected);
+    expect(
+      selectPanesWithoutActivity({
+        panes: [pane("p1", { last_activity_at: 2 })],
+      }),
+    ).toBe(selected);
+    expect(
+      selectPanesWithoutActivity({ panes: [pane("p1", { focused: true })] }),
+    ).not.toBe(selected);
+  });
+
+  test("the agent order changes identity only when the order does", () => {
+    const workspaces = [
+      { workspace_id: "w1", number: 2 },
+      { workspace_id: "w0", number: 1 },
+    ];
+    const panes = [
+      pane("p1", { last_activity_at: 10 }),
+      pane("p2", { last_activity_at: 20 }),
+      pane("p3", { workspace_id: "w0", agent_status: "working" }),
+      pane("shell", { agent: undefined }),
+    ];
+    expect(orderedAgentPaneIds(panes, workspaces, [], "workspace")).toEqual([
+      "p3",
+      "p1",
+      "p2",
+    ]);
+    expect(orderedAgentPaneIds(panes, workspaces, ["p2"], "manual")).toEqual([
+      "p2",
+      "p3",
+      "p1",
+    ]);
+    const select = agentPaneOrderSelector([], "attention");
+    const order = select({ panes, workspaces });
+    expect(order).toEqual(["p3", "p2", "p1"]);
+    expect(select({ panes, workspaces })).toBe(order);
+    // Activity moved, but p2 is still the most recently active idle agent.
+    const ticked = panes.map((entry) =>
+      entry.pane_id === "p2" ? { ...entry, last_activity_at: 30 } : entry,
+    );
+    expect(select({ panes: ticked, workspaces })).toBe(order);
+    const overtaken = panes.map((entry) =>
+      entry.pane_id === "p1" ? { ...entry, last_activity_at: 40 } : entry,
+    );
+    expect(select({ panes: overtaken, workspaces })).toEqual([
+      "p3",
+      "p1",
+      "p2",
+    ]);
+  });
+});

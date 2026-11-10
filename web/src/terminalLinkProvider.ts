@@ -7,6 +7,7 @@ import { terminalLinkModifierMatches } from "./shortcutPreferences";
 import {
   findTerminalHttpLinks,
   sanitizeTerminalHttpUrl,
+  terminalHyperlinkUrl,
   terminalFileUriPath,
 } from "./terminalLinks";
 import {
@@ -490,10 +491,10 @@ export function registerTerminalLinkProvider(
               }
               const uri = link.uri ?? "";
               const path = terminalFileUriPath(uri);
-              const url = sanitizeTerminalHttpUrl(uri);
+              const url = terminalHyperlinkUrl(uri);
               const target: TerminalTouchLink | null = path
                 ? { kind: "file", value: path }
-                : url && url === uri
+                : url
                   ? { kind: "url", value: url }
                   : null;
               callback(
@@ -542,8 +543,7 @@ export function registerTerminalLinkProvider(
             }),
         );
         for (const link of resolved) {
-          if (!link.url || sanitizeTerminalHttpUrl(link.url) !== link.url)
-            continue;
+          if (!link.url || !terminalHyperlinkUrl(link.url)) continue;
           if (!link.regions.some((region) => region.row === row)) continue;
           // The bridge validates contiguous regions. Keep one logical range so
           // every wrapped row underlines, whichever row is hovered.

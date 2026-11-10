@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ConnectionClient } from "../../api";
 import { TerminalEngine } from "../../terminalEngine";
 import { t } from "../../i18n";
+import { terminalHyperlinkUrl } from "../../terminalLinks";
 import { Button } from "../ui/Button";
 import { applyTerminalFollowScale } from "./terminalSession";
 
@@ -49,6 +50,12 @@ export function TerminalHistory({
       scrollback: HISTORY_LINES + live.rows,
       disableStdin: true,
     });
+    // History text is the pane's own output: its OSC 8 links open only as
+    // web addresses. Without a handler the engine opens any URI as written.
+    term.linkHandler = (uri) => {
+      const url = terminalHyperlinkUrl(uri);
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    };
     term.resize(live.cols, live.rows);
     applyTerminalFollowScale(term, element, follow);
     let ready = false;

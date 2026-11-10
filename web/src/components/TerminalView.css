@@ -197,7 +197,7 @@
 
   .terminal-mobile-keys-toggle {
     --button-height: 36px;
-    --button-bg: color-mix(in srgb, var(--panel) 68%, transparent);
+    --button-bg: color-mix(in srgb, var(--panel) 90%, transparent);
     --button-bg-pressed: var(--accent-soft);
     --button-fg: var(--text-strong);
     pointer-events: auto;
@@ -210,9 +210,9 @@
 
   .terminal-mobile-keys-toggle,
   .terminal-mobile-keys-panel {
+    /* No backdrop blur: over the terminal canvas it re-blurs on every frame
+       the terminal draws. A denser tint keeps the text behind it quiet. */
     box-shadow: var(--shadow-lg);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
 
   .terminal-mobile-key-spacer {
@@ -223,7 +223,7 @@
 
   .terminal-mobile-keys-panel {
     padding: 3px;
-    background: color-mix(in srgb, var(--panel) 68%, transparent);
+    background: color-mix(in srgb, var(--panel) 90%, transparent);
     opacity: 0;
     pointer-events: none;
     transform: translateX(10px) scale(0.9);
@@ -338,13 +338,12 @@
 
   .terminal-mobile-side-shortcuts .terminal-mobile-key {
     --button-height: 32px;
-    --button-bg: color-mix(in srgb, var(--panel) 70%, transparent);
+    /* Opaque enough to need no backdrop blur over the terminal canvas. */
+    --button-bg: color-mix(in srgb, var(--panel) 90%, transparent);
     width: 42px;
     padding: 0 4px;
     font-size: 10px;
     box-shadow: var(--shadow-lg);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
 }
 

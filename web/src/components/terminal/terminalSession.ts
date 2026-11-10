@@ -32,10 +32,6 @@ import {
 import { TerminalEndpointPresentation } from "../../terminalEndpointPresentation";
 import { TerminalFrameDecoder } from "../../terminalFrameDecoder";
 import { TerminalHistorySelection } from "../../terminalHistorySelection";
-import {
-  type TerminalInput,
-  TerminalInputBatcher,
-} from "../../terminalInputBatcher";
 import type { TerminalKey } from "../../../../shared/terminalKey";
 import type { TerminalModifiedInput } from "../../terminalModifiers";
 import {
@@ -43,10 +39,7 @@ import {
   type TerminalResolvedLink,
   type TerminalTouchLink,
 } from "../../terminalLinkProvider";
-import {
-  sanitizeTerminalHttpUrl,
-  terminalFileUriPath,
-} from "../../terminalLinks";
+import { terminalFileUriPath, terminalHyperlinkUrl } from "../../terminalLinks";
 import { TerminalEngine, type TerminalTheme } from "../../terminalEngine";
 import {
   TerminalAttachFrameWatchdog,
@@ -70,7 +63,7 @@ import {
   terminalSelectionContent,
   terminalMarkdownContent,
 } from "../../terminalRichCopy";
-import { b64toText, bytesToB64 } from "../../utils";
+import { b64toText } from "../../utils";
 
 export function focusTerminalEndpoint(
   client: ConnectionClient,
@@ -93,53 +86,6 @@ export function detachTerminal(client: ConnectionClient, terminalId: string) {
   void client
     .call("terminal.detach", { terminal_id: terminalId })
     .catch(() => null);
-}
-
-const inputBatchers = new Map<string, TerminalInputBatcher>();
-
-function sendTerminalInput(
-  client: ConnectionClient,
-  input: TerminalInput,
-  terminalId: string,
-) {
-  // Keyed by connection generation and terminal, not client object: wrapper
-  // clients are recreated across renders and must share one ordered queue.
-  const key = `${client.connectionId}\0${client.generation}\0${terminalId}`;
-  let batcher = inputBatchers.get(key);
-  if (!batcher) {
-    batcher = new TerminalInputBatcher(
-      (batch) =>
-        Array.isArray(batch)
-          ? client.call("terminal.key", {
-              terminal_id: terminalId,
-              keys: batch,
-            })
-          : client.call("terminal.input", {
-              terminal_id: terminalId,
-              data: bytesToB64(batch),
-            }),
-      () => inputBatchers.delete(key),
-    );
-    inputBatchers.set(key, batcher);
-  }
-  batcher.send(input);
-}
-
-export function sendTerminalBytes(
-  client: ConnectionClient,
-  bytes: Uint8Array,
-  terminalId: string,
-) {
-  sendTerminalInput(client, bytes, terminalId);
-}
-
-/** Sends keys for Herdr to encode in the pane's keyboard protocol. */
-export function sendTerminalKeys(
-  client: ConnectionClient,
-  keys: TerminalKey[],
-  terminalId: string,
-) {
-  sendTerminalInput(client, keys, terminalId);
 }
 
 /** True only once `pending` has held continuously for `delayMs`. */
@@ -539,7 +485,9 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       if (!term.hasSelection()) openFileInInspector(path, event);
       return;
     }
-    const url = sanitizeTerminalHttpUrl(uri);
+    // The whole URI is the target: cutting it at prose punctuation, as for
+    // a URL found in text, opened a different address.
+    const url = terminalHyperlinkUrl(uri);
     if (url) {
       term.clearSelection();
       window.open(url, "_blank", "noopener,noreferrer");

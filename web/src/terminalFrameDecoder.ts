@@ -17,6 +17,9 @@ export type TerminalFrameDecodeResult =
   | { kind: "resync" }
   | { kind: "none" };
 
+/** How long a requested full frame may stay missing before it is asked for again. */
+export const TERMINAL_RESYNC_RETRY_MS = 2000;
+
 /**
  * Rebuilds complete endpoint frames from full frames and row updates. A row
  * update against any frame other than the last one applied cannot be trusted,
@@ -27,29 +30,40 @@ export class TerminalFrameDecoder {
   // Row updates already in flight behind a lost base are dropped quietly
   // until the requested full frame arrives, so one gap asks only once.
   private awaitingFull = false;
+  private requestedAt = 0;
 
-  decode(update: TerminalFrameUpdate): TerminalFrameDecodeResult {
+  decode(
+    update: TerminalFrameUpdate,
+    now = performance.now(),
+  ): TerminalFrameDecodeResult {
     const seq = update.frame_seq;
     if (typeof seq !== "number") return { kind: "none" };
     if (Array.isArray(update.rows)) {
-      if (typeof update.tail !== "string") return this.lost();
+      if (typeof update.tail !== "string") return this.lost(now);
       this.current = { seq, parts: { rows: update.rows, tail: update.tail } };
       this.awaitingFull = false;
       return { kind: "frame", seq, parts: this.current.parts };
     }
     const base = this.current;
-    if (this.awaitingFull) return { kind: "none" };
+    if (this.awaitingFull) {
+      // The request or its reply can be lost too (a dropped call, a bridge
+      // that restarted). Row updates still arriving long after it prove the
+      // full frame is not coming, so ask again instead of freezing the pane.
+      if (now - this.requestedAt < TERMINAL_RESYNC_RETRY_MS)
+        return { kind: "none" };
+      return this.lost(now);
+    }
     if (
       !base ||
       update.base_seq !== base.seq ||
       !Array.isArray(update.changed)
     ) {
-      return this.lost();
+      return this.lost(now);
     }
     const rows = base.parts.rows.slice();
     for (const [index, row] of update.changed) {
       if (!Number.isInteger(index) || index < 0 || index >= rows.length)
-        return this.lost();
+        return this.lost(now);
       rows[index] = row;
     }
     const parts = { rows, tail: update.tail ?? base.parts.tail };
@@ -62,9 +76,10 @@ export class TerminalFrameDecoder {
     this.awaitingFull = false;
   }
 
-  private lost(): TerminalFrameDecodeResult {
+  private lost(now: number): TerminalFrameDecodeResult {
     this.current = null;
     this.awaitingFull = true;
+    this.requestedAt = now;
     return { kind: "resync" };
   }
 }

@@ -8,7 +8,7 @@ import {
   terminalTouchShouldDismissInput,
 } from "../../terminalFocus";
 import {
-  terminalCellAt,
+  createWheelScrollBatcher,
   terminalCellAtPoint,
   terminalWheelScroll,
 } from "../../terminalScroll";
@@ -241,6 +241,13 @@ export function installTerminalGestures(
   document.addEventListener("pointerup", onSelectionReleased, { signal });
   document.addEventListener("pointermove", onDocumentPointerMove, capture);
 
+  // A trackpad sends many wheel events per frame: one request per frame.
+  const wheelScroll = createWheelScrollBatcher(
+    (request) => {
+      client.call("terminal.scroll", request).catch(() => {});
+    },
+    (point) => terminalCellAtPoint(term, point.x, point.y),
+  );
   const onWheel = (e: WheelEvent) => {
     if (session.replayingWheel) return;
     session.invalidateLinks();
@@ -301,16 +308,11 @@ export function installTerminalGestures(
       store.terminalScrollReason(terminalId, presentation.mouseReporting)
     )
       return;
-    client
-      .call("terminal.scroll", {
-        terminal_id: terminalId,
-        ...scroll,
-        ...terminalCellAt(term, e),
-      })
-      .catch(() => {});
+    wheelScroll.push(terminalId, scroll, { x: e.clientX, y: e.clientY });
     cancelEvent(e);
   };
   container.addEventListener("wheel", onWheel, { ...capture, passive: false });
+  signal.addEventListener("abort", () => wheelScroll.dispose());
 
   const onTouchSelectionEscape = (event: KeyboardEvent) => {
     if (event.key !== "Escape" || !touch.active) return;

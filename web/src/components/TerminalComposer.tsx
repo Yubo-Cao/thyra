@@ -94,7 +94,6 @@ export function TerminalComposer({
   const { text, setText, submissionPending, uploadCount } =
     useTerminalComposerDraft(draftKey);
   const images = useComposerImages(draftKey);
-  const [composing, setComposing] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(
     () =>
@@ -253,10 +252,23 @@ export function TerminalComposer({
     }
   };
 
-  const submit = async (sendEnter: boolean) => {
-    if (composingRef.current) return;
+  const submit = async (sendEnter: boolean, commitComposition = false) => {
+    let draft = text;
+    if (composingRef.current) {
+      // The IME owns Enter while it composes; only the buttons commit.
+      if (!commitComposition) return;
+      // Android keyboards keep the word being typed in composition until a
+      // space follows. Leaving the field makes the IME commit it as shown.
+      const textarea = textareaRef.current;
+      textarea?.blur();
+      composingRef.current = false;
+      if (textarea) {
+        updateText(textarea);
+        draft = textarea.value;
+      }
+    }
     try {
-      await submitTerminalComposerDraft(draftKey, text, (draft) =>
+      await submitTerminalComposerDraft(draftKey, draft, (draft) =>
         onSubmit(draft, sendEnter),
       );
     } catch (error) {
@@ -274,7 +286,7 @@ export function TerminalComposer({
   };
 
   const busy = submissionPending || uploadCount > 0;
-  const submitDisabled = !text || busy || composing;
+  const submitDisabled = !text || busy;
   const hasShortcuts = shortcutRows.some((row) =>
     row.some((shortcut) => shortcut !== null),
   );
@@ -357,11 +369,9 @@ export function TerminalComposer({
           }
           onCompositionStart={() => {
             composingRef.current = true;
-            setComposing(true);
           }}
           onCompositionEnd={() => {
             composingRef.current = false;
-            setComposing(false);
           }}
           onPaste={(e) => {
             const images = clipboardImageFiles(e.clipboardData);
@@ -489,7 +499,7 @@ export function TerminalComposer({
             aria-label={t("Insert draft into the terminal")}
             disabled={submitDisabled}
             onMouseDown={keepTextareaFocus}
-            onClick={() => void submit(false)}
+            onClick={() => void submit(false, true)}
           >
             <CornerDownRight size={14} />
             {t("Insert")}
@@ -504,7 +514,7 @@ export function TerminalComposer({
             aria-label={t("Send draft to the terminal")}
             disabled={submitDisabled}
             onMouseDown={keepTextareaFocus}
-            onClick={() => void submit(true)}
+            onClick={() => void submit(true, true)}
           >
             <CornerDownLeft size={14} />
             {t("Send")}

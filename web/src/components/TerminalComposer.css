@@ -15,9 +15,9 @@
       calc(12px + env(safe-area-inset-bottom, 0px))
       calc(8px + env(safe-area-inset-left, 0px));
     border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    /* In flow, so only the app background shows through: no backdrop blur,
+       which the terminal drawing next to it would redo on every frame. */
     background: color-mix(in srgb, var(--panel) 86%, transparent);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
 
   .terminal-composer-input {

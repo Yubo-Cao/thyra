@@ -47,13 +47,17 @@ export function isEditableElement(target: EventTarget | null) {
   return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
+// Terminal frames decode through here; a non-streaming decoder keeps no state
+// between calls, so one serves every frame.
+const utf8Decoder = new TextDecoder();
+
 /** Decodes base64 UTF-8 text; null when it is not valid base64. */
 export function b64toText(b64: string): string | null {
   try {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
+    return utf8Decoder.decode(bytes);
   } catch {
     return null;
   }
@@ -63,4 +67,39 @@ export function bytesToB64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return btoa(s);
+}
+
+/**
+ * Runs `run` at most once per animation frame however often `request` is
+ * called. `flush` runs a pending request now; `cancel` drops it.
+ */
+export function frameCoalescer(
+  run: () => void,
+  schedule: (callback: () => void) => number = (callback) =>
+    requestAnimationFrame(callback),
+  unschedule: (handle: number) => void = (handle) =>
+    cancelAnimationFrame(handle),
+) {
+  let handle: number | null = null;
+  const fire = () => {
+    handle = null;
+    run();
+  };
+  return {
+    request() {
+      if (handle === null) handle = schedule(fire);
+    },
+    flush() {
+      if (handle === null) return;
+      unschedule(handle);
+      fire();
+    },
+    cancel() {
+      if (handle !== null) unschedule(handle);
+      handle = null;
+    },
+    get pending() {
+      return handle !== null;
+    },
+  };
 }

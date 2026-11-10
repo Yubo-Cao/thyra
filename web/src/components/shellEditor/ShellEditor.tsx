@@ -19,9 +19,11 @@ import { editorMayTakeFocus } from "../../localEditorPolicy";
 import { useHighLatency } from "../../latencyAuto";
 import { useShellEditorMode } from "../../shellEditorPreferences";
 import { useStoreSelector } from "../../store";
+import { frameCoalescer } from "../../utils";
 import type { PromptEditorControl } from "../promptEditor/PromptEditor";
 import {
   measureTerminal,
+  sameTerminalMetrics,
   type TerminalMetrics,
   useEditorSpan,
   type EditorSpan,
@@ -190,6 +192,12 @@ export function ShellEditor({
     };
   }, [client, paneId, attachEpoch]);
   useEffect(() => {
+    // While the editor is off nothing reads the geometry: a write only
+    // retires a command still shown as pending.
+    if (!enabled) {
+      const parsed = term.onWriteParsed(() => setPending(null));
+      return () => parsed.dispose();
+    }
     const measure = () => {
       const buffer = term.buffer.active;
       const measured = measureTerminal(
@@ -197,29 +205,34 @@ export function ShellEditor({
         root.current?.parentElement ?? null,
       );
       if (measured) measured.top += lifted.current;
-      setMetrics(measured);
+      setMetrics((current) =>
+        sameTerminalMetrics(current, measured) ? current : measured,
+      );
       setRow(buffer.baseY + buffer.cursorY - buffer.viewportY);
       setCol(buffer.cursorX);
       setAtBottom(
         buffer.viewportY === buffer.baseY && buffer.type !== "alternate",
       );
     };
+    // Measuring forces layout: once per frame, however much output arrives.
+    const frame = frameCoalescer(measure);
     measure();
     const parsed = term.onWriteParsed(() => {
-      measure();
+      frame.request();
       setPending(null);
     });
     const resized = term.onResize(measure);
-    const scroll = term.onScroll(measure);
+    const scroll = term.onScroll(frame.request);
     const observer = new ResizeObserver(measure);
     observer.observe(term.element);
     return () => {
+      frame.cancel();
       parsed.dispose();
       resized.dispose();
       scroll.dispose();
       observer.disconnect();
     };
-  }, [term]);
+  }, [enabled, term]);
   useEffect(() => {
     if (!visible) return;
     const refresh = () =>

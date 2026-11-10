@@ -6,12 +6,16 @@
 // and pastes reach the pane in the order they were typed.
 
 import type { TerminalKey } from "../../shared/terminalKey";
+import { bytesToB64 } from "./utils";
 
 const MAX_BATCH_BYTES = 64 * 1024;
 const MAX_BATCH_KEYS = 256;
 
 export type TerminalInput = Uint8Array | TerminalKey[];
-type Group = { bytes: Uint8Array[]; size: number } | { keys: TerminalKey[] };
+type Group =
+  | { bytes: Uint8Array[]; size: number }
+  | { keys: TerminalKey[] }
+  | { task: () => Promise<unknown> };
 
 function isLoneEscape(group: Group): boolean {
   return (
@@ -74,9 +78,38 @@ export class TerminalInputBatcher {
     }
   }
 
+  /**
+   * Runs another call for the same pane (a paste, a composer send) in its
+   * typing order: after everything already queued, before anything typed
+   * later. Settles with the task's own result.
+   */
+  run<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const start = async () => {
+        try {
+          resolve(await task());
+        } catch (error) {
+          reject(error);
+        }
+      };
+      if (this.inflight) this.queue.push({ task: start });
+      else this.start(start);
+    });
+  }
+
   private dispatch(input: TerminalInput): void {
+    this.start(() => this.sendNow(input));
+  }
+
+  private start(call: () => Promise<unknown>): void {
     this.inflight = true;
-    this.sendNow(input)
+    let pending: Promise<unknown>;
+    try {
+      pending = call();
+    } catch (error) {
+      pending = Promise.reject(error);
+    }
+    pending
       .catch(() => {})
       .finally(() => {
         this.inflight = false;
@@ -85,7 +118,65 @@ export class TerminalInputBatcher {
           this.idle();
           return;
         }
-        this.dispatch("keys" in next ? next.keys : concat(next.bytes));
+        if ("task" in next) this.start(next.task);
+        else this.dispatch("keys" in next ? next.keys : concat(next.bytes));
       });
   }
+}
+
+/** The part of a connection client the input queue needs. */
+export type TerminalInputClient = {
+  readonly connectionId: string;
+  readonly generation: number;
+  call(method: string, params?: Record<string, unknown>): Promise<unknown>;
+};
+
+const queues = new Map<string, TerminalInputBatcher>();
+
+function terminalInputQueue(
+  client: TerminalInputClient,
+  terminalId: string,
+): TerminalInputBatcher {
+  // Keyed by connection generation and terminal, not client object: wrapper
+  // clients are recreated across renders and must share one ordered queue.
+  const key = `${client.connectionId}\0${client.generation}\0${terminalId}`;
+  let queue = queues.get(key);
+  if (!queue) {
+    queue = new TerminalInputBatcher(
+      (batch) =>
+        Array.isArray(batch)
+          ? client.call("terminal.key", {
+              terminal_id: terminalId,
+              keys: batch,
+            })
+          : client.call("terminal.input", {
+              terminal_id: terminalId,
+              data: bytesToB64(batch),
+            }),
+      () => queues.delete(key),
+    );
+    queues.set(key, queue);
+  }
+  return queue;
+}
+
+/** Sends typed bytes or semantic keys through the terminal's ordered queue. */
+export function queueTerminalInput(
+  client: TerminalInputClient,
+  input: TerminalInput,
+  terminalId: string,
+): void {
+  terminalInputQueue(client, terminalId).send(input);
+}
+
+/**
+ * Runs `task` (a paste or composer call for the same pane) in the terminal's
+ * ordered queue, so it cannot overtake keys typed before it on a slow link.
+ */
+export function queueTerminalCall<T>(
+  client: TerminalInputClient,
+  terminalId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  return terminalInputQueue(client, terminalId).run(task);
 }

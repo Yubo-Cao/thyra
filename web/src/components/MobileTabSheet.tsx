@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { workspaceCan } from "../capabilities";
 import { t } from "../i18n";
 import { store, useStoreSelector, useEndpointCreationReason } from "../store";
+import { selectPanesWithoutActivity } from "../agentOrder";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { PanePresence } from "./PanePresence";
 import { summarizeTabAgents } from "./agentSession";
@@ -28,7 +29,7 @@ export function MobileTabSheet({
 }) {
   const s = useStoreSelector(
     useShallow((state) => ({
-      panes: state.panes,
+      panes: selectPanesWithoutActivity(state),
       tabs: state.tabs,
       workspaces: state.workspaces,
     })),

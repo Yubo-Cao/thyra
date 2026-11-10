@@ -22,6 +22,7 @@
   z-index: 2;
   margin: 0 -2px;
   cursor: col-resize;
+  touch-action: none;
   background: linear-gradient(
     90deg,
     transparent calc(50% - 0.5px),
@@ -542,7 +543,9 @@
     z-index: 73;
     display: inline-flex;
     --button-height: 42px;
-    --button-bg: color-mix(in srgb, var(--panel) 76%, transparent);
+    /* Floats over the terminal canvas: a dense tint instead of a backdrop
+       blur, which would re-blur on every frame the terminal draws. */
+    --button-bg: color-mix(in srgb, var(--panel) 92%, transparent);
     box-shadow: var(--shadow-lg);
     transform: translate3d(0, 0, 0) scale(1);
     transform-origin: right bottom;
@@ -552,8 +555,6 @@
       background 120ms ease,
       border-color 120ms ease,
       transform 180ms ease;
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
 
   .mobile-workspace-shortcut.button[aria-pressed="true"],

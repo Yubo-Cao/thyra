@@ -33,15 +33,27 @@ export async function action<T>(
   try {
     value = await fn(activeLease);
   } catch (error) {
-    if (!leaseIsCurrent(activeLease)) return undefined;
     const failure = error as Error;
+    const failureNotice = options.failureNotice?.(failure) ?? null;
+    if (!leaseIsCurrent(activeLease)) {
+      // The connection dropped under the action. Its progress notice belongs
+      // to no connection now and nothing else would ever end it.
+      settleLoadingNotice(activeLease, failureNotice);
+      return undefined;
+    }
+    const ownsNotice = loadingNoticeIsShown(activeLease);
+    loadingNotices.delete(activeLease);
     setForConnection(activeLease, {
       error: failure.message,
-      notice: options.failureNotice?.(failure) ?? state.notice,
+      notice: failureNotice ?? (ownsNotice ? null : state.notice),
     });
     return undefined;
   }
-  if (!leaseIsCurrent(activeLease)) return undefined;
+  if (!leaseIsCurrent(activeLease)) {
+    settleLoadingNotice(activeLease, null);
+    return undefined;
+  }
+  loadingNotices.delete(activeLease);
   if (options.refresh === "immediate") {
     void refreshNow(activeLease);
   } else if (options.refresh !== "none") {
@@ -50,7 +62,30 @@ export async function action<T>(
   return value;
 }
 
+/** The progress notice each running action last published, by notice id. */
+const loadingNotices = new WeakMap<StoreConnectionLease, number>();
+
+function loadingNoticeIsShown(lease: StoreConnectionLease): boolean {
+  const id = loadingNotices.get(lease);
+  return id !== undefined && !!state.notice?.loading && state.notice.id === id;
+}
+
+/** Replace an action's progress notice, if it is still the one on screen. */
+function settleLoadingNotice(
+  lease: StoreConnectionLease,
+  replacement: Notice | null,
+) {
+  const shown = loadingNoticeIsShown(lease);
+  loadingNotices.delete(lease);
+  if (shown) set({ notice: replacement });
+}
+
 /** Publish a notice for the action's connection, if it is still active. */
 export function noticeFor(lease: StoreConnectionLease, notice: Notice | null) {
-  return setForConnection(lease, { notice });
+  const published = setForConnection(lease, { notice });
+  if (!published) return false;
+  const id = notice?.loading ? state.notice?.id : undefined;
+  if (id === undefined) loadingNotices.delete(lease);
+  else loadingNotices.set(lease, id);
+  return true;
 }

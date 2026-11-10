@@ -144,3 +144,29 @@ export function keysymOf(char: string): number {
     ? code
     : 0x01000000 + code;
 }
+
+/**
+ * What to type so remote text that shows `previous` (an IME's composition so
+ * far) shows `next`: how many characters to delete, then the text to add.
+ */
+export function compositionEdit(
+  previous: string,
+  next: string,
+): { backspaces: number; text: string } {
+  const before = Array.from(previous);
+  const after = Array.from(next);
+  let common = 0;
+  while (
+    common < before.length &&
+    common < after.length &&
+    before[common] === after[common]
+  )
+    common++;
+  return {
+    backspaces: before.length - common,
+    text: after.slice(common).join(""),
+  };
+}
+
+/** Consecutive failed status polls tolerated before the display is dropped. */
+export const AGENT_BROWSER_POLL_MISSES = 3;

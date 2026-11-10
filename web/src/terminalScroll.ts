@@ -42,6 +42,82 @@ export function terminalWheelScroll(
   };
 }
 
+export type TerminalWheelRequest = TerminalWheelScroll & {
+  terminal_id: string;
+  column?: number;
+  row?: number;
+};
+
+type WheelPoint = { x: number; y: number };
+
+/**
+ * Coalesces wheel scrolls into one request per animation frame: a trackpad
+ * fires far more wheel events than frames. The first scroll of a burst goes
+ * out at once; those that follow within the frame add up and go out when it
+ * ends. Lines are summed per event, so the total equals what one request per
+ * event would have scrolled, and a change of direction, terminal or pointer
+ * position sends what is pending first so requests keep their order. The
+ * cell under the pointer is measured once per request, not per event.
+ */
+export function createWheelScrollBatcher(
+  send: (request: TerminalWheelRequest) => void,
+  cellAt: (point: WheelPoint) => { column?: number; row?: number },
+  schedule: (callback: () => void) => number = (callback) =>
+    requestAnimationFrame(callback),
+  unschedule: (handle: number) => void = (handle) =>
+    cancelAnimationFrame(handle),
+) {
+  let pending: {
+    terminalId: string;
+    scroll: TerminalWheelScroll;
+    point: WheelPoint;
+  } | null = null;
+  let frame: number | null = null;
+  const sendPending = () => {
+    const request = pending;
+    pending = null;
+    if (request)
+      send({
+        terminal_id: request.terminalId,
+        ...request.scroll,
+        ...cellAt(request.point),
+      });
+  };
+  const onFrame = () => {
+    frame = null;
+    if (!pending) return;
+    sendPending();
+    // Scrolling goes on: keep to one request per frame.
+    frame = schedule(onFrame);
+  };
+  return {
+    push(terminalId: string, scroll: TerminalWheelScroll, point: WheelPoint) {
+      if (
+        pending &&
+        (pending.terminalId !== terminalId ||
+          pending.scroll.direction !== scroll.direction ||
+          pending.point.x !== point.x ||
+          pending.point.y !== point.y)
+      )
+        sendPending();
+      if (pending) {
+        pending.scroll.lines += scroll.lines;
+        return;
+      }
+      pending = { terminalId, scroll: { ...scroll }, point };
+      if (frame !== null) return;
+      sendPending();
+      frame = schedule(onFrame);
+    },
+    /** Sends what is pending and stops the frame loop. */
+    dispose() {
+      if (frame !== null) unschedule(frame);
+      frame = null;
+      sendPending();
+    },
+  };
+}
+
 /** Full pages let Herdr route the key; half pages explicitly scroll history. */
 export function terminalPageScroll(
   direction: "up" | "down",

@@ -121,6 +121,32 @@ export function sanitizeTerminalHttpUrl(raw: string): string | null {
   }
 }
 
+/**
+ * The web destination of an OSC 8 hyperlink, or null when it must not open.
+ * The terminal delimits an OSC 8 URI, so unlike a URL found in prose it is
+ * taken whole (an apostrophe or other punctuation is part of it) and only
+ * checked: http(s), a host, no whitespace or control characters. Returns the
+ * parsed URL's normalized form, which is what a browser would open.
+ */
+export function terminalHyperlinkUrl(raw: string): string | null {
+  if (
+    !HTTP_URL_PREFIX_RE.test(raw) ||
+    /[\s\u0000-\u001f\u007f-\u009f]/.test(raw)
+  )
+    return null;
+  try {
+    const parsed = new URL(raw);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname
+    )
+      return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 // Return exact spans instead of one greedy regex match. This lets a URL keep
 // Unicode path characters while stopping at Unicode prose punctuation and
 // still finds another URL immediately after that delimiter.

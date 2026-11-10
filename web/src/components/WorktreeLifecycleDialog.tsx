@@ -138,7 +138,12 @@ export function WorktreeLifecycleDialog({
           const worktreeList = (await connectionClient.call("worktree.list", {
             workspace_id: repositoryWorkspaceId,
           })) as WorktreeList;
-          if (!connectionClient.isCurrent()) return;
+          // A forced reload or another workspace's list superseded this one.
+          if (
+            !connectionClient.isCurrent() ||
+            currentRequest !== requestId.current
+          )
+            return;
           setListResult({
             workspaceId: repositoryWorkspaceId,
             list: worktreeList,

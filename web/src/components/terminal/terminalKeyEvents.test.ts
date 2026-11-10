@@ -8,6 +8,7 @@ import {
 import {
   type TerminalKeyContext,
   type TerminalKeyEventLike,
+  clearStaleInputText,
   terminalKeyFromEvent,
 } from "./terminalKeyEvents";
 
@@ -223,5 +224,17 @@ describe("terminalKeyFromEvent", () => {
     expect(
       terminalKeyFromEvent(key("Unidentified", "", { keyCode: 0 }), linux),
     ).toBeNull();
+  });
+});
+
+describe("clearStaleInputText", () => {
+  test("empties a text field and ignores anything else", () => {
+    const textarea = { tagName: "TEXTAREA", value: "left over" };
+    clearStaleInputText(textarea);
+    expect(textarea.value).toBe("");
+    const canvas = { tagName: "CANVAS", value: "kept" };
+    clearStaleInputText(canvas);
+    expect(canvas.value).toBe("kept");
+    expect(() => clearStaleInputText(null)).not.toThrow();
   });
 });

@@ -18,6 +18,7 @@ import {
   LazyPendingStatus,
 } from "./components/LazyBoundary";
 import { activePaneIdForSnapshot } from "./paneJump";
+import { selectPanesWithoutActivity } from "./agentOrder";
 import { type TaskNotificationTarget, store, useStoreSelector } from "./store";
 import {
   connectionClientScopeKey,
@@ -69,9 +70,10 @@ export default function App() {
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
-      lastRefresh: state.lastRefresh,
       layout: state.layout,
-      panes: state.panes,
+      // Nothing here reads activity timestamps; see selectPanesWithoutActivity.
+      panes: selectPanesWithoutActivity(state),
+      refreshed: state.lastRefresh > 0,
       recentPaneIds: state.recentPaneIds,
       selectedPaneId: state.selectedPaneId,
       status: state.status,

@@ -18,7 +18,9 @@
     gap: 3px;
     padding: 4px;
     border: 0;
-    background: color-mix(in srgb, var(--panel) 76%, transparent);
+    /* Floats over the terminal canvas: a dense tint instead of a backdrop
+       blur, which would re-blur on every frame the terminal draws. */
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
     box-shadow: var(--shadow-lg);
     transform: translate3d(0, 0, 0) scale(1);
     transform-origin: right bottom;
@@ -26,8 +28,6 @@
     transition:
       opacity 160ms ease,
       transform 180ms ease;
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
 
   .mobile-nav .button {
@@ -96,7 +96,9 @@
     gap: 3px;
     padding: 4px;
     border: 0;
-    background: color-mix(in srgb, var(--panel) 76%, transparent);
+    /* Floats over the terminal canvas: a dense tint instead of a backdrop
+       blur, which would re-blur on every frame the terminal draws. */
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
     box-shadow: var(--shadow-lg);
     transform: translate3d(0, 0, 0) scale(1);
     transform-origin: right bottom;
@@ -104,8 +106,6 @@
     transition:
       opacity 160ms ease,
       transform 180ms ease;
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
   }
 
   .mobile-nav.mobile-terminal-tools {
@@ -125,8 +125,6 @@
       max-width 180ms ease,
       opacity 160ms ease,
       transform 180ms ease;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
   }
 
   .mobile-composer-draft-dot {

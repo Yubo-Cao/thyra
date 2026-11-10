@@ -1,6 +1,6 @@
 import { workspaceCan } from "../capabilities";
 import { t } from "../i18n";
-import { agentStatusText } from "../agentOrder";
+import { agentStatusText, selectPanesWithoutActivity } from "../agentOrder";
 import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
 import { store, useStoreSelector, useEndpointCreationReason } from "../store";
 import { useEffect, useRef, useState } from "react";
@@ -75,7 +75,7 @@ export function TabBar({
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connectionGeneration: state.connectionGeneration,
-      panes: state.panes,
+      panes: selectPanesWithoutActivity(state),
       tabs: state.tabs,
       workspaces: state.workspaces,
     })),

@@ -4,7 +4,10 @@ import {
   terminalFrameRowUpdate,
   terminalFrameText,
 } from "../../shared/terminalFrame";
-import { TerminalFrameDecoder } from "./terminalFrameDecoder";
+import {
+  TERMINAL_RESYNC_RETRY_MS,
+  TerminalFrameDecoder,
+} from "./terminalFrameDecoder";
 
 const tail = "\x1b[?7h\x1b[0m\x1b[1;2H\x1b[2 q\x1b[?25h";
 
@@ -50,6 +53,28 @@ describe("TerminalFrameDecoder", () => {
     expect(decoder.decode({ frame_seq: 5, rows: ["z"], tail }).kind).toBe(
       "frame",
     );
+  });
+
+  test("asks again when the requested full frame never arrives", () => {
+    const decoder = new TerminalFrameDecoder();
+    const delta = (seq: number) => ({
+      frame_seq: seq,
+      base_seq: seq - 1,
+      changed: [[0, "x"]] as [number, string][],
+    });
+    decoder.decode({ frame_seq: 1, rows: ["a"], tail }, 0);
+    expect(decoder.decode(delta(3), 100)).toEqual({ kind: "resync" });
+    expect(
+      decoder.decode(delta(4), 100 + TERMINAL_RESYNC_RETRY_MS - 1),
+    ).toEqual({ kind: "none" });
+    const retryAt = 100 + TERMINAL_RESYNC_RETRY_MS;
+    expect(decoder.decode(delta(5), retryAt)).toEqual({ kind: "resync" });
+    // Each request gets its own wait.
+    expect(decoder.decode(delta(6), retryAt + 1)).toEqual({ kind: "none" });
+    expect(
+      decoder.decode({ frame_seq: 7, rows: ["z"], tail }, retryAt + 2).kind,
+    ).toBe("frame");
+    expect(decoder.decode(delta(8), retryAt + 3).kind).toBe("frame");
   });
 
   test("rejects rows outside the frame", () => {

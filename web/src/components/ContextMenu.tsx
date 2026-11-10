@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { t } from "../i18n";
 import type { Workspace } from "../types";
 import { store, useStoreSelector } from "../store";
+import { selectPanesWithoutActivity } from "../agentOrder";
 import {
   clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
@@ -62,7 +63,7 @@ export function ContextMenu({
   const connectionGeneration = useStoreSelector(
     (state) => state.connectionGeneration,
   );
-  const panes = useStoreSelector((state) => state.panes);
+  const panes = useStoreSelector(selectPanesWithoutActivity);
   const [opened, setOpened] = useState<Opened | null>(null);
   const close = () => setOpened(null);
   const openedId = (kind: Opened["kind"]) =>
