@@ -9,6 +9,7 @@ import {
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -27,6 +28,7 @@ import {
   type InspectorDock,
   type WorkspaceInspectorState,
 } from "../workspaceResource";
+import { editorUrl, editorWorkbench, openInEditor } from "./vscodeEditor";
 import { uploadWorkspaceFile } from "./workspaceFiles";
 import { Button } from "./ui/Button";
 import { CloseButton } from "./ui/CloseButton";
@@ -75,27 +77,6 @@ function syncEditorLocale(thyraLocale: ReturnType<typeof getLocale>) {
   }
 }
 
-function joinPath(root: string, path: string) {
-  if (path.startsWith("/")) return path;
-  return `${root.replace(/\/+$/, "")}/${path.replace(/^\.?\//, "")}`;
-}
-
-function editorUrl(folder: string, file?: InspectorFileRequest) {
-  const url = new URL("/vscode/", window.location.origin);
-  url.searchParams.set("folder", folder);
-  if (file) {
-    const target = `vscode-remote://${window.location.host}${joinPath(folder, file.path)}`;
-    url.searchParams.set(
-      "payload",
-      JSON.stringify([
-        ["openFile", file.line ? `${target}:${file.line}` : target],
-        ...(file.line ? [["gotoLineMode", "true"]] : []),
-      ]),
-    );
-  }
-  return `${url.pathname}${url.search}`;
-}
-
 /** The checkout, else the workspace's directory, else its focused pane's. */
 function checkoutRoot(workspace: Workspace | undefined, panes: Pane[]) {
   if (!workspace) return "";
@@ -119,29 +100,64 @@ function checkoutLabel(workspace?: Workspace) {
   );
 }
 
-/** One live VS Code per folder, the most recent first. */
+/**
+ * One live VS Code per folder, the most recent first. A file request opens
+ * in the folder's running editor, and reloads that editor with the file only
+ * when it cannot take the request.
+ */
 function useEditorFrames(folder: string, file?: InspectorFileRequest) {
   const [frames, setFrames] = useState<{ folder: string; src: string }[]>([]);
+  const elements = useRef(new Map<string, HTMLIFrameElement>());
   const fileNonce = useRef(0);
   useLayoutEffect(() => {
     if (!folder) return;
     const fresh = !!file && file.nonce !== fileNonce.current;
     if (file) fileNonce.current = file.nonce;
-    setFrames((current) => {
-      const existing = current.find((frame) => frame.folder === folder);
-      if (existing && !fresh && current[0] === existing) return current;
-      const next = {
-        folder,
-        // A new file request reloads that folder's editor with it open.
-        src: existing && !fresh ? existing.src : editorUrl(folder, file),
-      };
-      return [
-        next,
-        ...current.filter((frame) => frame.folder !== folder),
-      ].slice(0, MAX_EDITORS);
-    });
+    const show = (load: boolean) =>
+      setFrames((current) => {
+        const existing = current.find((frame) => frame.folder === folder);
+        if (existing && !load && current[0] === existing) return current;
+        const next = {
+          folder,
+          src:
+            existing && !load
+              ? existing.src
+              : editorUrl(window.location.origin, folder, file),
+        };
+        return [
+          next,
+          ...current.filter((frame) => frame.folder !== folder),
+        ].slice(0, MAX_EDITORS);
+      });
+    const workbench = fresh
+      ? editorWorkbench(elements.current.get(folder))
+      : null;
+    if (!file || !workbench) return show(fresh);
+    show(false);
+    let current = true;
+    void openInEditor(workbench, window.location.host, folder, file).then(
+      (opened) => {
+        if (!opened && current) show(true);
+      },
+    );
+    return () => {
+      current = false;
+    };
   }, [folder, file]);
-  return frames;
+  const bind = (folder: string) => (element: HTMLIFrameElement | null) => {
+    if (element) elements.current.set(folder, element);
+    else elements.current.delete(folder);
+  };
+  // Moving an iframe in the document reloads it, so the editors render in a
+  // fixed order whichever is the most recent.
+  const ordered = useMemo(
+    () =>
+      [...frames].sort((a, b) =>
+        a.folder < b.folder ? -1 : a.folder > b.folder ? 1 : 0,
+      ),
+    [frames],
+  );
+  return { frames: ordered, bind };
 }
 
 function UploadPanel({
@@ -214,7 +230,10 @@ export function WorkspaceInspectorHost({
   useLayoutEffect(() => {
     if (editorAvailable) syncEditorLocale(locale);
   }, [editorAvailable, locale]);
-  const frames = useEditorFrames(editorAvailable ? root : "", state.file);
+  const { frames, bind } = useEditorFrames(
+    editorAvailable ? root : "",
+    state.file,
+  );
 
   const upload = async (files: FileList | File[]) => {
     const list = [...files];
@@ -299,7 +318,13 @@ export function WorkspaceInspectorHost({
             <IconButton
               label={t("Open VS Code in a new tab")}
               icon={<ExternalLink size={15} />}
-              onClick={() => window.open(editorUrl(root), "_blank", "noopener")}
+              onClick={() =>
+                window.open(
+                  editorUrl(window.location.origin, root),
+                  "_blank",
+                  "noopener",
+                )
+              }
             />
           ) : null}
           <IconButton
@@ -363,6 +388,7 @@ export function WorkspaceInspectorHost({
           {frames.map((frame) => (
             <iframe
               key={frame.folder}
+              ref={bind(frame.folder)}
               className={`workspace-inspector-editor ${
                 frame.folder === root ? "" : "is-hidden"
               }`}

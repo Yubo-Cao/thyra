@@ -6,6 +6,11 @@ import {
   VSCODE_STATIC_CACHE_CONTROL,
 } from "./static-cache";
 import { asciiFontChunks, withThyraFonts } from "./workbench-html";
+import {
+  isHookedWorkbenchScript,
+  withHookedWorkbenchScript,
+  withWorkbenchHook,
+} from "./workbench-script";
 
 /**
  * The Inspector's editor: a VS Code Web server (`code serve-web
@@ -88,14 +93,24 @@ export function createVscodeProxy(options: {
 }) {
   const { upstream } = options;
   const target = (url: URL) => `${upstream}${url.pathname}${url.search}`;
-  const staticCache = createVscodeStaticCache({
-    load: (req, url) =>
-      fetch(target(url), {
-        headers: identityHeaders(req),
-        redirect: "manual",
-        decompress: false,
-      } as RequestInit),
-  });
+  /** A static file as VS Code has it; the workbench script gets its hook. */
+  const loadStatic = async (req: Request, url: URL) => {
+    const response = await fetch(target(url), {
+      headers: identityHeaders(req),
+      redirect: "manual",
+      decompress: false,
+    } as RequestInit);
+    if (
+      response.status !== 200 ||
+      response.headers.has("content-encoding") ||
+      !isHookedWorkbenchScript(url)
+    )
+      return response;
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    return new Response(withWorkbenchHook(await response.text()), { headers });
+  };
+  const staticCache = createVscodeStaticCache({ load: loadStatic });
 
   let fontPreloads: Promise<string[]> | null = null;
   const loadFontPreloads = () => {
@@ -132,14 +147,20 @@ export function createVscodeProxy(options: {
           status: cached.status,
           headers: framed(cached),
         });
-      response = await fetch(target(url), {
-        method: req.method,
-        headers: workbench ? identityHeaders(req) : upstreamHeaders(req),
-        body:
-          req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
-        redirect: "manual",
-        decompress: false,
-      } as RequestInit);
+      // The hooked script never goes out without its hook, cached or not.
+      response =
+        req.method === "GET" && isHookedWorkbenchScript(url)
+          ? await loadStatic(req, url)
+          : await fetch(target(url), {
+              method: req.method,
+              headers: workbench ? identityHeaders(req) : upstreamHeaders(req),
+              body:
+                req.method === "GET" || req.method === "HEAD"
+                  ? undefined
+                  : req.body,
+              redirect: "manual",
+              decompress: false,
+            } as RequestInit);
     } catch {
       return new Response("VS Code is unavailable", { status: 502 });
     }
@@ -159,10 +180,12 @@ export function createVscodeProxy(options: {
         return new Response("VS Code is unavailable", { status: 502 });
       }
       headers.delete("content-length");
-      return new Response(withThyraFonts(html, await loadFontPreloads()), {
-        status: 200,
-        headers,
-      });
+      return new Response(
+        withHookedWorkbenchScript(
+          withThyraFonts(html, await loadFontPreloads()),
+        ),
+        { status: 200, headers },
+      );
     }
     return new Response(response.body, {
       status: response.status,

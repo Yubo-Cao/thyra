@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+// An agent icon's SVG as inline markup (vite.agentIcons.ts).
+declare module "*.svg?agent-icon" {
+  const markup: string;
+  export default markup;
+}
+
 // restty's WASM core, shipped as its own asset (vite.restty.ts).
 declare module "virtual:restty-wasm" {
   const url: string;
