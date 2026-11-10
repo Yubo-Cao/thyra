@@ -399,6 +399,10 @@ export async function authorizeHttp(args: {
       ? { ok: true }
       : { ok: false, status: 403, message: "this needs the editor role" };
   }
+  // The policy and the route handler must read the same target: a repeated
+  // parameter means something different to each (last value, first value).
+  if (new Set(args.query.keys()).size !== [...args.query.keys()].length)
+    return { ok: false, status: 403, message: "repeated query parameter" };
   const decision = await authorizeTarget({
     principal,
     // Connection routes name it in the path; others in the query string.

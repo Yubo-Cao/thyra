@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { authorize } from "./authorize";
-import { HTTP_POLICY } from "./http-policy";
+import { authorizeHttp, HTTP_POLICY } from "./http-policy";
 import { DENIED_RPC_METHODS, RPC_POLICY } from "./policy";
 import {
   httpMatrix,
@@ -261,6 +261,25 @@ describe("authorization matrix", () => {
 
   test("HTTP decisions match the reviewed matrix", async () => {
     expect(await httpMatrix()).toEqual(HTTP_MATRIX);
+  });
+
+  test("a repeated query parameter cannot name two targets", async () => {
+    const decide = (query: string) =>
+      authorizeHttp({
+        route: "connection.file-download",
+        principal: PRINCIPALS.viewer,
+        connectionId: "c1",
+        query: new URLSearchParams(query),
+        deps: testDeps(),
+        editsConnection: () => false,
+      });
+    expect((await decide("workspace_id=w1&path=a")).ok).toBe(true);
+    // Handlers read the first value; the policy would read the last.
+    for (const query of [
+      "workspace_id=w1&scope=filesystem&scope=x&path=/etc/passwd",
+      "workspace_id=w2&workspace_id=w1&path=a",
+    ])
+      expect((await decide(query)).ok).toBe(false);
   });
 });
 
