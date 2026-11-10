@@ -6,6 +6,12 @@ declare module "virtual:restty-wasm" {
   export default url;
 }
 
+// The WOFF2 decoder's Brotli dictionary, a lazy chunk (vite.brotli.ts).
+declare module "virtual:thyra-brotli-dictionary" {
+  const bytes: Uint8Array;
+  export default bytes;
+}
+
 // noVNC ships untyped ES modules; only the RFB client the agent browser uses.
 declare module "@novnc/novnc" {
   export default class RFB extends EventTarget {

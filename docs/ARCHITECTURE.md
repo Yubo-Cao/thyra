@@ -198,7 +198,9 @@ The engine loads in parallel with the first attach: its JavaScript (about 0.24 M
 Until it draws, the latest screen shows as text in the bundled font and already takes input: hardware keys go through the semantic key path, paste through Thyra's handler, and on-screen keyboard or IME text through the byte path.
 That preview keeps the SGR colours and emphasis and is spaced to the grid's cells; it covers the canvas and goes inside the frame where the engine first draws everything it shows, so the swap neither blanks nor moves the text.
 Startup warmups and the service worker's precache wait for the engine and the first frame (up to three minutes), so they never share a slow link with either; the worker itself takes control at the first frame, so the engine and fonts the page loads next are cached as they arrive.
-It shapes text from font files: only the regular Latin slices gate the first frame; slices for other characters on screen follow it (the text preview stays up until they arrive), and bold, italic and the full stylesheet wait for startup to settle (`terminalFonts.ts`).
+It shapes text from font files: only the regular Latin slices gate the first frame; slices for other characters on screen follow it (the text preview stays up until they arrive), and bold, italic and the CSS faces of the other slices wait for startup to settle (`terminalFonts.ts`).
+The core slices are listed in `shared/terminalFontStylesheet.ts`; the rest are resolved through a compact slice manifest (`shared/terminalFontManifest.ts`, generated beside the stylesheets by `scripts/build-terminal-font.ts`) that is fetched once, when a character outside the core first appears, and shared by every terminal.
+The same manifest declares the CSS faces (`FontFace`), so the app never loads the full `@font-face` stylesheet; the embedded editor still links it.
 Coverage fonts follow, loaded as their characters appear (`scripts/build-terminal-emoji-font.py`): emoji and symbols or scripts the bundled font lacks draw with the browser's own fonts, emoji in color, the rest in the cell's color; a text-default symbol draws in color only with U+FE0F ("❤️").
 The grid before the engine loads uses the bundled font's nominal metrics, which match the engine's, so loading never changes `cols`/`rows`.
 A font preset (`appearance.ts`) is self-hosted under `/assets/fonts/presets/` (`scripts/build-terminal-font-presets.py`) and leads the engine's font list, with the bundled font behind it for what it lacks; there is no Local Font Access path.
@@ -436,7 +438,11 @@ with a `payload=[["openFile", "vscode-remote://<host><path>"]]` query.
 ## Filesystem browsing
 
 Workspace scope is checkout-relative and lexically confined: `..` escapes are
-rejected, while explicit symlinks inside the checkout may be followed. Each
+rejected, while explicit symlinks inside the checkout may be followed.
+`file.read` and `file.resolve` are the exception: in workspace scope they also
+take an absolute host path (file references in terminal output and Markdown
+open this way), for every role that may read the workspace's files, share-link
+guests included ([trust model](../SECURITY.md#trust-model)). Each
 filesystem request explicitly sends `scope: "filesystem"` with an absolute host
 path or `~`/`~/...`; the bridge expands `~` with the runtime host's home (the
 bridge user locally, the remote shell's `$HOME` over SSH, cached per host), and
@@ -446,7 +452,8 @@ for the page session only, and retired responses cannot replace a new view.
 Search filters loaded entries only.
 
 `file.list`, `file.read`, download, upload, delete, and `file.mkdir` accept both
-scopes. Upload targets an explicit directory; delete and `file.mkdir` target an
+scopes. Upload targets an explicit directory and accepts files up to 128 MiB,
+refused from `Content-Length` or while the body streams; delete and `file.mkdir` target an
 entry inside an existing parent. `file.mkdir` takes `kind: "directory" | "file"`,
 creates one empty entry, and fails when the name exists. Deleting the checkout
 root, a filesystem root, or the host home directory itself is refused.
@@ -768,16 +775,16 @@ Everything under `/assets/` is content-addressed; never write an unfingerprinted
 Because those files are public open-source bundles with identical bytes and `ETag` on both listeners, Cloudflare caches them for the public listener (see [Cloudflare edge caching](./DEPLOYMENT.md#cloudflare-edge-caching)); the primary listener routes them (`static.asset` in `http-policy.ts`) before authentication, so tailnet login sets its cookie on navigations, API calls and the WebSocket upgrade only.
 Revalidated files carry a strong per-encoding `ETag`, so revalidation costs a `304`.
 Text files of at least 1 KiB are sent as Brotli (quality 11) or else gzip with `Vary: Accept-Encoding`, compressed once per file version off the event loop.
-At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure, the terminal engine and font stylesheets) before the first request.
+At startup the bridge compresses the entry document's assets and the build's `boot` list (the terminal view's static closure, the terminal engine with its Brotli dictionary chunk, and the font stylesheets and slice manifest) before the first request.
 
-The first screen downloads only the entry and the terminal view's closure; the page opens its WebSocket before rendering, so the socket does not queue behind those chunks for a browser's six HTTP/1.1 connections.
-Everything else waits for the terminal engine and the first terminal output (`startupGate.ts`): bold and italic font slices, the full font stylesheet (CJK and icon chunks) when idle, warmups, prefetches and the service worker's precache.
+The first screen downloads only the entry and the terminal view's closure (its chunk, plus one `terminal-shared` chunk for the small modules lazy surfaces also use), which the app document itself starts beside the entry through an inline preload script that skips `/admin`; the page opens its WebSocket before rendering, so the socket does not queue behind those chunks for a browser's six HTTP/1.1 connections.
+Everything else waits for the terminal engine and the first terminal output (`startupGate.ts`): bold and italic font slices, the CSS faces of the CJK and icon slices when idle, warmups, prefetches and the service worker's precache.
 The gate's fallback for output that never comes starts only once a terminal attach has completed, so it cannot expire while the terminal code is still downloading.
 Zstandard and compression dictionaries are not offered: WebKit supports neither, and quality-11 Brotli is smaller than zstd for these bundles.
 
 The build splits long-lived vendor code into `vendor-react`, the lazy `vendor-terminal` (the terminal engine), `vendor-ui` (only UI-library modules the entry loads eagerly) and the lazy `vendor-aria` (React Aria for overlays) chunks, so an app-only update does not re-download them (`web/vite.chunks.ts`).
 Chunks that import from the entry still change with it.
-It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the terminal engine and its WASM core, and the core font stylesheet with its regular and bold slices.
+It also writes `thyra-assets.json` with a build `version`, every file under `/assets/`, the `boot` list, and the `precache` list: the entry and terminal closures, the terminal engine and its WASM core, the core font stylesheet with its regular and bold slices, and the font slice manifest.
 
 ### Service worker
 
@@ -786,7 +793,10 @@ The worker holds no build-specific code, so a deploy does not replace it; it fol
 Once active it claims open pages; the page then asks it to copy the assets it loaded before control from the HTTP cache (`only-if-cached`, falling back to `force-cache` because WebKit can miss a file it has just loaded); once startup settles the worker downloads the rest of the build's `precache` list one file at a time (through the HTTP cache).
 - `/assets/*` GETs without a query or `Range` are cache-first in `thyra-assets-v1`; misses are cached on first use, and a page request joins a precache download of the same file.
   Only `200` same-origin, non-redirected, non-HTML responses marked `immutable` are stored.
-- Navigations to `/` or `/index.html` without a query are network-first: the network response (including login redirects and errors) is returned unchanged, and the cached shell in `thyra-shell-v1` answers only when the network fails or has not answered within 4 seconds.
+- Navigations to `/` or `/index.html` without a query are stale-while-revalidate: the cached shell in `thyra-shell-v1` answers at once when the files it loads (entry script, stylesheet) are in `thyra-assets-v1`, and the network response replaces it for the next load.
+  A build deployed in between therefore starts one load later, or on the reload described under [Deploys and open pages](#deploys-and-open-pages).
+  When the network answers such a navigation with a redirect, `401` or `403` (signed out, or the app moved), the worker deletes the cached shell and navigates the window again so the network's answer applies; other errors and a missing network leave the cached shell in place.
+  Without a cached shell the network response is returned unchanged; a cached shell whose files are not all cached answers only when the network fails or has not answered within 4 seconds.
   Only `200` same-origin, non-redirected HTML is stored as the shell.
 - Every other request (API routes, `/ws`, `/login`, `/enroll`, `/s/` share pages, navigations with a query, file previews, non-GET methods) bypasses the worker.
 - When the stored shell changes, the worker fetches `/thyra-assets.json` and deletes cached assets used by neither the new build nor the two builds before it.
@@ -798,7 +808,7 @@ A warm load therefore transfers only the entry document (or its `304`), revalida
 
 The hello carries `web_entry`, the entry script of the build the bridge serves.
 A deploy restarts the bridge, so every open page reconnects; one whose own entry script differs shows a "new version" toast with **Reload page** instead of reloading by itself (an in-app update, which restarts and reloads on its own, is excluded).
-It also asks the worker to prepare the update: the worker stores the new shell, so the reload starts the new build even when the network is slower than the shell timeout, and precaches the new build's `precache` list in the background.
+It also asks the worker to prepare the update: the worker stores the new shell, so the reload starts the new build from the cache, and precaches the new build's `precache` list in the background.
 
 A page left running on an older build must still be able to lazy-load its chunks.
 The worker keeps the cached assets of the two builds before the current one, and the bridge answers `/assets/` misses from an on-disk archive (`server/src/http/asset-archive.ts`): after each start it copies the running build's files there (existing names are skipped) and keeps the newest five builds.

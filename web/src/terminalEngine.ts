@@ -6,12 +6,13 @@ import { TerminalLinkHover } from "./terminalLinkHover";
 import { afterStartup, holdStartup } from "./startupGate";
 import { redirectScreenFocus } from "./terminalFocus";
 import {
+  addTerminalFontFaces,
   addTerminalFontStylesheets,
   sortTerminalFontChunks,
   type TerminalFontChunk,
   type TerminalFontData,
   terminalFontChunksFor,
-  terminalCoreCovers,
+  terminalCoreCoversCodePoint,
   terminalCoreFontManifest,
   terminalFontData,
   terminalFontManifest,
@@ -482,11 +483,25 @@ async function compileTerminalCore(): Promise<WebAssembly.Module> {
   }
 }
 
+/** Whether the browser decodes Brotli itself, as the font decoder prefers. */
+function nativeBrotli() {
+  try {
+    new DecompressionStream("brotli" as CompressionFormat);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Starts fetching the engine, its WASM core in parallel; safe to call early. */
 export function loadTerminalEngine(): Promise<EngineModules> {
   engineModules ??= (async () => {
     const core = compileTerminalCore();
     core.catch(() => {});
+    // The engine's own WOFF2 decoder needs its dictionary (a separate chunk,
+    // vite.brotli.ts) before the first font; fetch it beside the engine.
+    if (import.meta.env.PROD && !nativeBrotli())
+      void import("virtual:thyra-brotli-dictionary").catch(() => {});
     const [restty, internal] = await Promise.all([
       import("restty/internal/runtime"),
       import("./terminalEngineInternals"),
@@ -511,7 +526,9 @@ export function loadTerminalEngine(): Promise<EngineModules> {
 
 /** Bundled chunks the screen has needed so far, shared by every terminal. */
 const neededChunks = new Set<TerminalFontChunk>();
-const seenCodePoints = new Set<number>();
+// Code points already looked at: a bit each for the BMP, a set beyond it.
+const seenBmp = new Uint8Array(0x2000);
+const seenAstral = new Set<number>();
 // Characters outside the core slices, waiting for the full manifest.
 let unresolved = "";
 const fontListeners = new Set<() => void>();
@@ -529,48 +546,60 @@ function resolveLateFonts(): Promise<void> {
   const text = unresolved;
   unresolved = "";
   return terminalFontManifest().then((chunks) => {
+    const known = neededChunks.size;
     for (const chunk of terminalFontChunksFor(chunks, text, new Set()))
       neededChunks.add(chunk);
-    notifyFonts();
-  });
-}
-
-function noteScreenText(text: string) {
-  if (!/[^\x00-\x7f]/.test(text)) return;
-  let fresh = "";
-  for (const char of text) {
-    const codePoint = char.codePointAt(0)!;
-    if (codePoint < 0x80 || seenCodePoints.has(codePoint)) continue;
-    seenCodePoints.add(codePoint);
-    fresh += char;
-  }
-  if (!fresh) return;
-  void terminalCoreFontManifest().then((core) => {
-    for (const char of fresh) {
-      if (terminalCoreCovers(core, char)) continue;
-      unresolved += char;
-    }
-    // Before the engine has drawn, the slices wait so the first frame needs
-    // only the core; afterwards they load as they appear.
-    if (lateFonts) void resolveLateFonts();
+    // Terminals reload their fonts only for a chunk they do not have yet.
+    if (neededChunks.size !== known) notifyFonts();
   });
 }
 
 /**
+ * Notes the characters of output (every write, so ASCII and characters seen
+ * before cost a comparison or a bit test each) and queues the new ones the
+ * core slices lack.
+ */
+function noteScreenText(text: string) {
+  let fresh = "";
+  for (let index = 0; index < text.length; index++) {
+    let code = text.charCodeAt(index);
+    if (code < 0x80) continue;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      code = text.codePointAt(index)!;
+      if (code > 0xffff) index++;
+    }
+    if (code > 0xffff) {
+      if (seenAstral.has(code)) continue;
+      seenAstral.add(code);
+    } else {
+      const bit = 1 << (code & 7);
+      if (seenBmp[code >> 3]! & bit) continue;
+      seenBmp[code >> 3]! |= bit;
+    }
+    if (!terminalCoreCoversCodePoint(code)) fresh += String.fromCodePoint(code);
+  }
+  if (!fresh) return;
+  unresolved += fresh;
+  // Before the engine has drawn, the slices wait so the first frame needs
+  // only the core; afterwards they load as they appear.
+  if (lateFonts) void resolveLateFonts();
+}
+
+/**
  * After the first frame: bold and italic faces, slices for what is on screen,
- * and (when idle) the full stylesheet for DOM text over the terminal.
+ * and (when idle) the CSS faces of every slice for DOM text over the terminal.
  */
 function startLateFonts(): Promise<void> {
-  lateFonts ??= terminalCoreFontManifest().then(async (core) => {
-    await resolveLateFonts();
-    // Bold, italic and the full stylesheet wait for startup to settle (the
-    // first frame is in) and an idle moment.
+  lateFonts ??= resolveLateFonts().then(() => {
+    // Bold, italic and the CSS faces wait for startup to settle (the first
+    // frame is in) and an idle moment.
     afterStartup(() => {
       const load = () => {
-        for (const chunk of core) if (chunk.core) neededChunks.add(chunk);
+        for (const chunk of terminalCoreFontManifest())
+          if (chunk.core) neededChunks.add(chunk);
         presetDownloads = true;
         notifyFonts();
-        void terminalFontManifest();
+        void addTerminalFontFaces();
       };
       if ("requestIdleCallback" in window)
         requestIdleCallback(load, { timeout: 5000 });
@@ -590,14 +619,12 @@ function startLateFonts(): Promise<void> {
  * this page or the service worker's cache.
  */
 async function engineFonts(preset: string, coverage: boolean) {
-  const [chunks, presetFaces] = await Promise.all([
-    terminalCoreFontManifest(),
-    preset
-      ? import("./terminalFontPresets").then((presets) =>
-          presets.terminalPresetFontData(preset, presetDownloads),
-        )
-      : [],
-  ]);
+  const chunks = terminalCoreFontManifest();
+  const presetFaces = preset
+    ? await import("./terminalFontPresets").then((presets) =>
+        presets.terminalPresetFontData(preset, presetDownloads),
+      )
+    : [];
   // Without the preset's regular face the bundled font sets the grid.
   const faces =
     presetFaces[0]?.weight === 400 && presetFaces[0].style === "normal"
@@ -642,6 +669,39 @@ function systemGlyphRaster() {
   } catch {
     return false;
   }
+}
+
+/**
+ * What the hidden input sends before the engine reads it. Composed text is
+ * sent once, when its composition ends: Chrome reports it in an `input` event
+ * before `compositionend`, still composing, while Safari and Firefox follow
+ * `compositionend` with an `input` event (insertFromComposition or
+ * insertCompositionText) that repeats the text and is no longer composing.
+ */
+export function preEngineTextInput(send: (text: string) => void) {
+  // Text a composition just committed; its trailing input event repeats it.
+  let composed: string | null = null;
+  return {
+    input(event: Pick<InputEvent, "isComposing" | "inputType" | "data">) {
+      if (event.isComposing) return;
+      const repeated = composed;
+      composed = null;
+      if (event.inputType === "insertLineBreak") send("\r");
+      else if (event.inputType === "deleteContentBackward") send("\x7f");
+      else if (
+        event.inputType === "insertFromComposition" ||
+        event.inputType === "insertCompositionText"
+      ) {
+        // Without that compositionend before it, this is the only report.
+        if (event.data && event.data !== repeated) send(event.data);
+      } else if (event.inputType.startsWith("insert") && event.data)
+        send(event.data);
+    },
+    compositionEnd(data: string) {
+      composed = data;
+      if (data) send(data);
+    },
+  };
 }
 
 export class TerminalEngine {
@@ -955,23 +1015,19 @@ export class TerminalEngine {
       },
       { signal },
     );
+    const input = preEngineTextInput(send);
     this.textarea.addEventListener(
       "input",
       (event) => {
-        const input = event as InputEvent;
-        if (input.isComposing) return;
-        if (input.inputType === "insertLineBreak") send("\r");
-        else if (input.inputType === "deleteContentBackward") send("\x7f");
-        else if (input.inputType.startsWith("insert") && input.data)
-          send(input.data);
-        this.textarea.value = "";
+        input.input(event as InputEvent);
+        if (!(event as InputEvent).isComposing) this.textarea.value = "";
       },
       { signal },
     );
     this.textarea.addEventListener(
       "compositionend",
       (event) => {
-        send(event.data);
+        input.compositionEnd(event.data);
         this.textarea.value = "";
       },
       { signal },
@@ -1023,7 +1079,11 @@ export class TerminalEngine {
 
   private rendered() {
     this.stateGeneration++;
-    const key = JSON.stringify(this.host?.selection() ?? null);
+    // Every frame: compare the few numbers rather than serialize the object.
+    const selection = this.host?.selection();
+    const key = selection
+      ? `${selection.anchor.row},${selection.anchor.col},${selection.focus.row},${selection.focus.col},${selection.dragging}`
+      : "none";
     const offset = this.host?.scrollbar()?.offset ?? 0;
     queueMicrotask(() => {
       if (this.disposed) return;

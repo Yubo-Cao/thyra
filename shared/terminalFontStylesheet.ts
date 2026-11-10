@@ -6,3 +6,91 @@ export const TERMINAL_FONT_CORE_STYLESHEET =
 // Every other chunk (CJK, Nerd Font icons, ...).
 export const TERMINAL_FONT_STYLESHEET =
   "/assets/fonts/maple-mono-nf-cn/fonts-628b03e11b.css";
+// The chunks of TERMINAL_FONT_STYLESHEET as a compact slice manifest
+// (shared/terminalFontManifest.ts).
+export const TERMINAL_FONT_MANIFEST =
+  "/assets/fonts/maple-mono-nf-cn/fonts-e3a8bce25a.json";
+// The chunks of TERMINAL_FONT_CORE_STYLESHEET: url, weight, italic, ranges.
+export const TERMINAL_FONT_CORE_FACES: readonly (readonly [
+  url: string,
+  weight: number,
+  italic: 0 | 1,
+  ranges: string,
+])[] = [
+  [
+    "/assets/fonts/maple-mono-nf-cn/400/7463d90431.woff2",
+    400,
+    0,
+    "vl7-4,cnl-a,46-3,d-o,2,2-6,2,2-1,89-3d",
+  ],
+  ["/assets/fonts/maple-mono-nf-cn/400/ad4e34facd.woff2", 400, 0, "61-12"],
+  ["/assets/fonts/maple-mono-nf-cn/400/cd3e7a828c.woff2", 400, 0, "4g-c,2-16"],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400/f98fb7f9fd.woff2",
+    400,
+    0,
+    "2h-1,2,2,2-e,2-a",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400/b008bd5b4b.woff2",
+    400,
+    0,
+    "0,d,j-1k,3,2,2,g,c-3",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/700/aa1b4312a5.woff2",
+    700,
+    0,
+    "vl7-4,cnl-a,46-3,d-o,2,2-6,2,2-1,89-3d",
+  ],
+  ["/assets/fonts/maple-mono-nf-cn/700/1bf937624f.woff2", 700, 0, "61-12"],
+  ["/assets/fonts/maple-mono-nf-cn/700/4ba957fc77.woff2", 700, 0, "4g-c,2-16"],
+  [
+    "/assets/fonts/maple-mono-nf-cn/700/dd63e785c7.woff2",
+    700,
+    0,
+    "2h-1,2,2,2-e,2-a",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/700/d73ccc14e8.woff2",
+    700,
+    0,
+    "0,d,j-1k,3,2,2,g,c-3",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400-italic/8b77187f29.woff2",
+    400,
+    1,
+    "18ei,2-6,2,2-1,89-4f",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400-italic/c396141c06.woff2",
+    400,
+    1,
+    "vgi-1,2-4,3-1,6,2-3,2-1,2-1,4-3,3-1,2,2-4,2-2,3-6,3-1,c-1,2-2,3-2,5-1,3-26,cnl-a,46-3,d-o",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400-italic/2f4b52a1a7.woff2",
+    400,
+    1,
+    "5y-15",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400-italic/902bf8092e.woff2",
+    400,
+    1,
+    "4g-c,2-13",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400-italic/e20c2047f8.woff2",
+    400,
+    1,
+    "2e,3-1,2,2,2,2,2,2-2,2-1,2-1,2-3,3-1,2-1",
+  ],
+  [
+    "/assets/fonts/maple-mono-nf-cn/400-italic/502c553785.woff2",
+    400,
+    1,
+    "0,d,j-1h,2-1,3,2,2,2,2,2,4,3,3,5-1,3,3-3",
+  ],
+];

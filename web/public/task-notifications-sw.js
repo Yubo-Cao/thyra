@@ -16,8 +16,12 @@ const CACHE_PREFIX = "thyra-";
 const SHELL_KEY = "/";
 const MANIFEST_URL = "/thyra-assets.json";
 const MANIFEST_KEY = "/__thyra/asset-manifest";
-// A cached shell is used when the network has not answered in this time.
+// A cached shell whose own assets are not all cached waits this long for the
+// network before it is used anyway.
 const SHELL_NETWORK_TIMEOUT_MS = 4000;
+// How long to look for the window a signed-out shell was served to.
+const SHELL_CLIENT_ATTEMPTS = 20;
+const SHELL_CLIENT_RETRY_MS = 250;
 // Cached assets of this many earlier builds survive a new one, so pages still
 // running them (open tabs, a stale shell) can lazy-load their chunks.
 const PREVIOUS_BUILDS = 2;
@@ -86,15 +90,7 @@ self.addEventListener("fetch", (event) => {
   // Queries carry login tokens and other one-off state; leave them alone.
   if (url.origin !== self.location.origin || url.search) return;
   if (isShellNavigation(request, url)) {
-    const network = fetch(request);
-    event.waitUntil(
-      network
-        .then((response) =>
-          isCacheableShell(response) ? storeShell(response.clone()) : null,
-        )
-        .catch(() => {}),
-    );
-    event.respondWith(shellResponse(network));
+    event.respondWith(shellResponse(event, fetch(request)));
     return;
   }
   if (isAssetPath(url.pathname) && !request.headers.has("range")) {
@@ -102,17 +98,82 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+/** A response that says this browser may not have the app (any more). */
+function endsSession(response) {
+  return (
+    response.type === "opaqueredirect" ||
+    response.redirected ||
+    response.status === 401 ||
+    response.status === 403
+  );
+}
+
+/** Fingerprinted files the shell document itself loads (entry, styles). */
+function shellAssets(html) {
+  const paths = new Set();
+  for (const match of html.matchAll(/\b(?:src|href)="(\/assets\/[^"?#]+)"/g)) {
+    if (isAssetPath(match[1])) paths.add(match[1]);
+  }
+  return [...paths];
+}
+
+/** Whether a cached shell can start without the network. */
+async function shellStartsOffline(cached) {
+  try {
+    const paths = shellAssets(await cached.clone().text());
+    if (!paths.length) return false;
+    const assets = await caches.open(ASSET_CACHE);
+    for (const path of paths) {
+      const url = new URL(path, self.location.origin).href;
+      if (!(await assets.match(url, { ignoreVary: true }))) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Network first, so logins, redirects and updates behave as without a worker.
- * The cached shell answers only when the network fails or is slower than the
- * timeout; the late network response still refreshes the cache.
+ * Stale while revalidate: the cached shell answers at once, so a repeat
+ * visit never waits for the network to start, and the network's answer
+ * replaces it for the next load. A build deployed in between therefore
+ * starts on the load after this one, or sooner through the reload the
+ * running page offers when the bridge reports another build (it stores that
+ * shell first, see prepareUpdate).
+ *
+ * That needs the cached shell's own files in the asset cache: the server may
+ * no longer have an older build's. Without them, and without a cached shell,
+ * the network answers first as it would without a worker.
+ *
+ * A sign-in redirect or a refusal cannot reach a page that already has the
+ * cached shell, so the shell is dropped and the page sent to the network.
  */
-async function shellResponse(network) {
-  const cached = await caches
-    .open(SHELL_CACHE)
-    .then((cache) => cache.match(SHELL_KEY))
-    .catch(() => undefined);
-  if (!cached) return network;
+async function shellResponse(event, network) {
+  const cache = await caches.open(SHELL_CACHE).catch(() => undefined);
+  const cached = await cache?.match(SHELL_KEY).catch(() => undefined);
+  const stored = network.then((response) =>
+    isCacheableShell(response) ? storeShell(response.clone()) : null,
+  );
+  if (!cached || !(await shellStartsOffline(cached))) {
+    event.waitUntil(stored.catch(() => {}));
+    return cached ? networkOrCachedShell(network, cached) : network;
+  }
+  event.waitUntil(
+    stored
+      .then(() => network)
+      .then((response) =>
+        endsSession(response)
+          ? leaveCachedShell(cache, event.resultingClientId)
+          : null,
+      )
+      // Offline or a failing server: the cached shell stands.
+      .catch(() => {}),
+  );
+  return cached;
+}
+
+/** The network's answer, or the cached shell when it fails or is slow. */
+function networkOrCachedShell(network, cached) {
   return new Promise((resolve) => {
     let settled = false;
     const settle = (response) => {
@@ -124,6 +185,26 @@ async function shellResponse(network) {
     const timer = setTimeout(() => settle(cached), SHELL_NETWORK_TIMEOUT_MS);
     network.then(settle, () => settle(cached));
   });
+}
+
+/**
+ * Forget the cached shell and load the page from the network, which follows
+ * the redirect (to sign in, or to wherever the app moved). The window may
+ * not exist yet when the network has answered, so it is looked up for a few
+ * seconds; a window that cannot be found or navigated gets the network's
+ * answer on its next load.
+ */
+async function leaveCachedShell(cache, clientId) {
+  await cache.delete(SHELL_KEY);
+  if (!clientId || !self.clients.get) return;
+  for (let attempt = 0; attempt < SHELL_CLIENT_ATTEMPTS; attempt++) {
+    const client = await self.clients.get(clientId);
+    if (client) {
+      if (client.navigate) await client.navigate(client.url).catch(() => {});
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SHELL_CLIENT_RETRY_MS));
+  }
 }
 
 /**
@@ -300,8 +381,8 @@ async function syncAndPrecache() {
 
 /**
  * A newer build is deployed while an older page runs: store its shell, so
- * the reload the page offers starts it even when the network is slower than
- * the shell timeout, then prepare its app shell in the background.
+ * the reload the page offers starts it (the cached shell answers that
+ * navigation), then prepare its app shell in the background.
  */
 async function prepareUpdate() {
   try {

@@ -1,8 +1,22 @@
 import { expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { TERMINAL_FONT_OPTIONS } from "./appearance";
 import {
+  decodeFontRanges,
+  encodeFontRanges,
+  isTerminalFontManifest,
+  parseFontFaceRules,
+  terminalFontManifestRules,
+} from "../../shared/terminalFontManifest";
+import {
+  TERMINAL_FONT_CORE_FACES,
+  TERMINAL_FONT_CORE_STYLESHEET,
+  TERMINAL_FONT_MANIFEST,
+  TERMINAL_FONT_STYLESHEET,
+} from "../../shared/terminalFontStylesheet";
+import {
+  preEngineTextInput,
   sgrStyle,
   TerminalTextScreen,
   terminalPaletteColor,
@@ -11,6 +25,8 @@ import {
 import {
   parseTerminalFontChunks,
   sortTerminalFontChunks,
+  terminalCoreCovers,
+  terminalCoreFontManifest,
   terminalFontChunksFor,
 } from "./terminalFonts";
 import {
@@ -43,6 +59,112 @@ test("parses unicode-range chunks and finds each new character's chunk once", ()
     chunks[0]!,
   ]);
   expect(terminalFontChunksFor(chunks, "中文 again", seen)).toEqual([]);
+});
+
+test("finds every chunk of overlapping faces, in the list's order", () => {
+  const chunks = [
+    ...parseTerminalFontChunks(
+      face("regular-a", "normal", 400, "U+4E00-4E7F,U+2500") +
+        face("regular-b", "normal", 400, "U+4E80-4EFF,U+2501-257F") +
+        face("bold", "normal", 700, "U+2500-257F,U+4E00-4EFF") +
+        face("italic", "italic", 400, "U+4E40-4EBF"),
+      false,
+    ),
+  ];
+  const urls = (text: string) =>
+    terminalFontChunksFor(chunks, text, new Set()).map((chunk) => chunk.url);
+  expect(urls("\u4e00")).toEqual(["/f/regular-a.woff2", "/f/bold.woff2"]);
+  expect(urls("\u4e80\u2500")).toEqual([
+    "/f/regular-a.woff2",
+    "/f/regular-b.woff2",
+    "/f/bold.woff2",
+    "/f/italic.woff2",
+  ]);
+  expect(urls("\u4ebf")).toEqual([
+    "/f/regular-b.woff2",
+    "/f/bold.woff2",
+    "/f/italic.woff2",
+  ]);
+  expect(urls("\u4f00\u24ff\u{1f600}")).toEqual([]);
+});
+
+test("range lists survive the manifest's encoding", () => {
+  const ranges: [number, number][] = [
+    [0, 0],
+    [0x20, 0x7e],
+    [0x7f, 0x7f],
+    [0x4e00, 0x4e05],
+    [0xf0000, 0x10fffd],
+  ];
+  expect(encodeFontRanges(ranges)).toBe("0,w-2m,1,fb5-5,kn3v-2t4t");
+  expect(decodeFontRanges(encodeFontRanges(ranges))).toEqual(ranges);
+  expect(decodeFontRanges("")).toEqual([]);
+});
+
+test("the slice manifest and the embedded core match the stylesheets", () => {
+  const read = (url: string) => readFileSync(join(publicDir, url), "utf8");
+  const manifest: unknown = JSON.parse(read(TERMINAL_FONT_MANIFEST));
+  if (!isTerminalFontManifest(manifest)) throw new Error("not a manifest");
+  const rest = parseFontFaceRules(read(TERMINAL_FONT_STYLESHEET));
+  expect(rest.length).toBeGreaterThan(500);
+  expect(terminalFontManifestRules(manifest)).toEqual(rest);
+  // A twelfth of the stylesheet the terminal used to fetch and parse.
+  expect(read(TERMINAL_FONT_MANIFEST).length).toBeLessThan(
+    read(TERMINAL_FONT_STYLESHEET).length / 4,
+  );
+
+  const core = parseFontFaceRules(read(TERMINAL_FONT_CORE_STYLESHEET));
+  expect(
+    TERMINAL_FONT_CORE_FACES.map(([url, weight, italic, ranges]) => ({
+      url,
+      weight,
+      italic: italic === 1,
+      ranges: decodeFontRanges(ranges),
+    })),
+  ).toEqual(core);
+  expect(
+    terminalCoreFontManifest()
+      .filter((chunk) => chunk.core)
+      .map((chunk) => chunk.url),
+  ).toEqual(core.map((rule) => rule.url));
+  expect(terminalCoreCovers("plain ASCII, caf\u00e9 \ue0b0")).toBe(true);
+  expect(terminalCoreCovers("\u2500")).toBe(false);
+  expect(terminalCoreCovers("\u4e2d")).toBe(false);
+});
+
+test("text composed before the engine runs is sent once", () => {
+  const sent: string[] = [];
+  const event = (inputType: string, data: string | null, isComposing = false) =>
+    ({ inputType, data, isComposing }) as InputEvent;
+  let input = preEngineTextInput((text) => sent.push(text));
+  // Chrome: the composing input event comes first.
+  input.input(event("insertCompositionText", "\u4f60\u597d", true));
+  input.compositionEnd("\u4f60\u597d");
+  expect(sent).toEqual(["\u4f60\u597d"]);
+  // Typing afterwards is unaffected.
+  input.input(event("insertText", "a"));
+  input.input(event("insertLineBreak", null));
+  input.input(event("deleteContentBackward", null));
+  expect(sent).toEqual(["\u4f60\u597d", "a", "\r", "\x7f"]);
+
+  // Safari and Firefox: an input event repeats the text after the end.
+  for (const type of ["insertFromComposition", "insertCompositionText"]) {
+    sent.length = 0;
+    input = preEngineTextInput((text) => sent.push(text));
+    input.compositionEnd("\u4e2d");
+    input.input(event(type, "\u4e2d"));
+    expect(sent).toEqual(["\u4e2d"]);
+    // The same text composed again is new input.
+    input.compositionEnd("\u4e2d");
+    input.input(event(type, "\u4e2d"));
+    expect(sent).toEqual(["\u4e2d", "\u4e2d"]);
+  }
+
+  // A commit reported only by its input event still arrives.
+  sent.length = 0;
+  input = preEngineTextInput((text) => sent.push(text));
+  input.input(event("insertCompositionText", "\u6587"));
+  expect(sent).toEqual(["\u6587"]);
 });
 
 test("orders regular before bold before italic, with the ASCII chunk first", () => {

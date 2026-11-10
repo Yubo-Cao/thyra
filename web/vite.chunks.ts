@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { Plugin, Rollup } from "vite";
+import { DICTIONARY_MODULE_ID } from "./vite.brotli";
 
 type ManualChunkMeta = Rollup.ManualChunkMeta;
 type OutputBundle = Rollup.OutputBundle;
@@ -57,6 +58,87 @@ function eagerSet(meta: ManualChunkMeta): Set<string> {
   return eager;
 }
 
+// React's CommonJS interop helpers stay with React, which must not import
+// from the entry chunk that imports it.
+const COMMONJS_HELPERS = "\0commonjsHelpers.js";
+// Rollup's own name for the chunk of index.html's entry.
+const ENTRY_CHUNK = "index";
+// The terminal view renders on the first screen, right after the entry.
+const FIRST_SCREEN_MODULE = /\/src\/components\/TerminalView\.tsx$/;
+
+function staticClosure(meta: ManualChunkMeta, root: string): Set<string> {
+  const closure = new Set<string>();
+  const pending = [root];
+  while (pending.length) {
+    const id = pending.pop()!;
+    if (closure.has(id)) continue;
+    closure.add(id);
+    pending.push(...(meta.getModuleInfo(id)?.importedIds ?? []));
+  }
+  return closure;
+}
+
+const firstScreenShared = new WeakMap<object, Set<string>>();
+
+/**
+ * Modules the terminal view loads statically that a lazy surface may need
+ * before the terminal view has loaded (single icons, small hooks and
+ * helpers). Rollup gives each its own chunk of a few hundred bytes: over a
+ * dozen requests in front of the first terminal output. They always load
+ * together there, so they share one chunk instead.
+ *
+ * Surfaces that are only ever imported by the terminal view's own modules
+ * load after it, and what they share with it stays in its chunk, as Rollup
+ * has it.
+ */
+function firstScreenSharedSet(meta: ManualChunkMeta): Set<string> {
+  let shared = firstScreenShared.get(meta.getModuleInfo);
+  if (shared) return shared;
+  shared = new Set();
+  firstScreenShared.set(meta.getModuleInfo, shared);
+  const ids = [...meta.getModuleIds()];
+  const root = ids.find((id) => FIRST_SCREEN_MODULE.test(id));
+  if (!root) return shared;
+  const eager = eagerSet(meta);
+  const view = staticClosure(meta, root);
+  for (const id of eager) view.delete(id);
+  // Lazily imported modules and the modules that import them.
+  const importers = new Map<string, string[]>();
+  for (const id of ids) {
+    for (const lazy of meta.getModuleInfo(id)?.dynamicallyImportedIds ?? []) {
+      if (lazy === root) continue;
+      const list = importers.get(lazy);
+      if (list) list.push(id);
+      else importers.set(lazy, [id]);
+    }
+  }
+  const closures = new Map<string, Set<string>>();
+  // Surfaces that only load once the terminal view has: every importer is a
+  // module of the view that nothing else loads. Found by iteration, as that
+  // depends on which modules are shared.
+  const after = new Set<string>();
+  for (;;) {
+    shared.clear();
+    for (const lazy of importers.keys()) {
+      if (after.has(lazy)) continue;
+      let closure = closures.get(lazy);
+      if (!closure) closures.set(lazy, (closure = staticClosure(meta, lazy)));
+      for (const id of closure) if (view.has(id)) shared.add(id);
+    }
+    let changed = false;
+    for (const [lazy, from] of importers) {
+      if (after.has(lazy)) continue;
+      if (from.every((id) => view.has(id) && !shared!.has(id))) {
+        after.add(lazy);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  shared.delete(root);
+  return shared;
+}
+
 /**
  * Vendor chunk for a module, or undefined to let Rollup decide. UI libraries
  * are grouped into `vendor-ui` only where the entry already loads them, so a
@@ -69,13 +151,25 @@ export function vendorChunk(
   // Keeps the engine's own re-exports with the engine; left alone, Rollup
   // merges this tiny module into a chunk the first screen loads statically.
   if (/\/src\/terminalEngineInternals\.ts$/.test(id)) return "vendor-terminal";
+  // The WOFF2 decoder's dictionary, loaded only without native Brotli.
+  if (id.endsWith(DICTIONARY_MODULE_ID)) return "brotli-dictionary";
   const name = packageName(id);
-  if (!name) return undefined;
-  if (REACT_PACKAGES.has(name)) return "vendor-react";
-  if (TERMINAL_PACKAGES.has(name)) return "vendor-terminal";
-  if (!UI_PACKAGE.test(name)) return undefined;
-  if (eagerSet(meta).has(id)) return "vendor-ui";
-  return ARIA_PACKAGE.test(name) ? "vendor-aria" : undefined;
+  if (name) {
+    if (REACT_PACKAGES.has(name)) return "vendor-react";
+    if (TERMINAL_PACKAGES.has(name)) return "vendor-terminal";
+    if (UI_PACKAGE.test(name)) {
+      if (eagerSet(meta).has(id)) return "vendor-ui";
+      if (ARIA_PACKAGE.test(name)) return "vendor-aria";
+    }
+  }
+  // A manual chunk takes its modules' static dependencies along unless they
+  // have a chunk of their own, so the entry's modules are named too: they
+  // form the entry chunk either way, and now stay there. This holds only
+  // while the entry's static imports are what it really loads: a re-exporting
+  // package entry would pin all its modules here (see vite.lucide.ts).
+  if (id === COMMONJS_HELPERS) return "vendor-react";
+  if (eagerSet(meta).has(id)) return ENTRY_CHUNK;
+  return firstScreenSharedSet(meta).has(id) ? "terminal-shared" : undefined;
 }
 
 /** Static JS and CSS closure of a chunk, as root-relative URLs. */
@@ -135,10 +229,11 @@ function findChunk(
  * - `assets`: every fingerprinted file under /assets (the service worker
  *   drops cached files that no recent build lists);
  * - `boot`: what the server compresses before the first request (the terminal
- *   view's static closure, the terminal engine and the font stylesheets);
+ *   view's static closure, the terminal engine with its Brotli dictionary,
+ *   and the font stylesheets and slice manifest);
  * - `precache`: the versioned app shell the service worker keeps ready (the
  *   entry and terminal closures, the terminal engine, the core font stylesheet
- *   and its regular and bold slices).
+ *   with its regular and bold slices, and the slice manifest).
  */
 export function assetManifestPlugin(
   bootModule = "/src/components/TerminalView.tsx",
@@ -174,9 +269,14 @@ export function assetManifestPlugin(
       const core = Object.values(bundle).find(
         (file) => file.type === "asset" && file.fileName.endsWith(".wasm"),
       );
+      // Browsers without native Brotli fetch the decoder's dictionary.
+      const dictionary = findChunk(bundle, (chunk) =>
+        chunk.moduleIds.some((id) => id.endsWith(DICTIONARY_MODULE_ID)),
+      );
       boot = [
         ...(terminal ? chunkClosure(bundle, terminal.fileName) : []),
         ...(engine ? chunkClosure(bundle, engine.fileName) : []),
+        ...(dictionary ? chunkClosure(bundle, dictionary.fileName) : []),
         ...(core ? [`/${core.fileName}`] : []),
       ];
       shell = [
@@ -200,12 +300,14 @@ export function assetManifestPlugin(
       const assets = listFiles(outDir, join(outDir, "assets")).sort();
       const listed = new Set(assets);
       const fonts = assets.filter((path) =>
-        /^\/assets\/fonts\/[^/]+\/fonts-[^/]+\.css$/.test(path),
+        /^\/assets\/fonts\/[^/]+\/fonts-[^/]+\.(?:css|json)$/.test(path),
       );
       const coreFonts = fonts.filter((path) => path.includes("/fonts-core-"));
       const precache = [
         ...shell,
         ...coreFonts,
+        // Box drawing, icons and CJK resolve their slices through this.
+        ...fonts.filter((path) => path.endsWith(".json")),
         ...coreFonts.flatMap((path) =>
           coreFontFiles(readFileSync(join(outDir, path), "utf8")),
         ),
@@ -223,6 +325,66 @@ export function assetManifestPlugin(
           assets,
         }),
       );
+    },
+  };
+}
+
+/** The inline script that starts fetching `files` unless the page is /admin. */
+export function firstScreenPreloadScript(files: readonly string[]): string {
+  return (
+    `if(!/^\\/admin(?:\\/|$)/.test(location.pathname))` +
+    `for(const href of ${JSON.stringify(files)}){` +
+    `const link=document.createElement("link");` +
+    `if(href.endsWith(".css")){link.rel="preload";link.as="style"}` +
+    `else link.rel="modulepreload";` +
+    `link.crossOrigin="";link.href=href;document.head.append(link)}`
+  );
+}
+
+/**
+ * The entry requests the terminal view only once it runs, a round trip (and
+ * the entry's own download and evaluation) after the page. The app document
+ * starts those downloads itself, beside the entry's; the admin page, which
+ * has no terminal, skips them. The bridge allows the inline script by hash.
+ */
+export function firstScreenPreloadPlugin(
+  bootModule = "/src/components/TerminalView.tsx",
+): Plugin {
+  const bootName = bootModule.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
+  return {
+    name: "thyra-first-screen-preload",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(_html, { bundle }) {
+        if (!bundle) return;
+        const terminal = findChunk(
+          bundle,
+          (chunk) =>
+            chunk.name === bootName ||
+            chunk.facadeModuleId?.replace(/\\/g, "/").endsWith(bootModule) ===
+              true,
+        );
+        if (!terminal) return;
+        const loaded = new Set(
+          Object.values(bundle).flatMap((chunk) =>
+            chunk.type === "chunk" && chunk.isEntry
+              ? chunkClosure(bundle, chunk.fileName)
+              : [],
+          ),
+        );
+        const files = chunkClosure(bundle, terminal.fileName).filter(
+          (file) => !loaded.has(file),
+        );
+        if (!files.length) return;
+        return [
+          {
+            tag: "script",
+            children: firstScreenPreloadScript(files),
+            injectTo: "head",
+          },
+        ];
+      },
     },
   };
 }

@@ -1,13 +1,27 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { assetManifestPlugin, vendorChunk } from "./vite.chunks";
+import { brotliDictionaryPlugin } from "./vite.brotli";
+import {
+  assetManifestPlugin,
+  firstScreenPreloadPlugin,
+  vendorChunk,
+} from "./vite.chunks";
+import { lucideDirectImportsPlugin } from "./vite.lucide";
 import { resttyWasmPlugin } from "./vite.restty";
 
 // In dev, the web app talks to the bridge through Vite's proxy so the
 // frontend can use a relative /ws URL (same origin, no hardcoded port).
 export default defineConfig({
-  plugins: [react(), tailwindcss(), resttyWasmPlugin(), assetManifestPlugin()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    lucideDirectImportsPlugin(),
+    resttyWasmPlugin(),
+    brotliDictionaryPlugin(),
+    assetManifestPlugin(),
+    firstScreenPreloadPlugin(),
+  ],
   worker: {
     format: "es",
   },

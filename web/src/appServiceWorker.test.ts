@@ -90,7 +90,13 @@ const html = { "content-type": "text/html; charset=utf-8" };
 
 function loadWorker(
   fetchImpl: (request: Request | string, init?: RequestInit) => unknown,
-  { timers }: { timers?: { setTimeout: any; clearTimeout: any } } = {},
+  {
+    timers,
+    clients = {},
+  }: {
+    timers?: { setTimeout: any; clearTimeout: any };
+    clients?: Record<string, unknown>;
+  } = {},
 ) {
   const listeners: Record<string, Listener> = {};
   const storage = new FakeCacheStorage();
@@ -114,7 +120,7 @@ function loadWorker(
         listeners[name] = handler;
       },
       skipWaiting: async () => {},
-      clients: { claim },
+      clients: { claim, ...clients },
     },
   });
   return { listeners, storage, fetch, claim };
@@ -132,6 +138,7 @@ async function dispatchFetch(
   const lifetime: Promise<unknown>[] = [];
   listeners.fetch!({
     request,
+    resultingClientId: "window-1",
     respondWith: (response: Promise<Response>) => {
       responded = Promise.resolve(response);
     },
@@ -141,6 +148,11 @@ async function dispatchFetch(
   await Promise.all(lifetime);
   return response;
 }
+
+/** An app document that loads the given build's entry and stylesheet. */
+const shellHtml = (build: string) =>
+  `<link rel="stylesheet" crossorigin href="/assets/index-${build}.css">` +
+  `<script type="module" crossorigin src="/assets/index-${build}.js"></script>`;
 
 async function dispatchLifetime(listener: Listener, event: object = {}) {
   let pending: Promise<unknown> | undefined;
@@ -195,7 +207,7 @@ describe("app service worker caching", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  test("navigations are network-first and store only the app document", async () => {
+  test("a shell whose files are not cached is network-first and stores only the app document", async () => {
     let next: Response | Error = serverResponse("<p>v1</p>", {
       headers: html,
     });
@@ -226,7 +238,7 @@ describe("app service worker caching", () => {
     expect(await offline?.text()).toBe("<p>v1</p>");
   });
 
-  test("a slow network falls back to the cached shell and still refreshes it", async () => {
+  test("a slow network falls back to such a shell and still refreshes it", async () => {
     let fire: (() => void) | undefined;
     const timers = {
       setTimeout: (callback: () => void) => {
@@ -265,6 +277,143 @@ describe("app service worker caching", () => {
     await Promise.all(lifetime);
     const shell = await storage.open("thyra-shell-v1");
     expect(await (await shell.match("/"))?.text()).toBe("<p>new</p>");
+  });
+
+  /** A worker whose server serves `build.current` and every asset. */
+  function deployedWorker(
+    build: { current: string; shell?: () => Response | Promise<Response> },
+    options: Parameters<typeof loadWorker>[1] = {},
+  ) {
+    return loadWorker((request) => {
+      const url = typeof request === "string" ? request : request.url;
+      if (url.endsWith("/thyra-assets.json"))
+        return serverResponse(
+          JSON.stringify({ version: build.current, assets: [] }),
+        );
+      if (url.includes("/assets/"))
+        return serverResponse(url, { headers: immutable });
+      return (
+        build.shell?.() ??
+        serverResponse(shellHtml(build.current), { headers: html })
+      );
+    }, options);
+  }
+
+  /** Load the app as a browser would: the document, then its files. */
+  async function visit(listeners: Record<string, Listener>) {
+    const response = await dispatchFetch(listeners, "/", { mode: "navigate" });
+    const text = (await response?.text()) ?? "";
+    for (const [, path] of text.matchAll(/(?:src|href)="([^"]+)"/g))
+      await dispatchFetch(listeners, path!);
+    return text;
+  }
+
+  test("a cached shell answers at once; a new deploy starts on the next load", async () => {
+    const build = { current: "1" };
+    const { listeners, storage, fetch } = deployedWorker(build);
+    expect(await visit(listeners)).toBe(shellHtml("1"));
+
+    // Deployed: this load still starts build 1, from the cache alone.
+    build.current = "2";
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const slow = {
+      current: "2",
+      shell: async () => {
+        await held;
+        return serverResponse(shellHtml("2"), { headers: html });
+      },
+    };
+    Object.assign(build, slow);
+    const request = new Request(`${origin}/`);
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    let responded: Promise<Response> | undefined;
+    const lifetime: Promise<unknown>[] = [];
+    listeners.fetch!({
+      request,
+      respondWith: (response: Promise<Response>) => (responded = response),
+      waitUntil: (promise: Promise<unknown>) => lifetime.push(promise),
+    });
+    // The network has not answered; the page already has its document.
+    expect(await (await responded)?.text()).toBe(shellHtml("1"));
+    release?.();
+    await Promise.all(lifetime);
+    const shell = await storage.open("thyra-shell-v1");
+    expect(await (await shell.match("/"))?.text()).toBe(shellHtml("2"));
+
+    // The next load starts build 2. Its files are not cached yet, so the
+    // network answers this one; from then on the cache does again.
+    expect(await visit(listeners)).toBe(shellHtml("2"));
+    const calls = fetch.mock.calls.length;
+    const repeat = await dispatchFetch(listeners, "/", { mode: "navigate" });
+    expect(await repeat?.text()).toBe(shellHtml("2"));
+    for (const path of ["/assets/index-2.js", "/assets/index-2.css"])
+      await dispatchFetch(listeners, path);
+    // Only the revalidation went to the network.
+    expect(fetch.mock.calls.length).toBe(calls + 1);
+  });
+
+  test("a failing server or no network leaves the cached shell in place", async () => {
+    const build: { current: string; shell?: () => Response } = {
+      current: "1",
+    };
+    const navigate = mock(async () => null);
+    const { listeners, storage } = deployedWorker(build, {
+      clients: { get: async () => ({ url: `${origin}/`, navigate }) },
+    });
+    await visit(listeners);
+    const shell = await storage.open("thyra-shell-v1");
+    for (const failure of [
+      () => serverResponse("bad gateway", { status: 502 }),
+      () =>
+        serverResponse("<p>maintenance</p>", { status: 503, headers: html }),
+      () => {
+        throw new TypeError("Failed to fetch");
+      },
+    ]) {
+      build.shell = failure;
+      const response = await dispatchFetch(listeners, "/", {
+        mode: "navigate",
+      });
+      expect(await response?.text()).toBe(shellHtml("1"));
+      expect(await (await shell.match("/"))?.text()).toBe(shellHtml("1"));
+    }
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test("a sign-in redirect drops the cached shell and reloads the page from the network", async () => {
+    for (const refusal of [
+      () => serverResponse("", { status: 0, type: "opaqueredirect" }),
+      () => serverResponse("<p>login</p>", { redirected: true, headers: html }),
+      () => serverResponse("unauthorized", { status: 401 }),
+    ]) {
+      const build: { current: string; shell?: () => Response } = {
+        current: "1",
+      };
+      const navigate = mock(async () => null);
+      const get = mock(async (id: string) =>
+        id === "window-1" ? { url: `${origin}/`, navigate } : undefined,
+      );
+      const { listeners, storage } = deployedWorker(build, {
+        clients: { get },
+      });
+      await visit(listeners);
+      build.shell = refusal;
+      // The page has the cached shell before the network has answered.
+      const stale = await dispatchFetch(listeners, "/", { mode: "navigate" });
+      expect(await stale?.text()).toBe(shellHtml("1"));
+      const shell = await storage.open("thyra-shell-v1");
+      expect(await shell.match("/")).toBeUndefined();
+      expect(navigate).toHaveBeenCalledWith(`${origin}/`);
+      // That navigation, and any later one, gets the network's answer.
+      const next = await dispatchFetch(listeners, "/", { mode: "navigate" });
+      expect(
+        next?.status === 401 ||
+          next?.type === "opaqueredirect" ||
+          next?.redirected,
+      ).toBe(true);
+      expect(navigate).toHaveBeenCalledTimes(1);
+    }
   });
 
   test("a new build prunes assets used by neither it nor the two builds before it", async () => {

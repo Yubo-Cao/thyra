@@ -51,8 +51,13 @@ const adminPage = /^\/admin(?:\/|$)/.test(window.location.pathname);
 initializeLayoutPreferences();
 if (!adminPage) {
   initializeShortcutPreferences();
-  // Connect before the first render requests the terminal chunks.
+  // Connect before the terminal chunks are requested.
   store.init();
+  // The first screen always shows a terminal: fetch its chunk now, beside the
+  // interface catalog below, rather than after the first render. The lazy
+  // component that renders it (app/TerminalPaneLayout.tsx) shares the request
+  // and handles a failure.
+  void import("./components/TerminalView").catch(() => {});
   // Move to the tailnet origin when this device reaches it (after hello).
   initDirectPath();
   // Otherwise move the bridge onto a peer-to-peer data channel when offered.

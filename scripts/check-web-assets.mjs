@@ -7,9 +7,9 @@ const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 // Lazy voice-capture chunks (worklet, VAD, transport) add files,
 // as do per-surface lazy chunks and the small shared chunks Rollup splits
 // between them (single lucide icons, ui primitives), plus the stable vendor
-// chunks and thyra-assets.json. Grouping the tiny shared chunks would pin
-// them (or their dependencies) into the entry; over HTTP/2 they load in
-// parallel for a few hundred bytes of headers each.
+// chunks and thyra-assets.json. The terminal view's small shared chunks are
+// grouped into one (see web/vite.chunks.ts); the rest load in parallel over
+// HTTP/2 for a few hundred bytes of headers each.
 // The lazy agent browser (noVNC) adds its chunk and its sheet.
 const maxFileCount = 332;
 // The lazy GPU terminal engine (its WASM core inlined) adds ~2.7 MiB.
