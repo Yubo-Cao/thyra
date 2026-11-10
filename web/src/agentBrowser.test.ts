@@ -31,7 +31,11 @@ test("draws the remote at the screen's pixel density, 1 to 3", () => {
 
 test("copies the picture only when it maps 1:1 to screen pixels", () => {
   const pixels = { width: 1260, height: 796 };
-  expect(landsOnPixels({ width: 1008, height: 636.797 }, pixels, 1.25)).toBe(true);
-  expect(landsOnPixels({ width: 1008, height: 636.797 }, pixels, 1)).toBe(false);
+  expect(landsOnPixels({ width: 1008, height: 636.797 }, pixels, 1.25)).toBe(
+    true,
+  );
+  expect(landsOnPixels({ width: 1008, height: 636.797 }, pixels, 1)).toBe(
+    false,
+  );
   expect(landsOnPixels({ width: 900, height: 568 }, pixels, 1.25)).toBe(false);
 });

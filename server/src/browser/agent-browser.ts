@@ -169,10 +169,10 @@ export function createAgentBrowser(options: {
   async function tabs(paneId: string | null): Promise<BrowserTab[] | null> {
     const query = paneId ? `?pane=${encodeURIComponent(paneId)}` : "";
     try {
-      const response = await fetchProxy(
-        `${options.proxyUrl}/targets${query}`,
-        { signal: AbortSignal.timeout(3000), redirect: "error" },
-      );
+      const response = await fetchProxy(`${options.proxyUrl}/targets${query}`, {
+        signal: AbortSignal.timeout(3000),
+        redirect: "error",
+      });
       if (!response.ok) return null;
       const listed: unknown = await response.json();
       return Array.isArray(listed)

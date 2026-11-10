@@ -108,8 +108,7 @@ export function FloatingWindow({
 
   const begin = (grip: Grip) => (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
-    if (grip === "move" && (event.target as Element).closest(CONTROLS))
-      return;
+    if (grip === "move" && (event.target as Element).closest(CONTROLS)) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { grip, start: rect, x: event.clientX, y: event.clientY };
