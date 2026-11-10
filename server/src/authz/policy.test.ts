@@ -9,7 +9,12 @@ const METHOD = String.raw`[a-z_]+(?:\.[a-z_]+)+`;
 
 /** Server modules that dispatch RPC methods by name. */
 const SERVER_DISPATCHERS = [
-  "server/src/index.ts",
+  "server/src/rpc/dispatch.ts",
+  "server/src/rpc/bridge-handlers.ts",
+  "server/src/rpc/session-handlers.ts",
+  "server/src/rpc/workspace-handlers.ts",
+  "server/src/rpc/logging.ts",
+  "server/src/rpc/methods.ts",
   "server/src/bridge/settings-rpc.ts",
   "server/src/bridge/terminal-bridge.ts",
   "server/src/bridge/collaboration.ts",
@@ -48,6 +53,12 @@ function serverMethods(): Map<string, string> {
     for (const method of matches(
       text,
       new RegExp(String.raw`method === "(${METHOD})"`, "g"),
+    ))
+      found.set(method, file);
+    // Handler tables keyed by method name (`"file.list": listFiles`).
+    for (const method of matches(
+      text,
+      new RegExp(String.raw`^\s*"(${METHOD})":`, "gm"),
     ))
       found.set(method, file);
     // Named method sets such as PANE_INPUT_METHODS.

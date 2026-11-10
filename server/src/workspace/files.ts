@@ -952,7 +952,7 @@ export function createFileHandlers({
     readWorkspaceFile: readFile,
     downloadWorkspaceFile: downloadFile,
     thumbnailWorkspaceFile: thumbnailFile,
-    /** File-manager RPC methods, dispatched by name from index.ts. */
+    /** File-manager RPC methods, dispatched by name from rpc/workspace-handlers.ts. */
     fileRpc: {
       "file.rename": renameEntry,
       "file.transfer": transferEntries,
