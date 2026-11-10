@@ -742,6 +742,10 @@ VS Code Web loads its UI translations for the browser's language from Microsoft'
 Serve them from the server instead: run [`deploy/vscode/build-nls.py`](../deploy/vscode/build-nls.py) `<server> <language-pack.vsix> zh-cn` (the pack is the Marketplace VSIX, such as `MS-CEINTL.vscode-language-pack-zh-hans`) and set `nlsCoreBaseUrl` in the server's `product.json` to `/vscode/stable-<commit>/static/nls/`.
 Locales without a built file fall back to English; strings newer than the pack stay English.
 Repeat both steps for every new server build.
+Thyra and browsers cache a build's static files; after rebuilding translations for the same build, reload the Inspector bypassing the cache (Ctrl+Shift+R in its own tab).
+
+The editor and its terminal default to Thyra's bundled terminal font (`Thyra Mono`: Maple Mono NF CN), downloaded in small pieces for the characters on screen, so no viewing device needs a programming or CJK font installed.
+An `editor.fontFamily` set in VS Code's settings wins; put `'Thyra Mono'` first there to keep the bundled font ahead of fonts the device may lack.
 The Inspector sets VS Code's language to Thyra's whenever Thyra's changes; a language picked inside VS Code stays until then.
 Thyra proxies it at `/vscode/` for instance admins only and on local connections only; without it the Inspector is an upload panel.
 The loopback port takes no token, so keep it off shared multi-user hosts.

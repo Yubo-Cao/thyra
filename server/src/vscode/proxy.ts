@@ -1,4 +1,11 @@
+import { TERMINAL_FONT_CORE_STYLESHEET } from "../../../shared/terminalFontStylesheet";
 import { thyraEnv } from "../config/environment";
+import {
+  createVscodeStaticCache,
+  isVscodeStaticPath,
+  VSCODE_STATIC_CACHE_CONTROL,
+} from "./static-cache";
+import { asciiFontChunks, withThyraFonts } from "./workbench-html";
 
 /**
  * The Inspector's editor: a VS Code Web server (`code serve-web
@@ -65,18 +72,69 @@ function upstreamHeaders(req: Request) {
   return headers;
 }
 
-export function createVscodeProxy(options: { upstream: string | null }) {
+/** Asks VS Code for the whole, uncompressed file. */
+function identityHeaders(req: Request) {
+  const headers = upstreamHeaders(req);
+  headers.set("accept-encoding", "identity");
+  for (const name of ["if-none-match", "if-modified-since", "range"])
+    headers.delete(name);
+  return headers;
+}
+
+export function createVscodeProxy(options: {
+  upstream: string | null;
+  /** Text of one of Thyra's own static files, for the font preloads. */
+  readText?: (pathname: string) => Promise<string | null>;
+}) {
   const { upstream } = options;
   const target = (url: URL) => `${upstream}${url.pathname}${url.search}`;
+  const staticCache = createVscodeStaticCache({
+    load: (req, url) =>
+      fetch(target(url), {
+        headers: identityHeaders(req),
+        redirect: "manual",
+        decompress: false,
+      } as RequestInit),
+  });
+
+  let fontPreloads: Promise<string[]> | null = null;
+  const loadFontPreloads = () => {
+    fontPreloads ??= (
+      options.readText?.(TERMINAL_FONT_CORE_STYLESHEET) ?? Promise.resolve(null)
+    )
+      .then((css) => (css ? asciiFontChunks(css) : []))
+      .catch(() => []);
+    return fontPreloads;
+  };
+
+  // Thyra embeds the editor in its own page; nothing else may.
+  const framed = (
+    response: Response,
+    headers = new Headers(response.headers),
+  ) => {
+    for (const name of HOP_BY_HOP) headers.delete(name);
+    if (!headers.has("content-security-policy"))
+      headers.set("content-security-policy", "frame-ancestors 'self'");
+    headers.set("x-frame-options", "SAMEORIGIN");
+    return headers;
+  };
 
   async function fetchHttp(req: Request, url: URL): Promise<Response> {
     if (!upstream)
       return new Response("VS Code is not configured", { status: 404 });
+    const workbench =
+      req.method === "GET" && /^\/vscode\/?$/.test(url.pathname);
     let response: Response;
     try {
+      const cached = await staticCache.respond(req, url);
+      if (cached)
+        return new Response(cached.body, {
+          status: cached.status,
+          headers: framed(cached),
+        });
       response = await fetch(target(url), {
         method: req.method,
-        headers: upstreamHeaders(req),
+        headers: workbench ? identityHeaders(req) : upstreamHeaders(req),
         body:
           req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
         redirect: "manual",
@@ -85,12 +143,27 @@ export function createVscodeProxy(options: { upstream: string | null }) {
     } catch {
       return new Response("VS Code is unavailable", { status: 502 });
     }
-    const headers = new Headers(response.headers);
-    for (const name of HOP_BY_HOP) headers.delete(name);
-    // Thyra embeds the editor in its own page; nothing else may.
-    if (!headers.has("content-security-policy"))
-      headers.set("content-security-policy", "frame-ancestors 'self'");
-    headers.set("x-frame-options", "SAMEORIGIN");
+    const headers = framed(response);
+    if (response.status === 200 && isVscodeStaticPath(url.pathname))
+      headers.set("cache-control", VSCODE_STATIC_CACHE_CONTROL);
+    if (
+      workbench &&
+      response.status === 200 &&
+      !headers.has("content-encoding") &&
+      /^text\/html\b/i.test(headers.get("content-type") ?? "")
+    ) {
+      let html: string;
+      try {
+        html = await response.text();
+      } catch {
+        return new Response("VS Code is unavailable", { status: 502 });
+      }
+      headers.delete("content-length");
+      return new Response(withThyraFonts(html, await loadFontPreloads()), {
+        status: 200,
+        headers,
+      });
+    }
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,

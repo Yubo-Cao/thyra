@@ -7,7 +7,7 @@ every two-cell glyph of the East Asian wide blocks (and their GSUB variants)
 by SCALE around the middle of its box, writes each changed chunk under a new
 content hash, and points the stylesheets at the new names. Run
 `bun scripts/build-terminal-font.ts --split` afterwards to rehash the
-stylesheets and regenerate web/src/terminalFontStylesheet.ts.
+stylesheets and regenerate shared/terminalFontStylesheet.ts.
 
 Run it once after scripts/build-terminal-font.ts slices the font; running it
 twice scales twice.

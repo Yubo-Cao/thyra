@@ -416,6 +416,16 @@ tunnel. Requests keep the browser's `Host` (the workbench names its remote
 by it) and lose Thyra's cookies and forwarding headers; responses may be
 framed only by this origin. WebSocket upgrades need this origin's `Origin`.
 
+VS Code serves its static files (`/vscode/<quality>-<commit>/static/`)
+uncompressed and without validators. The proxy keeps a Brotli or gzip copy of
+each text file in memory (96 MB, least recently used first out), answers
+repeat and `If-None-Match` requests itself, and marks every static file
+`immutable`, since the URL names the build. A request with
+`Cache-Control: no-cache` reloads the copy. The workbench page is rewritten to
+load the sliced terminal font (`shared/terminalFontStylesheet.ts`) and to take
+`Thyra Mono` as the default `editor.fontFamily` through the workbench's
+`configurationDefaults`; VS Code settings override it.
+
 `vscode` and `vscode.status` are `host`-scoped: the editor is a shell as the
 host user. `GET /api/vscode` lists the connections whose Herdr runs on this
 host; elsewhere, and for everyone else, the Inspector is only the upload panel

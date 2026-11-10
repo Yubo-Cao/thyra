@@ -1,7 +1,7 @@
 import {
   TERMINAL_FONT_CORE_STYLESHEET,
   TERMINAL_FONT_STYLESHEET,
-} from "./terminalFontStylesheet";
+} from "../../shared/terminalFontStylesheet";
 
 /**
  * The bundled terminal font (Maple Mono NF CN, see

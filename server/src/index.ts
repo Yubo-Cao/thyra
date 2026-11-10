@@ -750,7 +750,10 @@ const vscodeSockets = new Map<
   ServerWebSocket<unknown>,
   { message(data: string | Uint8Array<ArrayBuffer>): void; close(): void }
 >();
-const vscodeProxy = createVscodeProxy(vscodeConfig());
+const vscodeProxy = createVscodeProxy({
+  ...vscodeConfig(),
+  readText: (pathname) => readStaticText(config.publicDir, pathname),
+});
 /** Connections whose Herdr runs on this host (no SSH), by id. */
 const localConnections = new Set<string>();
 /** The agent browser serves the default connection when it is local. */

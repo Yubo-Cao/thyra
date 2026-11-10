@@ -50,7 +50,7 @@ const URL_ROOT = "/assets/fonts/maple-mono-nf-cn";
 const outRoot = resolve(import.meta.dir, `../web/public${URL_ROOT}`);
 const manifestPath = resolve(
   import.meta.dir,
-  "../web/src/terminalFontStylesheet.ts",
+  "../shared/terminalFontStylesheet.ts",
 );
 const stylesheets = () =>
   readdirSync(outRoot).filter((name) => /^fonts-.*\.css$/.test(name));

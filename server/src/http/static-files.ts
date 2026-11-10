@@ -259,7 +259,7 @@ function encodedBody(
   return body;
 }
 
-function isCompressible(pathname: string, size: number): boolean {
+export function isCompressible(pathname: string, size: number): boolean {
   return COMPRESSIBLE.test(pathname) && size >= MIN_COMPRESS_BYTES;
 }
 
