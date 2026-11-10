@@ -6,7 +6,8 @@ import {
   type EndpointSurface,
 } from "./endpoint-client";
 import { EndpointCreationDeadline } from "./endpoint-creation";
-import { frameToAnsi } from "./frame-to-ansi";
+import { frameToAnsiParts } from "./frame-to-ansi";
+import { terminalFrameText } from "../../../shared/terminalFrame";
 import type { CellData, FrameData } from "./frame-codec";
 import type { OwnShellClients } from "./own-shell-clients";
 import type { Logger } from "../utils/logger";
@@ -396,6 +397,8 @@ export class EndpointTerminalSession extends EventEmitter {
     );
     // Herdr emits full surfaces even for focus and read-only link RPCs. Surface
     // sequence/object identity is not link content identity; cursor is not content.
+    // The cells are compared in place: serializing every cell of every frame
+    // only to compare two strings costs more than encoding the frame.
     const content = JSON.stringify({
       paneId: pane.paneId,
       revision: pane.contentRevision,
@@ -403,11 +406,16 @@ export class EndpointTerminalSession extends EventEmitter {
       scroll: pane.scroll,
       width: cropped.width,
       height: cropped.height,
-      cells: cropped.cells,
-      hyperlinks: cropped.hyperlinks,
     });
-    if (this.linkFrame?.content !== content) this.linkFrame = null;
-    const bytes = Buffer.from(frameToAnsi(cropped), "utf8");
+    if (
+      this.linkFrame &&
+      (this.linkFrame.content !== content ||
+        !sameFrameContent(this.linkFrame.frame, cropped))
+    )
+      this.linkFrame = null;
+    // Encoded once here; the bridge shares these rows with every viewer.
+    const parts = frameToAnsiParts(cropped);
+    const bytes = Buffer.from(terminalFrameText(parts), "utf8");
     const mouseReporting = pane.mouseReporting;
     const emitFrame = () => {
       if (this.closed) return;
@@ -449,6 +457,7 @@ export class EndpointTerminalSession extends EventEmitter {
             }
           : undefined,
         bytes,
+        parts,
         frame: cropped,
       });
     };
@@ -1031,6 +1040,38 @@ export function sameLinkRows(
       )
         return false;
     }
+  }
+  return true;
+}
+
+/** Whether two frames have the same cells and link targets; cursor aside. */
+export function sameFrameContent(a: FrameData, b: FrameData): boolean {
+  if (a === b) return true;
+  if (
+    a.width !== b.width ||
+    a.height !== b.height ||
+    a.cells.length !== b.cells.length ||
+    a.hyperlinks.length !== b.hyperlinks.length
+  )
+    return false;
+  for (let i = 0; i < a.hyperlinks.length; i++) {
+    if (a.hyperlinks[i] !== b.hyperlinks[i]) return false;
+  }
+  for (let i = 0; i < a.cells.length; i++) {
+    const left = a.cells[i];
+    const right = b.cells[i];
+    if (left === right) continue;
+    if (
+      !left ||
+      !right ||
+      left.symbol !== right.symbol ||
+      left.fg !== right.fg ||
+      left.bg !== right.bg ||
+      left.modifier !== right.modifier ||
+      left.skip !== right.skip ||
+      left.hyperlink !== right.hyperlink
+    )
+      return false;
   }
   return true;
 }

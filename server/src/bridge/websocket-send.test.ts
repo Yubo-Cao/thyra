@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { connect, createServer, type Socket } from "node:net";
 import {
   dropCoalescedMessage,
@@ -430,5 +430,45 @@ describe("dropping a held frame when it goes stale", () => {
     buffered = 0;
     flushCoalescedMessages(ws, opts);
     expect(sent).toEqual(["t2-frame"]);
+  });
+});
+
+describe("compression threshold", () => {
+  const sendOne = (payload: string) => {
+    const socket = createWebSocket();
+    sendWebSocketMessage(socket.ws, payload, { cleanup: () => {} });
+    return socket.compressed[0];
+  };
+
+  test("decides by UTF-8 size exactly as before", () => {
+    for (const payload of [
+      "",
+      "a".repeat(WS_COMPRESSION_MIN_BYTES / 3),
+      "a".repeat(WS_COMPRESSION_MIN_BYTES - 1),
+      "a".repeat(WS_COMPRESSION_MIN_BYTES),
+      "界".repeat(42),
+      "界".repeat(43),
+      "é".repeat(63),
+      "é".repeat(64),
+      `${"a".repeat(WS_COMPRESSION_MIN_BYTES - 3)}é`,
+      `${"a".repeat(WS_COMPRESSION_MIN_BYTES - 2)}é`,
+      "😀".repeat(31),
+      "😀".repeat(32),
+    ]) {
+      expect(sendOne(payload)).toBe(
+        Buffer.byteLength(payload) >= WS_COMPRESSION_MIN_BYTES,
+      );
+    }
+  });
+
+  test("does not measure payloads whose length already decides", () => {
+    const byteLength = spyOn(Buffer, "byteLength");
+    try {
+      expect(sendOne("x".repeat(64 * 1024))).toBe(true);
+      expect(sendOne("{}")).toBe(false);
+      expect(byteLength).not.toHaveBeenCalled();
+    } finally {
+      byteLength.mockRestore();
+    }
   });
 });

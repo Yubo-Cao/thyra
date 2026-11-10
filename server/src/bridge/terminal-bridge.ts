@@ -13,7 +13,7 @@ import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { EndpointTerminalSession } from "./endpoint-terminal-session";
 import type { OwnShellClients } from "./own-shell-clients";
 import type { EndpointHostTheme, HostRgb } from "./endpoint-client";
-import { frameToAnsi, frameToAnsiParts } from "./frame-to-ansi";
+import { frameToAnsiParts } from "./frame-to-ansi";
 import {
   TerminalFrameStream,
   frameIntervalFromParams,
@@ -25,6 +25,10 @@ import {
 } from "./display-ownership";
 import { isTerminalClipboardPayload } from "./terminal-clipboard";
 import { optionalNumber, optionalString } from "../utils/rpc-params";
+import {
+  type TerminalFrameParts,
+  terminalFrameText,
+} from "../../../shared/terminalFrame";
 import {
   parseTerminalKeys,
   type TerminalKey,
@@ -98,6 +102,13 @@ const TERMINAL_HISTORY_MAX_LINES = 1000;
 // memory instead of opening another endpoint connection for it.
 const RETIRED_TERMINAL_TTL_MS = 10 * 60_000;
 const RETIRED_TERMINAL_LIMIT = 512;
+// Pane and display-size facts outlive their stream so a later attach can use
+// them. Herdr does not tell the bridge when a terminal goes away unviewed, so
+// the oldest facts without a live stream are forgotten past this many.
+export const TERMINAL_FACT_LIMIT = 512;
+// Larger than any real display; a frame is cols x rows cells per repaint.
+export const TERMINAL_MAX_COLS = 1000;
+export const TERMINAL_MAX_ROWS = 1000;
 // While Herdr is unreachable (a handoff in progress), a closed stream waits
 // this long in total for its pane's terminal to resolve before viewers retry.
 const TERMINAL_RECOVERY_DELAYS_MS = [0, 250, 500, 1_000, 2_000, 4_000];
@@ -106,6 +117,20 @@ const STANDARD_BASE64_RE =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 const HEX_COLOR = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
+
+/**
+ * A browser-supplied terminal dimension as a whole number of cells within
+ * bounds. Frames are indexed by these, so a fraction must never reach them.
+ */
+function terminalDimension(
+  params: Record<string, unknown>,
+  name: string,
+  fallback: number,
+  max: number,
+): number {
+  const value = optionalNumber(params, name) ?? fallback;
+  return Math.max(1, Math.min(max, Math.trunc(value)));
+}
 
 function parseHexColor(value: unknown): HostRgb | null {
   const match = typeof value === "string" ? HEX_COLOR.exec(value) : null;
@@ -213,6 +238,22 @@ export function createTerminalBridge(args: {
     { cols: number; rows: number; surface?: { cols: number; rows: number } }
   >();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
+  /** Record a terminal fact as the newest, forgetting the oldest idle ones. */
+  function rememberFact<T>(facts: Map<string, T>, terminalId: string, fact: T) {
+    facts.delete(terminalId);
+    facts.set(terminalId, fact);
+    if (facts.size <= TERMINAL_FACT_LIMIT) return;
+    for (const id of facts.keys()) {
+      if (facts.size <= TERMINAL_FACT_LIMIT) break;
+      if (!sharedTerminals.has(id)) facts.delete(id);
+    }
+  }
+  /** Forget facts about terminals Herdr no longer lists and nobody streams. */
+  function pruneFacts(live: ReadonlySet<string>) {
+    for (const facts of [knownPanes, displaySizes])
+      for (const id of facts.keys())
+        if (!live.has(id) && !sharedTerminals.has(id)) facts.delete(id);
+  }
   // Terminals Herdr no longer has (live handoff, closed pane), so viewers that
   // still ask for them learn the replacement instead of retrying forever.
   const retiredTerminals = new Map<string, RetiredTerminal>();
@@ -334,9 +375,9 @@ export function createTerminalBridge(args: {
     const size = displaySizes.get(terminalId);
     displaySizes.delete(terminalId);
     if (fate.kind === "replaced") {
-      knownPanes.set(fate.terminalId, fate.paneId);
+      rememberFact(knownPanes, fate.terminalId, fate.paneId);
       if (size && !displaySizes.has(fate.terminalId))
-        displaySizes.set(fate.terminalId, size);
+        rememberFact(displaySizes, fate.terminalId, size);
     }
     logger.info(
       fate.kind === "replaced"
@@ -420,6 +461,16 @@ export function createTerminalBridge(args: {
       }
       retireViewers(terminalId, fate, viewers);
     }
+    pruneFacts(new Set(panes.map((pane) => pane.terminalId)));
+  }
+
+  /** A pane closed: forget what was remembered about its unviewed terminals. */
+  function forgetPane(paneId: string) {
+    for (const [terminalId, known] of knownPanes) {
+      if (known !== paneId || sharedTerminals.has(terminalId)) continue;
+      knownPanes.delete(terminalId);
+      displaySizes.delete(terminalId);
+    }
   }
 
   /**
@@ -487,7 +538,7 @@ export function createTerminalBridge(args: {
     const known = knownPanes.get(terminalId);
     if (known) return known;
     const paneId = (await args.lookupPaneId(terminalId)) ?? null;
-    if (paneId) knownPanes.set(terminalId, paneId);
+    if (paneId) rememberFact(knownPanes, terminalId, paneId);
     return paneId;
   }
 
@@ -773,24 +824,28 @@ export function createTerminalBridge(args: {
         shared.lastFrameLogAt = now;
       }
       const payloads = new Map<string, string>();
-      const parts = new Map<string, ReturnType<typeof frameToAnsiParts>>();
-      for (const viewer of Array.from(shared.viewers)) {
-        const viewport = terminalViewers.get(viewer)?.get(terminalId);
-        if (!viewport) {
-          shared.viewers.delete(viewer);
-          continue;
+      // One ANSI encode per distinct size. The session already encoded the
+      // whole pane, which is what every viewer it fits receives.
+      const parts = new Map<string, TerminalFrameParts>();
+      if (t.frame && t.parts) parts.set(`${t.width}x${t.height}`, t.parts);
+      const partsFor = (key: string, viewport: TerminalViewport) => {
+        let frameParts = parts.get(key);
+        if (!frameParts) {
+          frameParts = frameToAnsiParts(t.frame, viewport);
+          parts.set(key, frameParts);
         }
+        return frameParts;
+      };
+      const sendFrame = (
+        viewer: ServerWebSocket<unknown>,
+        viewport: TerminalViewport,
+      ) => {
         const width = t.frame ? Math.min(t.width, viewport.cols) : t.width;
         const height = t.frame ? Math.min(t.height, viewport.rows) : t.height;
         const key = `${width}x${height}`;
         const stream = frameStreams.get(viewer)?.get(terminalId);
         if (stream && t.frame && t.full) {
-          let frameParts = parts.get(key);
-          if (!frameParts) {
-            frameParts = frameToAnsiParts(t.frame, viewport);
-            parts.set(key, frameParts);
-          }
-          stream.offer(frameParts, {
+          stream.offer(partsFor(key, viewport), {
             ...(t.graphics ? { graphics: t.graphics } : {}),
             width,
             height,
@@ -805,13 +860,13 @@ export function createTerminalBridge(args: {
               ? { history: t.history }
               : {}),
           });
-          continue;
+          return;
         }
         let payload = payloads.get(key);
         if (!payload) {
           const bytes =
             t.frame && (width !== t.width || height !== t.height)
-              ? frameToAnsi(t.frame, viewport)
+              ? terminalFrameText(partsFor(key, viewport))
               : t.bytes;
           payload = serialize({
             terminal: {
@@ -842,6 +897,26 @@ export function createTerminalBridge(args: {
           "terminal-frame",
           t.full ? terminalCoalesceKey(terminalId) : undefined,
         );
+      };
+      for (const viewer of Array.from(shared.viewers)) {
+        const viewport = terminalViewers.get(viewer)?.get(terminalId);
+        if (!viewport) {
+          shared.viewers.delete(viewer);
+          continue;
+        }
+        // A frame one viewer cannot be sent must still reach the others, and
+        // must not throw into the stream that delivered it.
+        try {
+          sendFrame(viewer, viewport);
+        } catch (error) {
+          logger.warn("terminal frame not sent", {
+            connection: args.connectionId ?? "legacy-default",
+            terminal: terminalId,
+            client: args.clientLabel(viewer),
+            size: `${viewport.cols}x${viewport.rows}`,
+            error: formatError(error),
+          });
+        }
       }
     });
     // Bind to the receiving session, NOT the producing PTY: Herdr 0.9.0 sends
@@ -1155,8 +1230,8 @@ export function createTerminalBridge(args: {
 
       if (method === "terminal.attach") {
         const terminalId = optionalString(params, "terminal_id") ?? "";
-        let cols = optionalNumber(params, "cols") ?? 100;
-        let rows = optionalNumber(params, "rows") ?? 30;
+        let cols = terminalDimension(params, "cols", 100, TERMINAL_MAX_COLS);
+        let rows = terminalDimension(params, "rows", 30, TERMINAL_MAX_ROWS);
         if (!terminalId) return fail("terminal_id required");
         // Herdr replaced or dropped this terminal (live handoff, closed
         // pane): answer from memory rather than open another endpoint.
@@ -1300,7 +1375,7 @@ export function createTerminalBridge(args: {
           // Recheck after connection readiness: another viewer may have created
           // or resized this stream while our attach awaited protocol discovery.
           if (shared.thin.currentPaneId)
-            knownPanes.set(terminalId, shared.thin.currentPaneId);
+            rememberFact(knownPanes, terminalId, shared.thin.currentPaneId);
           if (preserveSize) {
             cols = shared.cols;
             rows = shared.rows;
@@ -1308,7 +1383,11 @@ export function createTerminalBridge(args: {
               .get(ws)
               ?.set(terminalId, { cols, rows, follow: true });
           } else {
-            displaySizes.set(terminalId, { cols, rows, surface: surfaceSize });
+            rememberFact(displaySizes, terminalId, {
+              cols,
+              rows,
+              surface: surfaceSize,
+            });
           }
           if (
             shared.cols !== cols ||
@@ -1567,8 +1646,8 @@ export function createTerminalBridge(args: {
       if (method === "terminal.resize") {
         if (!thin || !shared || !requestedTerminalId)
           return fail(NO_TERMINAL_ATTACHED_MESSAGE);
-        const cols = optionalNumber(params, "cols") ?? 100;
-        const rows = optionalNumber(params, "rows") ?? 30;
+        const cols = terminalDimension(params, "cols", 100, TERMINAL_MAX_COLS);
+        const rows = terminalDimension(params, "rows", 30, TERMINAL_MAX_ROWS);
         const sizes = await maySize(ws, requestedTerminalId);
         if (
           sharedTerminals.get(requestedTerminalId) !== shared ||
@@ -1589,7 +1668,7 @@ export function createTerminalBridge(args: {
         shared.rows = rows;
         // The tab surface hint from attach is stale now; the endpoint session
         // derives it from the pane ratio.
-        displaySizes.set(requestedTerminalId, { cols, rows });
+        rememberFact(displaySizes, requestedTerminalId, { cols, rows });
         // Anything held for this terminal was rendered for the previous size.
         args.dropCoalesced?.(ws, terminalCoalesceKey(requestedTerminalId));
         syncFollowers(shared, ws);
@@ -1724,6 +1803,7 @@ export function createTerminalBridge(args: {
     statusTerminals,
     refreshSurfaceCodecs,
     reconcileTerminals,
+    forgetPane,
     dispose,
   };
 }

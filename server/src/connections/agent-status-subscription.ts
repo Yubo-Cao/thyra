@@ -204,6 +204,8 @@ export function createAgentStatusSubscriptionLoop(args: {
         const latest = await listAgentPaneIds();
         if (!current(expected)) return "cancelled";
         if (latest === null) {
+          // Still unverified: keep the rebuild pending for the retry.
+          rebuildRequested = true;
           await wait(retryDelayMs, expected, true);
           if (!current(expected)) return "cancelled";
           continue;
@@ -222,6 +224,8 @@ export function createAgentStatusSubscriptionLoop(args: {
       const latest = await listAgentPaneIds();
       if (!current(expected)) return "cancelled";
       if (latest === null) {
+        // Still unverified: retry after the delay, not the fallback poll.
+        rebuildRequested = true;
         await wait(retryDelayMs, expected, true);
         if (!current(expected)) return "cancelled";
         continue;

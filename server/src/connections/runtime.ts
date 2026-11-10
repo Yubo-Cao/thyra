@@ -71,6 +71,7 @@ import {
 import { createAgentStatusSubscriptionLoop } from "./agent-status-subscription";
 import { createShellService } from "../shell/service";
 import { sanitizeConnectionError } from "./manager";
+import { singleFlight } from "./single-flight";
 import { createEventSubscriptionLoop } from "./subscription-loop";
 import { type ConnectionIdentity, LEGACY_DEFAULT_CONNECTION } from "./types";
 
@@ -336,8 +337,12 @@ export function createLegacyConnectionRuntime(args: {
     safeSend: args.safeSend,
     markRpcError: args.markRpcError,
   });
-  /** Every pane's current terminal; rejects while Herdr is unreachable. */
-  async function listPaneTerminals(): Promise<PaneTerminal[]> {
+  /**
+   * Every pane's current terminal; rejects while Herdr is unreachable.
+   * Concurrent callers share one `pane.list` request.
+   */
+  const listPaneTerminals = singleFlight(fetchPaneTerminals);
+  async function fetchPaneTerminals(): Promise<PaneTerminal[]> {
     const result = await herdr.call("pane.list", {}, 5000);
     const panes = (result as { panes?: unknown } | null)?.panes;
     if (!Array.isArray(panes)) throw new Error("invalid pane.list result");
@@ -491,6 +496,13 @@ export function createLegacyConnectionRuntime(args: {
     taskEvents.handleHerdrEvent(event);
     agentStatusSubscriptions.handleHerdrEvent(event);
     const name = (event as { event?: string })?.event;
+    if (name === "pane.closed" || name === "pane_closed") {
+      const paneId = (event as { data?: { pane_id?: unknown } }).data?.pane_id;
+      if (typeof paneId === "string") {
+        shell.state.forget(paneId);
+        terminalBridge.forgetPane(paneId);
+      }
+    }
     if (isStructuralEvent(name)) topology.invalidate();
     // Herdr names this event with an underscore; the local fallback uses a dot.
     if (name === "collaboration_updated" || name === "collaboration.updated") {
@@ -542,14 +554,14 @@ export function createLegacyConnectionRuntime(args: {
   const collaborationSubscriptionLoop = createEventSubscriptionLoop({
     subscribe: () => herdr.subscribe(COLLABORATION_EVENTS),
     onReady: () =>
-      console.log(
-        `[bridge] subscribed to collaboration events connection=${identity.id}`,
-      ),
+      logger.info("subscribed to collaboration events", {
+        connection: identity.id,
+      }),
     onSubscribeError: (error) =>
-      console.warn(
-        `[bridge] collaboration events unavailable connection=${identity.id}:`,
-        sanitizeConnectionError(error),
-      ),
+      logger.warn("collaboration events unavailable", {
+        connection: identity.id,
+        error: sanitizeConnectionError(error),
+      }),
     retrySubscribeError: (error) => {
       const message = error.message.toLowerCase();
       return !(

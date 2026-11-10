@@ -7,6 +7,7 @@ import {
   MOD_CONTROL,
   MOD_SHIFT,
   type PaneInputEvent,
+  VT_INPUT_MAX_PENDING_BYTES,
   VtInputClassifier,
   encodePaneInput,
   paneKeyEvent,
@@ -437,5 +438,50 @@ describe("encodePaneInput", () => {
     expect(r.bool()).toBe(false);
     expect(r.bool()).toBe(false);
     expect(r.remaining).toBe(0);
+  });
+});
+
+describe("bounded pending input", () => {
+  test("an unterminated paste is delivered once it passes the cap", () => {
+    const classifier = new VtInputClassifier();
+    expect(classifier.feed(Buffer.from("\x1b[200~"))).toEqual([]);
+    const half = Buffer.alloc(VT_INPUT_MAX_PENDING_BYTES / 2, "a");
+    expect(classifier.feed(half)).toEqual([]);
+    const events = classifier.feed(half);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "paste" });
+    expect((events[0] as { text: string }).text).toHaveLength(
+      VT_INPUT_MAX_PENDING_BYTES,
+    );
+    // Later input from any viewer is classified again, not swallowed.
+    expect(classifier.feed(Buffer.from("ls\r"))).toEqual([
+      { type: "text", text: "ls" },
+      expect.objectContaining({ type: "key" }),
+    ]);
+  });
+
+  test("an endless escape sequence is delivered as text past the cap", () => {
+    const classifier = new VtInputClassifier();
+    expect(classifier.feed(Buffer.from("\x1b[1"))).toEqual([]);
+    const events = classifier.feed(
+      Buffer.alloc(VT_INPUT_MAX_PENDING_BYTES, "1"),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "text" });
+    expect((events[0] as { text: string }).text).toHaveLength(
+      VT_INPUT_MAX_PENDING_BYTES + 2,
+    );
+    expect(classifier.feed(Buffer.from("x"))).toEqual([
+      { type: "text", text: "x" },
+    ]);
+  });
+
+  test("a large paste completed within the cap is still one paste", () => {
+    const classifier = new VtInputClassifier();
+    const body = "b".repeat(VT_INPUT_MAX_PENDING_BYTES - 64);
+    expect(classifier.feed(Buffer.from(`\x1b[200~${body}`))).toEqual([]);
+    expect(classifier.feed(Buffer.from("\x1b[201~"))).toEqual([
+      { type: "paste", text: body },
+    ]);
   });
 });

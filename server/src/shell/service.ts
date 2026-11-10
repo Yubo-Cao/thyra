@@ -61,6 +61,8 @@ export function createShellService(args: {
       client: object,
       publish: (state: ShellInputState) => void,
       current = () => true,
+      /** False once the client's socket closed; its cleanup already ran. */
+      connected = () => true,
     ) {
       const pane = params.pane_id;
       if (typeof pane !== "string" || !pane || pane.length > 256)
@@ -100,6 +102,9 @@ export function createShellService(args: {
       if (method === "shell.subscribe") {
         if (params.enabled !== undefined && typeof params.enabled !== "boolean")
           throw new Error("enabled must be a boolean");
+        // The refresh above awaited: unsubscribe() may already have run for
+        // this client, and nothing would remove a listener registered now.
+        if (!connected()) throw new Error("client disconnected");
         let panes = listeners.get(client);
         if (!panes) {
           panes = new Map();

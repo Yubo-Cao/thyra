@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import * as net from "node:net";
+import { StringDecoder } from "node:string_decoder";
 
 const MAX_NDJSON_LINE_BYTES = 1024 * 1024;
 const SUBSCRIPTION_ACK_TIMEOUT_MS = 8000;
@@ -50,6 +51,8 @@ export class HerdrClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const s = net.createConnection({ path: this.socketPath });
       let buf = "";
+      // A multi-byte character may arrive split across two socket chunks.
+      const decoder = new StringDecoder("utf8");
       let done = false;
 
       const timer = setTimeout(
@@ -80,7 +83,7 @@ export class HerdrClient extends EventEmitter {
         s.write(JSON.stringify({ id: requestId, method, params }) + "\n");
       });
       s.on("data", (chunk) => {
-        buf += chunk.toString("utf8");
+        buf += decoder.write(chunk);
         const i = buf.indexOf("\n");
         if (i === -1) {
           if (Buffer.byteLength(buf) > MAX_NDJSON_LINE_BYTES) {
@@ -148,6 +151,8 @@ export class HerdrClient extends EventEmitter {
   } {
     const s = net.createConnection({ path: this.socketPath });
     let buf = "";
+    // A multi-byte character may arrive split across two socket chunks.
+    const decoder = new StringDecoder("utf8");
     let acked = false;
     let readySettled = false;
     let closeRequested = false;
@@ -201,7 +206,7 @@ export class HerdrClient extends EventEmitter {
       );
     });
     s.on("data", (chunk) => {
-      buf += chunk.toString("utf8");
+      buf += decoder.write(chunk);
       let i: number;
       while ((i = buf.indexOf("\n")) !== -1) {
         const line = buf.slice(0, i).trim();

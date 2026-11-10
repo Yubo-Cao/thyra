@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { silentLogger } from "../utils/logger";
 import {
+  abortableDelay,
   agentBrowserConfig,
   createAgentBrowser,
   createSseParser,
@@ -20,6 +21,37 @@ const tab = (targetId: string, state?: string) => ({
 });
 
 describe("agent browser", () => {
+  test("retry waits leave no abort listeners behind", async () => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    let listeners = 0;
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    signal.addEventListener = ((...args: Parameters<typeof add>) => {
+      listeners++;
+      add(...args);
+    }) as typeof signal.addEventListener;
+    signal.removeEventListener = ((...args: Parameters<typeof remove>) => {
+      listeners--;
+      remove(...args);
+    }) as typeof signal.removeEventListener;
+    jest.useFakeTimers();
+    try {
+      for (let i = 0; i < 3; i++) {
+        const waited = abortableDelay(1000, signal);
+        jest.advanceTimersByTime(1000);
+        await waited;
+      }
+      expect(listeners).toBe(0);
+      const aborted = abortableDelay(60_000, signal);
+      controller.abort();
+      await aborted;
+      expect(jest.getTimerCount()).toBe(0);
+      await abortableDelay(60_000, signal);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   test("viewer scale: 1 to 3 in quarter steps", () => {
     expect(parseViewerScale("1.25")).toBe(1.25);
     expect(parseViewerScale("1.3")).toBe(1.25);

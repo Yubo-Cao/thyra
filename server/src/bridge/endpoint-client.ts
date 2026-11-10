@@ -144,7 +144,11 @@ export interface EndpointSurface {
  */
 export class EndpointClient extends EventEmitter {
   private sock: net.Socket | null = null;
-  private buf = Buffer.alloc(0);
+  private buf: Buffer = Buffer.alloc(0);
+  // Chunks of a frame whose length prefix is known but which is incomplete.
+  private pendingChunks: Buffer[] = [];
+  private pendingBytes = 0;
+  private pendingNeeded = 0;
   private closed = false;
   private welcomed = false;
   private welcome: EndpointWelcome | null = null;
@@ -163,7 +167,8 @@ export class EndpointClient extends EventEmitter {
     {
       resolve: (result: unknown) => void;
       reject: (error: Error) => void;
-      chunks: string[];
+      // Raw bytes: a chunk boundary may split a multi-byte character.
+      chunks: Buffer[];
       timer?: ReturnType<typeof setTimeout>;
     }
   >();
@@ -484,7 +489,20 @@ export class EndpointClient extends EventEmitter {
   }
 
   private onData(chunk: Buffer) {
-    this.buf = Buffer.concat([this.buf, chunk]);
+    // A large frame arrives as many chunks. Hold them apart until the frame is
+    // complete so each byte is copied once, not once per later chunk.
+    if (this.pendingChunks.length > 0) {
+      this.pendingChunks.push(chunk);
+      this.pendingBytes += chunk.length;
+      if (this.pendingBytes < this.pendingNeeded) return;
+      this.buf = Buffer.concat(this.pendingChunks, this.pendingBytes);
+      this.pendingChunks = [];
+      this.pendingBytes = 0;
+      this.pendingNeeded = 0;
+    } else {
+      this.buf =
+        this.buf.length === 0 ? chunk : Buffer.concat([this.buf, chunk]);
+    }
     while (this.buf.length >= 4) {
       const len = this.buf.readUInt32LE(0);
       if (len > 32 * 1024 * 1024) {
@@ -495,7 +513,13 @@ export class EndpointClient extends EventEmitter {
         this.emit("error", error);
         return;
       }
-      if (this.buf.length < 4 + len) return;
+      if (this.buf.length < 4 + len) {
+        this.pendingChunks = [this.buf];
+        this.pendingBytes = this.buf.length;
+        this.pendingNeeded = 4 + len;
+        this.buf = Buffer.alloc(0);
+        return;
+      }
       const payload = this.buf.subarray(4, 4 + len);
       this.buf = this.buf.subarray(4 + len);
       this.handlePayload(payload);
@@ -537,7 +561,7 @@ export class EndpointClient extends EventEmitter {
         r.string(); // boot_id
         const requestId = r.string();
         const finalChunk = r.bool();
-        const data = r.bytes().toString("utf8");
+        const data = r.bytes();
         const pending = this.pendingRequests.get(requestId);
         if (pending) {
           pending.chunks.push(data);
@@ -545,7 +569,9 @@ export class EndpointClient extends EventEmitter {
             clearTimeout(pending.timer);
             this.pendingRequests.delete(requestId);
             try {
-              const parsed = JSON.parse(pending.chunks.join(""));
+              const parsed = JSON.parse(
+                Buffer.concat(pending.chunks).toString("utf8"),
+              );
               if (parsed.error) {
                 pending.reject(
                   new Error(parsed.error.message ?? "endpoint request failed"),

@@ -7,7 +7,7 @@ import {
   closeSync,
   type FSWatcher,
 } from "node:fs";
-import { mkdir, open, readdir } from "node:fs/promises";
+import { lstat, mkdir, open, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   ShellInputState,
@@ -160,6 +160,9 @@ export function encodeSubmit(
   return { text, keys: execute ? [run] : [] };
 }
 
+/** Unchanged panes are still re-verified this often. */
+const FULL_SCAN_INTERVAL_MS = 30_000;
+
 export class ShellStateTracker {
   private records = new Map<string, ShellRecord>();
   private states = new Map<string, ShellInputState>();
@@ -168,7 +171,14 @@ export class ShellStateTracker {
     { pid: number; seq: number; reason: "dirty" | "submitted" }
   >();
   private revisions = new Map<string, number>();
-  private alternate = new Map<string, boolean>();
+  /** Never reused, so a pruned pane cannot repeat a revision a refresh holds. */
+  private revision = 0;
+  private alternate = new Set<string>();
+  /** State files seen by the last scan, by name. */
+  private files = new Map<string, { stamp: string; pane?: string }>();
+  /** Panes the next scan refreshes even though their file did not change. */
+  private unsettled = new Set<string>();
+  private lastFullScan = 0;
   private submitting = new Set<string>();
   private watcher?: FSWatcher;
   private timer?: ReturnType<typeof setInterval>;
@@ -201,8 +211,17 @@ export class ShellStateTracker {
       this.args.changed?.(state);
     }
   }
+  /** Drops everything held for a closed pane. */
+  forget(pane: string) {
+    this.records.delete(pane);
+    this.states.delete(pane);
+    this.blocked.delete(pane);
+    this.revisions.delete(pane);
+    this.alternate.delete(pane);
+    this.unsettled.delete(pane);
+  }
   dirty(pane: string, reason: "dirty" | "submitted" = "dirty") {
-    this.revisions.set(pane, (this.revisions.get(pane) ?? 0) + 1);
+    this.revisions.set(pane, ++this.revision);
     // A prompt may have advanced since the watcher last ran. Bind input to
     // the file at the actual dispatch boundary, never that stale snapshot.
     const disk = readAtInput(join(this.args.dir, paneFilename(pane)));
@@ -217,16 +236,19 @@ export class ShellStateTracker {
     if (state) this.publish({ ...state, available: false, reason });
   }
   setAlternate(pane: string, active: boolean) {
-    this.alternate.set(pane, active);
-    if (active) {
-      const state = this.states.get(pane);
-      if (state)
-        this.publish({
-          ...state,
-          available: false,
-          reason: "alternate_screen",
-        });
+    if (!active) {
+      // The next scan republishes the state the alternate screen was hiding.
+      if (this.alternate.delete(pane)) this.unsettled.add(pane);
+      return;
     }
+    this.alternate.add(pane);
+    const state = this.states.get(pane);
+    if (state)
+      this.publish({
+        ...state,
+        available: false,
+        reason: "alternate_screen",
+      });
   }
   async refresh(pane: string): Promise<ShellInputState> {
     const missing: ShellInputState = {
@@ -237,6 +259,7 @@ export class ShellStateTracker {
       bracketed_paste: false,
     };
     const revision = this.revisions.get(pane) ?? 0;
+    this.unsettled.delete(pane);
     const record = await readShellRecord(
       join(this.args.dir, paneFilename(pane)),
     );
@@ -254,7 +277,8 @@ export class ShellStateTracker {
             })) as { process_info?: ProcessInfo }
           ).process_info ?? null;
       } catch {
-        /* Unavailable fails closed. */
+        /* Unavailable fails closed; the next scan asks again. */
+        this.unsettled.add(pane);
       }
     }
     if (!record || !info || info.shell_pid !== record.pid) {
@@ -299,7 +323,7 @@ export class ShellStateTracker {
       });
     const reason =
       this.blocked.get(pane)?.reason ??
-      (this.alternate.get(pane)
+      (this.alternate.has(pane)
         ? "alternate_screen"
         : record.state !== "prompt" ||
             info.foreground_process_group_id !== record.pid
@@ -354,17 +378,58 @@ export class ShellStateTracker {
     if (this.scanning) return this.scanning;
     this.scanning = (async () => {
       const files = await readdir(this.args.dir).catch(() => [] as string[]);
-      const panes = new Set(this.states.keys());
+      const full = Date.now() - this.lastFullScan >= FULL_SCAN_INTERVAL_MS;
+      if (full) this.lastFullScan = Date.now();
+      // Only panes whose state file changed are re-read: an idle scan costs
+      // one stat per file instead of a read and a Herdr call per pane.
+      const panes = new Set(this.unsettled);
+      const present = new Set<string>();
+      const seen = new Set<string>();
       for (const name of files) {
         if (!name.endsWith(".json")) continue;
-        const record = await readShellRecord(join(this.args.dir, name));
-        if (record && paneFilename(record.pane) === name)
-          panes.add(record.pane);
+        seen.add(name);
+        const path = join(this.args.dir, name);
+        const stamp = await lstat(path).then(
+          (stat) => `${stat.mtimeMs}:${stat.size}:${stat.ino}`,
+          () => "",
+        );
+        let known = this.files.get(name);
+        if (!known || known.stamp !== stamp) {
+          const record = await readShellRecord(path);
+          const pane =
+            record && paneFilename(record.pane) === name
+              ? record.pane
+              : undefined;
+          if (known?.pane && known.pane !== pane) panes.add(known.pane);
+          if (pane) panes.add(pane);
+          known = { stamp, pane };
+          this.files.set(name, known);
+        }
+        if (known.pane) present.add(known.pane);
       }
+      for (const [name, known] of this.files) {
+        if (seen.has(name)) continue;
+        this.files.delete(name);
+        if (known.pane) panes.add(known.pane);
+      }
+      const alive = this.args.alive ?? isProcessAlive;
+      for (const [pane, record] of this.records)
+        if (!alive(record.pid)) panes.add(pane);
+      if (full)
+        for (const pane of [...this.states.keys(), ...present]) panes.add(pane);
       for (const pane of panes) {
         if (this.stopped) break;
         await this.refresh(pane);
       }
+      // A pane without a state file has nothing to track; a later request or
+      // a new file brings it back.
+      for (const [pane, state] of this.states)
+        if (
+          !present.has(pane) &&
+          !this.records.has(pane) &&
+          state.reason === "no_integration"
+        )
+          this.states.delete(pane);
     })().finally(() => {
       this.scanning = undefined;
     });

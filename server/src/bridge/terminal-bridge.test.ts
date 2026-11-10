@@ -1,11 +1,17 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
 import * as net from "node:net";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
 import { createDisplayOwnership } from "./display-ownership";
-import { createTerminalBridge } from "./terminal-bridge";
+import {
+  createTerminalBridge,
+  TERMINAL_FACT_LIMIT,
+  TERMINAL_MAX_COLS,
+} from "./terminal-bridge";
+import { EndpointTerminalSession } from "./endpoint-terminal-session";
+import { frameToAnsi, frameToAnsiParts } from "./frame-to-ansi";
 import type { CellData, FrameData } from "./frame-codec";
 
 const servers: net.Server[] = [];
@@ -1217,4 +1223,364 @@ test("drops held frames for every viewer when an attach resizes the shared termi
   } finally {
     bridge.dispose();
   }
+});
+
+/**
+ * A bridge whose endpoint sessions never open a socket: `connect` and `resize`
+ * are recorded, and the test emits the session's frames itself.
+ */
+function offlineBridge(
+  options: Partial<Parameters<typeof createTerminalBridge>[0]> = {},
+) {
+  const sessions: EndpointTerminalSession[] = [];
+  const connects: unknown[][] = [];
+  const resizes: unknown[][] = [];
+  const connect = spyOn(
+    EndpointTerminalSession.prototype,
+    "connect",
+  ).mockImplementation(function (
+    this: EndpointTerminalSession,
+    ...size: unknown[]
+  ) {
+    sessions.push(this);
+    connects.push(size);
+    return Promise.resolve();
+  });
+  const resize = spyOn(
+    EndpointTerminalSession.prototype,
+    "resize",
+  ).mockImplementation((...size: unknown[]) => {
+    resizes.push(size);
+  });
+  const messages = new Map<ServerWebSocket<unknown>, any[]>();
+  const bridge = createTerminalBridge({
+    clientSocketPath: "/nonexistent",
+    lookupPaneId: async () => "p1",
+    safeSend: (ws, payload) => {
+      const inbox = messages.get(ws) ?? [];
+      messages.set(ws, inbox);
+      inbox.push(payload);
+      return true;
+    },
+    clientLabel: () => "test",
+    markRpcError: () => {},
+    ...options,
+  });
+  const call = async (
+    ws: ServerWebSocket<unknown>,
+    method: string,
+    params: Record<string, unknown>,
+  ) => {
+    const id = crypto.randomUUID();
+    await bridge.handleTerminalRpc(ws, id, method, params);
+    const reply = (messages.get(ws) ?? [])
+      .map((line) => JSON.parse(line))
+      .find((line) => line.id === id);
+    if (reply?.error) throw new Error(reply.error.message);
+    return reply?.result;
+  };
+  return {
+    bridge,
+    call,
+    connects,
+    resizes,
+    sessions,
+    frames: (ws: ServerWebSocket<unknown>) =>
+      (messages.get(ws) ?? []).filter((line) => line.includes('"terminal":')),
+    clear: () => messages.clear(),
+    restore: () => {
+      bridge.dispose();
+      connect.mockRestore();
+      resize.mockRestore();
+    },
+  };
+}
+
+describe("terminal size validation", () => {
+  test("attach and resize use whole cells within bounds", async () => {
+    const harness = offlineBridge();
+    const browser = {} as ServerWebSocket<unknown>;
+    try {
+      await harness.call(browser, "terminal.attach", {
+        terminal_id: "t1",
+        cols: 80.6,
+        rows: 24.2,
+      });
+      expect(harness.connects).toEqual([[80, 24, undefined]]);
+      await harness.call(browser, "terminal.resize", {
+        terminal_id: "t1",
+        cols: 1e9,
+        rows: -5,
+      });
+      expect(harness.resizes.at(-1)).toEqual([TERMINAL_MAX_COLS, 1]);
+      await harness.call(browser, "terminal.resize", {
+        terminal_id: "t1",
+        cols: 0.5,
+        rows: 30.999,
+      });
+      expect(harness.resizes.at(-1)).toEqual([1, 30]);
+      await expect(
+        harness.call(browser, "terminal.resize", {
+          terminal_id: "t1",
+          cols: "80",
+          rows: 24,
+        }),
+      ).rejects.toThrow("cols must be a finite number");
+    } finally {
+      harness.restore();
+    }
+  });
+});
+
+describe("terminal frame fanout", () => {
+  const frame: FrameData = {
+    cells: Array.from({ length: 18 }, (_, i) =>
+      cell(i === 7 ? "界" : String.fromCharCode(97 + i)),
+    ),
+    width: 6,
+    height: 3,
+    cursor: { x: 1, y: 1, visible: true, shape: 1 },
+    hyperlinks: [],
+  };
+  const event = (withParts: boolean) => ({
+    linkFrame: "session:1",
+    seq: 1,
+    width: frame.width,
+    height: frame.height,
+    full: true,
+    mouseReporting: false,
+    history: undefined,
+    bytes: Buffer.from(frameToAnsi(frame), "utf8"),
+    ...(withParts ? { parts: frameToAnsiParts(frame) } : {}),
+    frame,
+  });
+
+  async function fanout() {
+    const harness = offlineBridge();
+    const full = {} as ServerWebSocket<unknown>;
+    const fullDelta = {} as ServerWebSocket<unknown>;
+    const clipped = {} as ServerWebSocket<unknown>;
+    const clippedDelta = {} as ServerWebSocket<unknown>;
+    // The small viewers attach first, so their viewports stay 4x2 when the
+    // large ones resize the shared stream to 6x3.
+    for (const [ws, cols, rows, delta] of [
+      [clipped, 4, 2, false],
+      [clippedDelta, 4, 2, true],
+      [full, 6, 3, false],
+      [fullDelta, 6, 3, true],
+    ] as const)
+      await harness.call(ws, "terminal.attach", {
+        terminal_id: "t1",
+        cols,
+        rows,
+        ...(delta ? { frame_delta: true } : {}),
+      });
+    harness.clear();
+    return { harness, full, fullDelta, clipped, clippedDelta };
+  }
+
+  const repaint = (bytes: string, width: number, height: number) => ({
+    terminal: {
+      terminal_id: "t1",
+      width,
+      height,
+      full: true,
+      link_frame: "session:1",
+      mouse_reporting: false,
+      bytes: Buffer.from(bytes).toString("base64"),
+    },
+  });
+  const rowsFrame = (
+    parts: ReturnType<typeof frameToAnsiParts>,
+    width: number,
+    height: number,
+  ) => ({
+    terminal: {
+      terminal_id: "t1",
+      width,
+      height,
+      full: true,
+      link_frame: "session:1",
+      mouse_reporting: false,
+      frame_seq: expect.any(Number),
+      rows: parts.rows,
+      tail: parts.tail,
+    },
+  });
+
+  test.each([
+    ["the session's shared rows", true],
+    ["no rows from the session", false],
+  ])(
+    "every viewer receives the bytes a per-viewer encode would produce, given %s",
+    async (_name, withParts) => {
+      const { harness, full, fullDelta, clipped, clippedDelta } =
+        await fanout();
+      const small = { cols: 4, rows: 2 };
+      try {
+        harness.sessions[0].emit("terminal", event(withParts));
+        // Full repaints are compared as text: the wire bytes themselves.
+        expect(harness.frames(full)).toEqual([
+          JSON.stringify(repaint(frameToAnsi(frame), 6, 3)),
+        ]);
+        expect(harness.frames(clipped)).toEqual([
+          JSON.stringify(repaint(frameToAnsi(frame, small), 4, 2)),
+        ]);
+        // Row streams number their frames, so compare everything else.
+        expect(
+          harness.frames(fullDelta).map((line) => JSON.parse(line)),
+        ).toEqual([rowsFrame(frameToAnsiParts(frame), 6, 3)]);
+        expect(
+          harness.frames(clippedDelta).map((line) => JSON.parse(line)),
+        ).toEqual([rowsFrame(frameToAnsiParts(frame, small), 4, 2)]);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+
+  test("a frame is encoded once per distinct size, not once per viewer or form", async () => {
+    const { harness } = await fanout();
+    // The encoder measures each cell it writes exactly once.
+    const withRows = event(true);
+    const withoutRows = event(false);
+    // The encoder measures each cell it writes exactly once: 17 for the whole
+    // 6x3 frame (one cell is the second half of a wide character), 7 for the
+    // 4x2 clip.
+    const measured = spyOn(Bun, "stringWidth");
+    try {
+      harness.sessions[0].emit("terminal", withRows);
+      // Four viewers, two output forms: only the clipped size is encoded
+      // here; the full size reuses the session's rows. Before, this fanout
+      // encoded 17 + 7 + 7 cells on top of the session's own 17.
+      expect(measured).toHaveBeenCalledTimes(7);
+      measured.mockClear();
+      // A session that supplies no rows costs one more encode, still shared.
+      harness.sessions[0].emit("terminal", withoutRows);
+      expect(measured).toHaveBeenCalledTimes(17 + 7);
+    } finally {
+      measured.mockRestore();
+      harness.restore();
+    }
+  });
+
+  test("a viewer whose frame cannot be sent does not stop the others", async () => {
+    const sent: ServerWebSocket<unknown>[] = [];
+    const broken = {} as ServerWebSocket<unknown>;
+    const healthy = {} as ServerWebSocket<unknown>;
+    let failing = false;
+    const harness = offlineBridge({
+      safeSend: (ws) => {
+        if (failing && ws === broken) throw new TypeError("bad viewport");
+        sent.push(ws);
+        return true;
+      },
+    });
+    try {
+      for (const ws of [broken, healthy])
+        await harness.bridge.handleTerminalRpc(ws, "a", "terminal.attach", {
+          terminal_id: "t1",
+          cols: 6,
+          rows: 3,
+        });
+      sent.length = 0;
+      failing = true;
+      expect(() =>
+        harness.sessions[0].emit("terminal", event(true)),
+      ).not.toThrow();
+      expect(sent).toEqual([healthy]);
+      expect(harness.bridge.statusTerminals()).toEqual([
+        { terminal_id: "t1", viewers: 2 },
+      ]);
+    } finally {
+      harness.restore();
+    }
+  });
+});
+
+describe("remembered terminal facts", () => {
+  function tracked() {
+    const lookups = new Map<string, number>();
+    const display = createDisplayOwnership();
+    // Pane lookups are remembered only while some pane has a display owner.
+    display.claim(
+      "elsewhere",
+      { participantId: "web-other", deviceKey: "device:other" },
+      true,
+    );
+    let panes: { paneId: string; terminalId: string }[] = [];
+    const harness = offlineBridge({
+      displayOwnership: display,
+      lookupPaneId: async (terminalId) => {
+        lookups.set(terminalId, (lookups.get(terminalId) ?? 0) + 1);
+        return `pane-of-${terminalId}`;
+      },
+      listPaneTerminals: async () => panes,
+    });
+    const browser = {} as ServerWebSocket<unknown>;
+    const visit = async (terminalId: string, detach = true) => {
+      await harness.call(browser, "terminal.attach", {
+        terminal_id: terminalId,
+        cols: 80,
+        rows: 24,
+      });
+      if (detach)
+        await harness.call(browser, "terminal.detach", {
+          terminal_id: terminalId,
+        });
+    };
+    return {
+      harness,
+      lookups,
+      visit,
+      setPanes: (next: typeof panes) => {
+        panes = next;
+      },
+    };
+  }
+
+  test("forgets the oldest unviewed terminals past the limit", async () => {
+    const { harness, lookups, visit } = tracked();
+    try {
+      for (let i = 0; i <= TERMINAL_FACT_LIMIT; i++) await visit(`t${i}`);
+      await visit(`t${TERMINAL_FACT_LIMIT}`);
+      expect(lookups.get(`t${TERMINAL_FACT_LIMIT}`)).toBe(1);
+      await visit("t0");
+      expect(lookups.get("t0")).toBe(2);
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test("forgets a closed pane's terminal unless it is being viewed", async () => {
+    const { harness, lookups, visit } = tracked();
+    try {
+      await visit("closed");
+      await visit("viewed", false);
+      harness.bridge.forgetPane("pane-of-closed");
+      harness.bridge.forgetPane("pane-of-viewed");
+      await visit("closed");
+      await visit("viewed");
+      expect(lookups.get("closed")).toBe(2);
+      expect(lookups.get("viewed")).toBe(1);
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test("reconciling drops terminals Herdr no longer lists", async () => {
+    const { harness, lookups, visit, setPanes } = tracked();
+    try {
+      await visit("kept");
+      await visit("dropped");
+      setPanes([{ paneId: "pane-of-kept", terminalId: "kept" }]);
+      await harness.bridge.reconcileTerminals("test");
+      await visit("kept");
+      await visit("dropped");
+      expect(lookups.get("kept")).toBe(1);
+      expect(lookups.get("dropped")).toBe(2);
+    } finally {
+      harness.restore();
+    }
+  });
 });

@@ -1,4 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  describe,
+  expect,
+  jest,
+  setSystemTime,
+  test,
+} from "bun:test";
 import {
   mkdtemp,
   readFile,
@@ -135,6 +142,67 @@ describe("shell state", () => {
     expect(calls.filter((method) => method === "pane.send_input")).toHaveLength(
       1,
     );
+  });
+  test("an idle scan re-reads nothing and closed panes are pruned", async () => {
+    const { dir, file } = await fixture();
+    let calls = 0;
+    const tracker = new ShellStateTracker({
+      dir,
+      call: async () => {
+        calls++;
+        return {
+          process_info: {
+            shell_pid: process.pid,
+            foreground_process_group_id: process.pid,
+          },
+        };
+      },
+    });
+    setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    try {
+      await tracker.scan();
+      expect(calls).toBe(1);
+      expect(tracker.current("pane:1")?.available).toBe(true);
+      await tracker.scan();
+      await tracker.scan();
+      expect(calls).toBe(1);
+
+      // A pane that was only asked about, and has no state file, is dropped.
+      await tracker.refresh("pane:gone");
+      expect(tracker.current("pane:gone")?.reason).toBe("no_integration");
+      await tracker.scan();
+      expect(tracker.current("pane:gone")).toBeUndefined();
+      expect(calls).toBe(1);
+
+      // Leaving the alternate screen is republished without a file change.
+      tracker.setAlternate("pane:1", true);
+      expect(tracker.current("pane:1")?.reason).toBe("alternate_screen");
+      tracker.setAlternate("pane:1", false);
+      await tracker.scan();
+      expect(calls).toBe(2);
+      expect(tracker.current("pane:1")?.available).toBe(true);
+
+      await writeFile(file, JSON.stringify(record({ seq: 2 })));
+      await tracker.scan();
+      expect(calls).toBe(3);
+      expect(tracker.current("pane:1")?.seq).toBe(2);
+
+      // Unchanged panes are still verified at the slow cadence.
+      setSystemTime(new Date("2026-01-01T00:00:31Z"));
+      await tracker.scan();
+      expect(calls).toBe(4);
+
+      tracker.dirty("pane:1");
+      tracker.forget("pane:1");
+      expect(tracker.snapshot()).toEqual([]);
+      expect(tracker.record("pane:1")).toBeUndefined();
+      await rm(file);
+      await tracker.scan();
+      expect(tracker.snapshot()).toEqual([]);
+    } finally {
+      setSystemTime();
+      await tracker.stop();
+    }
   });
   test("raw input during fresh process check and concurrent submissions fail closed", async () => {
     const { dir } = await fixture();
@@ -326,6 +394,43 @@ describe("completion", () => {
       "switch",
     ]);
   });
+  test("a PATH scan that outlasts its budget is not cached as complete", async () => {
+    const completer = new ShellCompleter() as unknown as {
+      scanExecutables(
+        path: string,
+        cwd: string,
+        words: Set<string>,
+      ): Promise<void>;
+      executableNames(path: string, cwd: string): Promise<string[]>;
+    };
+    let scans = 0;
+    let finish!: () => void;
+    completer.scanExecutables = async (_path, _cwd, words) => {
+      scans++;
+      words.add("early");
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      words.add("late");
+    };
+    jest.useFakeTimers();
+    try {
+      const partial = completer.executableNames("/bin", "/tmp");
+      jest.advanceTimersByTime(150);
+      expect(await partial).toEqual(["early"]);
+      // Still scanning: the next request joins it instead of trusting a cache.
+      const joined = completer.executableNames("/bin", "/tmp");
+      finish();
+      expect(await joined).toEqual(["early", "late"]);
+      expect(await completer.executableNames("/bin", "/tmp")).toEqual([
+        "early",
+        "late",
+      ]);
+      expect(scans).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   test("cwd files, hidden filtering, executables, quoting, source cap and git branches", async () => {
     const dir = await temp();
     await mkdir(join(dir, "a dir"));
@@ -463,6 +568,37 @@ describe("installer and protocol", () => {
     service.unsubscribe(client);
     service.state.setAlternate("pane:1", true);
     expect(events).toHaveLength(1);
+    await service.stop();
+  });
+  test("a client that disconnected during the refresh is not subscribed", async () => {
+    const { dir } = await fixture();
+    const service = createShellService({
+      dir,
+      stateDir: dir,
+      call: async () => ({
+        process_info: {
+          shell_pid: process.pid,
+          foreground_process_group_id: process.pid,
+        },
+      }),
+    });
+    const client = {};
+    const events: unknown[] = [];
+    let connected = true;
+    const subscribing = service.rpc(
+      "shell.subscribe",
+      { pane_id: "pane:1" },
+      client,
+      (state) => events.push(state),
+      () => true,
+      () => connected,
+    );
+    // The socket closes while the refresh is still reading the pane.
+    connected = false;
+    service.unsubscribe(client);
+    await expect(subscribing).rejects.toThrow("client disconnected");
+    service.state.dirty("pane:1");
+    expect(events).toHaveLength(0);
     await service.stop();
   });
   test("SSH socket profiles never inspect local shell data", async () => {

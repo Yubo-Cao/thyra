@@ -73,18 +73,15 @@ async function budget<T>(source: Promise<T>, fallback: T): Promise<T> {
 }
 export class ShellCompleter {
   private commands = new Map<string, { at: number; words: string[] }>();
-  private async executableNames(path: string, cwd: string) {
-    const key = Bun.hash(path + "\0" + cwd).toString();
-    const cached = this.commands.get(key);
-    if (cached && Date.now() - cached.at < 30_000) return cached.words;
-    const deadline = performance.now() + 145;
-    const words = new Set<string>();
+  private scans = new Map<
+    string,
+    { words: Set<string>; done: Promise<string[]> }
+  >();
+  private async scanExecutables(path: string, cwd: string, words: Set<string>) {
     for (const directory of path.split(":")) {
-      if (performance.now() > deadline) break;
       const dir = resolve(cwd, directory || ".");
       const files = await readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const file of files) {
-        if (performance.now() > deadline) break;
         if (file.isDirectory()) continue;
         if (
           await access(resolve(dir, file.name), constants.X_OK).then(
@@ -95,11 +92,40 @@ export class ShellCompleter {
           words.add(file.name);
       }
     }
-    if (this.commands.size >= 32)
-      this.commands.delete(this.commands.keys().next().value!);
-    const result = [...words].sort();
-    this.commands.set(key, { at: Date.now(), words: result });
-    return result;
+  }
+  private async executableNames(path: string, cwd: string) {
+    const key = Bun.hash(path + "\0" + cwd).toString();
+    const cached = this.commands.get(key);
+    if (cached && Date.now() - cached.at < 30_000) return cached.words;
+    let scan = this.scans.get(key);
+    if (!scan) {
+      const words = new Set<string>();
+      const done = this.scanExecutables(path, cwd, words)
+        .then(() => {
+          if (this.commands.size >= 32)
+            this.commands.delete(this.commands.keys().next().value!);
+          const result = [...words].sort();
+          this.commands.set(key, { at: Date.now(), words: result });
+          return result;
+        })
+        .finally(() => this.scans.delete(key));
+      scan = { words, done };
+      this.scans.set(key, scan);
+    }
+    // A slow PATH answers with the names found so far. Only the finished
+    // scan is cached; it keeps running and later requests join it.
+    const { words, done } = scan;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        done,
+        new Promise<string[]>((resolve) => {
+          timer = setTimeout(() => resolve([...words].sort()), 145);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
   private async files(
     prefix: string,

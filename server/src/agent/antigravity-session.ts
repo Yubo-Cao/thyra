@@ -1,12 +1,6 @@
 import { Database } from "bun:sqlite";
-import {
-  copyFileSync,
-  existsSync,
-  mkdtempSync,
-  rmSync,
-  statSync,
-} from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { copyFile, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type { SessionFile } from "./session-types";
@@ -98,17 +92,26 @@ function toUtf8String(val: unknown): string {
   return "";
 }
 
-function withTempDb<T>(dbPath: string, fn: (db: Database) => T): T {
-  const tempDir = mkdtempSync(join(tmpdir(), "thyra-agy-"));
+async function copyIfPresent(from: string, to: string) {
+  try {
+    await copyFile(from, to);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+// The live database may be mid-write, so it is read from a private copy. The
+// copy is async: only the short metadata queries run on the event loop.
+async function withTempDb<T>(
+  dbPath: string,
+  fn: (db: Database) => T,
+): Promise<T> {
+  const tempDir = await mkdtemp(join(tmpdir(), "thyra-agy-"));
   const tempDbPath = join(tempDir, basename(dbPath));
   try {
-    copyFileSync(dbPath, tempDbPath);
-    if (existsSync(`${dbPath}-wal`)) {
-      copyFileSync(`${dbPath}-wal`, `${tempDbPath}-wal`);
-    }
-    if (existsSync(`${dbPath}-shm`)) {
-      copyFileSync(`${dbPath}-shm`, `${tempDbPath}-shm`);
-    }
+    await copyFile(dbPath, tempDbPath);
+    await copyIfPresent(`${dbPath}-wal`, `${tempDbPath}-wal`);
+    await copyIfPresent(`${dbPath}-shm`, `${tempDbPath}-shm`);
     const db = new Database(tempDbPath);
     try {
       return fn(db);
@@ -116,11 +119,8 @@ function withTempDb<T>(dbPath: string, fn: (db: Database) => T): T {
       db.close();
     }
   } finally {
-    try {
-      rmSync(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup failures
-    }
+    // Ignore cleanup failures
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -207,6 +207,14 @@ function inspectAntigravityDb(
   return { sessionId, cwd, updatedAtMs };
 }
 
+const METADATA_CACHE_LIMIT = 512;
+const metadataCache = new Map<
+  string,
+  { stamp: string; metadata: AntigravityMetadata }
+>();
+/** Counts database copies, so tests can assert that unchanged files are not re-read. */
+export const antigravitySessionStats = { inspections: 0 };
+
 export async function describeAntigravitySessionPath(
   path: string,
 ): Promise<AntigravitySessionDescriptor | null> {
@@ -230,19 +238,33 @@ export async function describeAntigravitySessionPath(
   if (!statInfo.isFile()) return null;
 
   let mtimeMs = statInfo.mtimeMs;
+  let walStamp = "";
   try {
-    const walStat = statSync(`${targetPath}-wal`);
+    const walStat = await stat(`${targetPath}-wal`);
+    walStamp = `${walStat.mtimeMs}:${walStat.size}`;
     if (walStat.mtimeMs > mtimeMs) mtimeMs = walStat.mtimeMs;
   } catch {}
 
-  const fallbackId = basename(targetPath, ".db");
+  // An unchanged database (and WAL) costs only the stats above.
+  const stamp = `${statInfo.mtimeMs}:${statInfo.size}:${walStamp}`;
+  const cached = metadataCache.get(targetPath);
   let metadata: AntigravityMetadata;
-  try {
-    metadata = withTempDb(targetPath, (db) =>
-      inspectAntigravityDb(db, fallbackId),
-    );
-  } catch {
-    return null;
+  if (cached?.stamp === stamp) {
+    metadata = cached.metadata;
+  } else {
+    const fallbackId = basename(targetPath, ".db");
+    try {
+      antigravitySessionStats.inspections += 1;
+      metadata = await withTempDb(targetPath, (db) =>
+        inspectAntigravityDb(db, fallbackId),
+      );
+    } catch {
+      return null;
+    }
+    metadataCache.delete(targetPath);
+    if (metadataCache.size >= METADATA_CACHE_LIMIT)
+      metadataCache.delete(metadataCache.keys().next().value!);
+    metadataCache.set(targetPath, { stamp, metadata });
   }
 
   return {

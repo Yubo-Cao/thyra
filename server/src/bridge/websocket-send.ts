@@ -111,6 +111,15 @@ function closeSlowWebSocket(
   return true;
 }
 
+// Whether a payload's UTF-8 size reaches WS_COMPRESSION_MIN_BYTES. A UTF-16
+// code unit encodes to between one and three bytes, so the string length
+// settles every payload outside a narrow band without a pass over it.
+function reachesCompressionMin(payload: string): boolean {
+  if (payload.length >= WS_COMPRESSION_MIN_BYTES) return true;
+  if (payload.length * 3 < WS_COMPRESSION_MIN_BYTES) return false;
+  return Buffer.byteLength(payload) >= WS_COMPRESSION_MIN_BYTES;
+}
+
 export function sendWebSocketMessage(
   ws: WebSocketSendTarget,
   payload: string,
@@ -139,8 +148,7 @@ export function sendWebSocketMessage(
 
     const result = ws.send(
       payload,
-      !WS_UNCOMPRESSED_CONTEXTS.has(context) &&
-        Buffer.byteLength(payload) >= WS_COMPRESSION_MIN_BYTES,
+      !WS_UNCOMPRESSED_CONTEXTS.has(context) && reachesCompressionMin(payload),
     );
     if (result === 0) {
       cleanup();

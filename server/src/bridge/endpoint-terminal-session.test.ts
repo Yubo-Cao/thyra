@@ -12,8 +12,10 @@ import {
   LINK_FRAME_HISTORY,
   LINK_FRAME_HISTORY_MS,
   resolvedFrameLink,
+  sameFrameContent,
   sameLinkRows,
 } from "./endpoint-terminal-session";
+import { frameToAnsi, frameToAnsiParts } from "./frame-to-ansi";
 import type { CellData, FrameData } from "./frame-codec";
 import type { ServerWebSocket } from "bun";
 import { createTerminalBridge } from "./terminal-bridge";
@@ -4923,6 +4925,125 @@ describe("Herdr live handoff", () => {
       });
     } finally {
       f.bridge.dispose();
+    }
+  });
+});
+
+describe("frame encoding cost", () => {
+  const panes: TestPane[] = [
+    {
+      paneId: "w1:p1",
+      x: 0,
+      mouseReporting: false,
+      rect: { x: 0, y: 0, width: 24, height: 3 },
+      innerRect: { x: 0, y: 0, width: 24, height: 3 },
+      contentRevision: 7,
+    },
+  ];
+
+  async function painting(first: FrameData) {
+    let send!: (panes: TestPane[], frame?: FrameData) => void;
+    const socketPath = await startSessionServer({
+      initialSurface: { frame: first, panes },
+      onConnection: (value) => {
+        send = value;
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "terminal",
+      async () => "w1:p1",
+    );
+    const shown: any[] = [];
+    session.on("terminal", (value) => shown.push(value));
+    await session.connect(24, 3);
+    const paint = async (frame: FrameData) => {
+      const next = once(session, "terminal");
+      send(panes, frame);
+      await next;
+      return shown.at(-1);
+    };
+    return { session, shown, paint };
+  }
+
+  test("a frame is encoded to ANSI once and never serialized whole", async () => {
+    const first = linkFrame(["one 界", "two", ""]);
+    const second = linkFrame(["one 界", "2", "three"]);
+    const { session, shown, paint } = await painting(first);
+    const measured = spyOn(Bun, "stringWidth");
+    const stringified = spyOn(JSON, "stringify");
+    try {
+      const frame = await paint(second);
+      const cellsMeasured = measured.mock.calls.length;
+      const wholeFrames = stringified.mock.calls.filter(
+        ([value]) =>
+          !!value && typeof value === "object" && "cells" in (value as object),
+      ).length;
+      measured.mockRestore();
+      stringified.mockRestore();
+      // "one 界" is 5 written cells, "2" one, "three" five: one encode. It was
+      // two encodes (22) and one JSON.stringify of every cell.
+      expect(cellsMeasured).toBe(11);
+      expect(wholeFrames).toBe(0);
+      // The repaint bytes are exactly what encoding the frame alone yields.
+      expect(frame.frame).toEqual(second);
+      expect(Buffer.from(frame.bytes).toString("utf8")).toBe(
+        frameToAnsi(second),
+      );
+      expect(frame.parts).toEqual(frameToAnsiParts(second));
+      expect(Buffer.from(shown[0].bytes).toString("utf8")).toBe(
+        frameToAnsi(first),
+      );
+    } finally {
+      measured.mockRestore();
+      stringified.mockRestore();
+      session.close();
+    }
+  });
+
+  test("the link frame is reused exactly while the content is unchanged", async () => {
+    const base = linkFrame(["one", "two", ""]);
+    const { session, shown, paint } = await painting(base);
+    try {
+      const token = shown[0].linkFrame;
+      // Unchanged cells, and a cursor move alone, keep the frame.
+      expect((await paint(structuredClone(base))).linkFrame).toBe(token);
+      expect(
+        (
+          await paint({
+            ...structuredClone(base),
+            cursor: { x: 1, y: 1, visible: true, shape: 1 },
+          })
+        ).linkFrame,
+      ).toBe(token);
+      // Every cell field and the link table are content, even where the
+      // rendered text is the same.
+      const variants: ((frame: FrameData) => void)[] = [
+        (frame) => (frame.cells[0]!.symbol = "O"),
+        (frame) => (frame.cells[1]!.fg = 3),
+        (frame) => (frame.cells[2]!.bg = 4),
+        (frame) => (frame.cells[3]!.modifier = 1),
+        (frame) => (frame.cells[70]!.skip = true),
+        (frame) => {
+          frame.hyperlinks = ["https://example.com"];
+        },
+        (frame) => {
+          frame.hyperlinks = ["https://example.com"];
+          frame.cells[4]!.hyperlink = 0;
+        },
+      ];
+      let previous = token;
+      for (const change of variants) {
+        const next = structuredClone(base);
+        change(next);
+        expect(sameFrameContent(base, next)).toBe(false);
+        const painted = (await paint(next)).linkFrame;
+        expect(painted).not.toBe(previous);
+        previous = painted;
+      }
+      expect(sameFrameContent(base, structuredClone(base))).toBe(true);
+    } finally {
+      session.close();
     }
   });
 });

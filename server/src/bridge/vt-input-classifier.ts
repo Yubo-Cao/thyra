@@ -264,8 +264,13 @@ function utf8Length(first: number): number {
 const PASTE_START = Buffer.from("\x1b[200~");
 const PASTE_END = Buffer.from("\x1b[201~");
 
+// An unterminated paste or escape sequence waits for its remaining bytes. One
+// classifier serves every viewer of a terminal, so past this size the wait
+// ends and the held bytes are delivered rather than swallowing later input.
+export const VT_INPUT_MAX_PENDING_BYTES = 1024 * 1024;
+
 export class VtInputClassifier {
-  private pending = Buffer.alloc(0);
+  private pending: Buffer = Buffer.alloc(0);
 
   /** Feed one browser input chunk; returns complete events. */
   feed(chunk: Buffer): PaneInputEvent[] {
@@ -323,6 +328,19 @@ export class VtInputClassifier {
 
     flushText();
     this.pending = buf.subarray(i);
+    if (this.pending.length > VT_INPUT_MAX_PENDING_BYTES) {
+      const held = this.pending;
+      this.pending = Buffer.alloc(0);
+      if (matchesAt(held, 0, PASTE_START)) {
+        events.push({
+          type: "paste",
+          text: held.toString("utf8", PASTE_START.length),
+        });
+      } else {
+        // Drop the ESC that opened the sequence; the rest is plain text.
+        events.push({ type: "text", text: held.toString("utf8", 1) });
+      }
+    }
     return events;
   }
 

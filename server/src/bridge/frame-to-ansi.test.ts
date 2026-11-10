@@ -118,3 +118,27 @@ describe("frameToAnsi", () => {
     expect(out).not.toContain("\r\n");
   });
 });
+
+test("a fractional or negative viewport is clipped to whole cells", () => {
+  const cells = Array.from({ length: 12 }, (_, i) => ({
+    symbol: String.fromCharCode(97 + i),
+    fg: 0,
+    bg: 0,
+    modifier: 0,
+    skip: false,
+    hyperlink: null,
+  }));
+  const frame: FrameData = {
+    cells,
+    width: 4,
+    height: 3,
+    cursor: null,
+    hyperlinks: [],
+  };
+  expect(frameToAnsi(frame, { cols: 2.5, rows: 1.9 })).toBe(
+    frameToAnsi(frame, { cols: 2, rows: 1 }),
+  );
+  expect(frameToAnsi(frame, { cols: -3, rows: Number.NaN })).toBe(
+    frameToAnsi(frame, { cols: 0, rows: 0 }),
+  );
+});

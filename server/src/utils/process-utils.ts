@@ -1,8 +1,13 @@
 export async function runProcess(
   argv: string[],
   input?: string,
+  options?: { signal?: AbortSignal },
 ): Promise<{ stdout: string; stderr: string }> {
-  const { code, stdout, stderr } = await runProcessWithCode(argv, input);
+  const { code, stdout, stderr } = await runProcessWithCode(
+    argv,
+    input,
+    options,
+  );
   if (code !== 0) {
     throw new Error(
       `${argv[0]} exited ${code}: ${stderr.trim() || stdout.trim()}`,
@@ -14,11 +19,13 @@ export async function runProcess(
 export async function runProcessWithCode(
   argv: string[],
   input?: string,
+  options?: { signal?: AbortSignal },
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(argv, {
     stdin: input === undefined ? "ignore" : Buffer.from(input),
     stdout: "pipe",
     stderr: "pipe",
+    signal: options?.signal,
   });
   const [code, stdout, stderr] = await Promise.all([
     proc.exited,

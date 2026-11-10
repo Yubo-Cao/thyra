@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import {
   assertSshTunnelPlatformSupported,
   classifySshTunnelFailure,
@@ -453,4 +453,35 @@ describe("SSH tunnel readiness lifecycle", () => {
     expect(killed).toBe(2);
     expect(cancelledPolls).toBe(2);
   });
+});
+
+test("gives up on a remote HOME lookup that never answers", async () => {
+  jest.useFakeTimers();
+  try {
+    let signal: AbortSignal | undefined;
+    const manager = createSshTunnelManager({
+      config: config(),
+      runProcess: (_argv, _input, options) => {
+        signal = options?.signal;
+        return new Promise(() => {});
+      },
+      dependencies: { exists: () => false },
+    });
+    const started = manager.startAutoSshTunnel().then(
+      () => null,
+      (error: Error) => error,
+    );
+    await Promise.resolve();
+    jest.advanceTimersByTime(14_999);
+    expect(signal?.aborted).toBe(false);
+    jest.advanceTimersByTime(1);
+    expect((await started)?.message).toContain(
+      "timed out resolving remote HOME for test-host",
+    );
+    // A runner that honours the signal can now kill its ssh child.
+    expect(signal?.aborted).toBe(true);
+    await manager.cleanupAutoSshTunnel();
+  } finally {
+    jest.useRealTimers();
+  }
 });

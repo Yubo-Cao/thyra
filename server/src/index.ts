@@ -4,6 +4,7 @@ import { createMessageBoard } from "./message-board/service";
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { isHtmlPath } from "../../shared/filePreview";
 import { DOWNLOAD_TIMEOUT_MS } from "./workspace/file-constants";
+import { FILE_UPLOAD_MAX_BYTES } from "./workspace/files";
 import { createWebPushService } from "./notifications/web-push";
 import { createVscodeProxy, isVscodePath, vscodeConfig } from "./vscode/proxy";
 import {
@@ -86,6 +87,7 @@ import {
   createLegacyConnectionRuntime,
   type LegacyConnectionRuntime,
 } from "./connections/runtime";
+import { createKeyedSerialQueue } from "./connections/keyed-serial-queue";
 import { createShutdownController } from "./connections/shutdown";
 import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
@@ -176,7 +178,7 @@ import {
   rateLimitedResponse,
 } from "./http/request-rate-limit";
 import { collaborationParams } from "./authz/collaboration-params";
-import { parseTrustedProxies } from "./identity/client-address";
+import { parseTrustedProxies, rateLimitKey } from "./identity/client-address";
 import { dataRoot } from "./config/data-paths";
 import { thyraEnv } from "./config/environment";
 import {
@@ -881,6 +883,11 @@ const PANE_INPUT_METHODS = new Set([
   "pane.send_keys",
   "pane.paste",
 ]);
+const paneInputOrder = createKeyedSerialQueue();
+// Server-wide ceiling for any request body. Each route enforces its own,
+// smaller limit; this leaves headroom above the largest one (file upload) so
+// that route reports its own error.
+const MAX_REQUEST_BODY_BYTES = FILE_UPLOAD_MAX_BYTES + 16 * 1024 * 1024;
 const SLOW_RPC_LOG_MS = 750;
 const legacyRoutingLogger = createLegacyRoutingLogger({
   log: (message) =>
@@ -904,14 +911,26 @@ function logDetail(value: string): string {
     .slice(0, 300);
 }
 
-function parseRpcMeta(raw: string): {
+/** A socket message parsed once; `null` when it was not JSON. */
+type ParsedRpcMessage = { value: unknown } | null;
+
+function parseRpcMessage(raw: string): ParsedRpcMessage {
+  try {
+    return { value: JSON.parse(raw) };
+  } catch {
+    return null;
+  }
+}
+
+function parseRpcMeta(message: ParsedRpcMessage): {
   id: string | null;
   method: string | null;
   connectionId: unknown;
   connectionGeneration: unknown;
 } {
   try {
-    const msg = JSON.parse(raw);
+    if (!message) throw new Error("bad json");
+    const msg = message.value as any;
     return {
       id: typeof msg?.id === "string" ? msg.id : null,
       method: typeof msg?.method === "string" ? msg.method : null,
@@ -1178,10 +1197,11 @@ function runtimeFactoryForProfile(
         },
         onEvent: (event, eventIdentity) => {
           if (!context.isCurrent()) return;
-          logger.debug("Herdr event", {
-            connection: eventIdentity.id,
-            detail: summarizeHerdrEvent(event),
-          });
+          if (logger.enabled("debug"))
+            logger.debug("Herdr event", {
+              connection: eventIdentity.id,
+              detail: summarizeHerdrEvent(event),
+            });
           const name = (event as { event?: unknown } | null)?.event;
           if (name === "workspace.closed") {
             const workspaceId = (event as { data?: { workspace_id?: unknown } })
@@ -1334,11 +1354,11 @@ function safeSend(
   });
 }
 
-async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
+async function handleRpc(
+  ws: ServerWebSocket<unknown>,
+  message: ParsedRpcMessage,
+) {
+  if (!message) {
     safeSend(
       ws,
       JSON.stringify({ error: { message: "bad json" } }),
@@ -1346,6 +1366,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     );
     return;
   }
+  const parsed = message.value;
   if (!isConnectionRpcEnvelope(parsed)) {
     safeSend(
       ws,
@@ -1583,6 +1604,15 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     sendReply({ id, result: { ok: true } }, "bridge-ping");
     return;
   }
+  // Authorization awaited: a socket that closed meanwhile was already cleaned
+  // up, so nothing below may register state for it again.
+  if (
+    !clients.has(ws) &&
+    (method === "bridge.rtc_offer" ||
+      method === "bridge.identity" ||
+      method === "bridge.identity_profile")
+  )
+    return;
   if (method === "bridge.rtc_offer") {
     const data = (ws as ServerWebSocket<SocketData>).data;
     if (!data?.rtc || isRtcSocket(ws)) {
@@ -1778,6 +1808,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
             .catch(() => {});
         },
         requestIsCurrent,
+        // A socket that closed meanwhile must not be subscribed again.
+        () => clients.has(ws),
       );
       sendReply({ id, result }, method);
     } catch (error) {
@@ -2028,7 +2060,8 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
         requestIsCurrent,
       );
       const paneId = (result as { pane_id?: unknown }).pane_id;
-      if (typeof paneId === "string") terminalBridge.notePaneInput(ws, paneId);
+      if (typeof paneId === "string" && clients.has(ws))
+        terminalBridge.notePaneInput(ws, paneId);
       sendReply({ id, result }, method);
     } catch (e) {
       sendError(`${method}-error`, e);
@@ -2138,7 +2171,9 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   if (
     PANE_INPUT_METHODS.has(method) &&
     typeof params?.pane_id === "string" &&
-    params.pane_id
+    params.pane_id &&
+    // The socket may have closed during authorization; do not re-register it.
+    clients.has(ws)
   )
     terminalBridge.notePaneInput(ws, params.pane_id);
   try {
@@ -2249,7 +2284,11 @@ async function handleConnectionHttpRequest(
       } catch (error) {
         response = Response.json(
           { error: (error as Error).message },
-          { status: 400 },
+          {
+            status: (error as Error).message.startsWith("file too large")
+              ? 413
+              : 400,
+          },
         );
       }
     } else {
@@ -2791,7 +2830,7 @@ async function publicRoute(
     url.pathname.startsWith("/assets/");
   const retryAfter = staticAsset
     ? 0
-    : publicRequests.take(access.clientAddress ?? "unknown");
+    : publicRequests.take(rateLimitKey(access.clientAddress));
   if (retryAfter) return rateLimitedResponse(retryAfter);
   if (!access.hostAllowed) {
     logger.warn("public listener rejected an unknown host", {
@@ -2963,8 +3002,9 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
     }
     if (!clients.has(ws)) return;
     const text = typeof message === "string" ? message : message.toString();
+    const parsedMessage = parseRpcMessage(text);
     const { id, method, connectionId, connectionGeneration } =
-      parseRpcMeta(text);
+      parseRpcMeta(parsedMessage);
     const startedAt = Date.now();
     let responseConnectionId: string | null = null;
     let logConnectionId: string | null = null;
@@ -2981,7 +3021,19 @@ const websocketHandlers: WebSocketHandler<SocketData> = {
         }
       }
     }
-    handleRpc(ws, text)
+    // Herdr serves each call on its own connection, so two in-flight inputs
+    // for one pane could land in either order. Queue them per pane.
+    const inputPane =
+      method && PANE_INPUT_METHODS.has(method)
+        ? (parsedMessage?.value as { params?: { pane_id?: unknown } } | null)
+            ?.params?.pane_id
+        : undefined;
+    (typeof inputPane === "string" && inputPane
+      ? paneInputOrder.run(`${logConnectionId ?? ""}\0${inputPane}`, () =>
+          handleRpc(ws, parsedMessage),
+        )
+      : handleRpc(ws, parsedMessage)
+    )
       .then(() => {
         const outcome = takeRpcOutcome(ws, id);
         logRpc(
@@ -3070,6 +3122,7 @@ function main() {
         port: config.port,
         hostname: config.host,
         tls: config.tls,
+        maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
         fetch: primaryFetch,
         websocket: websocketHandlers,
       });
@@ -3079,6 +3132,7 @@ function main() {
           publicServer = Bun.serve<SocketData>({
             port: publicListener.port,
             hostname: publicListener.hostname,
+            maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
             fetch: publicFetch,
             websocket: websocketHandlers,
           });

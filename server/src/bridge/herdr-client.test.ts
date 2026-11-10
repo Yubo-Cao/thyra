@@ -156,3 +156,52 @@ describe("HerdrClient subscription lifecycle", () => {
     await expect(subscription.closed).resolves.toBeUndefined();
   });
 });
+
+describe("HerdrClient UTF-8 decoding across socket chunks", () => {
+  // Write the line in two socket chunks that split a three-byte character.
+  function writeSplit(socket: net.Socket, line: string) {
+    const bytes = Buffer.from(line, "utf8");
+    const split = bytes.indexOf(Buffer.from("界", "utf8")) + 1;
+    socket.setNoDelay(true);
+    socket.write(bytes.subarray(0, split), () =>
+      setImmediate(() => setImmediate(() => socket.end(bytes.subarray(split)))),
+    );
+  }
+
+  test("a one-shot response keeps a character split across chunks", async () => {
+    const client = new HerdrClient(
+      await startServer((socket, data) => {
+        const request = JSON.parse(data.toString("utf8"));
+        writeSplit(
+          socket,
+          `${JSON.stringify({ id: request.id, result: { title: "世界 你好" } })}\n`,
+        );
+      }),
+    );
+
+    expect(await client.call("ping")).toEqual({ title: "世界 你好" });
+  });
+
+  test("a subscription event keeps a character split across chunks", async () => {
+    const client = new HerdrClient(
+      await startServer((socket) => {
+        writeSplit(
+          socket,
+          `${JSON.stringify({ id: "sub", result: {} })}\n${JSON.stringify({
+            event: "pane.updated",
+            data: { title: "世界 你好" },
+          })}\n`,
+        );
+      }),
+    );
+    client.on("error", () => undefined);
+    const events: unknown[] = [];
+    client.on("event", (event) => events.push(event));
+    const subscription = client.subscribe(["pane.updated"]);
+
+    await subscription.closed;
+    expect(events).toEqual([
+      { event: "pane.updated", data: { title: "世界 你好" } },
+    ]);
+  });
+});

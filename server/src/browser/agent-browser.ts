@@ -104,6 +104,25 @@ export function createSseParser() {
   };
 }
 
+/**
+ * Resolves after `ms` or when `signal` aborts. The abort listener is removed
+ * when the timer fires, so a long-lived signal does not collect one per wait.
+ */
+export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export function createAgentBrowser(options: {
   vncSocket: string;
   proxyUrl: string;
@@ -284,7 +303,9 @@ export function createAgentBrowser(options: {
   }
 
   async function subscribe(signal: AbortSignal) {
-    for (let attempt = 0; !signal.aborted; ) {
+    let attempt = 0;
+    const retryDelay = () => abortableDelay(backoff(attempt++), signal);
+    while (!signal.aborted) {
       try {
         const response = await fetchProxy(`${options.proxyUrl}/events`, {
           headers: { accept: "text/event-stream" },
@@ -311,13 +332,7 @@ export function createAgentBrowser(options: {
         proxyUp = false;
       }
       if (signal.aborted) return;
-      await new Promise((resolve) => {
-        const timer = setTimeout(resolve, backoff(attempt++));
-        signal.addEventListener("abort", () => {
-          clearTimeout(timer);
-          resolve(undefined);
-        });
-      });
+      await retryDelay();
     }
   }
 

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  antigravitySessionStats,
   describeAntigravitySessionPath,
   findAntigravitySessionById,
   findAntigravitySessionForCwd,
@@ -248,6 +249,41 @@ describe("Antigravity sessions", () => {
     expect(desc?.session.sessionId).toBe("session-desc-1");
     expect(desc?.session.cwd).toBe("/workspace/my-project");
     expect(desc?.file.mtimeMs).toBe((1726272000 + 10) * 1000);
+  });
+
+  test("re-reads the database only after it changes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "thyra-agy-test-"));
+    tempRoots.push(root);
+    const dbPath = await createSyntheticDb(root, "session-cache-1", "/one");
+
+    const before = antigravitySessionStats.inspections;
+    expect((await describeAntigravitySessionPath(dbPath))?.session.cwd).toBe(
+      "/one",
+    );
+    expect((await describeAntigravitySessionPath(dbPath))?.session.cwd).toBe(
+      "/one",
+    );
+    expect(antigravitySessionStats.inspections).toBe(before + 1);
+
+    const db = new Database(dbPath);
+    db.run("UPDATE trajectory_metadata_blob SET data = ? WHERE id = ?", [
+      encodeField(7, 2, "file:///two/with-a-longer-path-so-the-size-moves"),
+      "main",
+    ]);
+    db.run("INSERT INTO steps (idx, metadata) VALUES (?, ?)", [
+      3,
+      makeStepMeta(1726272000 + 60),
+    ]);
+    db.close();
+    const future = new Date(Date.now() + 5000);
+    await utimes(dbPath, future, future);
+
+    const changed = await describeAntigravitySessionPath(dbPath);
+    expect(changed?.session.cwd).toBe(
+      "/two/with-a-longer-path-so-the-size-moves",
+    );
+    expect(changed?.file.mtimeMs).toBe((1726272000 + 60) * 1000);
+    expect(antigravitySessionStats.inspections).toBe(before + 2);
   });
 
   test("resolves a reported Antigravity session id", async () => {

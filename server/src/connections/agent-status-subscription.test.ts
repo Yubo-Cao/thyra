@@ -44,6 +44,7 @@ function fakeHerdr(options: {
   panes: () => unknown[];
   ackSubscribe?: (call: SubscribeCall) => void;
   deferLists?: () => boolean;
+  failLists?: () => boolean;
 }) {
   const path = join(
     tmpdir(),
@@ -62,6 +63,13 @@ function fakeHerdr(options: {
       if (newline < 0) return;
       const request = JSON.parse(input.slice(0, newline));
       input = input.slice(newline + 1);
+      if (request.method === "pane.list" && options.failLists?.()) {
+        socket.write(
+          `${JSON.stringify({ id: request.id, error: { message: "list failed" } })}\n`,
+        );
+        socket.end();
+        return;
+      }
       if (request.method === "pane.list") {
         const respond = () => {
           socket.write(
@@ -231,6 +239,44 @@ test("rebuilds the subscription when a membership event changes the pane set", a
   });
   await waitFor(() => herdr.subscribeCalls.length === 3);
   expect(herdr.subscribeCalls[2]?.subscriptions).toEqual([
+    { type: "pane.agent_status_changed", pane_id: "w1:p2" },
+  ]);
+
+  await loop.stop();
+});
+
+test("keeps a rebuild pending when its pane listing fails", async () => {
+  let panes = [agentPane("w1:p1")];
+  let failures = 0;
+  const listErrors: string[] = [];
+  const herdr = fakeHerdr({
+    panes: () => panes,
+    failLists: () => failures-- > 0,
+  });
+  await herdr.ready;
+  const loop = createAgentStatusSubscriptionLoop({
+    herdr: new HerdrClient(herdr.path),
+    connectionId: "test",
+    onListError: (error) => listErrors.push(error.message),
+    retryDelayMs: 10,
+    rebuildDebounceMs: 5,
+    // Only the pending rebuild, not the fallback poll, can re-list in time.
+    membershipPollMs: 60_000,
+  });
+
+  loop.start();
+  await waitFor(() => herdr.subscribeCalls.length === 1);
+
+  panes = [agentPane("w1:p1"), agentPane("w1:p2")];
+  failures = 2;
+  loop.handleHerdrEvent({
+    event: "pane.agent_detected",
+    data: { type: "pane.agent_detected" },
+  });
+  await waitFor(() => herdr.subscribeCalls.length === 2);
+  expect(listErrors.length).toBe(2);
+  expect(herdr.subscribeCalls[1]?.subscriptions).toEqual([
+    { type: "pane.agent_status_changed", pane_id: "w1:p1" },
     { type: "pane.agent_status_changed", pane_id: "w1:p2" },
   ]);
 

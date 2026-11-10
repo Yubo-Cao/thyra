@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
 import { once } from "node:events";
 import * as net from "node:net";
 import * as path from "node:path";
@@ -1611,4 +1611,79 @@ describe("input geometry (Herdr fork capability)", () => {
       client.close();
     }
   });
+});
+
+test("a response keeps a character split across response chunks", async () => {
+  const socketPath = await startEndpointServer(
+    () => {},
+    (variant, reader, socket) => {
+      if (variant !== 15) return;
+      reader.string(); // boot_id
+      const request = JSON.parse(reader.string());
+      const body = Buffer.from(
+        JSON.stringify({ id: request.id, result: { title: "世界 你好" } }),
+      );
+      // Herdr chunks the response by bytes, not by characters.
+      const split = body.indexOf(Buffer.from("界")) + 1;
+      for (const [data, final] of [
+        [body.subarray(0, split), false],
+        [body.subarray(split), true],
+      ] as const) {
+        const w = new BinWriter();
+        w.variant(18);
+        w.string("boot-1");
+        w.string(request.id);
+        w.bool(final);
+        w.bytes(data);
+        socket.write(encodeFrame(w.toBuffer()));
+      }
+    },
+  );
+  const client = new EndpointClient(socketPath);
+  try {
+    await client.connect(80, 24);
+    expect(await client.callEndpoint("pane.focus", {})).toEqual({
+      title: "世界 你好",
+    });
+  } finally {
+    client.close();
+  }
+});
+
+test("a frame arriving in many chunks is assembled with one copy", () => {
+  const client = new EndpointClient("/nonexistent");
+  const payloads: Buffer[] = [];
+  const internals = client as unknown as {
+    onData(chunk: Buffer): void;
+    handlePayload(payload: Buffer): void;
+  };
+  internals.handlePayload = (payload) => payloads.push(Buffer.from(payload));
+  const large = Buffer.alloc(256 * 1024, 7);
+  const small = Buffer.from("next");
+  const wire = Buffer.concat([
+    encodeFrame(large),
+    encodeFrame(small),
+    encodeFrame(large),
+  ]);
+  const concat = spyOn(Buffer, "concat");
+  try {
+    // Uneven chunks, so frame boundaries and length prefixes fall mid-chunk.
+    for (let offset = 0; offset < wire.length; offset += 1021)
+      internals.onData(wire.subarray(offset, offset + 1021));
+    const copies = concat.mock.calls.length;
+    expect(payloads.map((payload) => payload.length)).toEqual([
+      large.length,
+      small.length,
+      large.length,
+    ]);
+    expect(payloads[0].equals(large)).toBe(true);
+    expect(payloads[1].equals(small)).toBe(true);
+    expect(payloads[2].equals(large)).toBe(true);
+    // One copy per assembled frame plus a split length prefix or two, not
+    // one per chunk (over five hundred here).
+    expect(copies).toBeLessThanOrEqual(6);
+  } finally {
+    concat.mockRestore();
+    client.close();
+  }
 });

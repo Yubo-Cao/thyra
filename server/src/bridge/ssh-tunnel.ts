@@ -140,6 +140,8 @@ export type SshTunnelConfig = {
 type RunProcess = (
   argv: string[],
   input?: string,
+  // Aborted when the caller stops waiting, so a runner can kill its child.
+  options?: { signal?: AbortSignal },
 ) => Promise<{ stdout: string; stderr: string }>;
 
 type TunnelProcess = {
@@ -177,6 +179,7 @@ export function createSshTunnelManager(args: {
     socketPollIntervalMs?: number;
     processStopTimeoutMs?: number;
     processForceKillTimeoutMs?: number;
+    remoteHomeTimeoutMs?: number;
     platform?: string;
   };
 }) {
@@ -223,6 +226,9 @@ export function createSshTunnelManager(args: {
   const processStopTimeoutMs = args.dependencies?.processStopTimeoutMs ?? 1500;
   const processForceKillTimeoutMs =
     args.dependencies?.processForceKillTimeoutMs ?? 1000;
+  // ssh's ConnectTimeout (8s) bounds only the connection; a remote that
+  // accepts it and then hangs must not stall tunnel startup forever.
+  const remoteHomeTimeoutMs = args.dependencies?.remoteHomeTimeoutMs ?? 15_000;
   let cachedRemoteHome: { host: string; home: string } | null = null;
   let autoSshTunnel: TunnelProcess | null = null;
   let processStopTask: Promise<void> | null = null;
@@ -234,9 +240,26 @@ export function createSshTunnelManager(args: {
 
   async function remoteHome(host: string): Promise<string> {
     if (cachedRemoteHome?.host === host) return cachedRemoteHome.home;
-    const { stdout } = await args.runProcess(
-      sshCommandArgv(host, `printf %s "$HOME"`),
-    );
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stdout: string;
+    try {
+      ({ stdout } = await Promise.race([
+        args.runProcess(sshCommandArgv(host, `printf %s "$HOME"`), undefined, {
+          signal: abort.signal,
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(new Error(`timed out resolving remote HOME for ${host}`)),
+            remoteHomeTimeoutMs,
+          );
+        }),
+      ]));
+    } finally {
+      if (timer) clearTimeout(timer);
+      abort.abort();
+    }
     const home = stdout.trim();
     if (!home.startsWith("/")) {
       throw new Error(`could not resolve remote HOME for ${host}`);

@@ -78,8 +78,10 @@ export function frameToAnsiParts(
   frame: FrameData,
   viewport = { cols: frame.width, rows: frame.height },
 ): TerminalFrameParts {
-  const width = Math.min(frame.width, viewport.cols);
-  const height = Math.min(frame.height, viewport.rows);
+  // Cells are indexed by these, so only whole in-range counts are usable.
+  const whole = (value: number) => Math.max(0, Math.trunc(value) || 0);
+  const width = whole(Math.min(frame.width, viewport.cols));
+  const height = whole(Math.min(frame.height, viewport.rows));
   // Frames are positioned cell grids, not flowing text. A stale frame can
   // exceed the viewer width during resize; the head disables autowrap so it
   // never wraps and scrolls.
@@ -109,7 +111,8 @@ export function frameToAnsiParts(
         const link = cell.hyperlink;
         if (link !== null) {
           const uri = frame.hyperlinks[link];
-          if (uri !== undefined) {
+          // A control character in the URI would end the OSC early.
+          if (uri !== undefined && !/[\u0000-\u001f\u007f-\u009f]/.test(uri)) {
             out += `\x1b]8;;${uri}\x1b\\`;
             linkOpen = true;
           }
