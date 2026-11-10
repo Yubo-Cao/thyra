@@ -559,6 +559,24 @@ export function createTerminalBridge(args: {
     );
   }
 
+  /**
+   * `maySize` answered from what the bridge already knows, without yielding:
+   * no pane has a display owner, or the terminal's pane is known. Undefined
+   * when the pane must be looked up first.
+   */
+  function maySizeNow(
+    ws: ServerWebSocket<unknown>,
+    terminalId: string,
+  ): boolean | undefined {
+    const display = args.displayOwnership;
+    if (!display?.active()) return true;
+    const paneId =
+      sharedTerminals.get(terminalId)?.thin.currentPaneId ||
+      knownPanes.get(terminalId);
+    if (!paneId) return undefined;
+    return display.authorize(paneId, args.socketIdentity?.(ws) ?? null);
+  }
+
   /** Make a viewer follow the stream's shared size. */
   function followShared(
     viewer: ServerWebSocket<unknown>,
@@ -1012,12 +1030,16 @@ export function createTerminalBridge(args: {
     return shared;
   }
 
-  async function waitForOwnedTerminal(
+  /**
+   * A check that this socket still views the same attachment of `shared`,
+   * run once here and again by the caller at each side-effect boundary.
+   */
+  function ownedTerminalValidator(
     ws: ServerWebSocket<unknown>,
     terminalId: string,
     shared: SharedTerminalSession,
     requestIsCurrent: () => boolean,
-  ): Promise<() => void> {
+  ): () => void {
     const token = attachmentTokens.get(ws)?.get(terminalId);
     const revision = lifecycleRevision;
     const validate = () => {
@@ -1036,6 +1058,21 @@ export function createTerminalBridge(args: {
       }
     };
     validate();
+    return validate;
+  }
+
+  async function waitForOwnedTerminal(
+    ws: ServerWebSocket<unknown>,
+    terminalId: string,
+    shared: SharedTerminalSession,
+    requestIsCurrent: () => boolean,
+  ): Promise<() => void> {
+    const validate = ownedTerminalValidator(
+      ws,
+      terminalId,
+      shared,
+      requestIsCurrent,
+    );
     if (shared.connecting) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -1570,13 +1607,11 @@ export function createTerminalBridge(args: {
         return reply({ ok: true });
       }
       if (method === "terminal.frame_ack") {
-        const stream = requestedTerminalId
-          ? frameStreams.get(ws)?.get(requestedTerminalId)
-          : undefined;
-        if (!stream) return reply({ ok: false });
-        if (params.resync === true) stream.resync();
-        else if (typeof params.seq === "number") stream.ack(params.seq);
-        return reply({ ok: true });
+        // The request form of the one-way acknowledgement, for pages that
+        // predate it and for resync requests.
+        return reply({
+          ok: acknowledgeFrame(ws, requestedTerminalId, params),
+        });
       }
       if (method === "terminal.stream") {
         // Thin this browser's frames, e.g. a phone previewing a pane that
@@ -1620,14 +1655,25 @@ export function createTerminalBridge(args: {
         }
         // Typing from a device that does not display the pane must not make
         // Herdr size the tab for this bridge (Herdr with input_geometry).
-        const claimsGeometry = await maySize(ws, requestedTerminalId);
-        const validateAttachment = await waitForOwnedTerminal(
-          ws,
-          requestedTerminalId,
-          shared,
-          requestIsCurrent,
-        );
-        // Even a ready terminal yields above; recheck at the side-effect boundary.
+        // A ready terminal whose pane is known answers both checks from
+        // memory, so the keystroke is written before this handler yields.
+        const claimsGeometry =
+          maySizeNow(ws, requestedTerminalId) ??
+          (await maySize(ws, requestedTerminalId));
+        const validateAttachment = shared.connecting
+          ? await waitForOwnedTerminal(
+              ws,
+              requestedTerminalId,
+              shared,
+              requestIsCurrent,
+            )
+          : ownedTerminalValidator(
+              ws,
+              requestedTerminalId,
+              shared,
+              requestIsCurrent,
+            );
+        // Either check may have yielded; recheck at the side-effect boundary.
         validateAttachment();
         clipboardTarget = {
           ws,
@@ -1723,6 +1769,24 @@ export function createTerminalBridge(args: {
   }
 
   /**
+   * Releases room in a viewer's frame window (`seq`) or restarts its stream
+   * from a full frame (`resync`). False when the socket has no such stream.
+   */
+  function acknowledgeFrame(
+    ws: ServerWebSocket<unknown>,
+    terminalId: string | null | undefined,
+    params: Record<string, unknown>,
+  ): boolean {
+    const stream = terminalId
+      ? frameStreams.get(ws)?.get(terminalId)
+      : undefined;
+    if (!stream) return false;
+    if (params.resync === true) stream.resync();
+    else if (typeof params.seq === "number") stream.ack(params.seq);
+    return true;
+  }
+
+  /**
    * Composer, paste, and key RPCs address a pane, not a terminal stream, but
    * they are input from this browser all the same: let a copy the pane app
    * makes in response (OSC 52) come back to it.
@@ -1797,6 +1861,7 @@ export function createTerminalBridge(args: {
     createFromTerminal,
     endpointAvailability,
     handleTerminalRpc,
+    acknowledgeFrame,
     cleanupWs,
     notePaneInput,
     viewedTerminals,

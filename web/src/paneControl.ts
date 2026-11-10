@@ -172,6 +172,10 @@ export function paneControlClient(
     serverRuntimeGeneration: client.serverRuntimeGeneration,
     isCurrent: () => client.isCurrent(),
     acceptsServerGeneration: (value) => client.acceptsServerGeneration(value),
+    supports: (capability) => client.supports?.(capability) === true,
+    transportEpoch: () => client.transportEpoch?.() ?? 0,
+    // One-way messages carry no input; they pass every gate below.
+    notify: (method, params) => client.notify?.(method, params) === true,
     async call(method, params, timeout) {
       const access = read();
       if (

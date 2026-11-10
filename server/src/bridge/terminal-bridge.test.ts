@@ -1584,3 +1584,90 @@ describe("remembered terminal facts", () => {
     }
   });
 });
+
+describe("terminal input and frame acknowledgement", () => {
+  async function attached(frameDelta = false) {
+    const socketPath = await startEndpointServer();
+    const browser = {} as ServerWebSocket<unknown>;
+    const messages: string[] = [];
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      lookupPaneId: async () => "p1",
+      safeSend: (_ws, payload) => {
+        messages.push(payload);
+        return true;
+      },
+      clientLabel: () => "test",
+      markRpcError: () => undefined,
+    });
+    await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
+      terminal_id: "term_1",
+      cols: 100,
+      rows: 30,
+      ...(frameDelta ? { frame_delta: true } : {}),
+    });
+    const frame = await waitForTerminalFrame(messages);
+    const replies = () =>
+      messages
+        .map((message) => JSON.parse(message))
+        .filter((message) => message.id !== undefined);
+    return { bridge, browser, messages, frame, replies };
+  }
+
+  test("input to a ready terminal is written before the handler yields", async () => {
+    const { bridge, browser, messages, replies } = await attached();
+    try {
+      messages.length = 0;
+      const first = bridge.handleTerminalRpc(browser, "a", "terminal.input", {
+        terminal_id: "term_1",
+        data: btoa("a"),
+      });
+      // No await yet: the reply follows the write, so both already happened.
+      expect(replies()).toEqual([{ id: "a", result: { ok: true } }]);
+      const second = bridge.handleTerminalRpc(browser, "b", "terminal.key", {
+        terminal_id: "term_1",
+        keys: [{ key: "Enter", mods: 0 }],
+      });
+      expect(replies().map((reply) => reply.id)).toEqual(["a", "b"]);
+      await Promise.all([first, second]);
+    } finally {
+      bridge.dispose();
+    }
+  });
+
+  test("a frame is acknowledged one-way, and by request for older pages", async () => {
+    const { bridge, browser, messages, frame, replies } = await attached(true);
+    try {
+      expect(frame.frame_seq).toEqual(expect.any(Number));
+      messages.length = 0;
+      expect(
+        bridge.acknowledgeFrame(browser, "term_1", { seq: frame.frame_seq }),
+      ).toBe(true);
+      // Nothing is sent back for the one-way form.
+      expect(replies()).toEqual([]);
+      // A socket without that stream is ignored, also silently.
+      expect(
+        bridge.acknowledgeFrame({} as ServerWebSocket<unknown>, "term_1", {
+          seq: frame.frame_seq,
+        }),
+      ).toBe(false);
+      expect(bridge.acknowledgeFrame(browser, null, { seq: 1 })).toBe(false);
+      expect(replies()).toEqual([]);
+
+      await bridge.handleTerminalRpc(browser, "ack", "terminal.frame_ack", {
+        terminal_id: "term_1",
+        seq: frame.frame_seq,
+      });
+      expect(replies()).toEqual([{ id: "ack", result: { ok: true } }]);
+
+      // A resync request restarts the stream from a full frame.
+      messages.length = 0;
+      expect(bridge.acknowledgeFrame(browser, "term_1", { resync: true })).toBe(
+        true,
+      );
+      expect((await waitForTerminalFrame(messages)).full).toBe(true);
+    } finally {
+      bridge.dispose();
+    }
+  });
+});

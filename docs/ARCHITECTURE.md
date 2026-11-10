@@ -134,6 +134,14 @@ A missing base makes the browser send `terminal.frame_ack { resync: true }` and
 the bridge answers with a full frame. Attach and resize also restart from a
 full frame, and a 10 s acknowledgement timeout releases the window. Viewers
 that do not opt in keep base64 `bytes` repaints.
+The acknowledgement is one-way: the browser sends
+`{ method: "terminal.frame_ack", params, connection_id, connection_generation }`
+without an `id`, and the bridge routes and authorizes it like the request but
+sends nothing back, neither a result nor an error (`handleOneWay` in
+`server/src/rpc/dispatch.ts`). Only methods in `ONE_WAY_RPC_METHODS` may omit
+the `id`. The browser uses this form when the hello's `capabilities` name
+`terminal_frame_ack_notify`; otherwise, and for resync requests, it sends the
+same method as a request with an `id`, which the bridge answers with `{ ok }`.
 A viewer may thin only its own stream: `min_frame_interval_ms` (0–10000, on `terminal.attach` or `terminal.stream`) sends at most the newest frame per interval, and `terminal.stream { paused: true }` sends none until it is resumed with a full frame.
 Full repaints (attach, resize, resync) are never held back, and other viewers of the same terminal keep their rate.
 The browser writes only changed rows into the terminal while its viewport is unchanged.
@@ -218,7 +226,24 @@ requests and invalidates clipboard ownership.
   pane's keyboard protocol (legacy, modifyOtherKeys, Kitty flags), so Ctrl+/ is
   `0x1f` in a shell and `CSI 47;5u` in a Kitty-keyboard app, as from Ghostty.
   IME composition, dead keys, paste and on-screen keyboards keep the
-  `terminal.input` byte path; both share one ordered queue per terminal.
+  `terminal.input` byte path; both share one ordered queue per terminal
+  (`web/src/terminalInputBatcher.ts`).
+  Input is pipelined when the hello's `capabilities` name
+  `terminal_input_pipeline`: each call is sent at the end of the tick it was
+  typed in, merged with other input of that tick, without waiting for the
+  previous reply. The bridge runs the `terminal.input` and `terminal.key`
+  requests of one socket and terminal strictly in arrival order
+  (`server/src/rpc/input-order.ts`), whatever order their authorization and
+  pane-control checks settle in, and still answers each one, so a refused
+  keystroke fails its own call. At most 32 calls stay unanswered; further
+  input waits for a reply and merges into one call. The order holds per
+  socket, so input typed after a move to the data channel waits for the
+  replies the WebSocket still owes. Without the capability one call is in
+  flight and input typed meanwhile merges into the next.
+  A paste or composer send uses pane-addressed methods, which the bridge
+  orders per pane rather than with terminal input, so the browser never
+  overlaps them: it starts after every earlier call was answered and later
+  input waits for its reply.
   The hidden input keeps the text IMEs commit until a real key, paste or line
   break, so an IME that reselects and replaces it (voice input's cleanup,
   reconversion, autocorrect) reaches the pane as backspaces over the changed
@@ -432,8 +457,20 @@ load the sliced terminal font (`shared/terminalFontStylesheet.ts`) and to take
 host user. `GET /api/vscode` lists the connections whose Herdr runs on this
 host; elsewhere, and for everyone else, the Inspector is only the upload panel
 (the connection's `file/upload` route). The page keeps up to three editors
-loaded, one per folder, and opens a file by reloading that folder's editor
-with a `payload=[["openFile", "vscode-remote://<host><path>"]]` query.
+loaded, one per folder, in a fixed document order: moving an iframe reloads
+it.
+
+VS Code Web's bundled workbench script exports nothing a framing page can
+call. The workbench page therefore loads the script as `workbench.js?thyra=1`,
+and the proxy's copy of that URL (`server/src/vscode/workbench-script.ts`)
+stores VS Code's embedder API on the editor's window as `thyraWorkbench` once
+the workbench has started (`shared/vscodeWorkbench.ts` names both). To open a
+file in a folder whose editor is running, the page calls that API's
+`commands.executeCommand("_workbench.open", <vscode-remote URI>, ...)`
+(`web/src/components/vscodeEditor.ts`), which opens a pinned editor at the
+requested line without reloading. A new editor, one still loading, a VS Code
+build the proxy cannot hook, and a refused command instead load the folder's
+editor with a `payload=[["openFile", "vscode-remote://<host><path>"]]` query.
 
 ## Filesystem browsing
 
@@ -860,6 +897,7 @@ The login and enrollment pages are small server-rendered documents outside the a
 
 Every change to a user's role, grants or status bumps its privilege epoch.
 The server checks `PRAGMA data_version` every second, so changes made by the CLI apply at once: sockets of ended sessions close with code 4001 and sockets whose epoch changed close with 4003 and reconnect under the new authority.
+A principal's agent-browser VNC and VS Code sockets close together with its page sockets, on the periodic check and on logout, profile change and guest expiry alike.
 Herdr keeps workspace ids across restarts and live handoff (they are restored from the session snapshot), so grants name the workspace id; a `workspace.closed` event deletes the workspace's grants and revokes its share links, because Herdr may reuse the id of a closed workspace.
 
 **Share links.** `server/src/accounts/share-links.ts` issues anonymous read-only links, `<base>/s/<id>#<secret>`: a 256-bit secret shown once and stored as its SHA-256, scoped to one workspace or one of its panes, always with the viewer role, valid for 5 minutes to 30 days (24 hours by default), optionally limited in uses.

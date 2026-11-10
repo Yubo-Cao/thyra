@@ -298,7 +298,28 @@ export interface ConnectionClient {
   ): Promise<any>;
   isCurrent(): boolean;
   acceptsServerGeneration(value: unknown): boolean;
+  /** Whether the bridge's hello named this protocol capability. */
+  supports?(capability: BridgeCapability): boolean;
+  /**
+   * Sends a one-way message: no reply, no timer, nothing to await. False
+   * when it was not sent (stale client, closed or congested socket); the
+   * caller decides whether that matters.
+   */
+  notify?(method: string, params?: Record<string, unknown>): boolean;
+  /**
+   * Changes when the bridge moves to another socket without reconnecting
+   * (WebSocket to data channel). The bridge orders pipelined requests per
+   * socket only, so they must not straddle a change.
+   */
+  transportEpoch?(): number;
 }
+
+/** Optional protocol features a bridge announces in its hello. */
+export type BridgeCapability =
+  /** Terminal input may be sent before the previous input's reply. */
+  | "terminal_input_pipeline"
+  /** `terminal.frame_ack` may be sent without an `id`; it gets no reply. */
+  | "terminal_frame_ack_notify";
 
 const LEGACY_DEFAULT_CONNECTION_ID = "legacy-default";
 const RPC_TIMEOUT_MS = 30000;
@@ -447,6 +468,8 @@ export class Bridge {
   private transportHandlers = new Set<(transport: BridgeTransport) => void>();
   private socketSwapHandlers = new Set<() => void>();
   private _transport: BridgeTransport = "websocket";
+  /** Counts socket adoptions (see `ConnectionClient.transportEpoch`). */
+  private socketEpoch = 0;
   /** An adopted socket's hello is still due; it re-arms per-socket state. */
   private swapHelloTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -557,10 +580,48 @@ export class Bridge {
     const acceptsServerGeneration = (value: unknown) =>
       !requiresRuntimeGeneration() ||
       (serverRuntimeGeneration !== null && value === serverRuntimeGeneration);
+    const isCurrent = () =>
+      this.helloAcceptedForSocket &&
+      generation === this._clientGeneration &&
+      connectionId === this._activeConnectionId &&
+      (!requiresRuntimeGeneration() ||
+        (serverRuntimeGeneration !== null &&
+          this.runtimeGenerations.get(connectionId) ===
+            serverRuntimeGeneration));
     return {
       connectionId,
       generation,
       serverRuntimeGeneration,
+      supports: (capability) =>
+        this.helloAcceptedForSocket &&
+        this._hello?.capabilities?.[capability] === true,
+      transportEpoch: () => this.socketEpoch,
+      notify: (method, params = {}) => {
+        const ws = this.ws;
+        if (
+          !isCurrent() ||
+          isBridgeGlobalMethod(method) ||
+          !ws ||
+          ws.readyState !== WebSocket.OPEN ||
+          ws.bufferedAmount > MAX_WS_BUFFERED_BYTES
+        )
+          return false;
+        try {
+          ws.send(
+            JSON.stringify({
+              method,
+              params,
+              connection_id: connectionId,
+              ...(serverRuntimeGeneration === null
+                ? {}
+                : { connection_generation: serverRuntimeGeneration }),
+            }),
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      },
       call: (method, params = {}, options) => {
         const fail = (code: BridgeErrorCode, message: string) =>
           Promise.reject(new BridgeError(code, message));
@@ -604,14 +665,7 @@ export class Bridge {
           options,
         );
       },
-      isCurrent: () =>
-        this.helloAcceptedForSocket &&
-        generation === this._clientGeneration &&
-        connectionId === this._activeConnectionId &&
-        (!requiresRuntimeGeneration() ||
-          (serverRuntimeGeneration !== null &&
-            this.runtimeGenerations.get(connectionId) ===
-              serverRuntimeGeneration)),
+      isCurrent,
       acceptsServerGeneration,
     };
   }
@@ -724,6 +778,7 @@ export class Bridge {
       return false;
     }
     this.ws = next;
+    this.socketEpoch += 1;
     this.swapHelloTimer = setTimeout(() => {
       this.swapHelloTimer = null;
       if (this.ws !== next) return;

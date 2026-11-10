@@ -18,3 +18,23 @@ export const PANE_INPUT_METHODS = new Set([
   "pane.send_keys",
   "pane.paste",
 ]);
+/** Terminal-addressed input, written in the order one page sent it. */
+export const TERMINAL_INPUT_METHODS = new Set([
+  "terminal.input",
+  "terminal.key",
+]);
+/**
+ * Methods a page may send without an `id`: handled like the request, but
+ * nothing is sent back, neither a result nor an error.
+ */
+export const ONE_WAY_RPC_METHODS = new Set(["terminal.frame_ack"]);
+/**
+ * Terminal protocol features announced in the hello's `capabilities`; a page
+ * uses each only when the bridge names it.
+ */
+export const TERMINAL_RPC_CAPABILITIES = {
+  /** Input may be sent before the previous input's reply; order is kept. */
+  terminal_input_pipeline: true,
+  /** `terminal.frame_ack` is accepted without an `id` and gets no reply. */
+  terminal_frame_ack_notify: true,
+} as const;

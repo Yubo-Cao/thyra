@@ -2890,7 +2890,11 @@ for (const invalidate of [
   "dispose",
   "replace",
 ] as const) {
-  test(`ready shared input revalidates ${invalidate} after its await before input or clipboard ownership`, async () => {
+  const title =
+    invalidate === "reattach"
+      ? "shared input is still written while its page re-attaches the ready terminal"
+      : `shared input after a ${invalidate} in the same turn takes neither input nor clipboard ownership`;
+  test(title, async () => {
     const socketPath = await startSessionServer({ methods: creationMethods });
     const a = {} as ServerWebSocket<unknown>,
       b = {} as ServerWebSocket<unknown>;
@@ -2939,14 +2943,9 @@ for (const invalidate of [
       expect(bridge.viewedTerminals(a)).toEqual(["term1"]);
       expect(bridge.viewedTerminals(b)).toEqual(["term1"]);
       forwarded.length = 0;
-      // No sleep or await between starting ready input and invalidating its lease/token.
-      const input = bridge.handleTerminalRpc(
-        a,
-        "stale-input",
-        "terminal.input",
-        { terminal_id: "term1", data: "WA==" },
-        () => current,
-      );
+      // No sleep or await between invalidating the lease/token and the input
+      // that follows it. (A ready input is written before its handler yields,
+      // so one that arrives first is simply earlier input.)
       let invalidating: unknown;
       if (invalidate === "detach")
         invalidating = bridge.handleTerminalRpc(
@@ -2962,14 +2961,28 @@ for (const invalidate of [
         session.close();
         invalidating = attach(a);
       }
+      const input = bridge.handleTerminalRpc(
+        a,
+        "stale-input",
+        "terminal.input",
+        { terminal_id: "term1", data: "WA==" },
+        () => current,
+      );
       await Promise.all([input, invalidating]);
       if (invalidate === "detach")
         expect(bridge.viewedTerminals(a)).toEqual([]);
+      const reply = replies.find(
+        ({ message }) => message.id === "stale-input",
+      )?.message;
+      if (invalidate === "reattach") {
+        // The re-attach has not replaced the attachment when the key
+        // arrives: the page still views the same ready stream.
+        expect(forwarded).toEqual(["X"]);
+        expect(reply.result).toEqual({ ok: true });
+        return;
+      }
       expect(forwarded).toEqual([]);
-      expect(
-        replies.find(({ message }) => message.id === "stale-input")?.message
-          .error,
-      ).toBeDefined();
+      expect(reply.error).toBeDefined();
       if (invalidate !== "dispose" && invalidate !== "replace") {
         expect(bridge.viewedTerminals(b)).toEqual(["term1"]);
         session.emit("clipboard", { data: "Y29weQ==" });

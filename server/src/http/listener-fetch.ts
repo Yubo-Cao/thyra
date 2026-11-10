@@ -325,7 +325,11 @@ export function createListenerFetch(deps: {
     if (routeId === "login.icon") {
       return serveStatic(req, config.publicDir);
     }
-    if (!principal) return new Response("unauthorized", { status: 401 });
+    if (!principal)
+      return new Response("unauthorized", {
+        status: 401,
+        headers: { "cache-control": "no-store" },
+      });
     return withSessionCookie(
       await routeAuthenticated(req, server, {
         url,

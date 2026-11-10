@@ -397,3 +397,41 @@ test("typing in the person's other window takes control there", () => {
     ),
   ).toBe("type");
 });
+
+test("the gated client keeps the bridge's capabilities and one-way messages", () => {
+  const notes: unknown[][] = [];
+  const base: ConnectionClient = {
+    connectionId: "local",
+    generation: 1,
+    serverRuntimeGeneration: 1,
+    isCurrent: () => true,
+    acceptsServerGeneration: () => true,
+    call: async () => ({ ok: true }),
+    supports: (capability) => capability === "terminal_input_pipeline",
+    notify: (method, params) => {
+      notes.push([method, params]);
+      return true;
+    },
+    transportEpoch: () => 4,
+  };
+  const viewOnly = { viewOnly: true } as PaneControlState;
+  const client = paneControlClient(base, () => viewOnly);
+  expect(client.supports?.("terminal_input_pipeline")).toBe(true);
+  expect(client.supports?.("terminal_frame_ack_notify")).toBe(false);
+  expect(client.transportEpoch?.()).toBe(4);
+  // A viewer still acknowledges the frames it is shown.
+  expect(client.notify?.("terminal.frame_ack", { seq: 1 })).toBe(true);
+  expect(notes).toEqual([["terminal.frame_ack", { seq: 1 }]]);
+
+  // A client from before these members offers none of them.
+  const older: ConnectionClient = {
+    ...base,
+    supports: undefined,
+    notify: undefined,
+    transportEpoch: undefined,
+  };
+  const wrapped = paneControlClient(older, () => viewOnly);
+  expect(wrapped.supports?.("terminal_input_pipeline")).toBe(false);
+  expect(wrapped.notify?.("terminal.frame_ack", { seq: 1 })).toBe(false);
+  expect(wrapped.transportEpoch?.()).toBe(0);
+});

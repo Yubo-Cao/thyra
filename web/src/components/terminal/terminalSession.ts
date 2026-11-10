@@ -37,6 +37,10 @@ import {
   TerminalFrameDecoder,
   TerminalResyncRetry,
 } from "../../terminalFrameDecoder";
+import {
+  acknowledgeTerminalFrame,
+  requestTerminalResync,
+} from "../../terminalFrameAck";
 import { TerminalHistorySelection } from "../../terminalHistorySelection";
 import type { TerminalKey } from "../../../../shared/terminalKey";
 import type { TerminalModifiedInput } from "../../terminalModifiers";
@@ -747,9 +751,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
             attachingTerminal.current !== terminalId)
         )
           return false;
-        void client
-          .call("terminal.frame_ack", { terminal_id: terminalId, resync: true })
-          .catch(() => {});
+        requestTerminalResync(client, terminalId);
         return true;
       });
       stream = { decoder, resync };
@@ -768,14 +770,9 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       if (decoded.kind === "none") return;
       // Acknowledge on receipt: the bridge sends the next frame only once
       // the window has room, so a slow link skips stale repaints.
-      void client
-        .call(
-          "terminal.frame_ack",
-          decoded.kind === "resync"
-            ? { terminal_id: frame.terminal_id, resync: true }
-            : { terminal_id: frame.terminal_id, seq: decoded.seq },
-        )
-        .catch(() => {});
+      if (decoded.kind === "resync")
+        requestTerminalResync(client, frame.terminal_id);
+      else acknowledgeTerminalFrame(client, frame.terminal_id, decoded.seq);
       if (decoded.kind === "resync") {
         // The request or its full frame can be lost too, and a quiet pane
         // sends no later row update to notice: ask again on a timer.

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import {
   Bridge,
   type ConnectionStatus,
@@ -1643,5 +1643,97 @@ describe("reconnect backoff", () => {
       expect(reconnectState(bridge).reconnectEnabled).toBe(true);
       expect(navigated).toBe(false);
     }
+  });
+});
+
+describe("one-way messages and protocol capabilities", () => {
+  class RecordingSocket extends HangingWebSocket {
+    static instance: RecordingSocket;
+    sent: Record<string, unknown>[] = [];
+
+    constructor() {
+      super();
+      RecordingSocket.instance = this;
+      this.readyState = HangingWebSocket.OPEN;
+    }
+
+    override send(payload?: string) {
+      this.sent.push(JSON.parse(payload ?? "null"));
+    }
+  }
+  const connect = (capabilities: Record<string, unknown>) => {
+    installBrowserGlobals(RecordingSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(60_000);
+    bridge.connect();
+    const socket = RecordingSocket.instance;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        hello: true,
+        bridge_protocol_version: 2,
+        default_connection_id: "alpha",
+        capabilities: { connection_id: true, ...capabilities },
+      }),
+    } as MessageEvent);
+    expect(bridge.status).toBe("connected");
+    return { bridge, socket, client: bridge.connection("alpha") };
+  };
+  const pendingCount = (bridge: Bridge) =>
+    (bridge as unknown as { pending: Map<string, unknown> }).pending.size;
+
+  test("a bridge that names no terminal capability offers none", () => {
+    const { client } = connect({});
+    expect(client.supports?.("terminal_input_pipeline")).toBe(false);
+    expect(client.supports?.("terminal_frame_ack_notify")).toBe(false);
+  });
+
+  test("capabilities come from the hello, and only as `true`", () => {
+    const { client } = connect({
+      terminal_input_pipeline: true,
+      terminal_frame_ack_notify: "yes",
+    });
+    expect(client.supports?.("terminal_input_pipeline")).toBe(true);
+    expect(client.supports?.("terminal_frame_ack_notify")).toBe(false);
+  });
+
+  test("a one-way message has no id, no pending entry and no timer", () => {
+    jest.useFakeTimers();
+    try {
+      const { bridge, socket, client } = connect({
+        terminal_frame_ack_notify: true,
+      });
+      expect(
+        client.notify?.("terminal.frame_ack", { terminal_id: "t1", seq: 3 }),
+      ).toBe(true);
+      expect(socket.sent).toEqual([
+        {
+          method: "terminal.frame_ack",
+          params: { terminal_id: "t1", seq: 3 },
+          connection_id: "alpha",
+        },
+      ]);
+      expect(pendingCount(bridge)).toBe(0);
+      // The request form keeps a pending entry and a 30 s deadline.
+      const failures: string[] = [];
+      client
+        .call("terminal.frame_ack", { terminal_id: "t1", seq: 4 })
+        .catch((error: BridgeError) => failures.push(error.code));
+      expect(socket.sent[1]).toMatchObject({ id: expect.any(String) });
+      expect(pendingCount(bridge)).toBe(1);
+      jest.advanceTimersByTime(30_000);
+      expect(pendingCount(bridge)).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a one-way message is refused by a stale client or a closed socket", () => {
+    const { bridge, socket, client } = connect({});
+    bridge.advanceActiveConnectionGeneration();
+    expect(client.notify?.("terminal.frame_ack", { seq: 1 })).toBe(false);
+    const fresh = bridge.connection("alpha");
+    expect(fresh.notify?.("bridge.ping")).toBe(false);
+    socket.readyState = HangingWebSocket.CLOSED;
+    expect(fresh.notify?.("terminal.frame_ack", { seq: 1 })).toBe(false);
+    expect(socket.sent).toEqual([]);
   });
 });

@@ -154,15 +154,32 @@ async function collaborate(ctx: ConnectionRpcContext) {
         );
       }
     }
+    let raw: unknown;
     if (method === "collaboration.leave") {
-      clientIdentity.forgetParticipant(participantId);
+      // Presence comes off the socket first, so a page closing meanwhile
+      // does not leave a second time. A failed call puts it back: the
+      // participant is still present upstream, and a retry or the socket's
+      // close must still be able to leave for it.
+      const held = socketPresence.get(ws);
       socketPresence.delete(ws);
-    } else if (method === "collaboration.update") {
-      // A page that closed meanwhile has already left; do not revive it.
-      if (!clients.has(ws)) return;
-      socketPresence.set(ws, collaboration);
+      try {
+        raw = await collaboration.call(method, callParams);
+      } catch (error) {
+        if (held && clients.has(ws) && !socketPresence.has(ws))
+          socketPresence.set(ws, held);
+        throw error;
+      }
+      // An update that raced the call made the participant present again.
+      if (!socketPresence.has(ws))
+        clientIdentity.forgetParticipant(participantId);
+    } else {
+      if (method === "collaboration.update") {
+        // A page that closed meanwhile has already left; do not revive it.
+        if (!clients.has(ws)) return;
+        socketPresence.set(ws, collaboration);
+      }
+      raw = await collaboration.call(method, callParams);
     }
-    const raw = await collaboration.call(method, callParams);
     connection.claims.observeResult(method, callParams, raw);
     const result = clientIdentity.annotateResult(
       raw,

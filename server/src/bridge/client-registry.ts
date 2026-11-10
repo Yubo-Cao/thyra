@@ -84,7 +84,16 @@ export function createClientRegistry(deps: {
   const participantIds = new WeakMap<ServerWebSocket<unknown>, string>();
   let nextClientId = 1;
 
-  const rpcOutcomes = new Map<string, { status: "error"; detail?: string }>();
+  /**
+   * The failure recorded for each request a socket has in flight, for its
+   * completion log. Entries exist only between `trackRpc` and
+   * `takeRpcOutcome`, which every dispatched request reaches, and belong to
+   * the socket object, so they cannot outlive it.
+   */
+  const rpcOutcomes = new WeakMap<
+    ServerWebSocket<unknown>,
+    Map<string, { status: "error"; detail?: string } | null>
+  >();
 
   function clientLabel(ws: ServerWebSocket<unknown>): string {
     const id = clientIds.get(ws);
@@ -96,25 +105,46 @@ export function createClientRegistry(deps: {
     return clientLabel(ws);
   }
 
-  function rpcOutcomeKey(ws: ServerWebSocket<unknown>, id: string) {
-    return `${clientLabel(ws)}\0${id}`;
+  /** Start recording the outcome of a dispatched request. */
+  function trackRpc(ws: ServerWebSocket<unknown>, id: string | null) {
+    if (!id) return;
+    let outcomes = rpcOutcomes.get(ws);
+    if (!outcomes) {
+      outcomes = new Map();
+      rpcOutcomes.set(ws, outcomes);
+    }
+    if (!outcomes.has(id)) outcomes.set(id, null);
   }
 
+  /**
+   * Record a request's failure for its completion log. A failure reported
+   * once the request has settled, or for one never dispatched, has no log
+   * line left to feed and is not kept.
+   */
   function markRpcError(
     ws: ServerWebSocket<unknown>,
     id: string | null | undefined,
     detail?: string,
   ) {
     if (!id) return;
-    rpcOutcomes.set(rpcOutcomeKey(ws, id), { status: "error", detail });
+    const outcomes = rpcOutcomes.get(ws);
+    if (outcomes?.has(id)) outcomes.set(id, { status: "error", detail });
   }
 
+  /** The recorded outcome of a settled request; ends its tracking. */
   function takeRpcOutcome(ws: ServerWebSocket<unknown>, id: string | null) {
     if (!id) return null;
-    const key = rpcOutcomeKey(ws, id);
-    const outcome = rpcOutcomes.get(key) ?? null;
-    rpcOutcomes.delete(key);
+    const outcomes = rpcOutcomes.get(ws);
+    if (!outcomes) return null;
+    const outcome = outcomes.get(id) ?? null;
+    outcomes.delete(id);
+    if (outcomes.size === 0) rpcOutcomes.delete(ws);
     return outcome;
+  }
+
+  /** Requests whose outcome is still tracked for a socket (tests). */
+  function trackedRpcCount(ws: ServerWebSocket<unknown>): number {
+    return rpcOutcomes.get(ws)?.size ?? 0;
   }
 
   /** Browser sockets grouped by device (tabs and merged contexts count once). */
@@ -172,7 +202,13 @@ export function createClientRegistry(deps: {
     code: number,
     reason: string,
   ) {
-    for (const client of [...clients]) {
+    // VNC and VS Code sockets carry the same principal as the page that
+    // opened them and end with it; their close handlers release the proxies.
+    for (const client of [
+      ...clients,
+      ...vncSockets.keys(),
+      ...vscodeSockets.keys(),
+    ]) {
       const principal = socketPrincipals.get(client);
       if (!principal || !predicate(principal)) continue;
       webSocketCleanup.cleanup(client);
@@ -193,8 +229,10 @@ export function createClientRegistry(deps: {
     closeSockets,
     clientLabel,
     assignClientId,
+    trackRpc,
     markRpcError,
     takeRpcOutcome,
+    trackedRpcCount,
     countDevices,
   };
 }

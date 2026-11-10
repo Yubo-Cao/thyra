@@ -25,6 +25,7 @@ import {
   type RpcServices,
 } from "./context";
 import type { ParsedRpcMessage } from "./logging";
+import { ONE_WAY_RPC_METHODS } from "./methods";
 import {
   passThroughToHerdr,
   sessionRpcMethods,
@@ -64,6 +65,55 @@ export function createRpcDispatcher(services: RpcServices) {
     freshScope,
   } = services;
 
+  /**
+   * A one-way message (`ONE_WAY_RPC_METHODS` without an `id`): routed and
+   * authorized like the request of the same name, then applied. Nothing is
+   * sent back; a message that is malformed, unroutable or refused is dropped.
+   */
+  async function handleOneWay(ws: ServerWebSocket<unknown>, req: RpcRequest) {
+    const method = req.method as string;
+    if (!lookupRpc(method).allowed) return;
+    let route: ReturnType<typeof resolveRpcRoute<LegacyConnectionRuntime>>;
+    try {
+      route = resolveRpcRoute({
+        request: req,
+        registry: connectionManager,
+        legacyClient: ws,
+        legacyLogger: legacyRoutingLogger,
+      });
+    } catch {
+      return;
+    }
+    const principal = socketPrincipals.get(ws);
+    if (!principal || route.scope !== "connection") return;
+    const { terminalBridge } = route.runtime;
+    const raw = req.params;
+    let params: Record<string, unknown> =
+      raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    if (!(typeof params.terminal_id === "string" && params.terminal_id)) {
+      const current = terminalBridge.currentTerminalId(ws);
+      if (current) params = { ...params, terminal_id: current };
+    }
+    const authorization = await authorize(
+      {
+        principal,
+        method,
+        params,
+        connectionId: route.connectionId,
+        participantId: participantIds.get(ws) ?? null,
+      },
+      authzDeps,
+    );
+    if (!authorization.allowed || authorization.stub || !route.isCurrent())
+      return;
+    const terminalId = authorization.params.terminal_id;
+    terminalBridge.acknowledgeFrame(
+      ws,
+      typeof terminalId === "string" ? terminalId : null,
+      authorization.params,
+    );
+  }
+
   async function handleRpc(
     ws: ServerWebSocket<unknown>,
     message: ParsedRpcMessage,
@@ -87,6 +137,12 @@ export function createRpcDispatcher(services: RpcServices) {
     }
     const req = parsed as RpcRequest;
     const { id, method } = req;
+    if (
+      id === undefined &&
+      typeof method === "string" &&
+      ONE_WAY_RPC_METHODS.has(method)
+    )
+      return handleOneWay(ws, req);
     let params: Record<string, any> | undefined = req.params;
     let validationConnectionId: string | undefined;
     let connectionIdValidationFailed = false;

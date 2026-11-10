@@ -18,13 +18,14 @@ import {
   serializeConnectionEnvelope,
   validateConnectionId,
 } from "../connections/protocol";
+import { inputOrderKey } from "../rpc/input-order";
 import {
   createRpcLogger,
   type ParsedRpcMessage,
   parseRpcMessage,
   parseRpcMeta,
 } from "../rpc/logging";
-import { PANE_INPUT_METHODS } from "../rpc/methods";
+import { TERMINAL_RPC_CAPABILITIES } from "../rpc/methods";
 import type { VscodeProxy } from "../vscode/proxy";
 import type { AccountServices } from "./accounts";
 import type { ServerBootstrap } from "./bootstrap";
@@ -63,6 +64,8 @@ export function createSocketTransports(deps: {
     webSocketCleanup,
     safeSend,
     assignClientId,
+    clientLabel,
+    trackRpc,
     takeRpcOutcome,
   } = deps.registry;
   const { clientIdentity } = deps.accounts;
@@ -70,9 +73,9 @@ export function createSocketTransports(deps: {
   const { vscodeProxy, agentBrowser, handleRpc } = deps;
   const logRpc = createRpcLogger({
     logger,
-    clientLabel: deps.registry.clientLabel,
+    clientLabel,
   });
-  const paneInputOrder = createKeyedSerialQueue();
+  const inputOrder = createKeyedSerialQueue();
 
   const websocketHandlers: WebSocketHandler<SocketData> = {
     perMessageDeflate: WS_PER_MESSAGE_DEFLATE,
@@ -130,6 +133,7 @@ export function createSocketTransports(deps: {
             connection_id: true,
             connection_scoped_http: true,
             connection_runtime_generation: true,
+            ...TERMINAL_RPC_CAPABILITIES,
           },
         }),
         "hello",
@@ -177,18 +181,18 @@ export function createSocketTransports(deps: {
           }
         }
       }
-      // Herdr serves each call on its own connection, so two in-flight inputs
-      // for one pane could land in either order. Queue them per pane.
-      const inputPane =
-        method && PANE_INPUT_METHODS.has(method)
-          ? (parsedMessage?.value as { params?: { pane_id?: unknown } } | null)
-              ?.params?.pane_id
-          : undefined;
-      (typeof inputPane === "string" && inputPane
-        ? paneInputOrder.run(`${logConnectionId ?? ""}\0${inputPane}`, () =>
-            handleRpc(ws, parsedMessage),
-          )
-        : handleRpc(ws, parsedMessage)
+      // Input is ordered where it arrives (see inputOrderKey): everything
+      // after this point may await.
+      const orderKey = inputOrderKey(
+        clientLabel(ws),
+        logConnectionId,
+        method,
+        parsedMessage?.value,
+      );
+      trackRpc(ws, id);
+      (orderKey === null
+        ? handleRpc(ws, parsedMessage)
+        : inputOrder.run(orderKey, () => handleRpc(ws, parsedMessage))
       )
         .then(() => {
           const outcome = takeRpcOutcome(ws, id);
@@ -202,6 +206,7 @@ export function createSocketTransports(deps: {
           );
         })
         .catch((e) => {
+          takeRpcOutcome(ws, id);
           logRpc(
             ws,
             method,
