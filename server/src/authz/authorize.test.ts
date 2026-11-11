@@ -29,7 +29,7 @@ const RPC_MATRIX: Record<string, string> = {
   "agent.prompt": "-",
   // Agent sessions: reading follows the pane, acting follows pane input.
   "agent_session.approve": "admin owner editor",
-  "agent_session.history": "admin owner editor viewer guest guest-pane",
+  "agent_session.history": "admin owner editor",
   "agent_session.interrupt": "admin owner editor",
   "agent_session.list": "admin owner editor viewer guest guest-pane",
   "agent_session.resume": "admin owner editor",
@@ -450,6 +450,28 @@ describe("authorize", () => {
     for (const role of ["viewer", "guest", "outsider"] as const)
       expect(
         (await request(role, "agent_session.send", { pane_id: "w1:p1" }))
+          .allowed,
+      ).toBe(false);
+    // The stored conversations of the directory are for those who may act
+    // on the session: an editor reads them without holding the pane, a
+    // viewer or a share-link guest never does.
+    expect(
+      await request(
+        "editor",
+        "agent_session.history",
+        { pane_id: "w1:p1" },
+        claimed,
+      ),
+    ).toMatchObject({ allowed: true });
+    // Reading them does not take control of the pane either.
+    const unclaimed = await request("editor", "agent_session.history", {
+      pane_id: "w1:p1",
+    });
+    expect(unclaimed.allowed).toBe(true);
+    expect(unclaimed).not.toHaveProperty("autoClaim");
+    for (const role of ["viewer", "guest", "guest-pane", "outsider"] as const)
+      expect(
+        (await request(role, "agent_session.history", { pane_id: "w1:p1" }))
           .allowed,
       ).toBe(false);
     // A link narrowed to one pane reads that pane's session only.
