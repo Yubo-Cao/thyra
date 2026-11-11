@@ -50,27 +50,32 @@ export function CodeBlock({ text, lang }: { text: string; lang?: string }) {
   );
 }
 
+/** How a run of plain text draws when not as itself (a prompt's images). */
+type TextRun = (text: string) => ReactNode;
+
 // Tokens render as React elements, never as HTML: text is escaped by React,
 // raw HTML in a reply shows as text, links keep only safe addresses, and a
 // growing reply patches the text nodes that changed.
-function inline(tokens: readonly Token[] | undefined): ReactNode[] {
+function inline(
+  tokens: readonly Token[] | undefined,
+  run?: TextRun,
+): ReactNode[] {
   return (tokens ?? []).map((token, index) => {
     switch (token.type) {
       case "text":
       case "escape": {
         const text = token as Tokens.Text;
-        return text.tokens ? (
-          <Fragment key={index}>{inline(text.tokens)}</Fragment>
-        ) : (
-          decodeMarkdownText(text.text)
-        );
+        if (text.tokens)
+          return <Fragment key={index}>{inline(text.tokens, run)}</Fragment>;
+        const plain = decodeMarkdownText(text.text);
+        return run ? <Fragment key={index}>{run(plain)}</Fragment> : plain;
       }
       case "strong":
-        return <strong key={index}>{inline(token.tokens)}</strong>;
+        return <strong key={index}>{inline(token.tokens, run)}</strong>;
       case "em":
-        return <em key={index}>{inline(token.tokens)}</em>;
+        return <em key={index}>{inline(token.tokens, run)}</em>;
       case "del":
-        return <del key={index}>{inline(token.tokens)}</del>;
+        return <del key={index}>{inline(token.tokens, run)}</del>;
       case "codespan":
         return <code key={index}>{token.text}</code>;
       case "br":
@@ -81,7 +86,7 @@ function inline(tokens: readonly Token[] | undefined): ReactNode[] {
         // agent (or text it quoted) chose.
         const label =
           token.type === "link"
-            ? inline(token.tokens)
+            ? inline(token.tokens, run)
             : token.text || token.href;
         return isSafeMarkdownUrl(token.href) ? (
           <a
@@ -109,27 +114,30 @@ function inline(tokens: readonly Token[] | undefined): ReactNode[] {
   });
 }
 
-function blocks(tokens: readonly Token[] | undefined): ReactNode[] {
+function blocks(
+  tokens: readonly Token[] | undefined,
+  run?: TextRun,
+): ReactNode[] {
   return (tokens ?? []).map((token, index) => (
-    <Fragment key={index}>{block(token)}</Fragment>
+    <Fragment key={index}>{block(token, run)}</Fragment>
   ));
 }
 
-function block(token: Token): ReactNode {
+function block(token: Token, run?: TextRun): ReactNode {
   switch (token.type) {
     case "space":
     case "def":
       return null;
     case "heading":
-      return createElement(`h${token.depth}`, null, inline(token.tokens));
+      return createElement(`h${token.depth}`, null, inline(token.tokens, run));
     case "paragraph":
-      return <p>{inline(token.tokens)}</p>;
+      return <p>{inline(token.tokens, run)}</p>;
     case "text":
-      return inline([token]);
+      return inline([token], run);
     case "code":
       return <CodeBlock text={token.text} lang={token.lang || undefined} />;
     case "blockquote":
-      return <blockquote>{blocks(token.tokens)}</blockquote>;
+      return <blockquote>{blocks(token.tokens, run)}</blockquote>;
     case "hr":
       return <hr />;
     case "checkbox":
@@ -146,7 +154,7 @@ function block(token: Token): ReactNode {
       const list = token as Tokens.List;
       const items = list.items.map((item, index) => (
         <li key={index} className={item.task ? "agent-md-task" : undefined}>
-          {blocks(item.tokens)}
+          {blocks(item.tokens, run)}
         </li>
       ));
       return list.ordered ? (
@@ -161,7 +169,7 @@ function block(token: Token): ReactNode {
         createElement(
           item.header ? "th" : "td",
           { key: index, style: { textAlign: item.align ?? undefined } },
-          inline(item.tokens),
+          inline(item.tokens, run),
         );
       return (
         <table>
@@ -183,22 +191,27 @@ function block(token: Token): ReactNode {
 
 const MarkdownBlockView = memo(function MarkdownBlockView({
   token,
+  run,
 }: {
   token: Token;
+  run?: TextRun;
 }) {
-  return block(token);
+  return block(token, run);
 });
 
 /**
- * An agent reply as Markdown. While `streaming`, finished blocks keep their
- * elements and only the last block renders again as text arrives.
+ * A message as Markdown. While `streaming`, finished blocks keep their
+ * elements and only the last block renders again as text arrives. `run`
+ * draws its plain text (outside code), and must keep its identity.
  */
 export const AgentMarkdown = memo(function AgentMarkdown({
   text,
   streaming,
+  run,
 }: {
   text: string;
   streaming: boolean;
+  run?: TextRun;
 }) {
   const previous = useRef<MarkdownStream | undefined>(undefined);
   const stream = useMemo(
@@ -209,7 +222,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   return (
     <div className="file-preview-markdown agent-md">
       {stream.blocks.map((item) => (
-        <MarkdownBlockView key={item.start} token={item.token} />
+        <MarkdownBlockView key={item.start} token={item.token} run={run} />
       ))}
     </div>
   );

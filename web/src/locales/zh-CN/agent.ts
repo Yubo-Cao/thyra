@@ -17,6 +17,10 @@ export default {
   "Could not stop the agent": "无法停止 Agent",
   "Could not answer the request": "无法答复请求",
   "Could not change the mode": "无法切换模式",
+  "Could not attach the image": "无法添加图片",
+  "A prompt takes at most {count} images.": "一条提示最多附带 {count} 张图片。",
+  "This browser cannot read the image {name}.": "此浏览器无法读取图片 {name}。",
+  "The image {name} is too large to attach.": "图片 {name} 过大，无法添加。",
   // Transcript
   "Agent transcript": "Agent 对话记录",
   "Send a prompt to start working with the agent.":
@@ -41,6 +45,8 @@ export default {
   "In progress": "进行中",
   "To do": "待办",
   "Copy code": "复制代码",
+  "Image {number}": "图片 {number}",
+  "This image is not available": "此图片不可用",
   // Approvals
   "Approval requests": "批准请求",
   "Waiting for someone who can answer.": "正在等待有权限的人答复。",

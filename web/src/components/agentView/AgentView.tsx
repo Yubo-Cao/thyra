@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type {
+  AgentPromptImage,
   AgentSessionInfo,
   AgentSessionStatus,
 } from "../../../../shared/agentSession";
 import { selectPanesWithoutActivity } from "../../agentOrder";
 import { storedSessions } from "../../agentSession/history";
+import { preparePromptImage } from "../../agentSession/promptImageFile";
 import {
   type AgentSessionStore,
   connectAgentSession,
@@ -20,7 +22,13 @@ import { paneDisplayName } from "../../paneIdentity";
 import { paneCanClose } from "../../paneJump";
 import { noteTerminalOutput } from "../../startupGate";
 import { store, useStoreSelector } from "../../store";
+import {
+  agentComposerDraftKey,
+  clearTerminalComposerDraft,
+} from "../../terminalComposer";
+import { uploadTerminalImage } from "../../terminalImageUpload";
 import { useConnectionClient } from "../../useConnectionClient";
+import { promptDraftImageUrl, workspaceFileUrl } from "../../workspaceFileUrl";
 import { Latched } from "../LazyBoundary";
 import { terminalConfirmDialog } from "../lazyPanels";
 import { usePaneSwipe } from "../terminal/paneSwipe";
@@ -215,8 +223,24 @@ export function AgentView({
         throw reason;
       });
     return {
-      send: (text: string) =>
-        call("agent_session.send", { text }, t("Could not send the prompt")),
+      send: (text: string, images: AgentPromptImage[]) =>
+        call(
+          "agent_session.send",
+          images.length ? { text, images } : { text },
+          t("Could not send the prompt"),
+        ),
+      // An image for a prompt: made small enough here, then put on the host.
+      upload: async (file: File) => {
+        const prepared = await preparePromptImage(file);
+        return (
+          transport.uploadImage?.(prepared) ??
+          uploadTerminalImage(client, prepared)
+        );
+      },
+      /** Where an image at `path` on the host loads from. */
+      imageUrl: (workspaceId: string, path: string) =>
+        transport.imageUrl?.(path) ??
+        workspaceFileUrl(client, workspaceId, path, { inline: true }),
       interrupt: () =>
         void call(
           "agent_session.interrupt",
@@ -252,11 +276,15 @@ export function AgentView({
   }, [epoch]);
   const workspaceId = pane?.workspace_id;
   const cwd = info?.cwd;
+  const draftKey = agentComposerDraftKey(s.connectionId, paneId);
   // Files open in the Inspector, which instance admins have.
   const host = useHostCapable();
   const rows = useMemo(
     () => ({
       expanded,
+      imageUrl: workspaceId
+        ? (path: string) => actions.imageUrl(workspaceId, path)
+        : undefined,
       onOpenFile:
         host && onOpenWorkspaceFile && workspaceId
           ? (path: string) =>
@@ -274,6 +302,7 @@ export function AgentView({
           : undefined,
     }),
     [
+      actions,
       cwd,
       expanded,
       host,
@@ -309,43 +338,57 @@ export function AgentView({
       />
       {info ? (
         <AgentViewContext.Provider value={rows}>
-          {/* Another conversation's transcript starts over, at its end. */}
-          <AgentTranscript key={epoch} ref={transcript} store={session}>
-            {canEdit && info.can_resume && info.status !== "exited" ? (
-              <AgentResume
-                info={info}
-                load={actions.history}
-                onResume={actions.resume}
+          <div className="agent-body">
+            {/* Another conversation's transcript starts over, at its end. */}
+            <AgentTranscript key={epoch} ref={transcript} store={session}>
+              {canEdit && info.can_resume && info.status !== "exited" ? (
+                <AgentResume
+                  info={info}
+                  load={actions.history}
+                  onResume={actions.resume}
+                />
+              ) : null}
+            </AgentTranscript>
+            <div ref={setDock} className="agent-dock">
+              <AgentApprovals
+                store={session}
+                onAnswer={canEdit ? actions.approve : undefined}
               />
-            ) : null}
-          </AgentTranscript>
-          <div ref={setDock} className="agent-dock">
-            <AgentApprovals
-              store={session}
-              onAnswer={canEdit ? actions.approve : undefined}
-            />
-            {info.status === "exited" && info.error ? (
-              <div className="agent-ended" role="alert">
-                {info.error}
-              </div>
-            ) : null}
-            {canEdit ? (
-              <AgentComposer
-                draftKey={`${s.connectionId}\n${paneId}`}
-                info={info}
-                active={s.active}
-                epoch={epoch}
-                onSend={(text) => {
-                  transcript.current?.showLatest();
-                  return actions.send(text);
-                }}
-                onInterrupt={actions.interrupt}
-                onSetMode={actions.setMode}
-                onPage={(direction) => transcript.current?.page(direction)}
-              />
-            ) : (
-              <AgentMeta info={info} />
-            )}
+              {info.status === "exited" && info.error ? (
+                <div className="agent-ended" role="alert">
+                  {info.error}
+                </div>
+              ) : null}
+              {canEdit ? (
+                <AgentComposer
+                  key={draftKey}
+                  draftKey={draftKey}
+                  info={info}
+                  active={s.active}
+                  epoch={epoch}
+                  imageUrl={(source) =>
+                    workspaceId
+                      ? promptDraftImageUrl(
+                          client,
+                          workspaceId,
+                          info.cwd,
+                          source,
+                        )
+                      : null
+                  }
+                  onSend={(text, images) => {
+                    transcript.current?.showLatest();
+                    return actions.send(text, images);
+                  }}
+                  onUploadImage={actions.upload}
+                  onInterrupt={actions.interrupt}
+                  onSetMode={actions.setMode}
+                  onPage={(direction) => transcript.current?.page(direction)}
+                />
+              ) : (
+                <AgentMeta info={info} />
+              )}
+            </div>
           </div>
         </AgentViewContext.Provider>
       ) : (
@@ -362,7 +405,10 @@ export function AgentView({
           message={t("Close this pane and end its agent session?")}
           confirmLabel={t("Close")}
           tone="danger"
-          onConfirm={() => store.closePane(paneId)}
+          onConfirm={() => {
+            clearTerminalComposerDraft(draftKey);
+            return store.closePane(paneId);
+          }}
         />
       </Latched>
     </div>
