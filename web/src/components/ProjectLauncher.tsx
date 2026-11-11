@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentSessionsAvailable } from "../agentSessions";
+import { thyraLocalStorage } from "../browserStorage";
 import { t } from "../i18n";
 import { store } from "../store";
 import { useConnectionClient } from "../useConnectionClient";
@@ -23,6 +25,7 @@ import {
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { IconButton } from "./ui/IconButton";
+import { SegmentedControl } from "./ui/SegmentedControl";
 import { Spinner } from "./ui/Spinner";
 import { TextField } from "./ui/TextField";
 import { Token } from "./ui/Token";
@@ -55,6 +58,10 @@ type BrowseListing = {
 
 type View = "folders" | "browse" | "settings";
 
+/** How a launched agent opens: its agent view, or its own terminal UI. */
+type LaunchView = "gui" | "terminal";
+const LAUNCH_VIEW_STORAGE_KEY = "agentLaunchView";
+
 function parentDisplay(display: string) {
   const index = display.lastIndexOf("/");
   if (index <= 0) return display === "~" ? "" : display.slice(0, index + 1);
@@ -85,6 +92,13 @@ export function ProjectLauncher({
   const [query, setQuery] = useState("");
   const [editingPins, setEditingPins] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // Offered only by a bridge that runs agent sessions; remembered here.
+  const agentSessions = useAgentSessionsAvailable();
+  const [launchView, setLaunchView] = useState<LaunchView>(() =>
+    thyraLocalStorage.getItem(LAUNCH_VIEW_STORAGE_KEY) === "terminal"
+      ? "terminal"
+      : "gui",
+  );
   const [browse, setBrowse] = useState<BrowseListing | null>(null);
   const [browseError, setBrowseError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -177,7 +191,11 @@ export function ProjectLauncher({
     setError(null);
     try {
       const result: { pane_id: string; start_error?: string } =
-        await client.call("launcher.launch", { path, agent: agent.id });
+        await client.call("launcher.launch", {
+          path,
+          agent: agent.id,
+          ...(agentSessions ? { view: launchView } : {}),
+        });
       if (!client.isCurrent()) return;
       await store.refresh();
       await store.focusPane(result.pane_id);
@@ -242,11 +260,29 @@ export function ProjectLauncher({
           </Button>
         ))}
       </div>
-      <p className="project-launcher-note">
-        {workspace
-          ? t("Opens a new tab in workspace {name}.", { name: workspace.label })
-          : t("Opens a new workspace in this folder.")}
-      </p>
+      <div className="project-launcher-agents-foot">
+        <p className="project-launcher-note">
+          {workspace
+            ? t("Opens a new tab in workspace {name}.", {
+                name: workspace.label,
+              })
+            : t("Opens a new workspace in this folder.")}
+        </p>
+        {agentSessions ? (
+          <SegmentedControl
+            aria-label={t("Open the agent in")}
+            value={launchView}
+            onChange={(view) => {
+              thyraLocalStorage.setItem(LAUNCH_VIEW_STORAGE_KEY, view);
+              setLaunchView(view);
+            }}
+            options={[
+              { value: "gui", label: t("Agent view") },
+              { value: "terminal", label: t("Terminal") },
+            ]}
+          />
+        ) : null}
+      </div>
     </div>
   );
 
