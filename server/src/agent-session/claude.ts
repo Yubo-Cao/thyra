@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type {
   AgentApproval,
   AgentApprovalOption,
+  AgentItem,
   AgentSessionMode,
   AgentSessionUsage,
+  AgentStoredSession,
 } from "../../../shared/agentSession";
 import {
   type AdapterOptions,
@@ -12,6 +15,7 @@ import {
   oneLine,
   record,
   text,
+  withItemTimes,
 } from "./adapter";
 import {
   type AgentExit,
@@ -19,14 +23,24 @@ import {
   describeAgentExit,
 } from "./agent-process";
 import {
+  claudeProjectDir,
+  isTranscriptEntry,
+  listClaudeSessions,
+  readClaudeConversation,
+  type StoredEntry,
+  storedCommand,
+  storedPrompt,
+} from "./claude-stored";
+import {
   describeClaudeTool,
   isTodoTool,
   planEntries,
   resultDiffs,
   toolResultText,
 } from "./claude-tools";
+import { isAgentSessionId } from "./link";
 import {
-  type AgentSessionStore,
+  AgentSessionStore,
   type AgentToolItem,
   boundToolOutput,
 } from "./store";
@@ -51,6 +65,8 @@ const CONTROL_TIMEOUT_MS = 15_000;
 const READY_TIMEOUT_MS = 20_000;
 /** An interrupted turn normally ends at once; past this the session is idle. */
 const INTERRUPT_SETTLE_MS = 3_000;
+/** A child replaced by a resume is killed if it has not ended by then. */
+const RETIRE_GRACE_MS = 3_000;
 const SUBAGENT_PROGRESS_LINES = 12;
 const DENY_MESSAGE =
   "The user denied this action. Stop and wait for the user's next instruction.";
@@ -86,6 +102,61 @@ export function claudeArgv(userArgs: string[]): string[] {
   return [...argv, ...userArgs];
 }
 
+/** The user's arguments, split by whether they choose the conversation. */
+export type ClaudeConversationArgs = {
+  /** Everything else: the model, permission flags and so on. */
+  others: string[];
+  /** `--resume <value>`: the conversation to continue. */
+  resume?: string;
+  /** `--continue`: continue the directory's newest conversation. */
+  continues: boolean;
+  /** `--fork-session` and `--session-id`, as given. */
+  identity: string[];
+};
+
+/**
+ * Pick the arguments that say which conversation a session is in. A bare
+ * `--resume` (the terminal UI's picker) chooses none and is dropped: the
+ * page offers the list instead.
+ */
+export function claudeConversationArgs(args: string[]): ClaudeConversationArgs {
+  const choice: ClaudeConversationArgs = {
+    others: [],
+    continues: false,
+    identity: [],
+  };
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    const next = args[index + 1];
+    if (arg === "--resume" || arg === "-r") {
+      if (next !== undefined && !next.startsWith("-")) {
+        choice.resume = next;
+        index += 1;
+      }
+    } else if (arg.startsWith("--resume=")) {
+      choice.resume = arg.slice("--resume=".length) || choice.resume;
+    } else if (arg === "--continue" || arg === "-c") {
+      choice.continues = true;
+    } else if (arg === "--fork-session" || arg.startsWith("--session-id=")) {
+      choice.identity.push(arg);
+    } else if (arg === "--session-id") {
+      choice.identity.push(arg);
+      if (next !== undefined) {
+        choice.identity.push(next);
+        index += 1;
+      }
+    } else choice.others.push(arg);
+  }
+  return choice;
+}
+
+/** A stored conversation as a transcript, with where its item IDs ended. */
+type StoredTranscript = {
+  items: AgentItem[];
+  nextLocalId: number;
+  turn: number;
+};
+
 type PermissionRequest = {
   requestId: string;
   toolName: string;
@@ -106,6 +177,14 @@ type StreamBlock = {
 export class ClaudeAdapter implements AgentAdapter {
   private readonly store: AgentSessionStore;
   private process: AgentProcess | null = null;
+  /** The user's arguments, naming the conversation the session is in. */
+  private args: string[];
+  /** Children replaced by a resume that have not ended yet. */
+  private readonly retired = new Set<AgentProcess>();
+  /** The current child answered `initialize` (or was given up waiting for). */
+  private childReady = false;
+  /** A stored transcript is being read; prompts and the idle status wait. */
+  private restoring: Promise<void> | null = null;
   private stopping = false;
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -140,43 +219,277 @@ export class ClaudeAdapter implements AgentAdapter {
 
   constructor(private readonly options: AdapterOptions) {
     this.store = options.store;
+    this.args = options.args;
   }
 
   start() {
     this.store.updateInfo({ modes: CLAUDE_MODES });
+    const choice = claudeConversationArgs(this.options.args);
+    let resume = choice.resume;
+    let fresh: string | null = null;
+    if (!resume && choice.continues) {
+      // Named here, so that what is shown is what the CLI continues.
+      resume = listClaudeSessions(this.projectDir(), { limit: 1 })[0]?.id;
+      if (!resume)
+        fresh =
+          "No conversation is stored for this directory; this is a new one.";
+    }
+    this.args = [
+      ...choice.others,
+      ...choice.identity,
+      ...(resume ? ["--resume", resume] : []),
+    ];
+    if (!this.launch()) return;
+    if (fresh) this.notice("info", fresh);
+    // A value that is not an ID (a title, a search) is left to the CLI.
+    if (!resume || !isAgentSessionId(resume)) return;
+    const id = resume;
+    // A fork continues under an ID of its own, which the CLI reports.
+    const forks = choice.identity.includes("--fork-session");
+    this.restoring = ClaudeAdapter.storedTranscript(
+      this.storedPath(id),
+      this.options.cwd,
+    )
+      .then((stored) => {
+        if (this.store.phase !== "exited")
+          this.adopt(stored, forks ? undefined : id);
+      })
+      .catch((error) => {
+        if (this.store.phase !== "exited")
+          this.notice(
+            "info",
+            `The earlier messages of ${id} could not be read (${(error as Error).message}).`,
+          );
+      })
+      .finally(() => {
+        this.restoring = null;
+        this.settleStart();
+      });
+  }
+
+  /** Start the CLI with the current arguments; false when it cannot start. */
+  private launch(): boolean {
+    if (this.readyTimer) clearTimeout(this.readyTimer);
+    this.readyTimer = null;
+    this.childReady = false;
+    let child: AgentProcess;
     try {
-      this.process = this.options.spawn({
-        argv: claudeArgv(this.options.args),
+      child = this.options.spawn({
+        argv: claudeArgv(this.args),
         cwd: this.options.cwd,
         env: this.options.env,
-        onLine: (line) => this.handleLine(line),
-        onExit: (exit) => this.handleExit(exit),
+        // A child replaced by a resume is no longer heard.
+        onLine: (line) => {
+          if (this.process === child) this.handleLine(line);
+        },
+        onExit: (exit) => {
+          if (this.process === child) this.handleExit(exit);
+          else this.retired.delete(child);
+        },
       });
     } catch (error) {
+      this.process = null;
       this.store.setPhase(
         "exited",
         `could not start claude: ${(error as Error).message}`,
       );
       this.options.onExit(this.store.info.error);
-      return;
+      return false;
     }
+    this.process = child;
     this.readyTimer = setTimeout(() => this.ready(), READY_TIMEOUT_MS);
     this.request({ subtype: "initialize" }, READY_TIMEOUT_MS)
       .then((response) => {
         const mode = text(response.current_permission_mode);
-        if (mode) this.store.updateInfo({ mode });
+        if (mode && this.process === child) this.store.updateInfo({ mode });
       })
       .catch(() => undefined)
-      .finally(() => this.ready());
+      .finally(() => {
+        if (this.process === child) this.ready();
+      });
+    return true;
   }
 
   private ready() {
     if (this.readyTimer) clearTimeout(this.readyTimer);
     this.readyTimer = null;
-    if (this.store.phase === "starting") this.store.setPhase("idle");
+    this.childReady = true;
+    this.settleStart();
+  }
+
+  /** Idle once the CLI is ready and no stored transcript is still being read. */
+  private settleStart() {
+    if (this.childReady && !this.restoring && this.store.phase === "starting")
+      this.store.setPhase("idle");
+  }
+
+  private projectDir(): string {
+    return claudeProjectDir(this.options.cwd, this.options.env);
+  }
+
+  private storedPath(id: string): string {
+    return join(this.projectDir(), `${id}.jsonl`);
+  }
+
+  async history(): Promise<AgentStoredSession[]> {
+    return listClaudeSessions(this.projectDir(), {
+      exclude: this.store.info.agent_session_id,
+    });
+  }
+
+  /**
+   * Continue a stored conversation: the CLI holds one conversation per
+   * process, so the child is replaced by one started with `--resume`.
+   */
+  async resume(id: string) {
+    if (this.restoring) await this.restoring;
+    this.requireIdleForResume();
+    let stored: StoredTranscript;
+    try {
+      stored = await ClaudeAdapter.storedTranscript(
+        this.storedPath(id),
+        this.options.cwd,
+      );
+    } catch (error) {
+      throw new AgentActionError(
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+          ? `no conversation ${id} is stored for this directory`
+          : `conversation ${id} could not be read: ${(error as Error).message}`,
+      );
+    }
+    // A prompt may have arrived while the file was read.
+    this.requireIdleForResume();
+
+    const previous = this.process;
+    this.process = null;
+    if (previous) {
+      this.retired.add(previous);
+      previous.kill("SIGTERM");
+      const timer = setTimeout(() => {
+        if (this.retired.has(previous)) previous.kill("SIGKILL");
+      }, RETIRE_GRACE_MS);
+      timer.unref?.();
+    }
+    for (const waiting of this.control.values()) {
+      clearTimeout(waiting.timer);
+      waiting.reject(new AgentActionError("the conversation was replaced"));
+    }
+    this.control.clear();
+    if (this.settleTimer) clearTimeout(this.settleTimer);
+    this.settleTimer = null;
+    this.permissions.clear();
+    this.unacked.clear();
+    this.blocks.clear();
+    this.openTools.clear();
+    this.deniedTools.clear();
+    this.subagentProgress.clear();
+    this.echoes = null;
+    this.interrupting = false;
+    this.denying = false;
+    this.turnActive = false;
+    this.messageId = "";
+    this.usage = {};
+
+    this.args = [...claudeConversationArgs(this.args).others, "--resume", id];
+    this.adopt(stored, id);
+    this.store.setPhase("starting");
+    this.launch();
+  }
+
+  private requireIdleForResume() {
+    this.requireRunningProcess();
+    if (this.store.phase === "running")
+      throw new AgentActionError(
+        this.store.approvals.length > 0
+          ? "an approval is open; answer it or interrupt the turn first"
+          : "a turn is running; wait for it or interrupt it first",
+      );
+  }
+
+  /** Show a stored transcript in place of the session's own. */
+  private adopt(stored: StoredTranscript, id: string | undefined) {
+    this.store.resetItems(stored.items);
+    // Items made from here on continue the restored ones' numbering.
+    this.nextLocalId = Math.max(this.nextLocalId, stored.nextLocalId);
+    this.turn = Math.max(this.turn, stored.turn);
+    this.store.updateInfo({
+      usage: undefined,
+      ...(id ? { agent_session_id: id } : {}),
+    });
+  }
+
+  /**
+   * A stored conversation as transcript items. Its entries go through the
+   * handlers that showed the same messages when they were live, in an
+   * adapter that has no process and a store nobody listens to, so a
+   * restored transcript reads like the live one did.
+   */
+  static async storedTranscript(
+    path: string,
+    cwd: string,
+  ): Promise<StoredTranscript> {
+    let at = 0;
+    const store = new AgentSessionStore({
+      info: { pane_id: "", kind: "claude", cwd, started_at: 0, modes: [] },
+      onEvent: () => undefined,
+      now: () => at,
+    });
+    const replay = new ClaudeAdapter({
+      store,
+      cwd,
+      args: [],
+      env: {},
+      spawn: () => {
+        throw new Error("a stored conversation has no process");
+      },
+      onExit: () => undefined,
+    });
+    for await (const entry of readClaudeConversation(path)) {
+      // Items carry the time their entry was written.
+      at = Date.parse(text(entry.timestamp) ?? "") || at;
+      replay.replayStored(entry);
+    }
+    // A call left without a result did not finish.
+    replay.endTurn(false);
+    const items = withItemTimes(store.snapshot().items);
+    store.dispose();
+    return { items, nextLocalId: replay.nextLocalId, turn: replay.turn };
+  }
+
+  private replayStored(entry: StoredEntry) {
+    if (!isTranscriptEntry(entry)) return;
+    if (entry.type === "assistant") return this.handleAssistant(entry);
+    if (entry.type === "system") return this.handleSystem(entry);
+    const prompt = storedPrompt(entry) ?? storedCommand(entry);
+    if (prompt !== null) {
+      // The turn before a prompt is over, as its result said when live.
+      this.endTurn(false);
+      this.store.upsertItem({
+        id: `user-${this.nextLocalId++}`,
+        type: "user",
+        text: prompt,
+      });
+      return;
+    }
+    // Tool results and interruptions, in the shape the CLI streams them.
+    const content = record(entry.message)?.content;
+    const denial = text(entry.toolDenialKind);
+    if (denial) this.denying = true;
+    this.handleUser({
+      ...entry,
+      tool_use_result: entry.toolUseResult,
+      tool_result_meta: (Array.isArray(content) ? content : []).flatMap(
+        (value) => {
+          const id = text(record(value)?.tool_use_id);
+          return denial && id ? [{ id, non_execution_kind: denial }] : [];
+        },
+      ),
+    });
   }
 
   async send(prompt: string) {
+    // A prompt waits for a transcript that is being restored at startup.
+    if (this.restoring) await this.restoring;
     this.requireRunningProcess();
     const uuid = randomUUID();
     this.unacked.add(uuid);
@@ -273,7 +586,9 @@ export class ClaudeAdapter implements AgentAdapter {
 
   stop(force = false) {
     this.stopping = true;
-    this.process?.kill(force ? "SIGKILL" : "SIGTERM");
+    const signal = force ? "SIGKILL" : "SIGTERM";
+    this.process?.kill(signal);
+    for (const child of this.retired) child.kill(signal);
   }
 
   private requireRunningProcess() {

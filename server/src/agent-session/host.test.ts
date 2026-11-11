@@ -1,5 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { AgentSessionKind } from "../../../shared/agentSession";
 import { createHerdrReporter } from "./herdr-report";
@@ -11,6 +17,7 @@ import {
   leaveDeadSocket,
   settle,
   socketRoot,
+  storedClaude,
   until,
 } from "./test-support";
 
@@ -54,11 +61,8 @@ async function hostFor(
   });
   hosts.push(host);
   // The fake exits when the host asks it to.
-  const kill = agent.killed.push.bind(agent.killed);
-  agent.killed.push = (...signals: string[]) => {
-    queueMicrotask(() => agent.exit({ code: null, signal: signals[0]! }));
-    return kill(...signals);
-  };
+  agent.hooks.onKill = (child, signal) =>
+    queueMicrotask(() => child.exit({ code: null, signal }));
   return { host, agent, root, terminal, reports };
 }
 
@@ -153,6 +157,82 @@ test("actions reach the agent and report refusals", async () => {
   // Nothing runs: interrupting is accepted and does nothing.
   expect(await link.act({ action: "interrupt" })).toBeNull();
   expect(agent.written).toHaveLength(written);
+  link.close();
+});
+
+test("history and resume are served over the link", async () => {
+  const root = socketRoot();
+  roots.push(root);
+  const config = join(root, "claude");
+  mkdirSync(join(config, "projects", "-work"), { recursive: true });
+  const stored = storedClaude();
+  stored.prompt("remember mango");
+  stored.says("m1", [{ type: "text", text: "I will." }]);
+  stored.note({ type: "ai-title", aiTitle: "Remember a fruit" });
+  writeFileSync(
+    join(config, "projects", "-work", "abc-1.jsonl"),
+    stored.text(),
+  );
+  const { host, agent, terminal } = await hostFor("claude", {
+    socketDir: join(root, "sockets"),
+    env: { CLAUDE_CONFIG_DIR: config },
+  });
+  initialize(agent);
+  const link = await connectToHost(host.socketPath);
+  const hello = await until(() => link.messages[0], "the greeting");
+  // Pages ask for history only from hosts that say they serve it.
+  expect(hello).toMatchObject({
+    protocol: 1,
+    snapshot: { info: { can_resume: true } },
+  });
+  expect(await link.ask({ action: "history" })).toEqual({
+    error: null,
+    value: [
+      {
+        id: "abc-1",
+        title: "Remember a fruit",
+        updated_at: expect.any(Number),
+      },
+    ],
+  });
+  // Other actions answer without a value.
+  expect(await link.ask({ action: "interrupt" })).toEqual({ error: null });
+
+  expect(await link.ask({ action: "resume", session_id: "abc-1" })).toEqual({
+    error: null,
+  });
+  const events = link.messages.flatMap((message) =>
+    message.type === "event" ? [message.event] : [],
+  );
+  const reset = events.find((event) => event.type === "reset");
+  expect(reset).toMatchObject({
+    type: "reset",
+    items: [
+      { type: "user", text: "remember mango" },
+      { type: "assistant", text: "I will." },
+    ],
+  });
+  expect(host.store.info).toMatchObject({
+    status: "starting",
+    agent_session_id: "abc-1",
+  });
+  expect(agent.children).toHaveLength(2);
+  expect(agent.argv.slice(-2)).toEqual(["--resume", "abc-1"]);
+  // The replaced process ending is not the session ending.
+  await settle();
+  expect(host.store.info.status).toBe("starting");
+  expect(terminal.join("")).toContain("- resumed abc-1 (2 items)\n");
+  expect(terminal.join("")).not.toContain("remember mango");
+
+  // Refusals come back as the action's error.
+  expect(await link.act({ action: "resume", session_id: "gone-1" })).toBe(
+    "no conversation gone-1 is stored for this directory",
+  );
+  for (const id of ["../abc-1", "--help", "a b", ""])
+    expect(await link.act({ action: "resume", session_id: id })).toBe(
+      "not a conversation ID",
+    );
+  expect(agent.children).toHaveLength(2);
   link.close();
 });
 
