@@ -123,6 +123,98 @@ describe("agent session reducer", () => {
     expect(resolved.approvals).toEqual([]);
   });
 
+  test("a reset replaces the transcript, closes approvals and starts an epoch", () => {
+    const approval = {
+      id: "ap1",
+      item_id: "a1",
+      title: "Run command",
+      options: [{ id: "y", label: "Allow", kind: "allow" as const }],
+    };
+    const state = apply(session([user("u1", "now"), assistant("a1", "x")]), {
+      type: "approval",
+      approval,
+    });
+    const next = apply(state, {
+      type: "reset",
+      // An ID the replaced transcript used too: it is another item now.
+      items: [user("old1", "earlier"), assistant("a1", "stored", false)],
+    });
+    expect(next.order).toEqual(["old1", "a1"]);
+    expect(Object.keys(next.items)).toEqual(["old1", "a1"]);
+    expect(next.items.a1).toMatchObject({ text: "stored", streaming: false });
+    expect(next.approvals).toEqual([]);
+    expect(next.info).toBe(state.info);
+    expect(next.seq).toBe(state.seq + 1);
+    expect(next.epoch).toBe(state.epoch + 1);
+    // Events after it apply to the new items, in sequence.
+    const later = apply(next, { type: "item", item: user("u2", "go on") });
+    expect(later.order).toEqual(["old1", "a1", "u2"]);
+    expect(later.epoch).toBe(next.epoch);
+    expect(
+      applySessionEvent(next, {
+        pane_id: "p1",
+        seq: next.seq + 2,
+        type: "reset",
+        items: [],
+      }),
+    ).toBe("gap");
+  });
+
+  test("a reset to nothing leaves an empty transcript", () => {
+    const next = apply(session([user("u1", "now")]), {
+      type: "reset",
+      items: [],
+    });
+    expect(next.order).toEqual([]);
+    expect(next.items).toEqual({});
+    expect(
+      apply(session([user("u1", "now")]), { type: "reset" }).order,
+    ).toEqual([]);
+  });
+
+  test("a snapshot after another keeps the epoch unless the conversation changed", () => {
+    const first = sessionFromSnapshot({
+      info: { ...info, agent_session_id: "c1" },
+      items: [user("u1", "hi")],
+      approvals: [],
+      seq: 4,
+    });
+    expect(first.epoch).toBe(0);
+    const reset = apply(first, { type: "reset", items: [] });
+    const snapshot = (id?: string) =>
+      sessionFromSnapshot(
+        {
+          info: { ...info, agent_session_id: id },
+          items: [],
+          approvals: [],
+          seq: 9,
+        },
+        reset,
+      );
+    expect(snapshot("c1").epoch).toBe(1);
+    // A resume missed while not subscribed.
+    expect(snapshot("c2").epoch).toBe(2);
+    expect(snapshot().epoch).toBe(2);
+    // A conversation ID that only became known is the same conversation.
+    const unknown = sessionFromSnapshot({
+      info,
+      items: [],
+      approvals: [],
+      seq: 1,
+    });
+    expect(
+      sessionFromSnapshot(
+        {
+          info: { ...info, agent_session_id: "c1" },
+          items: [],
+          approvals: [],
+          seq: 2,
+        },
+        unknown,
+      ).epoch,
+    ).toBe(0);
+  });
+
   test("info events replace the session info", () => {
     const next = apply(session(), {
       type: "info",

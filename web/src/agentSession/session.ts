@@ -93,7 +93,10 @@ export function connectAgentSession(
         if (disposed) return;
         attempt = 0;
         ready = true;
-        store.setState({ session: sessionFromSnapshot(snapshot), error: null });
+        store.setState({
+          session: sessionFromSnapshot(snapshot, store.getState().session),
+          error: null,
+        });
         // Events that arrived while the snapshot was on its way.
         flush();
       },

@@ -6,6 +6,7 @@ import type {
   AgentSessionStatus,
 } from "../../../../shared/agentSession";
 import { selectPanesWithoutActivity } from "../../agentOrder";
+import { storedSessions } from "../../agentSession/history";
 import {
   type AgentSessionStore,
   connectAgentSession,
@@ -30,6 +31,7 @@ import { Token, type TokenTone } from "../ui/Token";
 import { AgentApprovals } from "./AgentApprovals";
 import { AgentComposer, AgentMeta } from "./AgentComposer";
 import { AgentViewContext } from "./AgentItems";
+import { AgentResume } from "./AgentResume";
 import { AgentTranscript, type AgentTranscriptHandle } from "./AgentTranscript";
 import "./AgentView.css";
 
@@ -180,6 +182,7 @@ export function AgentView({
   const client = useConnectionClient();
   const session = useAgentSession(paneId);
   const info = useStore(session, (view) => view.session?.info);
+  const epoch = useStore(session, (view) => view.session?.epoch ?? 0);
   const error = useStore(session, (view) => view.error);
   const canEdit = useWorkspaceCan(pane?.workspace_id, "edit");
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
@@ -196,12 +199,14 @@ export function AgentView({
 
   const actions = useMemo(() => {
     const transport = agentSessionTransport(client);
+    const request = (method: string, params: Record<string, unknown>) =>
+      transport.call(method, { pane_id: paneId, ...params });
     const call = (
       method: string,
       params: Record<string, unknown>,
       failure: string,
     ) =>
-      transport.call(method, { pane_id: paneId, ...params }).catch((reason) => {
+      request(method, params).catch((reason) => {
         store.notify({
           kind: "error",
           message: failure,
@@ -230,12 +235,21 @@ export function AgentView({
           { mode },
           t("Could not change the mode"),
         ).catch(() => {}),
+      // Neither notifies: the list is an offer that may be missing, and a
+      // refused resume reads on its row.
+      history: () => request("agent_session.history", {}).then(storedSessions),
+      resume: (sessionId: string) =>
+        request("agent_session.resume", { session_id: sessionId }),
     };
   }, [client, paneId]);
 
-  // Rows share which of them are open; the map lives as long as the view, so
-  // a row that scrolls out of the mounted window comes back as it was left.
-  const [expanded] = useState(() => new Map<string, boolean>());
+  // Rows share which of them are open; the map lives as long as the
+  // conversation is on screen, so a row that scrolls out of the mounted
+  // window comes back as it was left.
+  const expanded = useMemo(() => {
+    void epoch;
+    return new Map<string, boolean>();
+  }, [epoch]);
   const workspaceId = pane?.workspace_id;
   const cwd = info?.cwd;
   // Files open in the Inspector, which instance admins have.
@@ -295,7 +309,16 @@ export function AgentView({
       />
       {info ? (
         <AgentViewContext.Provider value={rows}>
-          <AgentTranscript ref={transcript} store={session} />
+          {/* Another conversation's transcript starts over, at its end. */}
+          <AgentTranscript key={epoch} ref={transcript} store={session}>
+            {canEdit && info.can_resume && info.status !== "exited" ? (
+              <AgentResume
+                info={info}
+                load={actions.history}
+                onResume={actions.resume}
+              />
+            ) : null}
+          </AgentTranscript>
           <div ref={setDock} className="agent-dock">
             <AgentApprovals
               store={session}
@@ -311,6 +334,7 @@ export function AgentView({
                 draftKey={`${s.connectionId}\n${paneId}`}
                 info={info}
                 active={s.active}
+                epoch={epoch}
                 onSend={(text) => {
                   transcript.current?.showLatest();
                   return actions.send(text);
