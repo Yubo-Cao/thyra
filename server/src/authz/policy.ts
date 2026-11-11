@@ -215,8 +215,9 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
 
   // Agents.
   "agent.list": list,
-  // Agent sessions (`thyra agent` panes): reading needs the pane, acting
-  // needs what typing into it needs. Lists are filtered to readable panes.
+  // Agent sessions (`thyra agent` panes): reading the session needs the
+  // pane, acting needs what typing into it needs. Lists are filtered to
+  // readable panes.
   "agent_session.list": list,
   "agent_session.subscribe": read(r.pane),
   // Ends only this socket's own subscription.
@@ -225,8 +226,10 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "agent_session.interrupt": write(r.pane, { writer: "input" }),
   "agent_session.approve": write(r.pane, { writer: "input" }),
   "agent_session.set_mode": write(r.pane, { writer: "input" }),
-  // The titles of the conversations stored for the session's directory.
-  "agent_session.history": read(r.pane),
+  // The titles of the other conversations stored for the session's
+  // directory are not something the pane shows: only those who may act on
+  // the session read them, whoever holds the pane's claim.
+  "agent_session.history": { ...read(r.pane), minimum: "editor" },
   "agent_session.resume": write(r.pane, { writer: "input" }),
 
   // Workspace files and Git.

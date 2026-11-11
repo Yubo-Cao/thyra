@@ -406,7 +406,7 @@ test("acting needs pane input rights and claims the pane like typing", async () 
   }
 });
 
-test("history is read like the session; resuming is an action on it", async () => {
+test("history is for those who may act on the session; resuming is an action on it", async () => {
   const h = harness();
   const stored = [
     { id: "abc-1", title: "Fix the login flow", updated_at: 1700000000000 },
@@ -420,11 +420,13 @@ test("history is read like the session; resuming is an action on it", async () =
     "junk",
     null,
   ]);
-  for (const role of ["admin", "owner", "editor", "viewer", "guest"] as const)
+  for (const role of ["admin", "owner", "editor"] as const)
     expect(
       await h.call(role, "agent_session.history", { pane_id: "w1:p1" }),
     ).toEqual({ sessions: stored });
   expect(h.actions.at(-1)).toEqual(["w1:p1", { action: "history" }]);
+  // Reading the list does not claim the pane.
+  expect(h.claims).toEqual([]);
   // Never more than the contract's limit, whatever a host sends.
   h.answer(
     Array.from({ length: 50 }, (_, index) => ({
@@ -434,23 +436,20 @@ test("history is read like the session; resuming is an action on it", async () =
     })),
   );
   expect(
-    (await h.call("viewer", "agent_session.history", { pane_id: "w1:p1" }))
+    (await h.call("editor", "agent_session.history", { pane_id: "w1:p1" }))
       .sessions,
   ).toHaveLength(30);
   h.answer("not a list");
   expect(
-    await h.call("viewer", "agent_session.history", { pane_id: "w1:p1" }),
+    await h.call("editor", "agent_session.history", { pane_id: "w1:p1" }),
   ).toEqual({ sessions: [] });
-  // Reading a pane's history needs the pane, like its session.
+  // The titles of a directory's other conversations are not what the pane
+  // shows: those who can only read the session do not get them.
   const before = h.actions.length;
-  expect(
-    (await h.call("outsider", "agent_session.history", { pane_id: "w1:p1" }))
-      .error,
-  ).toBeString();
-  expect(
-    (await h.call("guest-pane", "agent_session.history", { pane_id: "w1:p2" }))
-      .error,
-  ).toBeString();
+  for (const role of ["viewer", "guest", "guest-pane", "outsider"] as const)
+    expect(
+      (await h.call(role, "agent_session.history", { pane_id: "w1:p1" })).error,
+    ).toBeString();
   expect(await h.call("admin", "agent_session.history", {})).toEqual({
     error: "pane_id required",
   });

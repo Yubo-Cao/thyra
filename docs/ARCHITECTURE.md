@@ -678,8 +678,9 @@ Both notifications use the connection envelope: `{connection_id, connection_gene
 `agent_session.changed` goes to every page when a session appears, ends or changes status, at most once per 25 ms.
 The hello's `capabilities.agent_sessions` is `true` when the bridge serves these methods.
 
-**Authorization.** Listing, subscribing and reading the history need read access to the pane; a list and `agent_session.changed` hold only the sessions of panes the caller may read, filtered like pane lists, and each event delivery rechecks the subscriber's access.
+**Authorization.** Listing and subscribing need read access to the pane; a list and `agent_session.changed` hold only the sessions of panes the caller may read, filtered like pane lists, and each event delivery rechecks the subscriber's access.
 Acting needs what `pane.send_input` needs: the editor role and the pane's input claim, which an unclaimed pane grants to the caller.
+`agent_session.history` needs the editor role and no claim: the titles of a directory's other conversations are not part of what the pane shows, so viewers and share-link guests do not get them.
 `agent_session.unsubscribe` only affects the calling socket.
 
 **Events.** `seq` rises by one per event; a snapshot's `seq` is the last event it reflects, and it never holds text a later `delta` would repeat.
