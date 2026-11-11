@@ -5,6 +5,26 @@ import { readBodyBytes, RequestError } from "../utils/request";
 
 /** Largest pasted image the bridge accepts. */
 export const IMAGE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/** Where uploads land on the host, local or reached over SSH. */
+export const IMAGE_UPLOAD_DIRECTORY = "/tmp";
+
+/**
+ * Whether a path is one this handler gives a local upload: the directory and
+ * a name it makes. Callers that take such a path back from a page use this,
+ * so that a page cannot name any other file on the host.
+ */
+export function isUploadedImagePath(
+  path: unknown,
+  directory = IMAGE_UPLOAD_DIRECTORY,
+): path is string {
+  return (
+    typeof path === "string" &&
+    path.startsWith(`${directory}/`) &&
+    /^herdr-img-\d{1,16}-[0-9a-f]{32}\.[a-z0-9]{1,16}$/.test(
+      path.slice(directory.length + 1),
+    )
+  );
+}
 
 /**
  * Pasted images land in the host's temporary directory for the agent to
@@ -16,7 +36,7 @@ export function createImageUploadHandler(args: {
   /** Local destination directory; tests point it elsewhere. */
   directory?: string;
 }) {
-  const directory = args.directory ?? "/tmp";
+  const directory = args.directory ?? IMAGE_UPLOAD_DIRECTORY;
   return async function handleImageUpload(req: Request): Promise<Response> {
     try {
       const buf = await readBodyBytes(req, IMAGE_UPLOAD_MAX_BYTES);
@@ -32,7 +52,7 @@ export function createImageUploadHandler(args: {
       const sshHost = args.sshHost();
 
       if (sshHost) {
-        const remotePath = `/tmp/${name}`;
+        const remotePath = `${IMAGE_UPLOAD_DIRECTORY}/${name}`;
         // noclobber makes the redirect an exclusive create; `sh -c` keeps
         // that true whatever the remote login shell is.
         const proc = Bun.spawn(
