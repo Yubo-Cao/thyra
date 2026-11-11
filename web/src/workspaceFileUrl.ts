@@ -96,6 +96,22 @@ export function resolveWorkspaceMarkdownImageUrl(
   });
 }
 
+/**
+ * Where an image named in a prompt draft loads from: a Markdown image's
+ * source or an image path, read against the directory the agent works in.
+ */
+export function promptDraftImageUrl(
+  client: FileUrlClient,
+  workspaceId: string,
+  cwd: string,
+  source: string,
+): string | null {
+  const path = resolveWorkspaceMarkdownPath(source, `${cwd}/prompt.md`);
+  return path
+    ? workspaceFileUrl(client, workspaceId, path, { inline: true })
+    : null;
+}
+
 // Kept for callers resolving image references.
 export const resolveWorkspaceMarkdownImagePath = resolveWorkspaceMarkdownPath;
 

@@ -1,0 +1,17 @@
+/* An image at full size over the page (imageViewer.ts). */
+.prompt-md-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.72);
+  cursor: zoom-out;
+}
+
+.prompt-md-viewer img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+}

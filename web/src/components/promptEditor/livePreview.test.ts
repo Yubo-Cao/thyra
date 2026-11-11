@@ -157,4 +157,33 @@ describe("live preview", () => {
       "/tmp/x.png=url:/tmp/x.png",
     ]);
   });
+
+  test("as atoms, pasted images also draw on the edited line; paths there stay text", () => {
+    const doc = "see [Image #1] and /tmp/x.png\n[Image #2]";
+    const drawn = (atoms: boolean) => {
+      const state = EditorState.create({
+        doc,
+        selection: EditorSelection.single(3),
+        extensions: livePreview({
+          url: (source) => `url:${source}`,
+          pasted: (ref) => `blob:${ref}`,
+          atoms,
+        }),
+      });
+      ensureSyntaxTree(state, doc.length, 5000);
+      const found: string[] = [];
+      livePreviewDecorations(
+        state,
+        [{ from: 0, to: doc.length }],
+        true,
+      ).between(0, doc.length, (from, to, value) => {
+        const spec = value.spec as { widget?: unknown; atom?: boolean };
+        if (spec.widget)
+          found.push(`${doc.slice(from, to)}${spec.atom ? " (atom)" : ""}`);
+      });
+      return found;
+    };
+    expect(drawn(false)).toEqual(["[Image #2]"]);
+    expect(drawn(true)).toEqual(["[Image #1] (atom)", "[Image #2] (atom)"]);
+  });
 });

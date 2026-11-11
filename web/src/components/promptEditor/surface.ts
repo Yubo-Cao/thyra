@@ -12,6 +12,8 @@ export type PromptEditorSelection = { start: number; end: number };
 export type PromptEditorSurface = {
   focus(): void;
   hasFocus(): boolean;
+  /** The text as it stands now, ahead of a change still to be reported. */
+  text(): string;
   selection(): PromptEditorSelection | null;
   /** Replaces the text if it differs and places the caret. */
   setText(text: string, caret?: number): void;
@@ -33,12 +35,25 @@ export type PromptEditorSurfaceProps = {
   initialSelection: PromptEditorSelection | null;
   /** Take focus when mounted. */
   focus: boolean;
+  /** May change while mounted. */
   placeholder: string;
   label: string;
+  /** The text shows and selects but cannot be edited. May change while mounted. */
+  readOnly?: boolean;
+  /**
+   * Written language rather than commands: the keyboard's capitalization,
+   * correction and spell check stay on.
+   */
+  prose?: boolean;
   activeDescendant?: string;
   controls?: string;
   font: PromptEditorFont;
   onChange(text: string, selectionStart: number, selectionEnd: number): void;
+  /**
+   * While the text is empty, Tab and Shift+Tab move the focus on as anywhere
+   * else on the page, without reaching `onKey` or the surface's own keys.
+   */
+  emptyTabMovesFocus?: boolean;
   /** Handles a key for the editor; true when the surface must not. */
   onKey(event: KeyboardEvent, empty: boolean): boolean;
   /** Uploads clipboard images; true when the paste was taken. */
