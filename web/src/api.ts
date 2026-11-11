@@ -207,6 +207,8 @@ export interface BridgeHello {
     connection_id?: boolean;
     connection_scoped_http?: boolean;
     connection_runtime_generation?: boolean;
+    /** The bridge serves agent sessions (shared/agentSession.ts). */
+    agent_sessions?: boolean;
     [key: string]: unknown;
   };
 }

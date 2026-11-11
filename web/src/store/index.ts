@@ -5,6 +5,7 @@
 //   preferences -> core -> notifications -> refresh -> actions -> updates
 //   -> connection -> navigation -> workspaces, worktrees, git
 import { refreshAgentBrowserStatus } from "../agentBrowser";
+import { setAgentSessionsAvailable } from "../agentSessions";
 import { reloadWatchedPanes } from "../paneWatch";
 import { bridge, type ConnectionSummary } from "../api";
 import { prepareAppUpdate, servesOtherBuild } from "../appServiceWorker";
@@ -88,6 +89,7 @@ function init() {
   bridge.onHello((hello) => {
     handleHello(hello.default_connection_id);
     set({ host: hostCapable(hello.principal) });
+    setAgentSessionsAvailable(hello.capabilities.agent_sessions === true);
     void refreshAgentBrowserStatus(state.host !== false);
     // A deploy restarted the bridge under this open page: offer a reload
     // (an in-app update reloads by itself).

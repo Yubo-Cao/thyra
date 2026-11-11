@@ -238,10 +238,12 @@ export function handleHerdrEvent(event: HerdrEventMsg) {
   ) {
     // Presence snapshots carry their own state (see collaboration.ts) and
     // arrive while anyone types; they never change workspace metadata.
+    // Agent session events stream a transcript and carry their own state.
     if (
       event.event === "collaboration.updated" ||
       event.event === "collaboration_updated" ||
-      event.event === "collaboration.focus"
+      event.event === "collaboration.focus" ||
+      event.event.startsWith("agent_session.")
     )
       return;
     scheduleRefresh();
