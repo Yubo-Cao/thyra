@@ -45,6 +45,8 @@ function harness() {
   );
   const actions: [string, AgentAction][] = [];
   const claims: unknown[] = [];
+  const launches: unknown[] = [];
+  const typedInto: [string, string][] = [];
   let refusal: string | null = null;
   let answer: unknown;
   let served = true;
@@ -53,6 +55,7 @@ function harness() {
     stop() {},
     rescan() {},
     list: () => [...sessions.values()].map((snapshot) => snapshot.info),
+    info: (paneId) => sessions.get(paneId)?.info ?? null,
     snapshot: (paneId) => sessions.get(paneId) ?? null,
     async act(paneId, action) {
       actions.push([paneId, action]);
@@ -118,6 +121,17 @@ function harness() {
       },
     },
     claims: { observeResult: () => undefined, get: () => null },
+    launcher: {
+      async launchBeside(params: Record<string, unknown>) {
+        launches.push(params);
+        return { pane_id: "w1:p9", command: "thyra agent claude" };
+      },
+    },
+    terminalBridge: {
+      notePaneInput(ws: Ws, paneId: string) {
+        typedInto.push([(ws as unknown as { role: string }).role, paneId]);
+      },
+    },
   };
   const services = {
     clients,
@@ -150,6 +164,8 @@ function harness() {
     sessions,
     actions,
     claims,
+    launches,
+    typedInto,
     clients,
     agentSessions,
     /** Everything a page received that is not an RPC reply. */
@@ -625,4 +641,76 @@ test("a host's refusal is the call's error", async () => {
       option_id: "allow",
     }),
   ).toEqual({ error: "this approval is no longer pending" });
+});
+
+test("rewinding and branching are actions on the session; a branch opens beside it", async () => {
+  const h = harness();
+  expect(
+    await h.call("editor", "agent_session.rewind", {
+      pane_id: "w1:p1",
+      item_id: "u1",
+    }),
+  ).toEqual({ ok: true });
+  expect(h.actions.at(-1)).toEqual([
+    "w1:p1",
+    { action: "rewind", item_id: "u1" },
+  ]);
+  expect(
+    await h.call("editor", "agent_session.rewind", { pane_id: "w1:p1" }),
+  ).toEqual({ error: "item_id required" });
+
+  // The host names the arguments; the launcher starts them beside the pane.
+  h.answer({ args: ["--resume", "abc-1", "--fork-session"] });
+  expect(
+    await h.call("editor", "agent_session.fork", {
+      pane_id: "w1:p1",
+      item_id: "u1",
+    }),
+  ).toEqual({ pane_id: "w1:p9", command: "thyra agent claude" });
+  expect(h.actions.at(-1)).toEqual([
+    "w1:p1",
+    { action: "fork", item_id: "u1" },
+  ]);
+  expect(h.launches).toEqual([
+    {
+      agent: "claude",
+      paneId: "w1:p1",
+      cwd: "/work",
+      args: ["--resume", "abc-1", "--fork-session"],
+    },
+  ]);
+  // The page that branched types into the new pane.
+  expect(h.typedInto).toEqual([["editor", "w1:p9"]]);
+  // From where the conversation is now: no item.
+  await h.call("editor", "agent_session.fork", { pane_id: "w1:p1" });
+  expect(h.actions.at(-1)).toEqual(["w1:p1", { action: "fork" }]);
+  expect(h.claims.at(-1)).toEqual([
+    "collaboration.claim",
+    { participant_id: "web-editor", pane_id: "w1:p1", protect_ms: 15_000 },
+  ]);
+
+  // An answer that is not plain arguments starts nothing.
+  for (const answer of [undefined, { args: "x" }, { args: ["a\nrm -rf ~"] }]) {
+    h.answer(answer);
+    expect(
+      await h.call("editor", "agent_session.fork", { pane_id: "w1:p1" }),
+    ).toEqual({ error: "the agent session did not say how to branch" });
+  }
+  expect(h.launches).toHaveLength(2);
+  expect(
+    await h.call("editor", "agent_session.fork", {
+      pane_id: "w1:p1",
+      item_id: 5,
+    }),
+  ).toEqual({ error: "item_id must name a prompt" });
+
+  // Readers, and members of other workspaces, can do neither.
+  const before = h.actions.length;
+  for (const role of ["viewer", "guest", "guest-pane", "outsider"] as const)
+    for (const method of ["agent_session.rewind", "agent_session.fork"])
+      expect(
+        (await h.call(role, method, { pane_id: "w1:p1", item_id: "u1" })).error,
+      ).toBeString();
+  expect(h.actions).toHaveLength(before);
+  expect(h.launches).toHaveLength(2);
 });

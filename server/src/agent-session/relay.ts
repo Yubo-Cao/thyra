@@ -331,6 +331,9 @@ export function createAgentSessionRelay(args: {
         link.mirror && link.verified ? [link.mirror.info] : [],
       );
     },
+    info(paneId: string): AgentSessionInfo | null {
+      return session(paneId)?.mirror?.info ?? null;
+    },
     snapshot(paneId: string): AgentSessionSnapshot | null {
       return session(paneId)?.mirror?.snapshot() ?? null;
     },
@@ -354,7 +357,10 @@ export function createAgentSessionRelay(args: {
               action.images?.length &&
               info?.can_attach_images !== true
             ? "take images"
-            : null;
+            : (action.action === "rewind" || action.action === "fork") &&
+                info?.can_rewind !== true
+              ? "go back or branch"
+              : null;
       if (missing)
         return Promise.reject(
           new Error(

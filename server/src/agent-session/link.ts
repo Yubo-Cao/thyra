@@ -17,8 +17,9 @@ import type {
  * across deploys, and the bridge drops a host that reports another number.
  * A host from before an action existed never answers it, and one from
  * before prompts took images would drop them, so the bridge only sends
- * `history` and `resume` to hosts whose info says `can_resume`, and images
- * to hosts whose info says `can_attach_images`.
+ * `history` and `resume` to hosts whose info says `can_resume`, images to
+ * hosts whose info says `can_attach_images`, and `rewind` and `fork` to
+ * hosts whose info says `can_rewind`.
  */
 export const AGENT_LINK_PROTOCOL = 1;
 /** A snapshot stays far below this; a longer line is not from a host. */
@@ -32,7 +33,15 @@ export type AgentAction =
   | { action: "set_mode"; mode: string }
   /** The stored conversations of the session's directory; answers a `value`. */
   | { action: "history" }
-  | { action: "resume"; session_id: string };
+  | { action: "resume"; session_id: string }
+  /** Go back to just before the `user` item `item_id`. */
+  | { action: "rewind"; item_id: string }
+  /**
+   * The arguments after `thyra agent <kind>` that start a session on a copy
+   * of this conversation, from just before `item_id` or from now; answers a
+   * `value` of `{ args: string[] }`. The session itself is not changed.
+   */
+  | { action: "fork"; item_id?: string };
 
 /**
  * An agent's session or thread ID as this code accepts one from outside. It
@@ -43,6 +52,24 @@ export function isAgentSessionId(value: unknown): value is string {
   return (
     typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)
   );
+}
+
+/**
+ * The arguments a host answered `fork` with, or null when they are not
+ * plain arguments: they are typed into a shell, each quoted, so none may
+ * hold a control character.
+ */
+export function forkArgsOf(value: unknown): string[] | null {
+  const args = record(value)?.args;
+  if (!Array.isArray(args) || args.length > 64) return null;
+  return args.every(
+    (arg) =>
+      typeof arg === "string" &&
+      arg.length <= 4096 &&
+      !/[\u0000-\u001f\u007f]/.test(arg),
+  )
+    ? (args as string[])
+    : null;
 }
 
 export type HostMessage =
@@ -183,6 +210,16 @@ export function parseBridgeMessage(line: string): BridgeMessage | null {
             action: "resume",
             session_id: message.session_id,
           }
+        : null;
+    case "rewind":
+      return typeof message.item_id === "string"
+        ? { type: "action", id, action: "rewind", item_id: message.item_id }
+        : null;
+    case "fork":
+      if (message.item_id === undefined)
+        return { type: "action", id, action: "fork" };
+      return typeof message.item_id === "string"
+        ? { type: "action", id, action: "fork", item_id: message.item_id }
         : null;
     default:
       return null;

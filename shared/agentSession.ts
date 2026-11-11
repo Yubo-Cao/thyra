@@ -60,6 +60,11 @@ export type AgentSessionInfo = {
    * started by a build from before prompts took images.
    */
   can_attach_images?: boolean;
+  /**
+   * The host serves `agent_session.rewind` and `agent_session.fork`. Absent
+   * on a host started by a build from before they existed.
+   */
+  can_rewind?: boolean;
 };
 
 export type AgentToolKind =
@@ -108,6 +113,12 @@ export type AgentItem =
       text: string;
       /** Attached images; `[Image #N]` in `text` names the Nth, from 1. */
       images?: AgentPromptImage[];
+      /**
+       * The agent's own name for this prompt: Claude Code's message UUID, or
+       * the ID of the Codex turn it started. Present on the prompts the
+       * session can rewind to or branch at.
+       */
+      ref?: string;
     })
   | (ItemBase & { type: "assistant"; text: string; streaming: boolean })
   | (ItemBase & { type: "thinking"; text: string; streaming: boolean })
@@ -182,8 +193,9 @@ export type AgentSessionEvent = { pane_id: string; seq: number } & (
   | { type: "approval"; approval: AgentApproval }
   | { type: "approval_resolved"; id: string }
   /**
-   * The session now continues a stored conversation: these items replace the
-   * whole transcript, and no approval is open.
+   * The session now continues a stored conversation, or went back to an
+   * earlier point of its own: these items replace the whole transcript, and
+   * no approval is open.
    */
   | { type: "reset"; items: AgentItem[] }
 );
@@ -223,11 +235,24 @@ export const AGENT_SESSION_HISTORY_LIMIT = 30;
  *   conversation in this session: a `reset` event replaces the transcript
  *   with that conversation's, and `info.agent_session_id` follows. Refused
  *   while a turn is running.
+ * `agent_session.rewind { pane_id, item_id }` takes the conversation back to
+ *   just before the `user` item `item_id` (one with a `ref`): the agent
+ *   forgets that prompt and everything after it, and a `reset` event cuts
+ *   the transcript there. Files the agent changed stay as they are.
+ *   Refused while a turn is running.
+ * `agent_session.fork { pane_id, item_id? }` -> `{ pane_id }`: a new pane
+ *   beside this one runs a new session that continues a copy of this
+ *   conversation, from just before `item_id` (a `user` item with a `ref`),
+ *   or from where it is now without one. This session is left as it is.
+ *   Refused while a turn is running.
  *
  * A session started with the agent's own resume arguments
  * (`thyra agent claude --resume <id>` or `--continue`,
  * `thyra agent codex resume <id>` or `resume --last`) restores the transcript
- * the same way before it takes its first prompt.
+ * the same way before it takes its first prompt; so does one started on a
+ * copy (`thyra agent claude --resume <id> --fork-session
+ * [--resume-session-at <uuid>]`, `thyra agent codex fork <id>
+ * [--last-turn <turn>]`), which is how `fork` starts its session.
  *
  * `agent_session.changed` (`{ sessions: AgentSessionInfo[] }`) is sent to every
  * page when a session appears, ends, or changes status, filtered like `list`.

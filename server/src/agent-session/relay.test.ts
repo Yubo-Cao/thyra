@@ -275,6 +275,15 @@ test("what an action answers comes back, and a host from before it is not asked"
     await expect(bridge.act("w1:p2", action)).rejects.toThrow(
       "started by an older Thyra",
     );
+  // Nor going back or branching, before hosts said they do.
+  for (const pane of ["w1:p2", "w1:p3"])
+    for (const action of [
+      { action: "rewind", item_id: "u1" },
+      { action: "fork" },
+    ] as const)
+      await expect(bridge.act(pane, action)).rejects.toThrow(
+        "this agent session was started by an older Thyra and cannot go back or branch; start a new one",
+      );
   // Nor a prompt with images, which it would send without them.
   await expect(
     bridge.act("w1:p2", {

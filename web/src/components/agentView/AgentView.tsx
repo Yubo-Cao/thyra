@@ -1,3 +1,4 @@
+import { GitBranchPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
@@ -7,6 +8,11 @@ import type {
   AgentSessionStatus,
 } from "../../../../shared/agentSession";
 import { selectPanesWithoutActivity } from "../../agentOrder";
+import {
+  promptActionBlock,
+  putPromptInDraft,
+  type UserItem,
+} from "../../agentSession/editPrompt";
 import { storedSessions } from "../../agentSession/history";
 import { preparePromptImage } from "../../agentSession/promptImageFile";
 import {
@@ -34,6 +40,7 @@ import { terminalConfirmDialog } from "../lazyPanels";
 import { usePaneSwipe } from "../terminal/paneSwipe";
 import { TerminalPaneHeader } from "../terminal/TerminalPaneHeader";
 import type { TerminalWorkspaceFileRequest } from "../terminal/terminalSession";
+import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { Token, type TokenTone } from "../ui/Token";
 import { AgentApprovals } from "./AgentApprovals";
@@ -199,6 +206,11 @@ export function AgentView({
   useControlsAboveDock(dock, useLayoutPreferences().mobile && s.active);
   const transcript = useRef<AgentTranscriptHandle | null>(null);
   const [closing, setClosing] = useState(false);
+  /** A rewind (or an edit, which rewinds first) waiting for confirmation. */
+  const [goingBack, setGoingBack] = useState<{
+    item: UserItem;
+    edit: boolean;
+  } | null>(null);
   // The first snapshot is this pane's first output: startup work may run.
   const loaded = info !== undefined;
   useEffect(() => {
@@ -264,6 +276,27 @@ export function AgentView({
       history: () => request("agent_session.history", {}).then(storedSessions),
       resume: (sessionId: string) =>
         request("agent_session.resume", { session_id: sessionId }),
+      rewind: (itemId: string) =>
+        call(
+          "agent_session.rewind",
+          { item_id: itemId },
+          t("Could not rewind the conversation"),
+        ),
+      /** A copy of the conversation in a new pane; resolves to that pane. */
+      fork: async (itemId?: string) => {
+        const result = (await call(
+          "agent_session.fork",
+          itemId ? { item_id: itemId } : {},
+          t("Could not branch the conversation"),
+        )) as { pane_id: string; start_error?: string };
+        if (result.start_error)
+          store.notify({
+            kind: "error",
+            message: t("The branch opened, but the agent did not start"),
+            detail: result.start_error,
+          });
+        return result.pane_id;
+      },
     };
   }, [client, paneId]);
 
@@ -279,12 +312,49 @@ export function AgentView({
   const draftKey = agentComposerDraftKey(s.connectionId, paneId);
   // Files open in the Inspector, which instance admins have.
   const host = useHostCapable();
+  const block = info ? promptActionBlock(info, canEdit) : "unsupported";
+  const promptImageUrl = useMemo(
+    () =>
+      workspaceId
+        ? (path: string) => actions.imageUrl(workspaceId, path)
+        : undefined,
+    [actions, workspaceId],
+  );
+  // A branch opens beside this pane, with the prompt it was taken before
+  // waiting in its box.
+  const branch = useMemo(
+    () => async (item?: UserItem) => {
+      const created = await actions.fork(item?.id).catch(() => null);
+      if (!created) return;
+      if (item)
+        await putPromptInDraft(
+          agentComposerDraftKey(s.connectionId, created),
+          item,
+          promptImageUrl,
+        );
+      await store.refresh();
+      await store.focusPane(created);
+    },
+    [actions, promptImageUrl, s.connectionId],
+  );
+  const prompt = useMemo(
+    () =>
+      block === "unsupported"
+        ? undefined
+        : {
+            blocked:
+              block === "busy" ? t("Wait for the agent to finish") : null,
+            onEdit: (item: UserItem) => setGoingBack({ item, edit: true }),
+            onRewind: (item: UserItem) => setGoingBack({ item, edit: false }),
+            onBranch: (item: UserItem) => void branch(item),
+          },
+    [block, branch],
+  );
   const rows = useMemo(
     () => ({
       expanded,
-      imageUrl: workspaceId
-        ? (path: string) => actions.imageUrl(workspaceId, path)
-        : undefined,
+      prompt,
+      imageUrl: promptImageUrl,
       onOpenFile:
         host && onOpenWorkspaceFile && workspaceId
           ? (path: string) =>
@@ -302,9 +372,10 @@ export function AgentView({
           : undefined,
     }),
     [
-      actions,
       cwd,
       expanded,
+      prompt,
+      promptImageUrl,
       host,
       onOpenWorkspaceFile,
       paneId,
@@ -340,7 +411,21 @@ export function AgentView({
         <AgentViewContext.Provider value={rows}>
           <div className="agent-body">
             {/* Another conversation's transcript starts over, at its end. */}
-            <AgentTranscript key={epoch} ref={transcript} store={session}>
+            <AgentTranscript
+              key={epoch}
+              ref={transcript}
+              store={session}
+              footer={
+                block === null ? (
+                  <div className="agent-transcript-end">
+                    <Button onClick={() => void branch()}>
+                      <GitBranchPlus size={14} aria-hidden="true" />
+                      {t("Branch from here")}
+                    </Button>
+                  </div>
+                ) : null
+              }
+            >
               {canEdit && info.can_resume && info.status !== "exited" ? (
                 <AgentResume
                   info={info}
@@ -397,6 +482,37 @@ export function AgentView({
           {error ?? t("Loading the session")}
         </div>
       )}
+      <Latched open={goingBack !== null}>
+        <ConfirmDialog
+          open={goingBack !== null}
+          onOpenChange={(open) => {
+            if (!open) setGoingBack(null);
+          }}
+          title={
+            goingBack?.edit
+              ? t("Edit the prompt")
+              : t("Rewind the conversation")
+          }
+          message={
+            goingBack?.edit
+              ? t(
+                  "Go back to before this prompt to change it? It and everything after it leave the conversation. Files the agent changed stay as they are.",
+                )
+              : t(
+                  "Go back to before this prompt? It and everything after it leave the conversation. Files the agent changed stay as they are.",
+                )
+          }
+          confirmLabel={goingBack?.edit ? t("Edit") : t("Rewind")}
+          tone="danger"
+          onConfirm={async () => {
+            if (!goingBack) return;
+            const { item, edit } = goingBack;
+            // A refusal is reported and keeps the dialog for another try.
+            await actions.rewind(item.id);
+            if (edit) await putPromptInDraft(draftKey, item, promptImageUrl);
+          }}
+        />
+      </Latched>
       <Latched open={closing}>
         <ConfirmDialog
           open={closing}

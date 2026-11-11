@@ -335,6 +335,7 @@ type EntryLink = {
 };
 
 const UUID_KEY = Buffer.from('"uuid"');
+const REWOUND_KEY = Buffer.from('"rewound"');
 const SHOWN_SYSTEM_ENTRIES = new Set(["compact_boundary", "informational"]);
 
 /** Whether an entry of this kind can show in a transcript at all. */
@@ -395,28 +396,45 @@ function linkOf(entry: StoredEntry, offset: number, index: number): EntryLink {
  *
  * Entries link to the one before them by `parentUuid`, so the conversation
  * is the chain that ends at the last entry written: a branch abandoned by a
- * rewind is not on it. A compaction boundary starts a new chain and names
- * the entry the earlier history ended at, which this follows, so the
- * history before a compaction is shown too. The results of tool calls made
- * in parallel hang off the chain, and are added by the calls they answer.
+ * rewind is not on it. A rewind with nothing written after it ends the
+ * chain where its `last-prompt` entry says (`leafUuid`; none for a rewind
+ * to the start). `leaf` names the end instead, as `--resume-session-at`
+ * does. A compaction boundary starts a new chain and names the entry the
+ * earlier history ended at, which this follows, so the history before a
+ * compaction is shown too. The results of tool calls made in parallel hang
+ * off the chain, and are added by the calls they answer.
  */
 async function transcriptOffsets(
   file: FileHandle,
   itemLimit: number,
+  leaf?: string,
 ): Promise<number[]> {
   const entries = new Map<string, EntryLink>();
   const resultOf = new Map<string, EntryLink>();
   let last: EntryLink | undefined;
   let index = 0;
   for await (const [offset, line] of fileLines(file, 0)) {
-    // Most of a large file is request records, which carry no `uuid`.
-    if (line.indexOf(UUID_KEY) === -1) continue;
+    if (line.indexOf(UUID_KEY) === -1) {
+      // A rewind is marked by a `last-prompt` entry, which has no `uuid`.
+      if (line.indexOf(REWOUND_KEY) === -1) continue;
+      const marker = parseEntry(line.toString("utf8"));
+      if (marker?.type === "last-prompt" && marker.rewound === true) {
+        const end = text(marker.leafUuid);
+        last = end ? entries.get(end) : undefined;
+      }
+      // Most of a large file is request records, which carry no `uuid`.
+      continue;
+    }
     const entry = parseEntry(line.toString("utf8"));
     if (!entry || typeof entry.uuid !== "string" || entry.isSidechain === true)
       continue;
     last = linkOf(entry, offset, index++);
     entries.set(last.uuid, last);
     for (const id of last.results) resultOf.set(id, last);
+  }
+  if (leaf !== undefined) {
+    last = entries.get(leaf);
+    if (!last) throw new Error(`message ${leaf} is not in the conversation`);
   }
 
   const chosen = new Set<EntryLink>();
@@ -459,10 +477,12 @@ async function transcriptOffsets(
 export async function* readClaudeConversation(
   path: string,
   itemLimit = AGENT_SESSION_ITEM_LIMIT,
+  /** The entry the transcript ends at, in place of the last one written. */
+  leaf?: string,
 ): AsyncGenerator<StoredEntry> {
   const file = await open(path, "r");
   try {
-    const offsets = await transcriptOffsets(file, itemLimit);
+    const offsets = await transcriptOffsets(file, itemLimit, leaf);
     if (offsets.length === 0) return;
     const wanted = new Set(offsets);
     const end = offsets.at(-1)!;
@@ -473,6 +493,29 @@ export async function* readClaudeConversation(
       }
       if (offset >= end) break;
     }
+  } finally {
+    await file.close();
+  }
+}
+
+/**
+ * The `parentUuid` of the entry `uuid` in a stored conversation: the entry
+ * the conversation stood at just before it, null when it starts the
+ * conversation, undefined when the file does not hold it.
+ */
+export async function claudeEntryParent(
+  path: string,
+  uuid: string,
+): Promise<string | null | undefined> {
+  const key = Buffer.from(`"uuid":"${uuid}"`);
+  const file = await open(path, "r");
+  try {
+    for await (const [, line] of fileLines(file, 0)) {
+      if (line.indexOf(key) === -1) continue;
+      const entry = parseEntry(line.toString("utf8"));
+      if (entry?.uuid === uuid) return text(entry.parentUuid) ?? null;
+    }
+    return undefined;
   } finally {
     await file.close();
   }

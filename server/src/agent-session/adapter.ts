@@ -34,6 +34,18 @@ export interface AgentAdapter {
    */
   resume(sessionId: string): Promise<void>;
   /**
+   * Take the conversation back to just before the `user` item `itemId` (one
+   * with a `ref`): the agent forgets it and everything after, and the
+   * store's transcript is cut there. Refused while a turn is running.
+   */
+  rewind(itemId: string): Promise<void>;
+  /**
+   * The arguments after `thyra agent <kind>` that start another session on
+   * a copy of this conversation, from just before the `user` item `itemId`
+   * or from where it is now. Refused while a turn is running.
+   */
+  forkArgs(itemId?: string): Promise<string[]>;
+  /**
    * End the agent process (`force`: kill it); its exit still arrives through
    * `onExit`.
    */
@@ -53,6 +65,22 @@ export type AdapterOptions = {
 
 /** A request refused because of what the session is doing; shown to the user. */
 export class AgentActionError extends Error {}
+
+/** The `user` item a rewind or fork names, with the agent's `ref` for it. */
+export function promptAt(
+  items: AgentItem[],
+  itemId: string,
+): { index: number; ref: string } {
+  const index = items.findIndex((item) => item.id === itemId);
+  const item = items[index];
+  if (!item || item.type !== "user")
+    throw new AgentActionError("that prompt is not in the transcript");
+  if (!item.ref)
+    throw new AgentActionError(
+      "the agent cannot go back to that prompt; only to prompts it took as a turn of their own",
+    );
+  return { index, ref: item.ref };
+}
 
 /**
  * Restored items whose stored record had no time (`at` 0) take the first

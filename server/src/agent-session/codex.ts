@@ -16,6 +16,7 @@ import {
   AgentActionError,
   displayPath,
   oneLine,
+  promptAt,
   record,
   remainingInput,
   text,
@@ -56,6 +57,8 @@ const SANDBOX_MODES = ["read-only", "workspace-write", "danger-full-access"];
 /** Turns of a stored thread are read newest first, this many at a time. */
 const TURN_PAGE_SIZE = 20;
 const TURN_PAGE_LIMIT = 100;
+/** Turn IDs alone are listed this many at a time. */
+const TURN_ID_PAGE_SIZE = 100;
 
 export type CodexLaunch = {
   /** Options `codex app-server` takes itself. */
@@ -69,22 +72,46 @@ export type CodexLaunch = {
   };
   /** `resume <id>` or `resume --last`: the stored thread to continue. */
   resume?: { id: string } | { last: true };
+  /**
+   * `fork <id> [--last-turn <turn>]`: continue a copy of a stored thread,
+   * through that turn when one is named.
+   */
+  fork?: { id: string; lastTurn?: string };
 };
 
 /**
  * `thyra agent codex` takes the `codex` options that have an app-server
- * counterpart, and `resume [<id> | --last]` among them; anything else is
- * refused rather than silently dropped. A bare `resume` (the terminal UI's
- * picker) starts a new thread: the page offers the list instead.
+ * counterpart, and `resume [<id> | --last]` or `fork <id> [--last-turn
+ * <turn>]` among them; anything else is refused rather than silently
+ * dropped. A bare `resume` (the terminal UI's picker) starts a new thread:
+ * the page offers the list instead.
  */
 export function parseCodexArgs(args: string[]): CodexLaunch {
   const launch: CodexLaunch = { serverArgs: [], thread: {} };
   const queue = [...args];
   let resuming = false;
+  let forking = false;
   while (queue.length > 0) {
     const arg = queue.shift()!;
-    if (arg === "resume" && !resuming) {
+    if (arg === "resume" && !resuming && !forking) {
       resuming = true;
+      continue;
+    }
+    if (arg === "fork" && !resuming && !forking) {
+      forking = true;
+      const id = queue.shift();
+      if (!isAgentSessionId(id)) throw new Error("fork needs a thread ID");
+      launch.fork = { id };
+      continue;
+    }
+    if (forking && (arg === "--last-turn" || arg.startsWith("--last-turn="))) {
+      const turn =
+        arg === "--last-turn"
+          ? queue.shift()
+          : arg.slice("--last-turn=".length);
+      if (!isAgentSessionId(turn))
+        throw new Error("--last-turn needs a turn ID");
+      launch.fork!.lastTurn = turn;
       continue;
     }
     if (resuming && !launch.resume) {
@@ -154,6 +181,24 @@ export function parseCodexArgs(args: string[]): CodexLaunch {
     }
   }
   return launch;
+}
+
+/**
+ * The user's arguments without the ones that choose a thread (`resume ...`,
+ * `fork ...`): what another session on another thread starts with.
+ */
+export function codexArgsWithoutThread(args: string[]): string[] {
+  const kept: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "resume") {
+      const next = args[index + 1];
+      if (next === "--last" || (next !== undefined && !next.startsWith("-")))
+        index += 1;
+    } else if (arg === "fork" || arg === "--last-turn") index += 1;
+    else if (!arg.startsWith("--last-turn=")) kept.push(arg);
+  }
+  return kept;
 }
 
 /** `cat x` from `/bin/bash -lc 'cat x'`: the command the model wrote. */
@@ -408,6 +453,7 @@ export function codexThreadItems(turns: unknown[], cwd: string): AgentItem[] {
     if (typeof turn.startedAt === "number")
       at = Math.max(at, turn.startedAt * 1000);
     let denied = false;
+    let started = false;
     for (const entry of Array.isArray(turn.items) ? turn.items : []) {
       const item = record(entry);
       const id = text(item?.id);
@@ -417,8 +463,20 @@ export function codexThreadItems(turns: unknown[], cwd: string): AgentItem[] {
       if (item.type === "userMessage") {
         const body = promptText(item.content);
         const attached = promptImages(item.content);
+        // The prompt that started a turn names it: the thread can go back
+        // to before it. Prompts added to a running turn are part of it.
+        const ref =
+          !started && typeof turn.id === "string" ? turn.id : undefined;
+        started = true;
         if (body.trim() || attached.images)
-          items.push({ id, type: "user", text: body, ...attached, at });
+          items.push({
+            id,
+            type: "user",
+            text: body,
+            ...attached,
+            ...(ref ? { ref } : {}),
+            at,
+          });
         continue;
       }
       const mapped = codexItem(item, cwd);
@@ -538,7 +596,23 @@ export class CodexAdapter implements AgentAdapter {
       if (!id)
         note = "No thread is stored for this directory; this is a new one.";
     }
-    if (id) {
+    const copy = this.launch.fork;
+    if (copy) {
+      const opened = await this.request("thread/fork", {
+        threadId: copy.id,
+        ...(copy.lastTurn ? { lastTurnId: copy.lastTurn } : {}),
+        excludeTurns: true,
+        ...(this.launch.thread.cwd ? { cwd: this.launch.thread.cwd } : {}),
+        ...this.threadSettings(),
+      });
+      const copyId = text(record(opened.thread)?.id);
+      if (!copyId) throw new Error("no thread ID");
+      const turns = await this.storedTurns(copyId).catch((error) => {
+        note = `The earlier messages of ${copy.id} could not be read (${(error as Error).message}).`;
+        return [];
+      });
+      this.showThread(opened, turns);
+    } else if (id) {
       // The thread resumes with or without its earlier messages.
       const turns = await this.storedTurns(id).catch((error) => {
         note = `The earlier messages of ${id} could not be read (${(error as Error).message}).`;
@@ -663,6 +737,11 @@ export class CodexAdapter implements AgentAdapter {
       ...this.threadSettings(),
     });
     if (!text(record(resumed.thread)?.id)) throw new Error("no thread ID");
+    this.showThread(resumed, turns);
+  }
+
+  /** The session is in a thread that `thread/resume` or `thread/fork` opened. */
+  private showThread(opened: Record<string, unknown>, turns: unknown[]) {
     const left = this.threadId;
     this.turnId = null;
     this.nextPolicy = null;
@@ -672,10 +751,10 @@ export class CodexAdapter implements AgentAdapter {
     this.streaming.clear();
     this.openTools.clear();
     this.store.resetItems(
-      codexThreadItems(turns, text(resumed.cwd) ?? this.store.info.cwd),
+      codexThreadItems(turns, text(opened.cwd) ?? this.store.info.cwd),
     );
     this.store.updateInfo({ usage: undefined });
-    this.adoptThread(resumed);
+    this.adoptThread(opened);
     // Codex gives a thread one writer and keeps a thread somebody follows
     // loaded: let go of the one the session left, so other clients can
     // open it again.
@@ -701,13 +780,90 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
+  private requireIdle() {
+    this.requireThread();
+    if (this.resuming)
+      throw new AgentActionError("a conversation is being resumed");
+    if (this.store.phase === "running" || this.turnId || this.undelivered > 0)
+      throw new AgentActionError(
+        "a turn is running; wait for it or interrupt it first",
+      );
+  }
+
+  /**
+   * Go back to just before a prompt: `thread/revert` drops the turn it
+   * started and every later one from the thread's history. Files stay as
+   * they are.
+   */
+  async rewind(itemId: string) {
+    this.requireIdle();
+    const items = this.store.snapshot().items;
+    const { index, ref } = promptAt(items, itemId);
+    this.resuming = true;
+    try {
+      await this.request("thread/revert", {
+        threadId: this.threadId,
+        beforeTurnId: ref,
+      });
+    } finally {
+      this.resuming = false;
+    }
+    this.store.resetItems(items.slice(0, index));
+    this.store.updateInfo({ usage: undefined });
+  }
+
+  /**
+   * A copy of the thread in a session of its own: `fork <thread>`, through
+   * the turn before the prompt's when one is named. Before the first turn
+   * that is no thread at all, so a new one starts.
+   */
+  async forkArgs(itemId?: string): Promise<string[]> {
+    this.requireIdle();
+    const others = codexArgsWithoutThread(this.options.args);
+    const items = this.store.snapshot().items;
+    if (!itemId)
+      return items.some((item) => item.type === "user")
+        ? [...others, "fork", this.threadId]
+        : others;
+    const { ref } = promptAt(items, itemId);
+    const before = await this.turnBefore(ref);
+    return before
+      ? [...others, "fork", this.threadId, "--last-turn", before]
+      : others;
+  }
+
+  /** The ID of the turn before `turnId` in the thread; null for the first. */
+  private async turnBefore(turnId: string): Promise<string | null> {
+    let cursor: string | undefined;
+    let found = false;
+    for (let page = 0; page < TURN_PAGE_LIMIT; page++) {
+      const listed = await this.request("thread/turns/list", {
+        threadId: this.threadId,
+        limit: TURN_ID_PAGE_SIZE,
+        sortDirection: "desc",
+        itemsView: "notLoaded",
+        ...(cursor ? { cursor } : {}),
+      });
+      const turns = Array.isArray(listed.data) ? listed.data : [];
+      for (const value of turns) {
+        const id = text(record(value)?.id);
+        if (found && id) return id;
+        if (id === turnId) found = true;
+      }
+      cursor = text(listed.nextCursor);
+      if (!cursor || turns.length === 0) break;
+    }
+    if (found) return null;
+    throw new AgentActionError("that prompt's turn is not in the thread");
+  }
+
   async send(prompt: string, images: PromptImage[] = []): Promise<void> {
     this.requireThread();
     if (this.resuming)
       throw new AgentActionError(
         "a conversation is being resumed; send the prompt again in a moment",
       );
-    this.store.upsertItem({
+    const { id: itemId } = this.store.upsertItem({
       id: `user-${this.nextLocalId++}`,
       type: "user",
       text: prompt,
@@ -718,12 +874,16 @@ export class CodexAdapter implements AgentAdapter {
     this.ownPrompts.push(prompt);
     this.undelivered += 1;
     this.store.setPhase("running");
-    const sent = this.sending.then(() => this.deliver(prompt, images));
+    const sent = this.sending.then(() => this.deliver(prompt, images, itemId));
     this.sending = sent.catch(() => undefined);
     return sent;
   }
 
-  private async deliver(prompt: string, images: PromptImage[]) {
+  private async deliver(
+    prompt: string,
+    images: PromptImage[],
+    itemId?: string,
+  ) {
     // Codex reads an attached image from its file, and shrinks it itself.
     const input = [
       ...(prompt.trim() || images.length === 0
@@ -751,7 +911,9 @@ export class CodexAdapter implements AgentAdapter {
         ...(policy ? { approvalPolicy: policy } : {}),
       });
       if (policy === this.nextPolicy) this.nextPolicy = null;
-      this.turnId ??= text(record(started.turn)?.id) ?? null;
+      const turnId = text(record(started.turn)?.id);
+      this.turnId ??= turnId ?? null;
+      if (turnId && itemId) this.notePromptTurn(itemId, turnId);
     } catch (error) {
       const index = this.ownPrompts.indexOf(prompt);
       if (index >= 0) this.ownPrompts.splice(index, 1);
@@ -764,6 +926,12 @@ export class CodexAdapter implements AgentAdapter {
       this.undelivered -= 1;
       if (!this.turnId && this.undelivered === 0) this.settle();
     }
+  }
+
+  /** The prompt started this turn: the thread can go back to before it. */
+  private notePromptTurn(itemId: string, turnId: string) {
+    const item = this.store.item(itemId);
+    if (item?.type === "user") this.store.upsertItem({ ...item, ref: turnId });
   }
 
   /** Idle once no turn runs and no prompt is on its way to one. */

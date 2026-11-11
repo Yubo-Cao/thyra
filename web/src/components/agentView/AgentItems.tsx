@@ -42,6 +42,10 @@ import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { Token } from "../ui/Token";
 import { AgentMarkdown, CodeBlock } from "./AgentMarkdown";
+import {
+  AgentPromptActions,
+  type PromptActionHandlers,
+} from "./AgentPromptActions";
 
 type Tool = Extract<AgentItem, { type: "tool" }>;
 
@@ -51,6 +55,8 @@ export const AgentViewContext = createContext<{
   /** The address of an image at `path` on the agent's host. */
   imageUrl?: (path: string) => string | null;
   onOpenFile?: (path: string) => void;
+  /** What a prompt the agent can go back to offers; absent for viewers. */
+  prompt?: PromptActionHandlers;
 }>({ expanded: new Map() });
 
 /** Diff lines drawn before the rest is summarized. */
@@ -307,10 +313,23 @@ function UserMessage({ item }: { item: Extract<AgentItem, { type: "user" }> }) {
   );
 }
 
+/** A prompt, with its actions when the session can go back to it. */
+function UserTurn({ item }: { item: Extract<AgentItem, { type: "user" }> }) {
+  const { prompt } = useContext(AgentViewContext);
+  const message = <UserMessage item={item} />;
+  return prompt && item.ref ? (
+    <AgentPromptActions item={item} actions={prompt}>
+      {message}
+    </AgentPromptActions>
+  ) : (
+    message
+  );
+}
+
 function Item({ item }: { item: AgentItem }) {
   switch (item.type) {
     case "user":
-      return <UserMessage item={item} />;
+      return <UserTurn item={item} />;
     case "assistant":
       return <AgentMarkdown text={item.text} streaming={item.streaming} />;
     case "thinking":

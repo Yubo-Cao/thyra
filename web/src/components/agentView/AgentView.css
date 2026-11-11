@@ -170,6 +170,44 @@
   line-height: inherit;
 }
 
+/* What can be done from a prompt shows over its top right corner while it
+   is hovered or holds focus; touch screens open the same choices with a
+   long press instead. */
+.agent-prompt {
+  position: relative;
+}
+
+.agent-prompt-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  background: var(--panel-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.agent-prompt:hover .agent-prompt-actions,
+.agent-prompt-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .agent-prompt-actions {
+    display: none;
+  }
+}
+
+/* After the newest item while the agent waits: branch from there. */
+.agent-transcript-end {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  color: var(--muted);
+}
+
 /* An image sent with a prompt, where its placeholder stood, on a line of
    its own: beside the text it would leave the line as tall as the image. */
 .button.agent-user-image {

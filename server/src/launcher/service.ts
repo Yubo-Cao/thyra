@@ -22,6 +22,13 @@ import {
 } from "./folders";
 import type { LauncherHost } from "./host";
 
+/** An argument as shell text: quoted unless it is plainly one word. */
+export function shellWord(arg: string): string {
+  return /^[A-Za-z0-9_./:=@+,-]+$/.test(arg)
+    ? arg
+    : `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
 type HerdrCall = (
   method: string,
   params?: Record<string, unknown>,
@@ -404,30 +411,7 @@ export function createLauncherService(args: {
     const paneId = created?.root_pane?.pane_id;
     if (typeof paneId !== "string" || !paneId)
       throw new Error("Herdr did not report the new pane");
-    // Let the shell draw its prompt first so startup cannot swallow the
-    // typed command; send anyway if it stays silent.
-    await args
-      .herdrCall(
-        "pane.wait_for_output",
-        {
-          pane_id: paneId,
-          source: "visible",
-          match: { type: "regex", value: "\\S" },
-          timeout_ms: PROMPT_WAIT_MS,
-        },
-        PROMPT_WAIT_MS + 2000,
-      )
-      .catch(() => undefined);
-    let startError: string | undefined;
-    try {
-      await args.herdrCall(
-        "pane.send_input",
-        { pane_id: paneId, text: command, keys: ["enter"] },
-        5000,
-      );
-    } catch (error) {
-      startError = (error as Error).message || "unable to send the command";
-    }
+    const startError = await typeInto(paneId, command);
     await updateLauncherSettings((settings) => ({
       ...settings,
       history: recordLaunch(settings.history, path, now()),
@@ -444,7 +428,89 @@ export function createLauncherService(args: {
     };
   }
 
+  /**
+   * Type a command into a new pane's shell; what went wrong when it could
+   * not be sent.
+   */
+  async function typeInto(
+    paneId: string,
+    command: string,
+  ): Promise<string | undefined> {
+    // Let the shell draw its prompt first so startup cannot swallow the
+    // typed command; send anyway if it stays silent.
+    await args
+      .herdrCall(
+        "pane.wait_for_output",
+        {
+          pane_id: paneId,
+          source: "visible",
+          match: { type: "regex", value: "\\S" },
+          timeout_ms: PROMPT_WAIT_MS,
+        },
+        PROMPT_WAIT_MS + 2000,
+      )
+      .catch(() => undefined);
+    try {
+      await args.herdrCall(
+        "pane.send_input",
+        { pane_id: paneId, text: command, keys: ["enter"] },
+        5000,
+      );
+      return undefined;
+    } catch (error) {
+      return (error as Error).message || "unable to send the command";
+    }
+  }
+
+  /**
+   * Start an agent session in a new pane split off `paneId`, with arguments
+   * an agent host chose (a branch of its conversation). Not a browser RPC:
+   * the caller vouches for the arguments, which are quoted one by one.
+   */
+  async function launchBeside(
+    params: {
+      agent: LauncherAgentId;
+      paneId: string;
+      cwd: string;
+      args: readonly string[];
+    },
+    isCurrent: () => boolean = () => true,
+  ) {
+    const hostCommand = args.agentHostCommand?.();
+    if (!hostCommand)
+      throw new Error(
+        "Agent sessions are only available on the default local connection",
+      );
+    const command = [
+      `${hostCommand} agent ${params.agent}`,
+      ...params.args.map(shellWord),
+    ].join(" ");
+    if (!isCurrent()) throw new Error(CONNECTION_CHANGED_DURING_REQUEST);
+    const created = await args.herdrCall(
+      "pane.split",
+      {
+        target_pane_id: params.paneId,
+        direction: "right",
+        cwd: params.cwd,
+        focus: false,
+      },
+      20_000,
+    );
+    const paneId = created?.pane?.pane_id;
+    if (typeof paneId !== "string" || !paneId)
+      throw new Error("Herdr did not report the new pane");
+    const startError = await typeInto(paneId, command);
+    return {
+      ...created,
+      agent: params.agent,
+      command,
+      pane_id: paneId,
+      ...(startError ? { start_error: startError } : {}),
+    };
+  }
+
   return {
+    launchBeside,
     async call(
       method: string,
       params: Record<string, unknown>,

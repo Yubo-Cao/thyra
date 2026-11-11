@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   AGENT_LINK_PROTOCOL,
   createLineReader,
+  forkArgsOf,
   isAgentSessionId,
   parseBridgeMessage,
   parseHostMessage,
@@ -198,4 +199,42 @@ test("hosts of builds before and after resume speak the same protocol number", (
   // The bridge drops a host that reports another number, and hosts keep
   // their binary across deploys: new actions do not raise it.
   expect(AGENT_LINK_PROTOCOL).toBe(1);
+});
+
+test("rewind names a prompt; a branch may", () => {
+  expect(
+    parseBridgeMessage(
+      '{"type":"action","id":5,"action":"rewind","item_id":"u1"}',
+    ),
+  ).toEqual({ type: "action", id: 5, action: "rewind", item_id: "u1" });
+  expect(
+    parseBridgeMessage('{"type":"action","id":6,"action":"rewind"}'),
+  ).toBeNull();
+  expect(
+    parseBridgeMessage('{"type":"action","id":7,"action":"fork"}'),
+  ).toEqual({ type: "action", id: 7, action: "fork" });
+  expect(
+    parseBridgeMessage(
+      '{"type":"action","id":8,"action":"fork","item_id":"u2"}',
+    ),
+  ).toEqual({ type: "action", id: 8, action: "fork", item_id: "u2" });
+  expect(
+    parseBridgeMessage('{"type":"action","id":9,"action":"fork","item_id":3}'),
+  ).toBeNull();
+  // What a host answers a branch with is typed into a shell: plain arguments.
+  expect(forkArgsOf({ args: ["--resume", "a b", "it's"] })).toEqual([
+    "--resume",
+    "a b",
+    "it's",
+  ]);
+  expect(forkArgsOf({ args: [] })).toEqual([]);
+  for (const value of [
+    undefined,
+    { args: "x" },
+    { args: [1] },
+    { args: ["a\nb"] },
+    { args: ["\u001b[31m"] },
+    { args: Array.from({ length: 65 }, () => "x") },
+  ])
+    expect(forkArgsOf(value)).toBeNull();
 });

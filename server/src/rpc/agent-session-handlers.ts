@@ -3,7 +3,7 @@ import {
   AGENT_PROMPT_LIMIT,
   type AgentPromptImage,
 } from "../../../shared/agentSession";
-import { isAgentSessionId } from "../agent-session/link";
+import { forkArgsOf, isAgentSessionId } from "../agent-session/link";
 import { isUploadedImagePath } from "../http/image-upload";
 import type { ConnectionRpcContext, RpcHandler } from "./context";
 
@@ -40,6 +40,35 @@ function promptImages(params: Record<string, unknown>): AgentPromptImage[] {
       throw new Error(`image ${index + 1} is not an uploaded image`);
     return { path };
   });
+}
+
+/**
+ * Branch a session: its host names the arguments that start a session on a
+ * copy of its conversation, and the launcher starts one with them in a new
+ * pane beside it. Answers with the new pane, which this page now types into.
+ */
+async function forkSession(ctx: ConnectionRpcContext, pane: string) {
+  const { ws, params, requestIsCurrent } = ctx;
+  const { agentSessions, clients } = ctx.services;
+  const itemId = params.item_id;
+  if (itemId !== undefined && (typeof itemId !== "string" || !itemId))
+    throw new Error("item_id must name a prompt");
+  const info = agentSessions.info(pane);
+  if (!info) throw new Error(NO_SESSION);
+  const args = forkArgsOf(
+    await agentSessions.act(pane, {
+      action: "fork",
+      ...(itemId ? { item_id: itemId } : {}),
+    }),
+  );
+  if (!args) throw new Error("the agent session did not say how to branch");
+  const result = await ctx.connection.launcher.launchBeside(
+    { agent: info.kind, paneId: pane, cwd: info.cwd, args },
+    requestIsCurrent,
+  );
+  if (clients.has(ws))
+    ctx.connection.terminalBridge.notePaneInput(ws, result.pane_id);
+  return result;
 }
 
 /**
@@ -81,6 +110,10 @@ async function agentSession(ctx: ConnectionRpcContext) {
       sendReply({ id, result: { sessions } }, method);
       return;
     }
+    if (method === "agent_session.fork") {
+      sendReply({ id, result: await forkSession(ctx, pane) }, method);
+      return;
+    }
     if (method === "agent_session.send") {
       const images = promptImages(params);
       // With images the text may be empty; without, it is the prompt.
@@ -106,6 +139,11 @@ async function agentSession(ctx: ConnectionRpcContext) {
       await agentSessions.act(pane, {
         action: "set_mode",
         mode: stringParam(params, "mode"),
+      });
+    } else if (method === "agent_session.rewind") {
+      await agentSessions.act(pane, {
+        action: "rewind",
+        item_id: stringParam(params, "item_id"),
       });
     } else if (method === "agent_session.resume") {
       // The ID reaches a command line and a file name on the host.
@@ -139,4 +177,6 @@ export const agentSessionRpcMethods: Record<
   "agent_session.set_mode": agentSession,
   "agent_session.history": agentSession,
   "agent_session.resume": agentSession,
+  "agent_session.rewind": agentSession,
+  "agent_session.fork": agentSession,
 };

@@ -185,6 +185,10 @@ export function createAgentSessionService(deps: {
     list(roles: RoleOf | null, scope: PaneScope | null): AgentSessionInfo[] {
       return visibleSessions(relay.list(), roles, scope);
     },
+    /** The session's info now; null when the pane hosts none. */
+    info(paneId: string): AgentSessionInfo | null {
+      return relay.info(paneId);
+    },
     /** The pane's session now; events for it follow on this socket. */
     subscribe(ws: Socket, paneId: string): AgentSessionSnapshot {
       const snapshot = relay.snapshot(paneId);
@@ -200,8 +204,9 @@ export function createAgentSessionService(deps: {
     unsubscribe(ws: Socket, paneId: string) {
       subscriptions.get(ws)?.delete(paneId);
     },
-    async act(paneId: string, action: AgentAction): Promise<void> {
-      await relay.act(paneId, action);
+    /** Pass an action to the pane's host; resolves with what it answers. */
+    act(paneId: string, action: AgentAction): Promise<unknown> {
+      return relay.act(paneId, action);
     },
     /** The conversations the pane's agent has stored for its directory. */
     async history(paneId: string): Promise<AgentStoredSession[]> {

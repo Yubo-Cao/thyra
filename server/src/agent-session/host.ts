@@ -99,6 +99,7 @@ export async function startAgentHost(options: AgentHostOptions) {
       modes: [],
       can_resume: true,
       can_attach_images: true,
+      can_rewind: true,
     },
     onEvent: publish,
   });
@@ -190,6 +191,11 @@ export async function startAgentHost(options: AgentHostOptions) {
           throw new AgentActionError("not a conversation ID");
         await adapter.resume(action.session_id);
         return;
+      case "rewind":
+        await adapter.rewind(action.item_id);
+        return;
+      case "fork":
+        return { args: await adapter.forkArgs(action.item_id) };
     }
   }
 

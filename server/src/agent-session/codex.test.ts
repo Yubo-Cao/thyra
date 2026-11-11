@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { AgentItem } from "../../../shared/agentSession";
 import {
   CodexAdapter,
+  codexArgsWithoutThread,
   codexItem,
   codexThreadItems,
   parseCodexArgs,
@@ -160,7 +161,57 @@ test("resume takes a thread ID or --last, with options on either side", () => {
   );
   expect(() => parseCodexArgs(["resume", "--all"])).toThrow("does not support");
   expect(() => parseCodexArgs(["--last"])).toThrow("does not support");
-  expect(() => parseCodexArgs(["fork", "a1"])).toThrow("does not support");
+  expect(() => parseCodexArgs(["resume", "a1", "fork", "b2"])).toThrow(
+    "does not support the argument fork",
+  );
+});
+
+test("fork takes a thread ID and the turn the copy ends at", () => {
+  expect(
+    parseCodexArgs(["-m", "gpt-x", "fork", "a1", "--last-turn", "t-2"]),
+  ).toEqual({
+    serverArgs: [],
+    thread: { model: "gpt-x" },
+    fork: { id: "a1", lastTurn: "t-2" },
+  });
+  expect(parseCodexArgs(["fork", "a1", "--last-turn=t-2"]).fork).toEqual({
+    id: "a1",
+    lastTurn: "t-2",
+  });
+  expect(parseCodexArgs(["fork", "a1", "--yolo"]).fork).toEqual({ id: "a1" });
+  expect(() => parseCodexArgs(["fork"])).toThrow("fork needs a thread ID");
+  expect(() => parseCodexArgs(["fork", "--last"])).toThrow("needs a thread ID");
+  expect(() => parseCodexArgs(["fork", "a1", "--last-turn", "-x"])).toThrow(
+    "--last-turn needs a turn ID",
+  );
+  expect(() => parseCodexArgs(["--last-turn", "t1"])).toThrow(
+    "does not support",
+  );
+  expect(() => parseCodexArgs(["fork", "a1", "resume", "b2"])).toThrow(
+    "does not support the argument resume",
+  );
+  // What a copy starts with: everything but the choice of thread.
+  expect(
+    codexArgsWithoutThread([
+      "-m",
+      "x",
+      "resume",
+      "a1",
+      "--yolo",
+      "fork",
+      "b2",
+      "--last-turn",
+      "t1",
+      "--last-turn=t2",
+    ]),
+  ).toEqual(["-m", "x", "--yolo"]);
+  expect(
+    codexArgsWithoutThread(["resume", "--last", "-s", "read-only"]),
+  ).toEqual(["-s", "read-only"]);
+  expect(codexArgsWithoutThread(["resume", "-a", "never"])).toEqual([
+    "-a",
+    "never",
+  ]);
 });
 
 test("the shell wrapper around a command is removed", () => {
@@ -500,6 +551,7 @@ test("a prompt's images go to Codex as local image input", async () => {
       type: "user",
       text: "",
       images: [{ path: upload(5).path }],
+      ref: "t1",
       at: 1700000000000,
     },
   ]);
@@ -1265,5 +1317,147 @@ test("resuming in place switches threads on the same server", async () => {
   });
   answer(agent, { turn: { id: "turn-4" } });
   await again;
+  agent.exit();
+});
+
+test("prompts that start a turn can be rewound to with thread/revert", async () => {
+  const session = await ready();
+  const { agent, store, adapter } = session;
+  const turn = async (prompt: string, id: string) => {
+    const sent = adapter.send(prompt);
+    await settle();
+    answer(agent, { turn: { id } });
+    await sent;
+    agent.say({
+      method: "turn/completed",
+      params: { threadId: "thread-1", turn: { id, status: "completed" } },
+    });
+    await settle();
+  };
+  await turn("first", "turn-1");
+  await turn("second", "turn-2");
+  const prompts = store.snapshot().items.filter((item) => item.type === "user");
+  expect(prompts.map((item) => item.type === "user" && item.ref)).toEqual([
+    "turn-1",
+    "turn-2",
+  ]);
+
+  const rewound = adapter.rewind(prompts[1]!.id);
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "thread/revert",
+    params: { threadId: "thread-1", beforeTurnId: "turn-2" },
+  });
+  // A prompt waits while the thread is being cut.
+  await expect(adapter.send("too early")).rejects.toThrow("being resumed");
+  answer(agent, { thread: { id: "thread-1" } });
+  await rewound;
+  expect(lines(store.snapshot().items)).toEqual(["user: first"]);
+
+  // Not while a turn runs, and only to prompts that started one.
+  const running = adapter.send("third");
+  await settle();
+  answer(agent, { turn: { id: "turn-3" } });
+  await running;
+  await expect(adapter.rewind(prompts[0]!.id)).rejects.toThrow(
+    "a turn is running",
+  );
+  agent.say({
+    method: "turn/completed",
+    params: {
+      threadId: "thread-1",
+      turn: { id: "turn-3", status: "completed" },
+    },
+  });
+  await settle();
+  await expect(adapter.rewind("nope")).rejects.toThrow("not in the transcript");
+  agent.exit();
+});
+
+test("a branch names the thread and the turn before the prompt", async () => {
+  const session = await ready(["-m", "gpt-x"]);
+  const { agent, store, adapter } = session;
+  // Nothing said yet: a branch is a new session.
+  expect(await adapter.forkArgs()).toEqual(["-m", "gpt-x"]);
+  store.upsertItem({ id: "p1", type: "user", text: "a", ref: "turn-1" });
+  store.upsertItem({ id: "p2", type: "user", text: "b", ref: "turn-2" });
+  store.upsertItem({ id: "p3", type: "user", text: "c" });
+  expect(await adapter.forkArgs()).toEqual(["-m", "gpt-x", "fork", "thread-1"]);
+  let args = adapter.forkArgs("p2");
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "thread/turns/list",
+    params: {
+      threadId: "thread-1",
+      sortDirection: "desc",
+      itemsView: "notLoaded",
+    },
+  });
+  answer(agent, {
+    data: [{ id: "turn-2" }, { id: "turn-1" }],
+    nextCursor: null,
+  });
+  expect(await args).toEqual([
+    "-m",
+    "gpt-x",
+    "fork",
+    "thread-1",
+    "--last-turn",
+    "turn-1",
+  ]);
+  // Before the first turn there is nothing to copy.
+  args = adapter.forkArgs("p1");
+  await settle();
+  answer(agent, {
+    data: [{ id: "turn-2" }, { id: "turn-1" }],
+    nextCursor: null,
+  });
+  expect(await args).toEqual(["-m", "gpt-x"]);
+  // A prompt taken into a running turn has no point of its own.
+  await expect(adapter.forkArgs("p3")).rejects.toThrow("cannot go back");
+  agent.exit();
+});
+
+test("starting on a copy continues the thread through a turn", async () => {
+  const session = start([
+    "-m",
+    "gpt-x",
+    "fork",
+    "thread-9",
+    "--last-turn",
+    "turn-1",
+  ]);
+  const { agent, store } = session;
+  agent.say({ id: 1, result: {} });
+  await settle();
+  expect(agent.written.at(-1)).toEqual({
+    id: 2,
+    method: "thread/fork",
+    params: {
+      threadId: "thread-9",
+      lastTurnId: "turn-1",
+      excludeTurns: true,
+      model: "gpt-x",
+    },
+  });
+  answer(agent, {
+    thread: { id: "thread-10" },
+    model: "gpt-x",
+    cwd: "/work",
+    approvalPolicy: "on-request",
+  });
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "thread/turns/list",
+    params: { threadId: "thread-10" },
+  });
+  answer(agent, { data: [STORED_TURNS[1]], nextCursor: null });
+  await settle();
+  expect(store.info).toMatchObject({
+    status: "idle",
+    agent_session_id: "thread-10",
+  });
+  expect(lines(store.snapshot().items)).toEqual(RESTORED.slice(0, 4));
+  expect(store.snapshot().items[0]).toMatchObject({ ref: "turn-1" });
   agent.exit();
 });

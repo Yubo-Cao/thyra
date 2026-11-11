@@ -13,6 +13,7 @@ import {
   type AgentAdapter,
   AgentActionError,
   oneLine,
+  promptAt,
   record,
   text,
   withItemTimes,
@@ -23,6 +24,7 @@ import {
   describeAgentExit,
 } from "./agent-process";
 import {
+  claudeEntryParent,
   claudeProjectDir,
   isTranscriptEntry,
   listClaudeSessions,
@@ -68,6 +70,9 @@ const READY_TIMEOUT_MS = 20_000;
 const INTERRUPT_SETTLE_MS = 3_000;
 /** A child replaced by a resume is killed if it has not ended by then. */
 const RETIRE_GRACE_MS = 3_000;
+/** A rewind right after a turn may find the CLI still closing it. */
+const REWIND_RETRIES = 4;
+const REWIND_RETRY_MS = 250;
 const SUBAGENT_PROGRESS_LINES = 12;
 const DENY_MESSAGE =
   "The user denied this action. Stop and wait for the user's next instruction.";
@@ -111,7 +116,9 @@ export type ClaudeConversationArgs = {
   resume?: string;
   /** `--continue`: continue the directory's newest conversation. */
   continues: boolean;
-  /** `--fork-session` and `--session-id`, as given. */
+  /** `--resume-session-at <uuid>`: the message the resumed conversation ends at. */
+  at?: string;
+  /** `--fork-session`, `--session-id` and `--resume-session-at`, as given. */
   identity: string[];
 };
 
@@ -140,10 +147,14 @@ export function claudeConversationArgs(args: string[]): ClaudeConversationArgs {
       choice.continues = true;
     } else if (arg === "--fork-session" || arg.startsWith("--session-id=")) {
       choice.identity.push(arg);
-    } else if (arg === "--session-id") {
+    } else if (arg.startsWith("--resume-session-at=")) {
+      choice.identity.push(arg);
+      choice.at = arg.slice("--resume-session-at=".length) || undefined;
+    } else if (arg === "--session-id" || arg === "--resume-session-at") {
       choice.identity.push(arg);
       if (next !== undefined) {
         choice.identity.push(next);
+        if (arg === "--resume-session-at") choice.at = next;
         index += 1;
       }
     } else choice.others.push(arg);
@@ -250,6 +261,7 @@ export class ClaudeAdapter implements AgentAdapter {
     this.restoring = ClaudeAdapter.storedTranscript(
       this.storedPath(id),
       this.options.cwd,
+      choice.at,
     )
       .then((stored) => {
         if (this.store.phase !== "exited")
@@ -397,6 +409,81 @@ export class ClaudeAdapter implements AgentAdapter {
     this.launch();
   }
 
+  /**
+   * Go back to just before a prompt, in the running CLI: its
+   * `rewind_conversation` control request drops the prompt and everything
+   * after it from the conversation, and the CLI stores the cut so a later
+   * resume continues from it. Files stay as they are.
+   */
+  async rewind(itemId: string) {
+    if (this.restoring) await this.restoring;
+    this.requireIdleForResume();
+    const items = this.store.snapshot().items;
+    const { index, ref } = promptAt(items, itemId);
+    // The CLI checks that the client has seen its latest prompt.
+    const latest = items.findLast((item) => item.type === "user" && item.ref);
+    const request = {
+      subtype: "rewind_conversation",
+      target_message_uuid: ref,
+      ...(latest?.type === "user" && latest.ref
+        ? { last_seen_user_message_uuid: latest.ref }
+        : {}),
+    };
+    let response = await this.request(request);
+    // The CLI finishes a turn's bookkeeping a moment after its result.
+    for (
+      let attempt = 0;
+      attempt < REWIND_RETRIES && response.reason === "turn_running";
+      attempt++
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, REWIND_RETRY_MS));
+      this.requireIdleForResume();
+      response = await this.request(request);
+    }
+    if (response.rewound !== true)
+      throw new AgentActionError(
+        `Claude Code did not go back: ${text(response.error) ?? "it refused"}`,
+      );
+    this.store.resetItems(items.slice(0, index));
+    this.store.updateInfo({ usage: undefined });
+  }
+
+  /**
+   * A copy of the conversation in a session of its own: `--resume` with
+   * `--fork-session`, ended just before a prompt by `--resume-session-at`
+   * the message before it. Before the first prompt that is no conversation
+   * at all, so a new one starts.
+   */
+  async forkArgs(itemId?: string): Promise<string[]> {
+    if (this.restoring) await this.restoring;
+    this.requireIdleForResume();
+    const others = claudeConversationArgs(this.args).others;
+    const id = this.store.info.agent_session_id;
+    const prompts = this.store
+      .snapshot()
+      .items.some((item) => item.type === "user");
+    if (!id || !isAgentSessionId(id) || !prompts) {
+      if (itemId) promptAt(this.store.snapshot().items, itemId);
+      return others;
+    }
+    const fork = [...others, "--resume", id, "--fork-session"];
+    if (!itemId) return fork;
+    const { ref } = promptAt(this.store.snapshot().items, itemId);
+    let parent: string | null | undefined;
+    try {
+      parent = await claudeEntryParent(this.storedPath(id), ref);
+    } catch (error) {
+      throw new AgentActionError(
+        `conversation ${id} could not be read: ${(error as Error).message}`,
+      );
+    }
+    if (parent === undefined)
+      throw new AgentActionError(
+        "Claude Code has not stored that prompt; branch from the latest point instead",
+      );
+    return parent === null ? others : [...fork, "--resume-session-at", parent];
+  }
+
   private requireIdleForResume() {
     this.requireRunningProcess();
     if (this.store.phase === "running")
@@ -428,6 +515,8 @@ export class ClaudeAdapter implements AgentAdapter {
   static async storedTranscript(
     path: string,
     cwd: string,
+    /** The message it ends at (`--resume-session-at`), when not its last. */
+    leaf?: string,
   ): Promise<StoredTranscript> {
     let at = 0;
     const store = new AgentSessionStore({
@@ -445,7 +534,7 @@ export class ClaudeAdapter implements AgentAdapter {
       },
       onExit: () => undefined,
     });
-    for await (const entry of readClaudeConversation(path)) {
+    for await (const entry of readClaudeConversation(path, undefined, leaf)) {
       // Items carry the time their entry was written. A prompt queued
       // during a turn is stamped when it was typed, before entries that
       // precede it: times never run backwards down the transcript.
@@ -468,10 +557,14 @@ export class ClaudeAdapter implements AgentAdapter {
       // The turn before a prompt is over, as its result said when live. A
       // prompt taken during a turn (stored as an attachment) joined it.
       if (entry.type === "user") this.endTurn(false);
+      // A prompt of its own can be rewound to by its UUID; one queued into
+      // a turn is part of that turn.
+      const ref = entry.type === "user" ? text(entry.uuid) : undefined;
       this.store.upsertItem({
         id: `user-${this.nextLocalId++}`,
         type: "user",
         text: prompt,
+        ...(ref ? { ref } : {}),
       });
       return;
     }
@@ -512,8 +605,12 @@ export class ClaudeAdapter implements AgentAdapter {
       });
     // The process may have ended while the files were read.
     if (images.length > 0) this.requireRunningProcess();
-    // The CLI acknowledges a prompt by this ID, whatever its content.
+    // The CLI acknowledges a prompt by this ID, whatever its content, and
+    // stores it under the same ID. A prompt that starts a turn can be
+    // rewound to by it; one taken into a running turn is stored as part of
+    // that turn.
     const uuid = randomUUID();
+    const ref = this.store.phase === "running" ? undefined : uuid;
     this.unacked.add(uuid);
     this.store.upsertItem({
       id: `user-${this.nextLocalId++}`,
@@ -522,6 +619,7 @@ export class ClaudeAdapter implements AgentAdapter {
       ...(images.length > 0
         ? { images: images.map(({ path }) => ({ path })) }
         : {}),
+      ...(ref ? { ref } : {}),
     });
     this.write({
       type: "user",

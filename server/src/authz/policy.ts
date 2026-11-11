@@ -231,6 +231,10 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   // the session read them, whoever holds the pane's claim.
   "agent_session.history": { ...read(r.pane), minimum: "editor" },
   "agent_session.resume": write(r.pane, { writer: "input" }),
+  "agent_session.rewind": write(r.pane, { writer: "input" }),
+  // Opens a pane beside this one, as splitting it does, running a copy of
+  // the conversation with arguments its host chooses.
+  "agent_session.fork": write(r.pane, { writer: "input" }),
 
   // Workspace files and Git.
   "file.list": read(r.files),

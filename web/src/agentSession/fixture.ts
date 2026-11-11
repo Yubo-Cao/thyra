@@ -12,7 +12,8 @@
 //
 // Prompt images stay in the page: an "upload" takes a moment and gets a host
 // path the transcript can show again. A file named `fail...` is refused, and
-// so is a prompt that starts with `/refuse`.
+// so is a prompt that starts with `/refuse`. Every prompt can be rewound
+// to; a branch is refused, since only a bridge can open its pane.
 import {
   AGENT_SESSION_EVENT,
   AGENT_SESSIONS_CHANGED,
@@ -230,6 +231,7 @@ class FixtureSession {
       usage: { context_tokens: 18_400, context_window: 200_000 },
       can_resume: true,
       can_attach_images: true,
+      can_rewind: true,
     };
     if (variant === "long") {
       for (let index = 0; index < 500; index++) {
@@ -366,7 +368,10 @@ class FixtureSession {
   }
 
   private item(body: Record<string, unknown>) {
-    return { id: `i${++this.count}`, at: Date.now(), ...body } as AgentItem;
+    const id = `i${++this.count}`;
+    // Every prompt can be gone back to, as one that started a turn can.
+    const ref = body.type === "user" ? { ref: `ref-${id}` } : {};
+    return { id, at: Date.now(), ...ref, ...body } as AgentItem;
   }
 
   private emit(event: EventBody) {
@@ -653,6 +658,22 @@ class FixtureSession {
             (stored) => stored.id !== this.info.agent_session_id,
           ),
         });
+      case "agent_session.rewind": {
+        if (/running|awaiting_approval/.test(this.info.status))
+          throw new Error("a turn is running");
+        const index = this.items.findIndex(
+          (item) => item.id === params.item_id,
+        );
+        if (index < 0 || this.items[index]!.type !== "user")
+          throw new Error("that prompt is not in the transcript");
+        this.items = this.items.slice(0, index);
+        this.emit({ type: "reset", items: this.items });
+        this.setInfo({});
+        return { ok: true };
+      }
+      case "agent_session.fork":
+        // A branch is a new pane, which only a bridge can open.
+        throw new Error("the fixture cannot open a pane for the branch");
       case "agent_session.resume": {
         const stored = STORED.find((item) => item.id === params.session_id);
         if (!stored) throw new Error("no such stored conversation");
