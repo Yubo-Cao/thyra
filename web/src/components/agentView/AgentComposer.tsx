@@ -17,14 +17,12 @@ import { promptEditorKeyAction } from "../../promptEditorKeys";
 import { getShortcutSnapshot } from "../../shortcutPreferences";
 import { store } from "../../store";
 import {
-  beginTerminalComposerSubmission,
-  clearTerminalComposerDraft,
   commitTextComposition,
-  finishTerminalComposerSubmission,
   readComposerImages,
   readTerminalComposerDraft,
   readTerminalComposerSelection,
   replaceTerminalComposerDraftRange,
+  submitComposerDraft,
   terminalComposerImageFiles,
   writeTerminalComposerDraft,
 } from "../../terminalComposer";
@@ -222,14 +220,15 @@ export function AgentComposer({
       );
       return;
     }
-    if (!beginTerminalComposerSubmission(draftKey)) return;
+    // The box empties at once and stays editable, so what is typed while the
+    // prompt travels is the next prompt and not lost keystrokes.
     try {
-      await onSend(prompt.text, prompt.images);
-      clearTerminalComposerDraft(draftKey);
+      await submitComposerDraft(draftKey, typed, () =>
+        onSend(prompt.text, prompt.images),
+      );
     } catch {
-      // Reported by the caller; the draft and its images stay to be sent again.
+      // Reported by the caller; the draft and its images are back in the box.
     } finally {
-      finishTerminalComposerSubmission(draftKey);
       if (fromButton) surfaceRef.current?.focus();
     }
   };
@@ -269,7 +268,7 @@ export function AgentComposer({
           ? t("Add to the running turn")
           : t("Ask the agent"),
     label: t("Prompt"),
-    readOnly: sending || exited,
+    readOnly: exited,
     prose: true,
     // On to an open request's answers, say, instead of indenting nothing.
     emptyTabMovesFocus: true,
@@ -337,7 +336,7 @@ export function AgentComposer({
           size="md"
           label={t("Add an image")}
           icon={<ImagePlus size={15} />}
-          disabled={exited || sending}
+          disabled={exited}
           onMouseDown={keepFocus}
           onClick={() => picker.current?.click()}
         />

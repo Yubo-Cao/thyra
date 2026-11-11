@@ -8,6 +8,8 @@ import {
   insertIntoTerminalComposerDraft,
   clearTerminalComposerDraft,
   submitTerminalComposerDraft,
+  submitComposerDraft,
+  agentComposerDraftKey,
   composerImageToken,
   expandComposerImageTokens,
   writeTerminalComposerDraft,
@@ -184,3 +186,35 @@ async function pasteHistory() {
   );
   expect(sent).toBe("redo /tmp/up/c.png /tmp/up/a.png");
 }
+
+test("an agent prompt leaves the box at once and returns with its image when refused", async () => {
+  const key = agentComposerDraftKey("images", "pane");
+  const file = new File(["image"], "chart.png", { type: "image/png" });
+  await uploadTerminalComposerImages(
+    key,
+    [file],
+    async () => "/tmp/chart.png",
+    (target, _path, image) =>
+      insertIntoTerminalComposerDraft(target, composerImageToken(image.ref)),
+  );
+  const draft = readTerminalComposerDraft(key);
+  expect(draft).toContain("[Image #");
+  await expect(
+    submitComposerDraft(key, draft, async () => {
+      // The box is empty and takes the next prompt while this one travels.
+      expect(readTerminalComposerDraft(key)).toBe("");
+      expect(readComposerImages(key)).toHaveLength(0);
+      writeTerminalComposerDraft(key, "next");
+      throw new Error("refused");
+    }),
+  ).rejects.toThrow("refused");
+  expect(readTerminalComposerDraft(key)).toBe(`${draft}next`);
+  expect(readComposerImages(key).map((image) => image.path)).toEqual([
+    "/tmp/chart.png",
+  ]);
+  expect(await submitComposerDraft(key, `${draft}next`, async () => {})).toBe(
+    true,
+  );
+  expect(readTerminalComposerDraft(key)).toBe("");
+  expect(readComposerImages(key)).toHaveLength(0);
+});

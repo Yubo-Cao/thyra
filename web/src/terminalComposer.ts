@@ -483,6 +483,24 @@ export async function submitTerminalComposerDraft(
   draft: string,
   send: (text: string) => Promise<void>,
 ): Promise<boolean> {
+  const sent = expandComposerImageTokens(
+    draft,
+    resolveComposerImages(key, draft),
+  );
+  return submitComposerDraft(key, draft, () => send(sent));
+}
+
+/**
+ * Take `draft` out of its box and send it, so the box is free for the next
+ * prompt at once. A failed send puts the draft back, with its images, in
+ * front of what was typed meanwhile. False when nothing was sent: an empty
+ * draft, an upload still running, or an earlier send still under way.
+ */
+export async function submitComposerDraft(
+  key: string,
+  draft: string,
+  send: () => Promise<unknown>,
+): Promise<boolean> {
   if (
     !draft ||
     terminalComposerUploadCount(key) > 0 ||
@@ -494,13 +512,9 @@ export async function submitTerminalComposerDraft(
     ? current.slice(draft.length)
     : current;
   const sentImages = readComposerImages(key);
-  const sent = expandComposerImageTokens(
-    draft,
-    resolveComposerImages(key, draft),
-  );
   writeTerminalComposerDraft(key, rest);
   try {
-    await send(sent);
+    await send();
     setComposerImages(
       key,
       readComposerImages(key).filter((image) =>
