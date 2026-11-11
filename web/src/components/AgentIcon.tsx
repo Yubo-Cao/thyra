@@ -1,5 +1,5 @@
 import { Bot } from "lucide-react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useSyncExternalStore } from "react";
 import claudeCodeIcon from "@lobehub/icons-static-svg/icons/claudecode-color.svg?agent-icon";
 import codexIcon from "@lobehub/icons-static-svg/icons/codex-color.svg?agent-icon";
 import cursorIcon from "@lobehub/icons-static-svg/icons/cursor.svg?agent-icon";
@@ -40,6 +40,21 @@ const RARE_AGENT_KINDS: Record<RareAgentKind, true> = {
   qodercli: true,
 };
 
+/**
+ * An icon's markup with its element IDs made this instance's own. Two copies
+ * of an icon would otherwise share a gradient ID, and each would paint with
+ * the first copy's gradient, which paints nothing when that copy is hidden
+ * (the sidebar on a phone).
+ */
+export function agentIconInstance(svg: string, instance: string): string {
+  if (!svg.includes(' id="')) return svg;
+  const suffix = instance.replace(/[^\w-]/g, "");
+  return svg.replace(
+    /(\sid="|url\(#)([^")]+)/g,
+    (_, lead: string, id: string) => `${lead}${id}-${suffix}`,
+  );
+}
+
 const rareIcons = createLazyValue(
   async () => (await import("./agentIconsRare")).RARE_AGENT_ICON_SVGS,
 );
@@ -60,6 +75,11 @@ export function AgentIcon({
   const iconSvg = rare
     ? loaded.value?.[kind as RareAgentKind]
     : AGENT_ICON_SVGS[kind];
+  const instance = useId();
+  const markup = useMemo(
+    () => (iconSvg ? agentIconInstance(iconSvg, instance) : undefined),
+    [iconSvg, instance],
+  );
   // An icon on its way holds its place; one that cannot load is generic.
   const pending = rare && !iconSvg && !loaded.failed;
 
@@ -70,10 +90,10 @@ export function AgentIcon({
       title={agent || "Agent"}
       aria-hidden="true"
     >
-      {iconSvg ? (
+      {markup ? (
         <span
           className="agent-icon-svg"
-          dangerouslySetInnerHTML={{ __html: iconSvg }}
+          dangerouslySetInnerHTML={{ __html: markup }}
         />
       ) : pending ? null : (
         <Bot size={compact ? 14 : 15} strokeWidth={2.2} />
