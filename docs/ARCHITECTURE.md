@@ -667,8 +667,8 @@ A prompt attaches at most `AGENT_PROMPT_IMAGE_LIMIT` images of at most `AGENT_PR
 **Host link.** Each host listens on a Unix socket (mode 0600) named `<key>-<pane>.sock`: `key` is the first 12 hex digits of the SHA-256 of the pane's Herdr control socket path (resolved through symlinks), and `pane` is the URI-encoded pane ID.
 The directory is `THYRA_AGENT_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/thyra/agents`, else `${XDG_STATE_HOME:-~/.local/state}/thyra/agents`; it must be a real directory owned by the user with mode 0700, and the bridge reads no other.
 Traffic is newline-delimited JSON.
-The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "interrupt" | "approve" | "set_mode" | "history" | "resume", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` answers with).
-The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`, `can_attach_images`).
+The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "unqueue" | "interrupt" | "approve" | "set_mode" | "set_model" | "set_effort" | "compact" | "history" | "resume", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` answers with).
+The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`, `can_attach_images`, `can_set_model`, `can_queue`, `can_compact`), and the bridge refuses the rest for a host without the flag.
 A `send` action may carry `images: [{path}]`: paths only, which the host reads itself.
 A host replaces a socket file nobody listens on; the bridge deletes one that refuses connections and is older than five seconds.
 
@@ -679,7 +679,7 @@ A session ends when its link closes; a restarted bridge rebuilds everything from
 
 **RPC.** `agent_session.list` returns `{sessions}` (empty on connections without sessions).
 `agent_session.subscribe {pane_id}` returns the snapshot and starts `agent_session.event` for that pane on the calling socket until `agent_session.unsubscribe {pane_id}`, the session's end, or the socket closing.
-`agent_session.send {pane_id, text, images?}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}` and `agent_session.resume {pane_id, session_id}` return `{ok: true}` or the host's refusal as the error.
+`agent_session.send {pane_id, text, images?, delivery?}`, `agent_session.unqueue {pane_id, prompt_id}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}`, `agent_session.set_model {pane_id, model}`, `agent_session.set_effort {pane_id, effort}`, `agent_session.compact {pane_id}` and `agent_session.resume {pane_id, session_id}` return `{ok: true}` or the host's refusal as the error.
 `agent_session.history {pane_id}` returns `{sessions: AgentStoredSession[]}`; see [stored conversations](#stored-conversations).
 Both notifications use the connection envelope: `{connection_id, connection_generation, event: "agent_session.event", data: AgentSessionEvent}` and `{..., event: "agent_session.changed", data: {sessions}}`.
 `agent_session.changed` goes to every page when a session appears, ends or changes status, at most once per 25 ms.
@@ -696,6 +696,19 @@ Streamed text is announced at once and then at most every 40 ms per session, and
 `interrupt` does nothing in an idle session.
 Denying a tool call marks its item `denied` and stops the turn, as the agents' own interfaces do.
 A `reset` event replaces the whole transcript with the items it carries and closes every approval; a host sends it when the session starts continuing a stored conversation.
+
+<a id="prompt-queue"></a>
+**Prompt queue.** A prompt sent while a turn runs goes as its `delivery` says (`AgentPromptDelivery`): `queue` holds it in the host, `steer` writes it to the agent at once (what a send without `delivery` does, and all a host without `can_queue` does), and `interrupt` holds it ahead of the others and interrupts the turn.
+Held prompts are `info.queued` (`{id, text, images?, at}`), in sending order; each time the session becomes `idle` the host sends the first as a turn of its own, and it then shows as a `user` item like any prompt.
+A queued prompt is also held while earlier ones wait, so prompts never overtake each other; one that cannot be sent adds an error notice and the next one goes.
+The queue lives in the host, so it survives page reloads and bridge restarts, and ends with the agent process.
+`agent_session.unqueue` takes a held prompt back by its `id`, refused once it has gone; a page that edits a queued prompt unqueues it and puts its text back in the box.
+In an idle session every delivery sends at once.
+
+**Model, effort and compaction.** `info.models` lists the models `agent_session.set_model` takes (`{id, label, description?, efforts?}`), `info.efforts` the reasoning efforts of the current model that `agent_session.set_effort` takes, and `info.model` and `info.effort` what the next turn runs with; a host fills them in before the first prompt when the agent can say, and both changes hold from the next turn.
+Changing the model keeps the effort when the new model takes it; otherwise the agent's choice for that model applies.
+`agent_session.compact` summarizes the conversation as the agent's own `/compact` does, refused while a turn runs; the session is `running` while it compacts, and a `notice` item ("Conversation compacted.") marks the place.
+A prompt that is exactly `/compact` does the same in both agents.
 
 <a id="stored-conversations"></a>
 **Stored conversations.** A host keeps its transcript in memory only; what outlives it is the conversation the agent stores itself, and a session can continue one with its transcript restored.
@@ -718,10 +731,14 @@ A host without `can_attach_images` in its info predates prompt images and would 
 Both agents shrink large images themselves before the model sees them; the size limit bounds what a host reads and writes for one prompt, not what the agents can take.
 The pane's log shows the count (`[2 images]`), and a restored transcript shows a Codex prompt's images again when their paths are upload paths, and a Claude prompt's as the `[Image #N]` text of the prompt.
 
-**Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, and `set_permission_mode`.
+**Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, `set_permission_mode`, `set_model`, `apply_flag_settings` and `get_settings`.
 It adds `--allow-dangerously-skip-permissions` unless the caller passed `--dangerously-skip-permissions`, so a session starts in the permission mode of the user's Claude settings or command line and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
 Claude Code runs tools without a sandbox in every mode, so `bypassPermissions` (what `--dangerously-skip-permissions` starts in, as the CLI's `init` message reports) is labelled full access.
-A prompt sent during a turn is written to the CLI at once, which steers or queues it; the CLI's `command_lifecycle` messages and prompt echoes tell when each prompt was taken.
+A prompt steered into a turn is written to the CLI at once, which steers or queues it; the CLI's `command_lifecycle` messages and prompt echoes tell when each prompt was taken.
+The models are the `models` of the `initialize` answer, one per `resolvedModel` (aliases such as `default` and `opus` name the same model; the alias's `displayName` wins over the default's), each with its `supportedEffortLevels` when `supportsEffort`; a model is shown and chosen by its resolved ID, which `set_model {model}` accepts and answers with `{model}`.
+The model and effort before the first turn, and after each change, are `applied.model` and `applied.effort` of `get_settings`; an effort is set with `apply_flag_settings {settings: {effortLevel}}` (what `--effort` sets), which the CLI accepts silently for a level it does not know, so the host reads the settings back.
+Compacting sends `/compact` as a prompt: the CLI reports `status: compacting`, then a `compact_boundary` system message, which becomes the notice.
+A child started for `agent_session.resume` starts with the model and effort of the user's settings and arguments again.
 A prompt with images is a user message whose content is the text block (left out when the text is empty) followed by one base64 `image` block per image, the order the terminal UI stores a prompt with pasted images in; the CLI acknowledges it by the message's `uuid` like any other prompt.
 `Bash` becomes a `command` tool; `Edit`, `MultiEdit` and `Write` become `edit` tools whose `diffs` are built from the call's old and new text and replaced by the patch the CLI reports once the edit ran; `Task` and `Agent` become `task` tools.
 `TodoWrite` updates one `plan` item per turn instead of a tool item.
@@ -754,6 +771,9 @@ A mode is a pair of approval policy and sandbox (`server/src/agent-session/codex
 The current mode is what `thread/start`, `thread/resume` and `thread/settings/updated` report (`approvalPolicy` and `sandbox`/`sandboxPolicy`); a pair no named mode covers is offered as a mode of its own, `<policy>+<sandbox>`.
 A chosen mode is sent with the next `turn/start` as `approvalPolicy`, plus `sandboxPolicy` when the sandbox changes, and holds from that turn on; switching back to a kind of sandbox the thread reported reuses that policy, keeping `config.toml`'s writable roots and network access.
 A session runs in full access unless its arguments choose an approval policy or a sandbox (`-a`, `-s`, `--yolo`, `-c approval_policy=…`, `-c sandbox_mode=…`); whichever of the two they leave out comes from `~/.codex/config.toml`, as do all other defaults.
+The models are `model/list` without its `hidden` ones, read once the thread is open, with each model's `supportedReasoningEfforts`; a chosen model and effort go as `model` and `effort` on the next `turn/start`, which Codex keeps for later turns, and a new model whose efforts lack the current one takes its `defaultReasoningEffort`.
+`thread/start`'s `reasoningEffort` and `thread/settings/updated`'s `effort` say the current effort.
+Compacting is `thread/compact/start {threadId}`: Codex runs it as a turn of its own (`turn/started`, a `contextCompaction` item, `turn/completed`), and a `/compact` prompt is sent as that request.
 `thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config`, `--yolo` and `resume [<id> | --last]`, and refuses any other argument.
 
 History is `thread/list` for the session's directory, sorted by `updated_at` and answered from Codex's index (`useStateDbOnly`), because repairing the index from every rollout file takes many seconds on a long history; a thread's title is its name, else its first prompt.

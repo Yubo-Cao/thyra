@@ -29,6 +29,10 @@ export const AGENT_SESSION_ACTION_METHODS = new Set([
   "agent_session.interrupt",
   "agent_session.approve",
   "agent_session.set_mode",
+  "agent_session.set_model",
+  "agent_session.set_effort",
+  "agent_session.unqueue",
+  "agent_session.compact",
   "agent_session.resume",
 ]);
 /**

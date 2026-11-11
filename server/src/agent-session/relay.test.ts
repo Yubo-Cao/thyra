@@ -271,6 +271,12 @@ test("what an action answers comes back, and a host from before it is not asked"
   for (const action of [
     { action: "history" },
     { action: "resume", session_id: "abc-1" },
+    { action: "set_model", model: "m" },
+    { action: "set_effort", effort: "high" },
+    { action: "compact" },
+    { action: "unqueue", prompt_id: "q1" },
+    { action: "send", text: "x", delivery: "queue" },
+    { action: "send", text: "x", delivery: "interrupt" },
   ] as const)
     await expect(bridge.act("w1:p2", action)).rejects.toThrow(
       "started by an older Thyra",

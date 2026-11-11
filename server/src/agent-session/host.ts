@@ -25,6 +25,7 @@ import {
 } from "./link";
 import { agentSocketPath, prepareAgentSocketDir } from "./paths";
 import { checkPromptImages } from "./prompt-images";
+import { PromptQueue } from "./prompt-queue";
 import { AgentSessionStore } from "./store";
 import { createTerminalLog } from "./terminal-log";
 
@@ -99,13 +100,20 @@ export async function startAgentHost(options: AgentHostOptions) {
       modes: [],
       can_resume: true,
       can_attach_images: true,
+      can_set_model: true,
+      can_queue: true,
+      can_compact: true,
     },
     onEvent: publish,
   });
 
   function publish(event: AgentSessionEvent) {
     log.event(event);
-    if (event.type === "info") reportState();
+    if (event.type === "info") {
+      reportState();
+      // After this event is out: a queued prompt may go now.
+      queueMicrotask(() => queue.drain());
+    }
     if (clients.size === 0) return;
     const line = encodeLine({ type: "event", event });
     for (const client of clients) {
@@ -159,6 +167,10 @@ export async function startAgentHost(options: AgentHostOptions) {
       ? new ClaudeAdapter(adapterOptions)
       : new CodexAdapter(adapterOptions);
 
+  const queue = new PromptQueue(store, (text, images) =>
+    adapter.send(text, images),
+  );
+
   // Each adapter call is awaited where it is made, so a refusal always has
   // a handler by the time it is raised. What an action answers is returned.
   async function act(action: AgentAction): Promise<unknown> {
@@ -171,9 +183,23 @@ export async function startAgentHost(options: AgentHostOptions) {
         const images = await checkPromptImages(action.images ?? []);
         if (!action.text.trim() && images.length === 0)
           throw new AgentActionError("empty prompt");
+        const delivery = action.delivery ?? "steer";
+        // A queued prompt also waits behind the ones queued before it.
+        if (
+          (delivery !== "steer" && store.phase === "running") ||
+          (delivery === "queue" && queue.size > 0)
+        ) {
+          queue.add(action.text, images, delivery === "interrupt");
+          if (delivery === "interrupt") await adapter.interrupt();
+          return;
+        }
         await adapter.send(action.text, images);
         return;
       }
+      case "unqueue":
+        if (!queue.remove(action.prompt_id))
+          throw new AgentActionError("that prompt is no longer queued");
+        return;
       case "interrupt":
         await adapter.interrupt();
         return;
@@ -182,6 +208,19 @@ export async function startAgentHost(options: AgentHostOptions) {
         return;
       case "set_mode":
         await adapter.setMode(action.mode);
+        return;
+      case "set_model":
+        await adapter.setModel(action.model);
+        return;
+      case "set_effort":
+        await adapter.setEffort(action.effort);
+        return;
+      case "compact":
+        if (store.phase === "running")
+          throw new AgentActionError(
+            "a turn is running; wait for it or interrupt it first",
+          );
+        await adapter.compact();
         return;
       case "history":
         return (await adapter.history()).slice(0, AGENT_SESSION_HISTORY_LIMIT);

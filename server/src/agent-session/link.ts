@@ -1,8 +1,10 @@
 import { StringDecoder } from "node:string_decoder";
-import type {
-  AgentPromptImage,
-  AgentSessionEvent,
-  AgentSessionSnapshot,
+import {
+  AGENT_PROMPT_DELIVERIES,
+  type AgentPromptDelivery,
+  type AgentPromptImage,
+  type AgentSessionEvent,
+  type AgentSessionSnapshot,
 } from "../../../shared/agentSession";
 
 /**
@@ -17,8 +19,10 @@ import type {
  * across deploys, and the bridge drops a host that reports another number.
  * A host from before an action existed never answers it, and one from
  * before prompts took images would drop them, so the bridge only sends
- * `history` and `resume` to hosts whose info says `can_resume`, and images
- * to hosts whose info says `can_attach_images`.
+ * `history` and `resume` to hosts whose info says `can_resume`, images
+ * to hosts whose info says `can_attach_images`, `set_model` and
+ * `set_effort` to `can_set_model`, `unqueue` and a `delivery` other than
+ * `steer` to `can_queue`, and `compact` to `can_compact`.
  */
 export const AGENT_LINK_PROTOCOL = 1;
 /** A snapshot stays far below this; a longer line is not from a host. */
@@ -26,10 +30,20 @@ export const AGENT_LINK_MAX_LINE_BYTES = 16 * 1024 * 1024;
 
 export type AgentAction =
   /** `images` are paths on the host; the host reads the files itself. */
-  | { action: "send"; text: string; images?: AgentPromptImage[] }
+  | {
+      action: "send";
+      text: string;
+      images?: AgentPromptImage[];
+      /** Absent: `steer`, what hosts from before deliveries do. */
+      delivery?: AgentPromptDelivery;
+    }
+  | { action: "unqueue"; prompt_id: string }
   | { action: "interrupt" }
   | { action: "approve"; approval_id: string; option_id: string }
   | { action: "set_mode"; mode: string }
+  | { action: "set_model"; model: string }
+  | { action: "set_effort"; effort: string }
+  | { action: "compact" }
   /** The stored conversations of the session's directory; answers a `value`. */
   | { action: "history" }
   | { action: "resume"; session_id: string };
@@ -133,10 +147,12 @@ export function parseBridgeMessage(line: string): BridgeMessage | null {
   const { id } = message;
   switch (message.action) {
     case "send": {
-      const { images } = message;
+      const { images, delivery } = message;
       if (
         typeof message.text !== "string" ||
-        (images !== undefined && !Array.isArray(images))
+        (images !== undefined && !Array.isArray(images)) ||
+        (delivery !== undefined &&
+          !AGENT_PROMPT_DELIVERIES.includes(delivery as AgentPromptDelivery))
       )
         return null;
       return {
@@ -154,8 +170,18 @@ export function parseBridgeMessage(line: string): BridgeMessage | null {
               }),
             }
           : {}),
+        ...(delivery ? { delivery: delivery as AgentPromptDelivery } : {}),
       };
     }
+    case "unqueue":
+      return typeof message.prompt_id === "string"
+        ? {
+            type: "action",
+            id,
+            action: "unqueue",
+            prompt_id: message.prompt_id,
+          }
+        : null;
     case "interrupt":
       return { type: "action", id, action: "interrupt" };
     case "approve":
@@ -173,6 +199,16 @@ export function parseBridgeMessage(line: string): BridgeMessage | null {
       return typeof message.mode === "string"
         ? { type: "action", id, action: "set_mode", mode: message.mode }
         : null;
+    case "set_model":
+      return typeof message.model === "string"
+        ? { type: "action", id, action: "set_model", model: message.model }
+        : null;
+    case "set_effort":
+      return typeof message.effort === "string"
+        ? { type: "action", id, action: "set_effort", effort: message.effort }
+        : null;
+    case "compact":
+      return { type: "action", id, action: "compact" };
     case "history":
       return { type: "action", id, action: "history" };
     case "resume":

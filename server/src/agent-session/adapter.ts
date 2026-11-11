@@ -23,6 +23,12 @@ export interface AgentAdapter {
   interrupt(): Promise<void>;
   approve(approvalId: string, optionId: string): Promise<void>;
   setMode(mode: string): Promise<void>;
+  /** Run the next turn with one of `info.models`. */
+  setModel(model: string): Promise<void>;
+  /** Run the next turn with one of `info.efforts`. */
+  setEffort(effort: string): Promise<void>;
+  /** Compact the conversation; refused while a turn is running. */
+  compact(): Promise<void>;
   /**
    * The conversations the agent has stored for the session's directory,
    * newest first, without the one the session is in.

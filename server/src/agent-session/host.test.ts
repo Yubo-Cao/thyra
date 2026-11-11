@@ -162,6 +162,81 @@ test("actions reach the agent and report refusals", async () => {
   link.close();
 });
 
+test("prompts sent during a turn wait in the host's queue, or stop the turn", async () => {
+  const { host, agent } = await hostFor();
+  initialize(agent);
+  const link = await connectToHost(host.socketPath);
+  const prompts = () =>
+    agent.written.flatMap((line) =>
+      line.type === "user" ? [line.message.content] : [],
+    );
+  // Idle: every delivery sends at once.
+  expect(
+    await link.act({ action: "send", text: "first", delivery: "queue" }),
+  ).toBeNull();
+  expect(host.store.info.status).toBe("running");
+  expect(
+    await link.act({ action: "send", text: "second", delivery: "queue" }),
+  ).toBeNull();
+  expect(
+    await link.act({ action: "send", text: "third", delivery: "queue" }),
+  ).toBeNull();
+  expect(prompts()).toEqual(["first"]);
+  expect(host.store.info.queued?.map((prompt) => prompt.text)).toEqual([
+    "second",
+    "third",
+  ]);
+  const third = host.store.info.queued![1]!.id;
+  expect(await link.act({ action: "unqueue", prompt_id: third })).toBeNull();
+  expect(await link.act({ action: "unqueue", prompt_id: third })).toBe(
+    "that prompt is no longer queued",
+  );
+  // A steer goes to the running turn, past the queue.
+  expect(
+    await link.act({ action: "send", text: "steer", delivery: "steer" }),
+  ).toBeNull();
+  expect(prompts()).toEqual(["first", "steer"]);
+  // The turn ends: the next queued prompt starts the next one.
+  agent.say({ type: "result", subtype: "success", is_error: false });
+  await until(() => prompts().length === 3, "the queued prompt");
+  expect(prompts().at(-1)).toBe("second");
+  expect(host.store.info.queued).toBeUndefined();
+  expect(host.store.info.status).toBe("running");
+  // Stop and send: the turn is interrupted, and the prompt goes first.
+  expect(
+    await link.act({ action: "send", text: "later", delivery: "queue" }),
+  ).toBeNull();
+  const interrupted = link.act({
+    action: "send",
+    text: "now",
+    delivery: "interrupt",
+  });
+  await until(
+    () => agent.written.at(-1)?.request?.subtype === "interrupt",
+    "the interrupt",
+  );
+  expect(host.store.info.queued?.map((prompt) => prompt.text)).toEqual([
+    "now",
+    "later",
+  ]);
+  agent.say({
+    type: "control_response",
+    response: {
+      subtype: "success",
+      request_id: agent.written.at(-1)!.request_id,
+    },
+  });
+  expect(await interrupted).toBeNull();
+  agent.say({ type: "result", subtype: "error_during_execution" });
+  await until(() => prompts().length === 4, "the prompt after the stop");
+  expect(prompts().at(-1)).toBe("now");
+  // Compacting waits for an idle session.
+  expect(await link.act({ action: "compact" })).toBe(
+    "a turn is running; wait for it or interrupt it first",
+  );
+  link.close();
+});
+
 test("a prompt's images are checked on the host before the agent gets them", async () => {
   const { host, agent, root, terminal } = await hostFor();
   initialize(agent);

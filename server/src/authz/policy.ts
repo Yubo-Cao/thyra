@@ -226,6 +226,10 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "agent_session.interrupt": write(r.pane, { writer: "input" }),
   "agent_session.approve": write(r.pane, { writer: "input" }),
   "agent_session.set_mode": write(r.pane, { writer: "input" }),
+  "agent_session.set_model": write(r.pane, { writer: "input" }),
+  "agent_session.set_effort": write(r.pane, { writer: "input" }),
+  "agent_session.unqueue": write(r.pane, { writer: "input" }),
+  "agent_session.compact": write(r.pane, { writer: "input" }),
   // The titles of the other conversations stored for the session's
   // directory are not something the pane shows: only those who may act on
   // the session read them, whoever holds the pane's claim.
