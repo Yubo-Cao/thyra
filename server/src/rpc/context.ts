@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from "bun";
+import type { AgentSessionService } from "../app/agent-sessions";
 import type { AccessControl } from "../auth/access";
 import type { Principal } from "../auth/principal";
 import type { AuthzDeps, RpcAuthorization } from "../authz/authorize";
@@ -34,6 +35,7 @@ export type RpcServices = Pick<
   connectionManager: ConnectionManager<LegacyConnectionRuntime>;
   connectionProfiles: ConnectionProfileService<LegacyConnectionRuntime>;
   legacyRoutingLogger: LegacyRoutingLogger;
+  agentSessions: AgentSessionService;
   /** A viewer's role lookup on one connection, or null for admins. */
   viewerRoles(
     ws: ServerWebSocket<unknown>,

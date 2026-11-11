@@ -3,6 +3,7 @@ import type { SocketData } from "../bridge/socket-data";
 import type { AgentBrowser } from "../browser/agent-browser";
 import { sanitizeConnectionError } from "../connections/manager";
 import { createShutdownController } from "../connections/shutdown";
+import type { AgentSessionService } from "./agent-sessions";
 import type { ServerBootstrap } from "./bootstrap";
 import type { ConnectionWiring } from "./connections";
 
@@ -14,6 +15,7 @@ export function installShutdown(deps: {
   bootstrap: ServerBootstrap;
   connections: ConnectionWiring;
   agentBrowser: AgentBrowser;
+  agentSessions: AgentSessionService;
   rtcTransport: RtcTransport<SocketData>;
 }) {
   const { logger, webPush } = deps.bootstrap;
@@ -24,6 +26,8 @@ export function installShutdown(deps: {
     rtcTransport.closeAll();
     webPush.stop();
     agentBrowser.stop();
+    // Only the links close: the hosts keep their sessions for the next bridge.
+    deps.agentSessions.stop();
     connectionProfiles.stopSupervision();
     managerStopTask ??= connectionManager.stopAll();
     return managerStopTask;

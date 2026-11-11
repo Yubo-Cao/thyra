@@ -14,6 +14,9 @@ process.env.HOME = home;
 process.env.XDG_CONFIG_HOME = join(home, ".config");
 process.env.XDG_DATA_HOME = join(home, ".local", "share");
 process.env.XDG_STATE_HOME = join(home, ".local", "state");
+// Servers started by tests look for agent hosts and shell state here, not in
+// the user's runtime directory, where a live Thyra keeps its own.
+process.env.XDG_RUNTIME_DIR = join(home, "run");
 for (const name of Object.keys(process.env)) {
   if (name.startsWith("THYRA_")) delete process.env[name];
 }

@@ -14,6 +14,7 @@ import {
   resolveRpcRoute,
 } from "../connections/rpc-routing";
 import type { LegacyConnectionRuntime } from "../connections/runtime";
+import { agentSessionRpcMethods } from "./agent-session-handlers";
 import { bridgeRpcHandlers, handleMessageBoardRpc } from "./bridge-handlers";
 import {
   type ConnectionRpcContext,
@@ -40,7 +41,11 @@ type RpcRequest = ConnectionRpcRequest;
 
 /** Methods of one ready connection, by name and by family. */
 const connectionRpcHandlers: RpcHandlerTable<ConnectionRpcContext> = {
-  methods: { ...sessionRpcMethods, ...workspaceRpcMethods },
+  methods: {
+    ...sessionRpcMethods,
+    ...workspaceRpcMethods,
+    ...agentSessionRpcMethods,
+  },
   prefixes: sessionRpcPrefixes,
 };
 

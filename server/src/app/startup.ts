@@ -20,6 +20,7 @@ import {
 } from "../http/static-files";
 import { FILE_UPLOAD_MAX_BYTES } from "../workspace/files";
 import type { AccountServices } from "./accounts";
+import type { AgentSessionService } from "./agent-sessions";
 import type { ServerBootstrap } from "./bootstrap";
 import type { ConnectionWiring } from "./connections";
 
@@ -42,6 +43,7 @@ export function startServer(deps: {
   accounts: AccountServices;
   connections: ConnectionWiring;
   agentBrowser: AgentBrowser;
+  agentSessions: AgentSessionService;
   primaryFetch: Fetch;
   publicFetch: Fetch;
   websocketHandlers: WebSocketHandler<SocketData>;
@@ -82,7 +84,11 @@ export function startServer(deps: {
     },
     startConnection: async () => {
       agentBrowser.start();
+      deps.agentSessions.start();
       await connectionProfiles.startConfigured();
+      // Hosts that outlived the last bridge are found without waiting for
+      // the next periodic scan.
+      deps.agentSessions.rescan();
       const runtime = connectionManager.defaultReadyRuntime();
       void runtime?.herdr
         .ping()

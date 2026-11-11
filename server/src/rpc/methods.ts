@@ -23,6 +23,13 @@ export const TERMINAL_INPUT_METHODS = new Set([
   "terminal.input",
   "terminal.key",
 ]);
+/** Actions on a pane's agent session, applied in the order they arrive. */
+export const AGENT_SESSION_ACTION_METHODS = new Set([
+  "agent_session.send",
+  "agent_session.interrupt",
+  "agent_session.approve",
+  "agent_session.set_mode",
+]);
 /**
  * Methods a page may send without an `id`: handled like the request, but
  * nothing is sent back, neither a result nor an error.
@@ -37,4 +44,9 @@ export const TERMINAL_RPC_CAPABILITIES = {
   terminal_input_pipeline: true,
   /** `terminal.frame_ack` is accepted without an `id` and gets no reply. */
   terminal_frame_ack_notify: true,
+} as const;
+/** Bridge features announced in the hello's `capabilities`. */
+export const BRIDGE_RPC_CAPABILITIES = {
+  /** `agent_session.*` is served (see `shared/agentSession.ts`). */
+  agent_sessions: true,
 } as const;

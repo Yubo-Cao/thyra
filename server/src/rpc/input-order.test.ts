@@ -32,6 +32,25 @@ test("pane input is ordered per pane across pages", () => {
   expect(first).not.toBe(key("c1", "terminal.input", { terminal_id: "w1:p1" }));
 });
 
+test("agent session actions are ordered per pane across pages", () => {
+  const first = key("c1", "agent_session.send", { pane_id: "w1:p1" });
+  expect(first).not.toBeNull();
+  expect(key("c2", "agent_session.interrupt", { pane_id: "w1:p1" })).toBe(
+    first,
+  );
+  expect(key("c1", "agent_session.approve", { pane_id: "w1:p1" })).toBe(first);
+  expect(key("c1", "agent_session.set_mode", { pane_id: "w1:p1" })).toBe(first);
+  expect(key("c1", "agent_session.send", { pane_id: "w1:p2" })).not.toBe(first);
+  expect(
+    key("c1", "agent_session.send", { pane_id: "w1:p1" }, "other"),
+  ).not.toBe(first);
+  // Typing into the pane's terminal is another queue; reading has none.
+  expect(key("c1", "pane.send_input", { pane_id: "w1:p1" })).not.toBe(first);
+  expect(key("c1", "agent_session.subscribe", { pane_id: "w1:p1" })).toBeNull();
+  expect(key("c1", "agent_session.list", {})).toBeNull();
+  expect(key("c1", "agent_session.send", {})).toBeNull();
+});
+
 test("other requests are not ordered", () => {
   expect(key("c1", "terminal.frame_ack", { terminal_id: "t1" })).toBeNull();
   expect(key("c1", "terminal.resize", { terminal_id: "t1" })).toBeNull();

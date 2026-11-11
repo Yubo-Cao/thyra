@@ -25,7 +25,10 @@ import {
   parseRpcMessage,
   parseRpcMeta,
 } from "../rpc/logging";
-import { TERMINAL_RPC_CAPABILITIES } from "../rpc/methods";
+import {
+  BRIDGE_RPC_CAPABILITIES,
+  TERMINAL_RPC_CAPABILITIES,
+} from "../rpc/methods";
 import type { VscodeProxy } from "../vscode/proxy";
 import type { AccountServices } from "./accounts";
 import type { ServerBootstrap } from "./bootstrap";
@@ -134,6 +137,7 @@ export function createSocketTransports(deps: {
             connection_scoped_http: true,
             connection_runtime_generation: true,
             ...TERMINAL_RPC_CAPABILITIES,
+            ...BRIDGE_RPC_CAPABILITIES,
           },
         }),
         "hello",

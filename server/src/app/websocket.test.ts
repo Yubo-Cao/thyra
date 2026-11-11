@@ -115,6 +115,8 @@ test("the hello names the terminal protocol capabilities", () => {
       connection_id: true,
       terminal_input_pipeline: true,
       terminal_frame_ack_notify: true,
+      // The bridge serves `agent_session.*`.
+      agent_sessions: true,
     },
   });
 });

@@ -27,6 +27,15 @@ const RPC_MATRIX: Record<string, string> = {
   "message_board.credentials.revoke": "admin owner editor viewer outsider",
   "agent.list": "admin owner editor viewer guest guest-pane",
   "agent.prompt": "-",
+  // Agent sessions: reading follows the pane, acting follows pane input.
+  "agent_session.approve": "admin owner editor",
+  "agent_session.interrupt": "admin owner editor",
+  "agent_session.list": "admin owner editor viewer guest guest-pane",
+  "agent_session.send": "admin owner editor",
+  "agent_session.set_mode": "admin owner editor",
+  "agent_session.subscribe": "admin owner editor viewer guest guest-pane",
+  "agent_session.unsubscribe":
+    "admin owner editor viewer outsider guest guest-pane",
   "bridge.identity": "admin owner editor viewer outsider guest guest-pane",
   "bridge.identity_profile": "admin owner editor viewer outsider",
   "bridge.pause_others": "admin",
@@ -374,6 +383,10 @@ describe("authorize", () => {
         "shell.subscribe",
         "terminal.resize",
         "terminal.focus",
+        "agent_session.send",
+        "agent_session.interrupt",
+        "agent_session.approve",
+        "agent_session.set_mode",
       ]) {
         const decision = await request(role, method, W1_PARAMS, claimed);
         expect(decision.allowed).toBe(false);
@@ -416,6 +429,41 @@ describe("authorize", () => {
     expect((await request("viewer", "terminal.input", W1_PARAMS)).allowed).toBe(
       false,
     );
+    // Prompting an agent session claims its pane like typing into it does;
+    // reading the session works whoever holds the pane.
+    expect(
+      await request("editor", "agent_session.send", { pane_id: "w1:p1" }),
+    ).toMatchObject({ allowed: true, autoClaim: true, paneId: "w1:p1" });
+    expect(
+      (
+        await request(
+          "viewer",
+          "agent_session.subscribe",
+          { pane_id: "w1:p1" },
+          claimed,
+        )
+      ).allowed,
+    ).toBe(true);
+    for (const role of ["viewer", "guest", "outsider"] as const)
+      expect(
+        (await request(role, "agent_session.send", { pane_id: "w1:p1" }))
+          .allowed,
+      ).toBe(false);
+    // A link narrowed to one pane reads that pane's session only.
+    expect(
+      (
+        await request("guest-pane", "agent_session.subscribe", {
+          pane_id: "w1:p2",
+        })
+      ).allowed,
+    ).toBe(false);
+    expect(
+      (
+        await request("outsider", "agent_session.subscribe", {
+          pane_id: "w1:p1",
+        })
+      ).allowed,
+    ).toBe(false);
   });
 
   test("viewers never move the shared history; non-holders scroll history only", async () => {

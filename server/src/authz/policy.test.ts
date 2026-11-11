@@ -12,6 +12,7 @@ const SERVER_DISPATCHERS = [
   "server/src/rpc/dispatch.ts",
   "server/src/rpc/bridge-handlers.ts",
   "server/src/rpc/session-handlers.ts",
+  "server/src/rpc/agent-session-handlers.ts",
   "server/src/rpc/workspace-handlers.ts",
   "server/src/rpc/logging.ts",
   "server/src/rpc/methods.ts",

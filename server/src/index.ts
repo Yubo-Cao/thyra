@@ -1,6 +1,8 @@
 import packageJson from "../../package.json";
 import { createAccountServices } from "./app/accounts";
 import { createAgentBrowserWiring } from "./app/agent-browser";
+import { verifyPaneWithHerdr } from "./agent-session/relay";
+import { createAgentSessionService } from "./app/agent-sessions";
 import { createListenerAuthRoutes } from "./app/auth-routes";
 import { loadServerBootstrap } from "./app/bootstrap";
 import { runStartupCommands } from "./app/commands";
@@ -79,6 +81,32 @@ const connections = createConnectionWiring({
   sessions,
 });
 const { connectionManager, legacyRoutingLogger } = connections;
+// Agent sessions run in the panes of the same connection the agent browser
+// serves: the default one, when its Herdr is on this host.
+const agentSessions = createAgentSessionService({
+  logger: logger.child("agent-session"),
+  registry,
+  connection: () => {
+    const id = agentBrowserConnection();
+    const runtime = id ? connectionManager.currentRuntime(id) : null;
+    return id && runtime
+      ? {
+          id,
+          generation: connectionManager.status(id).generation,
+          herdrSocketPath: runtime.socketPath,
+        }
+      : null;
+  },
+  viewerRoles: sessions.viewerRoles,
+  peekScope: sessions.peekScope,
+  verifyPane: verifyPaneWithHerdr((method, params, timeoutMs) => {
+    const id = agentBrowserConnection();
+    const runtime = id ? connectionManager.currentRuntime(id) : null;
+    return runtime
+      ? runtime.herdr.call(method, params, timeoutMs)
+      : Promise.reject(new Error("no connection"));
+  }),
+});
 
 const handleRpc = createRpcDispatcher({
   ...registry,
@@ -91,6 +119,7 @@ const handleRpc = createRpcDispatcher({
   connectionManager,
   connectionProfiles: connections.connectionProfiles,
   legacyRoutingLogger,
+  agentSessions,
   rtcTransport: () => rtcTransport,
 });
 const { websocketHandlers, rtcTransport } = createSocketTransports({
@@ -141,6 +170,7 @@ const shutdown = installShutdown({
   bootstrap,
   connections,
   agentBrowser,
+  agentSessions,
   rtcTransport,
 });
 
@@ -150,6 +180,7 @@ try {
     accounts,
     connections,
     agentBrowser,
+    agentSessions,
     primaryFetch,
     publicFetch,
     websocketHandlers,

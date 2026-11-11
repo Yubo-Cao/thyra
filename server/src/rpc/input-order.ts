@@ -1,4 +1,8 @@
-import { PANE_INPUT_METHODS, TERMINAL_INPUT_METHODS } from "./methods";
+import {
+  AGENT_SESSION_ACTION_METHODS,
+  PANE_INPUT_METHODS,
+  TERMINAL_INPUT_METHODS,
+} from "./methods";
 
 /**
  * The serial queue an input request belongs to, or null for requests that
@@ -11,6 +15,8 @@ import { PANE_INPUT_METHODS, TERMINAL_INPUT_METHODS } from "./methods";
  * - Terminal-addressed input (`terminal.input`, `terminal.key`) has one queue
  *   per page and terminal: a page pipelines its keystrokes, and their
  *   authorization and pane-control checks may settle out of order.
+ * - Agent session actions share one queue per pane across every page, so two
+ *   prompts, or a prompt and an interrupt, reach the host as they were sent.
  */
 export function inputOrderKey(
   client: string,
@@ -25,6 +31,12 @@ export function inputOrderKey(
     const pane = params?.pane_id;
     return typeof pane === "string" && pane
       ? `pane\0${connection ?? ""}\0${pane}`
+      : null;
+  }
+  if (AGENT_SESSION_ACTION_METHODS.has(method)) {
+    const pane = params?.pane_id;
+    return typeof pane === "string" && pane
+      ? `agent-session\0${connection ?? ""}\0${pane}`
       : null;
   }
   if (TERMINAL_INPUT_METHODS.has(method)) {
