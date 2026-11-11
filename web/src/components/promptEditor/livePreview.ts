@@ -2,9 +2,7 @@ import {
   HighlightStyle,
   Language,
   LanguageDescription,
-  LanguageSupport,
   ParseContext,
-  StreamLanguage,
   syntaxHighlighting,
   syntaxTree,
 } from "@codemirror/language";
@@ -25,6 +23,7 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { type MarkdownParser, parseCode } from "@lezer/markdown";
+import { codeLanguages } from "./codeLanguages";
 import { openImageViewer } from "./imageViewer";
 
 /**
@@ -66,81 +65,6 @@ const IMAGE_PATH =
 // reads a placeholder's brackets as a link).
 const CODE_NODES = new Set(["InlineCode", "FencedCode", "CodeBlock"]);
 const LINK_NODES = new Set([...CODE_NODES, "Link", "Image", "Autolink"]);
-
-// Fenced code languages, each downloaded the first time a fence names it.
-const legacy =
-  (load: () => Promise<Parameters<typeof StreamLanguage.define>[0]>) =>
-  async () =>
-    new LanguageSupport(StreamLanguage.define(await load()));
-const codeLanguages = [
-  LanguageDescription.of({
-    name: "JavaScript",
-    alias: ["js", "jsx", "mjs", "cjs", "javascript"],
-    load: () =>
-      import("@codemirror/lang-javascript").then((m) =>
-        m.javascript({ jsx: true }),
-      ),
-  }),
-  LanguageDescription.of({
-    name: "TypeScript",
-    alias: ["ts", "tsx", "typescript"],
-    load: () =>
-      import("@codemirror/lang-javascript").then((m) =>
-        m.javascript({ jsx: true, typescript: true }),
-      ),
-  }),
-  LanguageDescription.of({
-    name: "Python",
-    alias: ["py", "python"],
-    load: () => import("@codemirror/lang-python").then((m) => m.python()),
-  }),
-  LanguageDescription.of({
-    name: "JSON",
-    alias: ["json", "jsonc", "json5"],
-    load: () => import("@codemirror/lang-json").then((m) => m.json()),
-  }),
-  LanguageDescription.of({
-    name: "Rust",
-    alias: ["rs", "rust"],
-    load: () => import("@codemirror/lang-rust").then((m) => m.rust()),
-  }),
-  LanguageDescription.of({
-    name: "Go",
-    alias: ["go", "golang"],
-    load: () => import("@codemirror/lang-go").then((m) => m.go()),
-  }),
-  LanguageDescription.of({
-    name: "YAML",
-    alias: ["yaml", "yml"],
-    load: () => import("@codemirror/lang-yaml").then((m) => m.yaml()),
-  }),
-  LanguageDescription.of({
-    name: "CSS",
-    alias: ["css"],
-    load: () => import("@codemirror/lang-css").then((m) => m.css()),
-  }),
-  LanguageDescription.of({
-    name: "Shell",
-    alias: ["sh", "bash", "zsh", "shell", "console", "fish"],
-    load: legacy(() =>
-      import("@codemirror/legacy-modes/mode/shell").then((m) => m.shell),
-    ),
-  }),
-  LanguageDescription.of({
-    name: "TOML",
-    alias: ["toml"],
-    load: legacy(() =>
-      import("@codemirror/legacy-modes/mode/toml").then((m) => m.toml),
-    ),
-  }),
-  LanguageDescription.of({
-    name: "Diff",
-    alias: ["diff", "patch"],
-    load: legacy(() =>
-      import("@codemirror/legacy-modes/mode/diff").then((m) => m.diff),
-    ),
-  }),
-];
 
 // GitHub-flavoured Markdown as lang-markdown parses it, with fenced code
 // handed to the languages above. Built on markdownLanguage itself (not

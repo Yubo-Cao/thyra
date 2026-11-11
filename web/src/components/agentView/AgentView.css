@@ -261,7 +261,7 @@
   padding: 10px 12px;
   background: transparent;
   color: var(--text-code);
-  font: 12.5px / 1.5 var(--mono-font);
+  font: 12.5px / 1.5 var(--terminal-font);
 }
 
 .agent-view .agent-code code {
@@ -296,7 +296,111 @@
 
 .agent-code-lang {
   color: var(--muted);
-  font: var(--ui-font-size-xs) / 1 var(--mono-font);
+  font: var(--ui-font-size-xs) / 1 var(--terminal-font);
+}
+
+/* Inline code in the terminal's font, like every other code here. */
+.agent-view .agent-md code {
+  font-family: var(--terminal-font);
+}
+
+/* Syntax colours (syntaxHighlight.ts) from the theme's tokens. */
+.agent-hl-keyword {
+  color: var(--syntax-keyword);
+}
+
+.agent-hl-string {
+  color: var(--syntax-string);
+}
+
+.agent-hl-number {
+  color: var(--syntax-number);
+}
+
+.agent-hl-comment {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+
+.agent-hl-function {
+  color: var(--syntax-function);
+}
+
+.agent-hl-type {
+  color: var(--syntax-type);
+}
+
+.agent-hl-property {
+  color: var(--syntax-property);
+}
+
+.agent-hl-variable {
+  color: var(--syntax-variable);
+}
+
+.agent-hl-operator {
+  color: var(--syntax-operator);
+}
+
+.agent-hl-meta {
+  color: var(--syntax-meta);
+}
+
+.agent-hl-deleted {
+  color: var(--red);
+}
+
+/* A reply's table, with its copy and export tools over its top corner. */
+.agent-table {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.agent-md .agent-table > table {
+  margin: 0;
+}
+
+.agent-md .agent-table {
+  margin: 0.6em 0;
+}
+
+.agent-table-tools,
+.agent-message-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.agent-table-tools {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--panel);
+}
+
+.agent-table:hover .agent-table-tools,
+.agent-item:hover .agent-message-tools,
+:is(.agent-table-tools, .agent-message-tools):is(
+  :focus-within,
+  :has([aria-expanded="true"])
+) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .agent-table-tools,
+  .agent-message-tools {
+    opacity: 1;
+  }
+}
+
+/* Under a finished reply: its own actions, quiet until hovered. */
+.agent-message-tools {
+  margin: 2px 0 0 -6px;
+  color: var(--muted);
 }
 
 /* Activity rows (tool calls, thinking): a Button laid out as a list row. */
@@ -334,7 +438,7 @@
 }
 
 .agent-row-title.is-mono {
-  font-family: var(--mono-font);
+  font-family: var(--terminal-font);
   font-size: var(--ui-font-size-sm);
 }
 
@@ -382,7 +486,7 @@
   padding: 8px 12px;
   background: var(--panel);
   color: var(--text-code);
-  font: 12px / 1.5 var(--mono-font);
+  font: 12px / 1.5 var(--terminal-font);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -424,7 +528,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-family: var(--mono-font);
+  font-family: var(--terminal-font);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -442,7 +546,7 @@
   display: inline-flex;
   gap: 6px;
   margin-left: auto;
-  font: var(--ui-font-size-xs) / 1 var(--mono-font);
+  font: var(--ui-font-size-xs) / 1 var(--terminal-font);
 }
 
 .agent-diff-counts .is-add {
@@ -458,7 +562,7 @@
   overflow: auto;
   background: var(--diff-line-bg);
   color: var(--diff-text);
-  font: 12px / 1.5 var(--mono-font);
+  font: 12px / 1.5 var(--terminal-font);
 }
 
 /* As wide as the longest line, so line tints span the scrolled width. */
@@ -690,7 +794,7 @@
   padding: 8px 10px;
   background: var(--bg);
   color: var(--text-code);
-  font: 12.5px / 1.5 var(--mono-font);
+  font: 12.5px / 1.5 var(--terminal-font);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -778,7 +882,7 @@
 
 /* Code keeps the transcript's look: monospace, in the text's colour. */
 .agent-composer-editor :is(.prompt-md-code, .prompt-md-code-line) {
-  font-family: var(--mono-font);
+  font-family: var(--terminal-font);
   font-size: 0.92em;
 }
 

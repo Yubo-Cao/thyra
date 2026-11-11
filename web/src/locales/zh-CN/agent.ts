@@ -45,6 +45,13 @@ export default {
   "In progress": "进行中",
   "To do": "待办",
   "Copy code": "复制代码",
+  "Copy as Markdown": "复制为 Markdown",
+  "Copy table": "复制表格",
+  "Export table": "导出表格",
+  "Table actions": "表格操作",
+  "Download CSV": "下载 CSV",
+  "Download Excel": "下载 Excel",
+  "Download Markdown": "下载 Markdown",
   "Image {number}": "图片 {number}",
   "This image is not available": "此图片不可用",
   // Approvals

@@ -153,6 +153,11 @@ The switch in the pane header changes that pane between the agent view and its t
 The view appears only where the bridge runs agent sessions, and its code loads with the first pane that shows one.
 
 - **Transcript.** Prompts and replies as Markdown, replies while they stream: text keeps its shape as it arrives (an open code fence, bold run or table is drawn as it will end up), code blocks have a copy button, and an image in a reply stays a link.
+  Code (fenced blocks, inline code, commands, tool input and output, diffs) is in the terminal's font, the one chosen in settings.
+  Fenced blocks are coloured by their language once the fence closes, commands as shell, and diffs by the file's extension, in the theme's colours; each language loads the first time code needs it, and code shows plain until then.
+  A finished reply has a **Copy as Markdown** button under it (on hover; always on touch).
+  A table has tools over its corner (on hover; always on touch): **Copy** puts tab-separated text and an HTML table on the clipboard, so a spreadsheet pastes it as cells; the menu beside it copies the table as Markdown or downloads it as CSV, Excel (`.xlsx`) or Markdown.
+  Copying a selection that spans formatting puts Markdown on the clipboard as its text (headings, lists, emphasis, links, code with its language, tables), with the formatted HTML beside it; a selection inside code copies the code as it is.
   A prompt shows the images sent with it where they stood in its text; a click opens one full size, and one that cannot be loaded (its file is gone from the host, or is not yours to read) shows as its `[Image #N]` placeholder.
   Thinking is a dimmed row that shows its latest line while it streams.
   Tool calls are one-line rows with an icon for the kind of call (command, edit, read, search, fetch, task), its title, and its state; a row opens to the command, the input, the output, and each changed file as a diff under its path.
