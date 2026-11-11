@@ -1,0 +1,695 @@
+/* Agent view: a session's transcript, approval requests and prompt box in a
+   pane, under the pane header. The transcript reads as a document in one
+   column; tool activity is quiet rows that open in place. */
+.agent-view {
+  --agent-column: 860px;
+  --agent-gutter: 20px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.agent-loading {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--muted);
+  font-size: var(--ui-font-size);
+  text-align: center;
+  /* A session that loads at once shows no loading state at all. */
+  animation: agent-loading-in 1ms 400ms both;
+}
+
+@keyframes agent-loading-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.agent-transcript-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+
+.agent-transcript {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  /* The view keeps its own place while the mounted window changes. */
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  padding: 16px var(--agent-gutter) 12px;
+}
+
+.agent-transcript:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.agent-transcript-content {
+  max-width: var(--agent-column);
+  margin: 0 auto;
+}
+
+.agent-empty {
+  margin: 18vh 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.agent-item {
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.agent-item:first-child {
+  margin-top: 0;
+}
+
+/* A prompt starts a turn: more air above it. */
+.agent-item[data-type="user"]:not(:first-child) {
+  margin-top: 22px;
+}
+
+/* Consecutive activity rows stack without gaps. */
+.agent-item:is([data-type="tool"], [data-type="thinking"])
++ .agent-item:is([data-type="tool"], [data-type="thinking"]) {
+  margin-top: 0;
+}
+
+.agent-user {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  color: var(--text-strong);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Replies reuse the Markdown preview's type, at the transcript's density. */
+.agent-md.file-preview-markdown {
+  flex: none;
+  overflow: visible;
+  padding: 0;
+  font-size: inherit;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.agent-md :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.1em 0 0.4em;
+  padding-bottom: 0;
+  border-bottom: 0;
+  font-size: 1em;
+}
+
+.agent-md h1 {
+  font-size: 1.3em;
+}
+
+.agent-md h2 {
+  font-size: 1.15em;
+}
+
+.agent-md :is(p, ul, ol, blockquote, table, .agent-code) {
+  margin: 0.6em 0;
+}
+
+.agent-md li > :is(p, .agent-code) {
+  margin: 0.35em 0;
+}
+
+.agent-md .agent-md-task {
+  margin-left: -1.4em;
+  list-style: none;
+}
+
+.agent-md-check {
+  margin-right: 6px;
+  color: var(--muted);
+  vertical-align: -2px;
+}
+
+/* Code: fenced blocks in replies, commands and tool input in details. */
+.agent-code {
+  position: relative;
+  min-width: 0;
+  background: var(--panel);
+}
+
+.agent-view .agent-code pre {
+  max-height: 480px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--text-code);
+  font: 12.5px / 1.5 var(--mono-font);
+}
+
+.agent-view .agent-code code {
+  padding: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.agent-code-tools {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  background: var(--panel);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.agent-code:hover .agent-code-tools,
+.agent-code-tools:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .agent-code-tools {
+    opacity: 1;
+  }
+}
+
+.agent-code-lang {
+  color: var(--muted);
+  font: var(--ui-font-size-xs) / 1 var(--mono-font);
+}
+
+/* Activity rows (tool calls, thinking): a Button laid out as a list row. */
+.button.agent-row {
+  --button-height: var(--ui-row-height);
+  --button-fg: var(--muted);
+  width: calc(100% + 12px);
+  margin-inline: -6px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding-inline: 6px;
+  font-size: var(--ui-font-size);
+  font-weight: 400;
+}
+
+.button.agent-row:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.agent-row > svg {
+  flex: 0 0 auto;
+}
+
+.agent-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-row-title.is-mono {
+  font-family: var(--mono-font);
+  font-size: var(--ui-font-size-sm);
+}
+
+.agent-row.is-dim .agent-row-title {
+  color: var(--muted);
+}
+
+.agent-row-preview {
+  margin-left: 10px;
+  opacity: 0.75;
+}
+
+.agent-row-chevron {
+  opacity: 0.55;
+  transition: transform 120ms ease;
+}
+
+.agent-row[aria-expanded="true"] .agent-row-chevron {
+  transform: rotate(90deg);
+}
+
+/* Open, the diff under the row carries the counts. */
+.agent-row[aria-expanded="true"] .agent-diff-counts {
+  display: none;
+}
+
+.agent-detail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 10px 22px;
+}
+
+.agent-detail-note {
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: var(--ui-font-size-xs);
+}
+
+.agent-output {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--text-code);
+  font: 12px / 1.5 var(--mono-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-thinking {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-left: 12px;
+  box-shadow: inset 2px 0 0 var(--border);
+  color: var(--muted);
+  font-size: var(--ui-font-size);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A file's unified diff under its path. */
+.agent-diff {
+  min-width: 0;
+}
+
+.agent-diff-head {
+  min-height: var(--ui-row-height);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+}
+
+.agent-diff-head > svg {
+  flex: 0 0 auto;
+}
+
+.agent-diff-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--mono-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.button.agent-diff-path {
+  --button-fg: var(--text);
+  display: block;
+  padding-inline: 4px;
+  font-size: var(--ui-font-size-sm);
+  font-weight: 400;
+}
+
+.agent-diff-counts {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  font: var(--ui-font-size-xs) / 1 var(--mono-font);
+}
+
+.agent-diff-counts .is-add {
+  color: var(--green);
+}
+
+.agent-diff-counts .is-remove {
+  color: var(--red);
+}
+
+.agent-diff-body {
+  max-height: 360px;
+  overflow: auto;
+  background: var(--diff-line-bg);
+  color: var(--diff-text);
+  font: 12px / 1.5 var(--mono-font);
+}
+
+/* As wide as the longest line, so line tints span the scrolled width. */
+.agent-diff-lines {
+  width: max-content;
+  min-width: 100%;
+  padding: 2px 0;
+}
+
+.agent-diff-line {
+  display: flex;
+  padding-right: 12px;
+  white-space: pre;
+}
+
+.agent-diff-line.is-add {
+  background: var(--diff-add-bg);
+}
+
+.agent-diff-line.is-remove {
+  background: var(--diff-del-bg);
+}
+
+.agent-diff-line.is-hunk {
+  background: var(--diff-hunk-bg);
+  color: var(--diff-hunk-text);
+}
+
+.agent-diff-line.is-note {
+  color: var(--muted);
+}
+
+.agent-diff-number,
+.agent-diff-sign {
+  flex: 0 0 auto;
+  color: var(--muted);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.agent-diff-number {
+  width: 4ch;
+  padding: 0 4px 0 8px;
+  opacity: 0.7;
+  text-align: right;
+}
+
+.agent-diff-sign {
+  width: 2ch;
+  text-align: center;
+}
+
+.agent-plan {
+  padding: 10px 12px;
+  background: var(--panel);
+}
+
+.agent-plan-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+  font-weight: 600;
+}
+
+.agent-plan ul {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-plan li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.agent-plan li > :first-child {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.agent-plan li.is-done {
+  color: var(--muted);
+}
+
+.agent-plan li.is-done > :first-child {
+  color: var(--green);
+}
+
+.agent-plan li.is-in_progress {
+  color: var(--text-strong);
+}
+
+.agent-plan li.is-in_progress > :first-child {
+  color: var(--accent);
+}
+
+.agent-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--ui-font-size);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.agent-notice > svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.agent-notice.is-error {
+  padding: 8px 12px;
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.agent-activity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: var(--ui-font-size);
+}
+
+.button.agent-latest {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Below the transcript, on its column: approvals, then the prompt box. */
+.agent-dock {
+  box-sizing: border-box;
+  /* Never more than most of the pane: the requests scroll, the box stays. */
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 75%;
+  width: 100%;
+  container: agent-dock / inline-size;
+  max-width: calc(var(--agent-column) + 2 * var(--agent-gutter));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 auto;
+  padding: 4px var(--agent-gutter) 12px;
+}
+
+.agent-approvals {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* A request the agent waits on: tinted and marked so it cannot be missed.
+   In a short pane its body scrolls and its answers stay in view. */
+.agent-approval {
+  flex: 0 1 auto;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  padding: 10px 12px 12px 15px;
+  background: color-mix(in srgb, var(--yellow) 13%, var(--panel));
+  box-shadow: inset 3px 0 0 var(--yellow);
+}
+
+.agent-approval > * {
+  flex: 0 0 auto;
+}
+
+.agent-approval-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: var(--ui-font-size);
+}
+
+.agent-approval-title > svg {
+  flex: 0 0 auto;
+  color: var(--yellow);
+}
+
+.agent-approval > .agent-approval-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.agent-approval-body > * {
+  flex: 0 0 auto;
+}
+
+.agent-approval-body:empty {
+  display: none;
+}
+
+.agent-approval-detail {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--ui-font-size);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.agent-approval-command {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text-code);
+  font: 12.5px / 1.5 var(--mono-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* One scroll for the whole body; a diff still scrolls sideways. */
+.agent-approval .agent-diff-body {
+  max-height: none;
+}
+
+.agent-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-ended {
+  flex: 0 0 auto;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-size: var(--ui-font-size);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The prompt box: one filled surface holding the text and its controls. */
+.agent-composer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--field-bg);
+}
+
+.agent-composer:focus-within {
+  box-shadow: inset 0 -2px 0 var(--focus);
+}
+
+.agent-composer .agent-composer-input {
+  min-height: 42px;
+  max-height: 40vh;
+  padding: 10px 12px 4px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.agent-composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 6px 8px;
+}
+
+.agent-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--ui-control-height);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-meta .ui-select {
+  flex: 0 1 auto;
+}
+
+/* The model name gives way first, and leaves a narrow box altogether. */
+.agent-meta .agent-meta-model {
+  flex: 0 100 auto;
+  min-width: 0;
+}
+
+@container agent-dock (max-width: 440px) {
+  .agent-meta .agent-meta-model {
+    display: none;
+  }
+}
+
+/* Keep mobile styling in sync with the saved layout and URL override. */
+:where(html[data-layout="mobile"]) {
+  .agent-view {
+    --agent-gutter: 12px;
+    font-size: 15px;
+  }
+
+  .agent-dock {
+    /* In flow above the keyboard: the app shell owns the main lift, and
+       iOS adds its accessory-bar gap (see TerminalComposer.css). */
+    margin-bottom: var(--keyboard-inset-composer-gap, 0px);
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .agent-composer .agent-composer-input {
+    max-height: 32dvh;
+    /* 16px keeps iOS Safari from zooming in on focus. */
+    font-size: 16px;
+    overscroll-behavior: contain;
+  }
+
+  .agent-composer-foot .button {
+    --button-height: 36px;
+  }
+
+  /* Answers are thumb targets that share the row. */
+  .agent-approval-actions .button {
+    --button-height: 42px;
+    flex: 1 1 auto;
+  }
+}

@@ -1,0 +1,54 @@
+// Simplified Chinese messages for the agent view group; keys are the English source.
+export default {
+  // Pane view switch and launcher
+  "Pane view": "窗格视图",
+  "Agent view": "Agent 视图",
+  "Loading agent view": "正在加载 Agent 视图",
+  "Open the agent in": "Agent 打开方式",
+  // Session status
+  Starting: "启动中",
+  "Needs approval": "等待批准",
+  "Ended with an error": "出错结束",
+  Ended: "已结束",
+  "Loading the session": "正在加载会话",
+  "Close this pane and end its agent session?":
+    "关闭此窗格并结束其中的 Agent 会话？",
+  "Could not send the prompt": "无法发送提示",
+  "Could not stop the agent": "无法停止 Agent",
+  "Could not answer the request": "无法答复请求",
+  "Could not change the mode": "无法切换模式",
+  // Transcript
+  "Agent transcript": "Agent 对话记录",
+  "Send a prompt to start working with the agent.":
+    "发送提示，开始与 Agent 协作。",
+  "Starting the agent": "正在启动 Agent",
+  "Jump to latest": "跳到最新",
+  "Open {path}": "打开 {path}",
+  "{count} more lines not shown": "还有 {count} 行未显示",
+  Running: "运行中",
+  Failed: "失败",
+  Denied: "已拒绝",
+  "The output was cut off here.": "输出在此处被截断。",
+  Thinking: "思考中",
+  Thought: "思考",
+  Plan: "计划",
+  "{done} of {total}": "{done} / {total}",
+  "In progress": "进行中",
+  "To do": "待办",
+  "Copy code": "复制代码",
+  // Approvals
+  "Approval requests": "批准请求",
+  "Waiting for someone who can answer.": "正在等待有权限的人答复。",
+  // Composer
+  Prompt: "提示",
+  "Ask the agent": "向 Agent 提问",
+  "Add to the running turn": "为进行中的回合补充说明",
+  "The agent is starting": "Agent 正在启动",
+  "This session has ended": "此会话已结束",
+  "Stop the agent": "停止 Agent",
+  Mode: "模式",
+  "{percent}% context": "上下文 {percent}%",
+  "{used} of {window} context tokens used":
+    "已用上下文 {used} / {window} 个令牌",
+  "{count} tokens": "{count} 个令牌",
+};

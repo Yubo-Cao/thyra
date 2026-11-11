@@ -8,6 +8,7 @@ import {
   Globe,
   Keyboard,
   Maximize2,
+  MessageSquareText,
   Minimize2,
   MonitorCheck,
   MousePointer2,
@@ -18,9 +19,10 @@ import {
   X,
 } from "lucide-react";
 import type { TerminalPreviewMode } from "./TerminalPreview";
-import type { PointerEvent } from "react";
+import type { PointerEvent, ReactNode } from "react";
 import { agentStatusText } from "../../agentOrder";
 import { openAgentBrowser, useAgentBrowserAvailable } from "../../agentBrowser";
+import { type AgentPaneView, setAgentPaneView } from "../../agentSessions";
 import { t } from "../../i18n";
 import { shortcutTitle } from "../../shortcutPreferences";
 import { setPaneWatched, usePaneWatched } from "../../paneWatch";
@@ -38,6 +40,7 @@ import {
 } from "../TerminalVoiceTyping";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import { Token } from "../ui/Token";
 
 const preventPaneActionFocus = (e: PointerEvent<HTMLElement>) => {
@@ -63,6 +66,159 @@ async function copyPaneId(paneId: string) {
   }
 }
 
+/** Who types into and sizes the terminal: claim, display pin, view only. */
+function PaneControl({
+  control,
+  previewMode,
+  onPreviewModeChange,
+}: {
+  control: ReturnType<typeof usePaneControl>;
+  previewMode?: TerminalPreviewMode;
+  onPreviewModeChange?: (mode: TerminalPreviewMode) => void;
+}) {
+  const { access } = control;
+  // Another device sizes this pane: offer typing here without resizing it.
+  const foreignDisplay = !!access.display && !access.display.mine;
+  const displayName = access.display?.name ?? t("another device");
+  const pinnedHere = access.display?.mine === true && access.display.pinned;
+  return (
+    <div className="pane-control" aria-label={t("Pane control")}>
+      {access.viewOnly ? (
+        <Token tone="info" icon={<Eye size={11} />}>
+          {t("Viewing")}
+        </Token>
+      ) : access.inputOnly ? (
+        <Token
+          tone="accent"
+          icon={<Keyboard size={11} />}
+          title={t("You type here; {device} keeps the pane size", {
+            device: displayName,
+          })}
+        >
+          {t("Typing")}
+        </Token>
+      ) : access.ownsLayout ? (
+        <Token
+          tone="accent"
+          icon={<MousePointer2 size={11} />}
+          title={t(
+            "You control this pane. Others watch until they take control.",
+          )}
+        >
+          {t("In control")}
+        </Token>
+      ) : null}
+      {!access.readOnly &&
+      foreignDisplay &&
+      (!access.ownsLayout || access.viewOnly) ? (
+        <Button
+          variant={access.display?.active ? "primary" : "ghost"}
+          disabled={control.busy || access.protectedUntil > Date.now()}
+          onPointerDown={preventPaneActionFocus}
+          onClick={control.typeHere}
+          title={t("Type here, keep size on {device}", {
+            device: displayName,
+          })}
+          aria-label={t("Type here, keep size on {device}", {
+            device: displayName,
+          })}
+        >
+          <Keyboard size={13} />
+          <span>{t("Type here")}</span>
+        </Button>
+      ) : null}
+      {!access.readOnly &&
+      foreignDisplay &&
+      (!access.ownsLayout || access.viewOnly || access.inputOnly) ? (
+        <Button
+          variant={
+            access.display?.active || access.inputOnly ? "ghost" : "primary"
+          }
+          disabled={control.busy || access.protectedUntil > Date.now()}
+          onPointerDown={preventPaneActionFocus}
+          onClick={control.takeControl}
+          title={t("Take control and resize here")}
+          aria-label={t("Take control and resize here")}
+        >
+          <Scaling size={13} />
+          <span>{t("Resize here")}</span>
+        </Button>
+      ) : null}
+      {!access.readOnly &&
+      !foreignDisplay &&
+      (!access.ownsLayout || access.viewOnly) ? (
+        <Button
+          disabled={control.busy || access.protectedUntil > Date.now()}
+          onPointerDown={preventPaneActionFocus}
+          onClick={control.takeControl}
+          title={
+            access.protectedUntil > Date.now()
+              ? t("Another collaborator has protected control")
+              : access.ownerName
+                ? t(
+                    "{owner} controls this pane. Take control; it stays yours for at least 15 seconds",
+                    { owner: access.ownerName },
+                  )
+                : t(
+                    "Take control of this pane; it stays yours for at least 15 seconds",
+                  )
+          }
+        >
+          <MousePointer2 size={13} />
+          <span>{t("Take control")}</span>
+        </Button>
+      ) : null}
+      {/* Viewers (and share-link guests) only watch: no pane controls. */}
+      {access.readOnly ? null : (
+        <Button
+          icon
+          aria-pressed={access.viewOnly}
+          onPointerDown={preventPaneActionFocus}
+          onClick={access.viewOnly ? control.takeControl : control.watch}
+          disabled={control.busy}
+          title={
+            access.viewOnly
+              ? t("Stop viewing and take control")
+              : t("View only: stop sending input and resizing this pane")
+          }
+          aria-label={access.viewOnly ? t("Stop viewing") : t("View only")}
+        >
+          {access.viewOnly ? <EyeOff size={14} /> : <Eye size={14} />}
+        </Button>
+      )}
+      {access.inputOnly && onPreviewModeChange ? (
+        <IconButton
+          aria-pressed={previewMode === "text"}
+          onPointerDown={preventPaneActionFocus}
+          onClick={() =>
+            onPreviewModeChange(previewMode === "text" ? "screen" : "text")
+          }
+          label={
+            previewMode === "text"
+              ? t("Show the screen preview")
+              : t("Show the last lines as text")
+          }
+          icon={<AlignLeft size={14} />}
+        />
+      ) : null}
+      {access.readOnly ? null : (
+        <IconButton
+          aria-pressed={pinnedHere}
+          disabled={control.busy || access.viewOnly}
+          onPointerDown={preventPaneActionFocus}
+          onClick={() => void control.toggleDisplayPin()}
+          label={
+            pinnedHere
+              ? t("Stop keeping this pane sized for this device")
+              : t("Display on this device: keep this pane sized for it")
+          }
+          icon={<MonitorCheck size={14} />}
+        />
+      )}
+    </div>
+  );
+}
+
 /** The pane's identity, layout control, and split/zoom/close actions. */
 export function TerminalPaneHeader({
   pane,
@@ -78,13 +234,17 @@ export function TerminalPaneHeader({
   previewMode,
   onPreviewModeChange,
   promptEditor,
+  agentView,
+  status,
+  readOnly = false,
 }: {
   pane: Pane;
   paneName: string;
   isActivePane: boolean;
-  control: ReturnType<typeof usePaneControl>;
-  voiceTyping: TerminalVoiceTyping;
-  voiceTypingDisabledReason: string | null;
+  /** Terminal input and size control; the agent view has neither. */
+  control?: ReturnType<typeof usePaneControl>;
+  voiceTyping?: TerminalVoiceTyping;
+  voiceTypingDisabledReason?: string | null;
   paneZoomed: boolean;
   canClosePane: boolean;
   endpointAvailable: boolean;
@@ -94,12 +254,14 @@ export function TerminalPaneHeader({
   onPreviewModeChange?: (mode: TerminalPreviewMode) => void;
   /** The desktop prompt editor toggle, on agent panes this viewer may type in. */
   promptEditor?: { open: boolean; toggle: () => void };
+  /** Which view a pane with an agent session shows; offers the switch. */
+  agentView?: AgentPaneView;
+  /** Replaces the agent status label (the agent view shows its session's). */
+  status?: ReactNode;
+  /** Without `control`: the viewer may not change the pane. */
+  readOnly?: boolean;
 }) {
-  const { access } = control;
-  // Another device sizes this pane: offer typing here without resizing it.
-  const foreignDisplay = !!access.display && !access.display.mine;
-  const displayName = access.display?.name ?? t("another device");
-  const pinnedHere = access.display?.mine === true && access.display.pinned;
+  const access = control?.access ?? { readOnly, viewOnly: readOnly };
   const connectionId = useStoreSelector((state) => state.activeConnectionId);
   const watched = usePaneWatched(connectionId, pane.pane_id);
   const browser = useAgentBrowserAvailable(connectionId) && !!pane.agent;
@@ -140,7 +302,9 @@ export function TerminalPaneHeader({
           >
             {pane.pane_id}
           </Token>
-          {pane.agent && shouldShowAgentStatusLabel(pane.agent_status) ? (
+          {status !== undefined ? (
+            status
+          ) : pane.agent && shouldShowAgentStatusLabel(pane.agent_status) ? (
             <span
               className={`${agentClass(pane.agent_status)} terminal-pane-status`}
             >
@@ -154,140 +318,40 @@ export function TerminalPaneHeader({
             {t("No history")}
           </Token>
         ) : null}
-        <div className="pane-control" aria-label={t("Pane control")}>
-          {access.viewOnly ? (
-            <Token tone="info" icon={<Eye size={11} />}>
-              {t("Viewing")}
-            </Token>
-          ) : access.inputOnly ? (
-            <Token
-              tone="accent"
-              icon={<Keyboard size={11} />}
-              title={t("You type here; {device} keeps the pane size", {
-                device: displayName,
-              })}
-            >
-              {t("Typing")}
-            </Token>
-          ) : access.ownsLayout ? (
-            <Token
-              tone="accent"
-              icon={<MousePointer2 size={11} />}
-              title={t(
-                "You control this pane. Others watch until they take control.",
-              )}
-            >
-              {t("In control")}
-            </Token>
-          ) : null}
-          {!access.readOnly &&
-          foreignDisplay &&
-          (!access.ownsLayout || access.viewOnly) ? (
-            <Button
-              variant={access.display?.active ? "primary" : "ghost"}
-              disabled={control.busy || access.protectedUntil > Date.now()}
-              onPointerDown={preventPaneActionFocus}
-              onClick={control.typeHere}
-              title={t("Type here, keep size on {device}", {
-                device: displayName,
-              })}
-              aria-label={t("Type here, keep size on {device}", {
-                device: displayName,
-              })}
-            >
-              <Keyboard size={13} />
-              <span>{t("Type here")}</span>
-            </Button>
-          ) : null}
-          {!access.readOnly &&
-          foreignDisplay &&
-          (!access.ownsLayout || access.viewOnly || access.inputOnly) ? (
-            <Button
-              variant={
-                access.display?.active || access.inputOnly ? "ghost" : "primary"
-              }
-              disabled={control.busy || access.protectedUntil > Date.now()}
-              onPointerDown={preventPaneActionFocus}
-              onClick={control.takeControl}
-              title={t("Take control and resize here")}
-              aria-label={t("Take control and resize here")}
-            >
-              <Scaling size={13} />
-              <span>{t("Resize here")}</span>
-            </Button>
-          ) : null}
-          {!access.readOnly &&
-          !foreignDisplay &&
-          (!access.ownsLayout || access.viewOnly) ? (
-            <Button
-              disabled={control.busy || access.protectedUntil > Date.now()}
-              onPointerDown={preventPaneActionFocus}
-              onClick={control.takeControl}
-              title={
-                access.protectedUntil > Date.now()
-                  ? t("Another collaborator has protected control")
-                  : access.ownerName
-                    ? t(
-                        "{owner} controls this pane. Take control; it stays yours for at least 15 seconds",
-                        { owner: access.ownerName },
-                      )
-                    : t(
-                        "Take control of this pane; it stays yours for at least 15 seconds",
-                      )
-              }
-            >
-              <MousePointer2 size={13} />
-              <span>{t("Take control")}</span>
-            </Button>
-          ) : null}
-          {/* Viewers (and share-link guests) only watch: no pane controls. */}
-          {access.readOnly ? null : (
-            <Button
-              icon
-              aria-pressed={access.viewOnly}
-              onPointerDown={preventPaneActionFocus}
-              onClick={access.viewOnly ? control.takeControl : control.watch}
-              disabled={control.busy}
-              title={
-                access.viewOnly
-                  ? t("Stop viewing and take control")
-                  : t("View only: stop sending input and resizing this pane")
-              }
-              aria-label={access.viewOnly ? t("Stop viewing") : t("View only")}
-            >
-              {access.viewOnly ? <EyeOff size={14} /> : <Eye size={14} />}
-            </Button>
-          )}
-          {access.inputOnly && onPreviewModeChange ? (
-            <IconButton
-              aria-pressed={previewMode === "text"}
-              onPointerDown={preventPaneActionFocus}
-              onClick={() =>
-                onPreviewModeChange(previewMode === "text" ? "screen" : "text")
-              }
-              label={
-                previewMode === "text"
-                  ? t("Show the screen preview")
-                  : t("Show the last lines as text")
-              }
-              icon={<AlignLeft size={14} />}
-            />
-          ) : null}
-          {access.readOnly ? null : (
-            <IconButton
-              aria-pressed={pinnedHere}
-              disabled={control.busy || access.viewOnly}
-              onPointerDown={preventPaneActionFocus}
-              onClick={() => void control.toggleDisplayPin()}
-              label={
-                pinnedHere
-                  ? t("Stop keeping this pane sized for this device")
-                  : t("Display on this device: keep this pane sized for it")
-              }
-              icon={<MonitorCheck size={14} />}
-            />
-          )}
-        </div>
+        {control ? (
+          <PaneControl
+            control={control}
+            previewMode={previewMode}
+            onPreviewModeChange={onPreviewModeChange}
+          />
+        ) : readOnly ? (
+          <Token tone="info" icon={<Eye size={11} />}>
+            {t("Viewing")}
+          </Token>
+        ) : null}
+        {agentView ? (
+          <SegmentedControl
+            aria-label={t("Pane view")}
+            value={agentView}
+            onChange={(view) =>
+              setAgentPaneView(connectionId, pane.pane_id, view)
+            }
+            options={[
+              {
+                value: "agent",
+                label: <MessageSquareText size={14} aria-hidden="true" />,
+                ariaLabel: t("Agent view"),
+                title: t("Agent view"),
+              },
+              {
+                value: "terminal",
+                label: <SquareTerminal size={14} aria-hidden="true" />,
+                ariaLabel: t("Terminal"),
+                title: t("Terminal"),
+              },
+            ]}
+          />
+        ) : null}
         <div
           className="terminal-pane-toolbar"
           aria-label={t("Pane actions")}
@@ -339,12 +403,14 @@ export function TerminalPaneHeader({
               icon={<TextCursorInput size={14} />}
             />
           ) : null}
-          <TerminalVoiceButton
-            voice={voiceTyping}
-            className="terminal-pane-action"
-            iconSize={14}
-            disabledReason={voiceTypingDisabledReason}
-          />
+          {voiceTyping ? (
+            <TerminalVoiceButton
+              voice={voiceTyping}
+              className="terminal-pane-action"
+              iconSize={14}
+              disabledReason={voiceTypingDisabledReason ?? null}
+            />
+          ) : null}
           {!paneZoomed ? (
             <>
               <IconButton
@@ -391,7 +457,7 @@ export function TerminalPaneHeader({
           ) : null}
         </div>
       </div>
-      {control.error ? (
+      {control?.error ? (
         <div className="pane-control-error" role="alert">
           {control.error}
         </div>

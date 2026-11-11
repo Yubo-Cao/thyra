@@ -1,4 +1,5 @@
 import { selectPanesWithoutActivity } from "../agentOrder";
+import type { AgentPaneView } from "../agentSessions";
 import { keepFocus } from "./ui/keepFocus";
 import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
@@ -195,6 +196,7 @@ export function TerminalView({
   composerOpen: controlledComposerOpen,
   onComposerOpenChange,
   onOpenWorkspaceFile,
+  agentView,
 }: {
   paneId?: string;
   terminalTheme: TerminalTheme;
@@ -206,6 +208,8 @@ export function TerminalView({
   composerOpen?: boolean;
   onComposerOpenChange?: (open: boolean) => void;
   onOpenWorkspaceFile?: (request: TerminalWorkspaceFileRequest) => void;
+  /** Set for a pane with an agent session: its header offers the switch. */
+  agentView?: AgentPaneView;
 }) {
   const s = useStoreSelector(
     useShallow((state) => ({
@@ -928,6 +932,7 @@ export function TerminalView({
           onClosePane={() => setClosePaneRequested(true)}
           previewMode={previewMode}
           onPreviewModeChange={changePreviewMode}
+          agentView={agentView}
           promptEditor={
             promptEditorAvailable
               ? {

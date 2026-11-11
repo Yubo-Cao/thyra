@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useRef } from "react";
+import { agentSessionsStore } from "../agentSessions";
 import { commandComboboxPanel } from "../components/CommandMenu";
 import { configMenuPanel } from "../components/ConfigMenu";
 import { connectionSwitcherPanel } from "../components/ConnectionSwitcherTrigger";
@@ -41,6 +42,13 @@ export const projectLauncherPanel = lazyPanel("project-launcher", () =>
     (module) => module.ProjectLauncher,
   ),
 );
+// A pane's agent view (transcript, Markdown, prompt box) loads with the first
+// pane that shows one, so terminals start no later than before.
+export const agentViewPanel = lazyPanel("agent-view", () =>
+  import("../components/agentView/AgentView").then(
+    (module) => module.AgentView,
+  ),
+);
 // Delegated tooltips and overlay scrollbar thumbs load after the first output.
 const LazyGlobalTooltip = lazyWithReload("global-tooltip", () =>
   import("../components/GlobalTooltip").then((module) => ({
@@ -58,6 +66,10 @@ const LazyOverlayScrollbarLayer = lazyWithReload("overlay-scrollbars", () =>
 const IDLE_PREFETCH_DELAY_MS = 1000;
 function idlePrefetchLoaders(mobile: boolean) {
   return [
+    // Only where the bridge runs agent sessions.
+    ...(agentSessionsStore.getState().available
+      ? [agentViewPanel.preload]
+      : []),
     ...(mobile ? [terminalComposerPanel.preload] : []),
     commandComboboxPanel.preload,
     configMenuPanel.preload,
