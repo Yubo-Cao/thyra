@@ -94,7 +94,33 @@ function SessionStatus({ info }: { info: AgentSessionInfo }) {
   ) : null;
 }
 
-/** Follow `paneId`'s session while connected; the store outlives reconnects. */
+/** A page hidden this long stops receiving the transcript. */
+const HIDDEN_UNSUBSCRIBE_MS = 30_000;
+
+/** False once the page has been hidden for a while; true again when shown. */
+function usePageShown(): boolean {
+  const [shown, setShown] = useState(true);
+  useEffect(() => {
+    let timer = 0;
+    const update = () => {
+      window.clearTimeout(timer);
+      if (!document.hidden) setShown(true);
+      else timer = window.setTimeout(setShown, HIDDEN_UNSUBSCRIBE_MS, false);
+    };
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+  return shown;
+}
+
+/**
+ * Follow `paneId`'s session while connected and on screen. The store outlives
+ * reconnects, so the transcript stays up while a fresh snapshot is fetched.
+ */
 function useAgentSession(paneId: string): AgentSessionStore {
   const client = useConnectionClient();
   const connected = useStoreSelector(
@@ -102,13 +128,14 @@ function useAgentSession(paneId: string): AgentSessionStore {
   );
   // Rises when subscriptions were lost with the socket (terminals reattach).
   const epoch = useStoreSelector((state) => state.terminalAttachEpoch);
+  const shown = usePageShown();
   const [session] = useState(createAgentSessionStore);
   useEffect(() => {
     void epoch;
-    return connected
+    return connected && shown
       ? connectAgentSession(agentSessionTransport(client), paneId, session)
       : undefined;
-  }, [client, connected, epoch, paneId, session]);
+  }, [client, connected, epoch, paneId, session, shown]);
   return session;
 }
 
