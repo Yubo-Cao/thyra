@@ -653,7 +653,7 @@ It lives in the pane, not in the bridge, so a session survives every bridge rest
 A pane hosts one session; a second host for the same pane refuses to start.
 The host ends, killing the agent, on Ctrl+C, SIGTERM or SIGHUP (the pane closing), and when the agent ends by itself with success.
 An agent that crashes leaves the host running with status `exited` and `error`, so the transcript stays readable until the pane closes or the host is interrupted.
-The pane shows a plain running log (prompts, answers, one line per tool call, approval notices) and no terminal UI.
+The pane shows a plain running log (prompts, answers, one line per tool call, approval notices) with control characters removed, and no terminal UI.
 
 **Bounds.** A session keeps at most `AGENT_SESSION_ITEM_LIMIT` items and 2 MiB of transcript text; past either, the oldest items go, never the newest 20.
 Tool output is cut to `AGENT_TOOL_OUTPUT_LIMIT` keeping its start and end, a file's patch to 64 KiB at a line boundary with the cut hunk's header recounted, and a prompt may be `AGENT_PROMPT_LIMIT` long.
