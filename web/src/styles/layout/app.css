@@ -605,7 +605,9 @@
      mobile browsers do not expose Composer keyboard geometry, so its focused
      textarea is the direct fallback signal. */
   .keyboard-open .mobile-workspace-shortcut,
-  .app:has(:is(.terminal-composer-input, .agent-composer-input):focus)
+  .app:has(
+      :is(.terminal-composer-input:focus, .agent-composer-editor:focus-within)
+    )
     .mobile-workspace-shortcut {
     opacity: 0;
     pointer-events: none;
