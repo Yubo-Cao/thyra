@@ -91,29 +91,50 @@ const ATTACHED_CONTEXT =
 const NOT_TYPED =
   /^<(command-(name|message|args)|local-command-[a-z]+|bash-(input|stdout|stderr)|task-notification|system-reminder|user-prompt-submit-hook)[\s>]/;
 
-/** The text of a `user` entry the user is behind; null for any other entry. */
+/**
+ * A prompt the CLI took while a turn was running. It is stored as an
+ * attachment of the turn, not as a `user` entry of its own; null for any
+ * other entry (task notifications are queued the same way).
+ */
+function queuedPrompt(entry: StoredEntry): Record<string, unknown> | null {
+  const attachment = entry.type === "attachment" && record(entry.attachment);
+  return attachment &&
+    attachment.type === "queued_command" &&
+    attachment.commandMode === "prompt"
+    ? attachment
+    : null;
+}
+
+/** The text of an entry the user is behind; null for any other entry. */
 function userText(entry: StoredEntry): string | null {
+  const queued = queuedPrompt(entry);
+  // What a `user` entry says of itself, a queued prompt's attachment says.
+  const said = queued ?? entry;
   if (
-    entry.type !== "user" ||
-    entry.isMeta === true ||
+    (entry.type !== "user" && !queued) ||
+    said.isMeta === true ||
     entry.isSidechain === true ||
     entry.isCompactSummary === true ||
     entry.isVisibleInTranscriptOnly === true
   )
     return null;
   // Newer files say where a prompt came from; a notification is not typed.
-  const origin = record(entry.origin)?.kind;
+  const origin = record(said.origin)?.kind;
   if (origin !== undefined && origin !== "human") return null;
-  const content = record(entry.message)?.content;
+  const content = queued ? queued.prompt : record(entry.message)?.content;
   let parts: string[];
   if (typeof content === "string") parts = [content];
   else if (Array.isArray(content)) {
     if (content.some((value) => record(value)?.type === "tool_result"))
       return null;
+    // An image the text already names (`[Image #1]`) is not named twice.
+    const named = content.some((value) =>
+      /\[Image #\d+\]/.test(text(record(value)?.text) ?? ""),
+    );
     parts = content.flatMap((value) => {
       const block = record(value);
       if (block?.type === "text") return [text(block.text) ?? ""];
-      return block?.type === "image" ? ["[image]"] : [];
+      return block?.type === "image" && !named ? ["[image]"] : [];
     });
   } else return null;
   const body = parts
@@ -320,6 +341,7 @@ const SHOWN_SYSTEM_ENTRIES = new Set(["compact_boundary", "informational"]);
 export function isTranscriptEntry(entry: StoredEntry): boolean {
   if (entry.isSidechain === true || entry.isMeta === true) return false;
   if (entry.type === "user" || entry.type === "assistant") return true;
+  if (queuedPrompt(entry)) return true;
   return (
     entry.type === "system" &&
     SHOWN_SYSTEM_ENTRIES.has(text(entry.subtype) ?? "")
