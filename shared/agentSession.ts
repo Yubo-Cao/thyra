@@ -31,7 +31,14 @@ export type AgentSessionUsage = {
   output_tokens?: number;
 };
 
-/** One selectable way of running, such as a permission or approval mode. */
+/**
+ * One selectable way of running: a permission level. The label says what
+ * the agent asks before acting and, where the agent has one, whether its
+ * sandbox applies ("Never ask (sandboxed)" is not "Full access"). Codex IDs
+ * are `read-only`, `untrusted`, `on-request`, `never`, `full-access`, or
+ * `<approval policy>+<sandbox>` for another pair; Claude's are its
+ * permission modes.
+ */
 export type AgentSessionMode = { id: string; label: string };
 
 export type AgentSessionInfo = {
@@ -44,6 +51,7 @@ export type AgentSessionInfo = {
   /** The agent's own session or thread ID, once known. */
   agent_session_id?: string;
   model?: string;
+  /** The permission level the agent reports it runs in, one of `modes`. */
   mode?: string;
   /** Modes `agent_session.set_mode` accepts; empty when it cannot change. */
   modes: AgentSessionMode[];
@@ -214,7 +222,7 @@ export const AGENT_SESSION_HISTORY_LIMIT = 30;
  *   the text; with images the text may be empty.
  * `agent_session.interrupt { pane_id }` stops the running turn.
  * `agent_session.approve { pane_id, approval_id, option_id }`.
- * `agent_session.set_mode { pane_id, mode }`.
+ * `agent_session.set_mode { pane_id, mode }`: from the next turn on.
  * `agent_session.history { pane_id }` -> `{ sessions: AgentStoredSession[] }`:
  *   the conversations the agent has stored for the session's working
  *   directory, newest first, without the one the session is in. They include

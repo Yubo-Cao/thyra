@@ -54,11 +54,16 @@ import {
  * `--permission-prompt-tool stdio` enables.
  */
 
+/**
+ * Claude Code's permission modes. Claude runs its tools without a sandbox in
+ * every mode; the modes differ in what it asks first. `bypassPermissions`
+ * (`--dangerously-skip-permissions`) asks nothing: full access.
+ */
 export const CLAUDE_MODES: AgentSessionMode[] = [
-  { id: "default", label: "Ask before edits" },
-  { id: "acceptEdits", label: "Accept edits" },
-  { id: "plan", label: "Plan" },
-  { id: "bypassPermissions", label: "Bypass permissions" },
+  { id: "default", label: "Ask before edits and commands" },
+  { id: "acceptEdits", label: "Accept edits, ask before commands" },
+  { id: "plan", label: "Plan (read only)" },
+  { id: "bypassPermissions", label: "Full access (bypass permissions)" },
 ];
 
 const CONTROL_TIMEOUT_MS = 15_000;

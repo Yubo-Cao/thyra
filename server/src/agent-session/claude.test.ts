@@ -861,6 +861,27 @@ test("mode changes go through the control protocol and report refusals", async (
   agent.exit();
 });
 
+test("a session started with --dangerously-skip-permissions shows full access", async () => {
+  const { agent, store } = start(["--dangerously-skip-permissions"]);
+  // The flag is passed as given, not doubled by the allow flag.
+  expect(agent.argv).toContain("--dangerously-skip-permissions");
+  expect(agent.argv).not.toContain("--allow-dangerously-skip-permissions");
+  // What Claude Code 2.x reports in its init message for that flag.
+  agent.say({
+    type: "system",
+    subtype: "init",
+    permissionMode: "bypassPermissions",
+    model: "claude-x",
+    cwd: "/work",
+  });
+  await settle();
+  expect(store.info.mode).toBe("bypassPermissions");
+  expect(
+    store.info.modes.find((mode) => mode.id === store.info.mode)?.label,
+  ).toBe("Full access (bypass permissions)");
+  agent.exit();
+});
+
 test("a crash ends the session with its reason and closes what was open", async () => {
   const { agent, adapter, store, exits } = await ready();
   await adapter.send("go");

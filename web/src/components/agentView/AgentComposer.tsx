@@ -36,6 +36,7 @@ import { keepFocus } from "../ui/keepFocus";
 import { keyboardOverlayOpen } from "../ui/overlayState";
 import { Select } from "../ui/Select";
 import { Token } from "../ui/Token";
+import { agentModeText } from "./agentModes";
 
 const compact = (count: number) =>
   count >= 1000 ? `${Math.round(count / 1000)}k` : String(count);
@@ -53,6 +54,7 @@ export function AgentMeta({
   const used = usage?.context_tokens;
   const modes = info.modes ?? [];
   const mode = modes.find((item) => item.id === info.mode);
+  const modeText = mode && agentModeText(info.kind, mode);
   return (
     <div className="agent-meta">
       {onSetMode && modes.length > 0 ? (
@@ -63,12 +65,14 @@ export function AgentMeta({
           placeholder={info.mode ?? t("Mode")}
           options={modes.map((item) => ({
             value: item.id,
-            label: item.label,
+            ...agentModeText(info.kind, item),
           }))}
           onChange={onSetMode}
         />
       ) : info.mode ? (
-        <Token>{mode?.label ?? info.mode}</Token>
+        <Token title={modeText?.description}>
+          {modeText?.label ?? info.mode}
+        </Token>
       ) : null}
       {info.model ? (
         <Token code className="agent-meta-model" title={info.model}>

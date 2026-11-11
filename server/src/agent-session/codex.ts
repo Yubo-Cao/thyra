@@ -6,7 +6,6 @@ import {
   type AgentItem,
   type AgentPlanEntry,
   type AgentPromptImage,
-  type AgentSessionMode,
   type AgentStoredSession,
   type AgentToolKind,
 } from "../../../shared/agentSession";
@@ -27,6 +26,17 @@ import {
   describeAgentExit,
 } from "./agent-process";
 import { DIFF_PATCH_LIMIT } from "./claude-tools";
+import {
+  CODEX_APPROVAL_POLICIES,
+  CODEX_SANDBOX_MODES,
+  type CodexPermissions,
+  codexConfigChoosesPermissions,
+  codexMode,
+  codexModes,
+  codexPermissions,
+  codexSandboxName,
+  codexSandboxPolicy,
+} from "./codex-modes";
 import { hunksOf, patchForWholeFile, truncatePatch } from "./diff";
 import { isUploadedImagePath } from "../http/image-upload";
 import { isAgentSessionId } from "./link";
@@ -45,14 +55,9 @@ import {
  * the server's approval requests and maps thread items to transcript items.
  */
 
-export const CODEX_MODES: AgentSessionMode[] = [
-  { id: "untrusted", label: "Ask before commands" },
-  { id: "on-request", label: "Ask when needed" },
-  { id: "never", label: "Never ask" },
-];
+export { CODEX_MODES } from "./codex-modes";
 
 const REQUEST_TIMEOUT_MS = 30_000;
-const SANDBOX_MODES = ["read-only", "workspace-write", "danger-full-access"];
 /** Turns of a stored thread are read newest first, this many at a time. */
 const TURN_PAGE_SIZE = 20;
 const TURN_PAGE_LIMIT = 100;
@@ -76,11 +81,16 @@ export type CodexLaunch = {
  * counterpart, and `resume [<id> | --last]` among them; anything else is
  * refused rather than silently dropped. A bare `resume` (the terminal UI's
  * picker) starts a new thread: the page offers the list instead.
+ *
+ * A session runs in full access (`--yolo`) unless the arguments choose an
+ * approval policy or a sandbox (`-a`, `-s`, `-c approval_policy=…`,
+ * `-c sandbox_mode=…`); then what they leave out comes from `config.toml`.
  */
 export function parseCodexArgs(args: string[]): CodexLaunch {
   const launch: CodexLaunch = { serverArgs: [], thread: {} };
   const queue = [...args];
   let resuming = false;
+  let choosesPermissions = false;
   while (queue.length > 0) {
     const arg = queue.shift()!;
     if (arg === "resume" && !resuming) {
@@ -114,32 +124,38 @@ export function parseCodexArgs(args: string[]): CodexLaunch {
       case "-s":
       case "--sandbox": {
         const mode = value();
-        if (!SANDBOX_MODES.includes(mode))
+        if (!(CODEX_SANDBOX_MODES as readonly string[]).includes(mode))
           throw new Error(`unknown sandbox mode: ${mode}`);
         launch.thread.sandbox = mode;
+        choosesPermissions = true;
         break;
       }
       case "-a":
       case "--ask-for-approval": {
         const policy = value();
-        if (!CODEX_MODES.some((mode) => mode.id === policy))
+        if (!(CODEX_APPROVAL_POLICIES as readonly string[]).includes(policy))
           throw new Error(`unknown approval policy: ${policy}`);
         launch.thread.approvalPolicy = policy;
+        choosesPermissions = true;
         break;
       }
       case "--dangerously-bypass-approvals-and-sandbox":
       case "--yolo":
         launch.thread.approvalPolicy = "never";
         launch.thread.sandbox = "danger-full-access";
+        choosesPermissions = true;
         break;
       case "-C":
       case "--cd":
         launch.thread.cwd = value();
         break;
       case "-c":
-      case "--config":
-        launch.serverArgs.push("-c", value());
+      case "--config": {
+        const override = value();
+        if (codexConfigChoosesPermissions(override)) choosesPermissions = true;
+        launch.serverArgs.push("-c", override);
         break;
+      }
       case "--enable":
       case "--disable":
         launch.serverArgs.push(flag, value());
@@ -152,6 +168,10 @@ export function parseCodexArgs(args: string[]): CodexLaunch {
           `thyra agent codex does not support the argument ${arg} (supported: -m, -s, -a, -C, -c, --enable, --disable, --strict-config, --yolo, resume [<id> | --last])`,
         );
     }
+  }
+  if (!choosesPermissions) {
+    launch.thread.approvalPolicy = "never";
+    launch.thread.sandbox = "danger-full-access";
   }
   return launch;
 }
@@ -481,8 +501,22 @@ export class CodexAdapter implements AgentAdapter {
   private denying = false;
   /** Prompts accepted from pages that Codex has not taken yet. */
   private undelivered = 0;
-  /** An approval policy chosen with `setMode`, for the next turn. */
-  private nextPolicy: string | null = null;
+  /** A mode chosen with `setMode`, for the next turn. */
+  private nextMode: CodexPermissions | null = null;
+  /** The thread's sandbox policy as Codex last reported or took it. */
+  private sandboxPolicy: Record<string, unknown> | null = null;
+  /** Each kind of sandbox Codex reported for the thread, by name. */
+  private readonly reportedSandboxes = new Map<
+    string,
+    Record<string, unknown>
+  >();
+
+  private noteSandbox(policy: Record<string, unknown> | null) {
+    if (!policy) return;
+    this.sandboxPolicy = policy;
+    const name = codexSandboxName(policy);
+    if (name) this.reportedSandboxes.set(name, policy);
+  }
   private readonly approvals = new Map<string, PendingApproval>();
   /** Items with streamed text that has not been completed. */
   private readonly streaming = new Set<string>();
@@ -569,13 +603,16 @@ export class CodexAdapter implements AgentAdapter {
     const threadId = text(record(opened.thread)?.id);
     if (!threadId) throw new Error("no thread ID");
     this.threadId = threadId;
-    const policy = text(opened.approvalPolicy);
+    this.sandboxPolicy = null;
+    this.reportedSandboxes.clear();
+    this.noteSandbox(record(opened.sandbox));
+    const mode = codexMode(opened.approvalPolicy, opened.sandbox);
     this.store.updateInfo({
       agent_session_id: threadId,
       cwd: text(opened.cwd) ?? this.launch.thread.cwd ?? this.options.cwd,
-      modes: CODEX_MODES,
+      modes: codexModes(mode),
       ...(text(opened.model) ? { model: text(opened.model) } : {}),
-      ...(policy ? { mode: policy } : {}),
+      ...(mode ? { mode: mode.id } : {}),
     });
   }
 
@@ -665,7 +702,7 @@ export class CodexAdapter implements AgentAdapter {
     if (!text(record(resumed.thread)?.id)) throw new Error("no thread ID");
     const left = this.threadId;
     this.turnId = null;
-    this.nextPolicy = null;
+    this.nextMode = null;
     this.denying = false;
     this.ownPrompts.length = 0;
     this.approvals.clear();
@@ -744,13 +781,23 @@ export class CodexAdapter implements AgentAdapter {
           // The turn ended first (or moved on): the prompt starts the next.
         }
       }
-      const policy = this.nextPolicy;
+      const next = this.nextMode;
+      // Codex takes both from a turn on; the sandbox only when it changes.
+      const sandboxPolicy =
+        next && codexSandboxName(this.sandboxPolicy) !== next.sandbox
+          ? codexSandboxPolicy(
+              next.sandbox,
+              this.reportedSandboxes.get(next.sandbox) ?? null,
+            )
+          : undefined;
       const started = await this.request("turn/start", {
         threadId: this.threadId,
         input,
-        ...(policy ? { approvalPolicy: policy } : {}),
+        ...(next ? { approvalPolicy: next.approvalPolicy } : {}),
+        ...(sandboxPolicy ? { sandboxPolicy } : {}),
       });
-      if (policy === this.nextPolicy) this.nextPolicy = null;
+      if (sandboxPolicy) this.sandboxPolicy = sandboxPolicy;
+      if (next === this.nextMode) this.nextMode = null;
       this.turnId ??= text(record(started.turn)?.id) ?? null;
     } catch (error) {
       const index = this.ownPrompts.indexOf(prompt);
@@ -795,11 +842,13 @@ export class CodexAdapter implements AgentAdapter {
 
   async setMode(mode: string) {
     this.requireThread();
-    if (!CODEX_MODES.some((entry) => entry.id === mode))
-      throw new AgentActionError(`unknown mode: ${mode}`);
-    // Codex takes a new approval policy with a turn; it holds from the next.
-    this.nextPolicy = mode;
-    this.store.updateInfo({ mode });
+    const permissions = codexPermissions(mode);
+    if (!permissions) throw new AgentActionError(`unknown mode: ${mode}`);
+    // Codex takes a new approval policy and sandbox with a turn; they hold
+    // from the next one.
+    this.nextMode = permissions;
+    const chosen = codexMode(permissions.approvalPolicy, permissions.sandbox);
+    this.store.updateInfo({ mode, modes: codexModes(chosen) });
   }
 
   stop(force = false) {
@@ -946,10 +995,13 @@ export class CodexAdapter implements AgentAdapter {
       }
       case "thread/settings/updated": {
         const settings = record(params.threadSettings);
-        const policy = text(settings?.approvalPolicy);
+        this.noteSandbox(record(settings?.sandboxPolicy));
+        const mode = this.nextMode
+          ? undefined
+          : codexMode(settings?.approvalPolicy, this.sandboxPolicy);
         this.store.updateInfo({
           ...(text(settings?.model) ? { model: text(settings?.model) } : {}),
-          ...(policy && !this.nextPolicy ? { mode: policy } : {}),
+          ...(mode ? { mode: mode.id, modes: codexModes(mode) } : {}),
         });
         return;
       }

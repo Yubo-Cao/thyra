@@ -30,6 +30,8 @@ function baseEnv(extra: Record<string, string> = {}): Record<string, string> {
   return {
     PATH: process.env.PATH ?? "",
     HOME: process.env.HOME ?? "",
+    // Nor the deployment's own default arguments.
+    THYRA_CONFIG_PATH: "/nonexistent/thyra.env",
     ...extra,
   };
 }
@@ -202,6 +204,7 @@ test("a missing agent program fails with the reason", async () => {
   const result = await run(["claude"], {
     PATH: empty,
     HOME: process.env.HOME ?? "",
+    THYRA_CONFIG_PATH: "/nonexistent/thyra.env",
     HERDR_PANE_ID: "w1:p1",
     HERDR_SOCKET_PATH: join(root, "no-herdr.sock"),
     THYRA_AGENT_SOCKET_DIR: join(root, "s"),
@@ -213,4 +216,34 @@ test("a missing agent program fails with the reason", async () => {
       agentSocketPath(join(root, "s"), join(root, "no-herdr.sock"), "w1:p1"),
     ),
   ).toBe(false);
+}, 30_000);
+
+test("a session given no arguments takes the deployment's, even typed by hand", async () => {
+  const root = socketRoot();
+  roots.push(root);
+  const config = join(root, "thyra.env");
+  // A pane's shell has not the service's environment: the file counts.
+  writeFileSync(config, "THYRA_AGENT_CODEX_ARGS='--bogus-default'\n");
+  const env = baseEnv({
+    THYRA_CONFIG_PATH: config,
+    HERDR_PANE_ID: "w1:p1",
+    HERDR_SOCKET_PATH: join(root, "no-herdr.sock"),
+    THYRA_AGENT_SOCKET_DIR: join(root, "s"),
+  });
+  const bare = await run(["codex"], env);
+  expect(bare.code).toBe(1);
+  expect(bare.stdout + bare.stderr).toContain(
+    "does not support the argument --bogus-default",
+  );
+  // So does a resume; arguments that choose anything else replace them.
+  const resumed = await run(["codex", "resume", "--last"], env);
+  expect(resumed.stdout + resumed.stderr).toContain("--bogus-default");
+  // The environment wins over the file.
+  const overridden = await run(["codex"], {
+    ...env,
+    THYRA_AGENT_CODEX_ARGS: "--other-default",
+  });
+  expect(overridden.stdout + overridden.stderr).toContain(
+    "does not support the argument --other-default",
+  );
 }, 30_000);

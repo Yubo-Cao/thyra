@@ -42,9 +42,10 @@ const speed = Math.max(0.1, Number(query.get("agentFixtureSpeed")) || 1);
 const listeners = new Set<Listener>();
 
 const MODES = [
-  { id: "default", label: "Ask before edits" },
-  { id: "acceptEdits", label: "Accept edits" },
-  { id: "plan", label: "Plan mode" },
+  { id: "default", label: "Ask before edits and commands" },
+  { id: "acceptEdits", label: "Accept edits, ask before commands" },
+  { id: "plan", label: "Plan (read only)" },
+  { id: "bypassPermissions", label: "Full access (bypass permissions)" },
 ];
 
 const THINKING = `The limiter refills on a fixed interval, so a burst right after a refill can take twice the budget.
