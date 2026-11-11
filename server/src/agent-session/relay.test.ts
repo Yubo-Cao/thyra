@@ -200,45 +200,51 @@ test("what an action answers comes back, and a host from before it is not asked"
     CLAUDE_CONFIG_DIR: config,
   });
 
-  // A host of an older build: it greets without `can_resume`, and would
-  // never answer an action it does not know.
+  // A host of an older build greets without `can_resume`, and would never
+  // answer an action it does not know. The build after it resumes but still
+  // drops a prompt's images.
   const received: string[] = [];
-  const old = net.createServer((socket) => {
-    socket.on("error", () => undefined);
-    socket.on("data", (chunk) => received.push(String(chunk)));
-    socket.write(
-      `${JSON.stringify({
-        type: "hello",
-        protocol: 1,
-        pane_id: "w1:p2",
-        herdr_socket: HERDR,
-        pid: 1,
-        snapshot: {
-          info: {
-            pane_id: "w1:p2",
-            kind: "claude",
-            status: "idle",
-            cwd: "/",
-            started_at: 1,
-            modes: [],
+  const olderHost = async (paneId: string, has: { can_resume?: true }) => {
+    const server = net.createServer((socket) => {
+      socket.on("error", () => undefined);
+      socket.on("data", (chunk) => received.push(String(chunk)));
+      socket.write(
+        `${JSON.stringify({
+          type: "hello",
+          protocol: 1,
+          pane_id: paneId,
+          herdr_socket: HERDR,
+          pid: 1,
+          snapshot: {
+            info: {
+              pane_id: paneId,
+              kind: "claude",
+              status: "idle",
+              cwd: "/",
+              started_at: 1,
+              modes: [],
+              ...has,
+            },
+            items: [],
+            approvals: [],
+            seq: 0,
           },
-          items: [],
-          approvals: [],
-          seq: 0,
-        },
-      })}\n`,
+        })}\n`,
+      );
+    });
+    cleanups.push(() => void server.close());
+    await new Promise<void>((resolve) =>
+      server.listen(
+        join(dir, agentSocketName(herdrSocketKey(HERDR), paneId)),
+        resolve,
+      ),
     );
-  });
-  cleanups.push(() => void old.close());
-  await new Promise<void>((resolve) =>
-    old.listen(
-      join(dir, agentSocketName(herdrSocketKey(HERDR), "w1:p2")),
-      resolve,
-    ),
-  );
+  };
+  await olderHost("w1:p2", {});
+  await olderHost("w1:p3", { can_resume: true });
 
   const { relay: bridge, events } = relay(dir);
-  await until(() => bridge.list().length === 2, "both hosts");
+  await until(() => bridge.list().length === 3, "every host");
   expect(
     bridge.list().map((info) => [info.pane_id, info.can_resume === true]),
   ).toContainEqual(["w1:p1", true]);
@@ -279,6 +285,13 @@ test("what an action answers comes back, and a host from before it is not asked"
   ).rejects.toThrow(
     "this agent session was started by an older Thyra and cannot take images; start a new one",
   );
+  await expect(
+    bridge.act("w1:p3", {
+      action: "send",
+      text: "look",
+      images: [{ path: "/tmp/a.png" }],
+    }),
+  ).rejects.toThrow("cannot take images");
   // Its other actions still reach it, a prompt without images among them.
   void bridge.act("w1:p2", { action: "interrupt" }).catch(() => undefined);
   void bridge

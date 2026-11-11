@@ -229,6 +229,7 @@ class FixtureSession {
       modes: MODES,
       usage: { context_tokens: 18_400, context_window: 200_000 },
       can_resume: true,
+      can_attach_images: true,
     };
     if (variant === "long") {
       for (let index = 0; index < 500; index++) {

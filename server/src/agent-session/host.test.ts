@@ -264,7 +264,7 @@ test("history and resume are served over the link", async () => {
   // Pages ask for history only from hosts that say they serve it.
   expect(hello).toMatchObject({
     protocol: 1,
-    snapshot: { info: { can_resume: true } },
+    snapshot: { info: { can_resume: true, can_attach_images: true } },
   });
   expect(await link.ask({ action: "history" })).toEqual({
     error: null,

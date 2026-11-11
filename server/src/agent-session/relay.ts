@@ -344,21 +344,23 @@ export function createAgentSessionRelay(args: {
         return Promise.reject(new Error("no agent session in this pane"));
       // A host from before these actions existed would never answer them,
       // and one from before prompts took images would send the prompt
-      // without them. Both came with `can_resume`.
-      if (link.mirror?.info.can_resume !== true) {
-        const missing =
-          action.action === "history" || action.action === "resume"
-            ? "resume conversations"
-            : action.action === "send" && action.images?.length
-              ? "take images"
-              : null;
-        if (missing)
-          return Promise.reject(
-            new Error(
-              `this agent session was started by an older Thyra and cannot ${missing}; start a new one`,
-            ),
-          );
-      }
+      // without them. Its info says which it has.
+      const info = link.mirror?.info;
+      const missing =
+        (action.action === "history" || action.action === "resume") &&
+        info?.can_resume !== true
+          ? "resume conversations"
+          : action.action === "send" &&
+              action.images?.length &&
+              info?.can_attach_images !== true
+            ? "take images"
+            : null;
+      if (missing)
+        return Promise.reject(
+          new Error(
+            `this agent session was started by an older Thyra and cannot ${missing}; start a new one`,
+          ),
+        );
       const id = link.nextActionId++;
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {

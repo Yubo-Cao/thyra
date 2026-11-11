@@ -17,7 +17,8 @@ import type {
  * across deploys, and the bridge drops a host that reports another number.
  * A host from before an action existed never answers it, and one from
  * before prompts took images would drop them, so the bridge only sends
- * `history`, `resume` and images to hosts whose info says `can_resume`.
+ * `history` and `resume` to hosts whose info says `can_resume`, and images
+ * to hosts whose info says `can_attach_images`.
  */
 export const AGENT_LINK_PROTOCOL = 1;
 /** A snapshot stays far below this; a longer line is not from a host. */

@@ -55,6 +55,11 @@ export type AgentSessionInfo = {
    * Absent on a host started by a build from before they existed.
    */
   can_resume?: boolean;
+  /**
+   * The host passes a prompt's `images` on to the agent. Absent on a host
+   * started by a build from before prompts took images.
+   */
+  can_attach_images?: boolean;
 };
 
 export type AgentToolKind =

@@ -663,7 +663,7 @@ A prompt attaches at most `AGENT_PROMPT_IMAGE_LIMIT` images of at most `AGENT_PR
 The directory is `THYRA_AGENT_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/thyra/agents`, else `${XDG_STATE_HOME:-~/.local/state}/thyra/agents`; it must be a real directory owned by the user with mode 0700, and the bridge reads no other.
 Traffic is newline-delimited JSON.
 The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "interrupt" | "approve" | "set_mode" | "history" | "resume", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` answers with).
-The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`).
+The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`, `can_attach_images`).
 A `send` action may carry `images: [{path}]`: paths only, which the host reads itself.
 A host replaces a socket file nobody listens on; the bridge deletes one that refuses connections and is older than five seconds.
 
@@ -709,7 +709,7 @@ The bridge accepts only paths the upload handler makes (`isUploadedImagePath` in
 The host then checks each file itself on the open file: opened without following a symlink, a regular file, owned by the host's user, at most `AGENT_PROMPT_IMAGE_MAX_BYTES`, and starting with the signature of a PNG, JPEG, GIF or WebP file.
 The media type comes from those bytes, never from the file's name.
 One failing image refuses the whole prompt with an error that names it by number, and nothing reaches the agent.
-A host without `can_resume` predates prompt images and would send the prompt without them, so the bridge refuses a prompt with images for it.
+A host without `can_attach_images` in its info predates prompt images and would send the prompt without them, so the bridge refuses a prompt with images for it.
 Both agents shrink large images themselves before the model sees them; the size limit bounds what a host reads and writes for one prompt, not what the agents can take.
 The pane's log shows the count (`[2 images]`), and a restored transcript shows a Codex prompt's images again when their paths are upload paths, and a Claude prompt's as the `[Image #N]` text of the prompt.
 

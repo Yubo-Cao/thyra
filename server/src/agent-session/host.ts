@@ -98,6 +98,7 @@ export async function startAgentHost(options: AgentHostOptions) {
       started_at: Date.now(),
       modes: [],
       can_resume: true,
+      can_attach_images: true,
     },
     onEvent: publish,
   });
