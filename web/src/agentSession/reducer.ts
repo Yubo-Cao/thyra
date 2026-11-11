@@ -26,13 +26,13 @@ export function sessionFromSnapshot(
   snapshot: AgentSessionSnapshot,
 ): AgentSessionState {
   const items: Record<string, AgentItem> = {};
-  for (const item of snapshot.items) items[item.id] = item;
+  for (const item of snapshot.items ?? []) items[item.id] = item;
   return {
     info: snapshot.info,
     // An ID sent twice keeps its first position and its last content.
     order: Object.keys(items),
     items,
-    approvals: snapshot.approvals,
+    approvals: snapshot.approvals ?? [],
     seq: snapshot.seq,
   };
 }
@@ -99,6 +99,9 @@ export function applySessionEvent(
         approvals: state.approvals.filter((item) => item.id !== event.id),
         seq,
       };
+    default:
+      // An event kind from a newer host: nothing to draw, still in sequence.
+      return { ...state, seq };
   }
 }
 

@@ -38,16 +38,17 @@ export function AgentMeta({
 }) {
   const usage = info.usage;
   const used = usage?.context_tokens;
-  const mode = info.modes.find((item) => item.id === info.mode);
+  const modes = info.modes ?? [];
+  const mode = modes.find((item) => item.id === info.mode);
   return (
     <div className="agent-meta">
-      {onSetMode && info.modes.length > 0 ? (
+      {onSetMode && modes.length > 0 ? (
         <Select
           variant="ghost"
           aria-label={t("Mode")}
           value={info.mode ?? ""}
           placeholder={info.mode ?? t("Mode")}
-          options={info.modes.map((item) => ({
+          options={modes.map((item) => ({
             value: item.id,
             label: item.label,
           }))}

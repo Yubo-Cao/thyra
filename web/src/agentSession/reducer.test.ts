@@ -144,6 +144,18 @@ describe("agent session reducer", () => {
     expect(applySessionEvent(state, { ...stale, seq: 12 })).toBe("gap");
   });
 
+  test("an unknown event kind keeps the state and the sequence", () => {
+    const state = session([user("u1", "hi")]);
+    const next = apply(state, { type: "from_a_newer_host", extra: 1 });
+    expect(next.items).toBe(state.items);
+    expect(next.seq).toBe(11);
+    expect(sessionFromSnapshot({ info, seq: 3 } as never)).toMatchObject({
+      order: [],
+      approvals: [],
+      seq: 3,
+    });
+  });
+
   test("activity shows only while nothing on screen is moving", () => {
     expect(sessionShowsActivity(session())).toBe(true);
     expect(sessionShowsActivity(session([assistant("a1", "x")]))).toBe(false);
