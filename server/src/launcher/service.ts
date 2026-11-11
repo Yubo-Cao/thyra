@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { agentSessionDefaultArgs } from "../agent-session/default-args";
 import { CONNECTION_CHANGED_DURING_REQUEST } from "../connections/protocol";
 import type { GuiSettings } from "../config/gui-settings";
 import { expandHomePath, isHomeRelativePath } from "../workspace/file-paths";
@@ -44,7 +45,10 @@ export type LauncherView = "gui" | "terminal";
  * arguments of the configured terminal command when that command is the
  * agent's own (`claude --model x` gives `thyra agent claude --model x`).
  * Any other configured command (a wrapper, an alias) contributes nothing;
- * a command that gives no arguments leaves the deployment's `defaultArgs`.
+ * a command that gives no arguments leaves the deployment's `defaultArgs`
+ * (`THYRA_AGENT_<AGENT>_ARGS`), the same ones `thyra agent` typed into a
+ * pane takes when it is given none. A Codex session given no permission
+ * arguments at all runs in full access (see `parseCodexArgs`).
  */
 export function agentSessionCommand(
   hostCommand: string,
@@ -59,20 +63,9 @@ export function agentSessionCommand(
   return `${hostCommand} agent ${agent}${extra ? ` ${extra}` : ""}`;
 }
 
-/**
- * `THYRA_AGENT_CLAUDE_ARGS` and `THYRA_AGENT_CODEX_ARGS`: the arguments a
- * deployment gives agent sessions started from the launcher, as shell text.
- * A value with control characters, or an overlong one, counts as unset.
- */
-export function agentSessionDefaultArgs(
-  agent: LauncherAgentId,
-  env: Record<string, string | undefined> = process.env,
-): string {
-  const value = env[`THYRA_AGENT_${agent.toUpperCase()}_ARGS`]?.trim() ?? "";
-  return value.length > 1000 || /[\u0000-\u001f\u007f]/.test(value)
-    ? ""
-    : value;
-}
+/** See `agent-session/default-args.ts`; `thyra agent` applies the same. */
+export { agentSessionDefaultArgs };
+
 const MAX_PROBE_PATHS = 200;
 
 /**

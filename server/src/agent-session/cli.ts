@@ -2,6 +2,7 @@ import {
   AGENT_SESSION_KINDS,
   type AgentSessionKind,
 } from "../../../shared/agentSession";
+import { agentServiceEnvironment, agentSessionArgs } from "./default-args";
 import { createHerdrReporter, herdrSocketRequest } from "./herdr-report";
 import { type AgentHost, startAgentHost } from "./host";
 import { agentSocketDir } from "./paths";
@@ -10,7 +11,12 @@ const USAGE = `Usage: thyra agent <claude|codex> [agent arguments...]
 
 Runs a coding agent in this Herdr pane as an agent session: Thyra shows it as
 a conversation instead of the agent's terminal UI. The pane shows a plain log;
-Ctrl+C ends the session.`;
+Ctrl+C ends the session.
+
+Given no arguments but a conversation to resume, the session starts with
+THYRA_AGENT_CLAUDE_ARGS or THYRA_AGENT_CODEX_ARGS, from the environment or
+Thyra's service environment file. Codex given no approval or sandbox choice
+runs in full access (--yolo).`;
 
 function isKind(value: string | undefined): value is AgentSessionKind {
   return (AGENT_SESSION_KINDS as readonly string[]).includes(value ?? "");
@@ -52,7 +58,7 @@ export async function runAgentCommand(argv: string[]): Promise<number | null> {
   try {
     host = await startAgentHost({
       kind,
-      args: argv.slice(2),
+      args: agentSessionArgs(kind, argv.slice(2), agentServiceEnvironment()),
       paneId,
       herdrSocketPath,
       cwd: process.cwd(),

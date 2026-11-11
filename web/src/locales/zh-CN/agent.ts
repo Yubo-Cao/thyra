@@ -58,6 +58,40 @@ export default {
   "This session has ended": "此会话已结束",
   "Stop the agent": "停止 Agent",
   Mode: "模式",
+  // Permission modes: what the agent asks first, and what it may touch
+  "Read only": "只读",
+  "Sandboxed: reads files, asks before writing or using the network.":
+    "沙箱内：可读文件，写入或联网前先询问。",
+  "Ask before commands (sandboxed)": "命令前询问（沙箱）",
+  "Asks before any command that is not known to be safe; writes stay in the workspace.":
+    "执行任何未知是否安全的命令前先询问；写入限于工作区。",
+  "Ask when needed (sandboxed)": "按需询问（沙箱）",
+  "Works in the workspace sandbox and asks to go beyond it.":
+    "在工作区沙箱内工作，需要越出沙箱时询问。",
+  "Never ask (sandboxed)": "从不询问（沙箱）",
+  "Never asks, but commands stay in the workspace sandbox: no writes elsewhere, no network, no sudo.":
+    "从不询问，但命令仍在工作区沙箱内：不能写工作区外、不能联网、不能 sudo。",
+  "Full access (no sandbox, never asks)": "完全访问（无沙箱，从不询问）",
+  "Runs every command unsandboxed with your permissions, without asking (--yolo).":
+    "以你的权限在沙箱外执行所有命令，从不询问（--yolo）。",
+  "Ask before edits and commands": "编辑和命令前询问",
+  "Asks before editing files or running commands.":
+    "编辑文件或执行命令前先询问。",
+  "Accept edits, ask before commands": "自动接受编辑，命令前询问",
+  "Edits files without asking; asks before commands.":
+    "编辑文件不询问；执行命令前询问。",
+  "Plan (read only)": "规划（只读）",
+  "Reads and plans; changes nothing.": "只读取和规划，不做任何修改。",
+  "Full access (bypass permissions)": "完全访问（跳过权限确认）",
+  "Never asks; Claude Code runs commands with your permissions (--dangerously-skip-permissions).":
+    "从不询问；Claude Code 以你的权限执行命令（--dangerously-skip-permissions）。",
+  "Custom: {approval}, {sandbox}": "自定义：{approval}，{sandbox}",
+  "asks before commands": "命令前询问",
+  "asks when needed": "按需询问",
+  "never asks": "从不询问",
+  "read-only sandbox": "只读沙箱",
+  "workspace-write sandbox": "工作区可写沙箱",
+  "no sandbox": "无沙箱",
   "{percent}% context": "上下文 {percent}%",
   "{used} of {window} context tokens used":
     "已用上下文 {used} / {window} 个令牌",

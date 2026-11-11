@@ -7,6 +7,7 @@ import {
   parseCodexArgs,
   unwrapShellCommand,
 } from "./codex";
+import { CODEX_MODES, codexMode, codexPermissions } from "./codex-modes";
 import { fakeAgent, loadFixture, sessionStore, settle } from "./test-support";
 import { SessionMirror } from "./transcript";
 
@@ -64,9 +65,16 @@ async function replay(name: string, session: ReturnType<typeof start>) {
     }
     if (message.method === "turn/start" || message.method === "turn/steer") {
       // A mode chosen with set_mode is not a line of its own: it shows as
-      // the approval policy of the next turn.
-      if (message.params.approvalPolicy)
-        await adapter.setMode(message.params.approvalPolicy);
+      // the approval policy (and a changed sandbox) of the next turn.
+      if (message.params.approvalPolicy) {
+        const current = codexPermissions(session.store.info.mode ?? "");
+        await adapter.setMode(
+          codexMode(
+            message.params.approvalPolicy,
+            message.params.sandboxPolicy ?? current?.sandbox,
+          )!.id,
+        );
+      }
       void adapter
         .send(message.params.input[0].text)
         .catch((e) => failures.push(e));
@@ -120,7 +128,28 @@ test("codex options map to app-server arguments and thread settings", () => {
     approvalPolicy: "never",
     sandbox: "danger-full-access",
   });
-  expect(parseCodexArgs([])).toEqual({ serverArgs: [], thread: {} });
+  // Without a choice of approvals or sandbox, a session runs in full access.
+  const yolo = { approvalPolicy: "never", sandbox: "danger-full-access" };
+  expect(parseCodexArgs([])).toEqual({ serverArgs: [], thread: yolo });
+  expect(parseCodexArgs(["-m", "gpt-x", "-c", "a=b"]).thread).toEqual({
+    model: "gpt-x",
+    ...yolo,
+  });
+  // Choosing either leaves the other to config.toml.
+  expect(parseCodexArgs(["-a", "on-request"]).thread).toEqual({
+    approvalPolicy: "on-request",
+  });
+  expect(parseCodexArgs(["-s", "read-only"]).thread).toEqual({
+    sandbox: "read-only",
+  });
+  for (const override of [
+    'sandbox_mode="workspace-write"',
+    "approval_policy=untrusted",
+  ])
+    expect(parseCodexArgs(["-c", override])).toEqual({
+      serverArgs: ["-c", override],
+      thread: {},
+    });
   // Options without an app-server counterpart are refused, not dropped.
   expect(() => parseCodexArgs(["--search"])).toThrow("does not support");
   expect(() => parseCodexArgs(["-s", "open"])).toThrow("unknown sandbox");
@@ -148,7 +177,10 @@ test("resume takes a thread ID or --last, with options on either side", () => {
     resume: { last: true },
   });
   // The terminal UI's picker: the page offers the list instead.
-  expect(parseCodexArgs(["resume"])).toEqual({ serverArgs: [], thread: {} });
+  expect(parseCodexArgs(["resume"])).toEqual({
+    serverArgs: [],
+    thread: { approvalPolicy: "never", sandbox: "danger-full-access" },
+  });
   expect(parseCodexArgs(["resume", "--yolo"]).resume).toBeUndefined();
   // Not an ID, a second thread, a prompt, or a flag of the terminal UI.
   expect(() => parseCodexArgs(["resume", "../x"])).toThrow("not a thread ID");
@@ -282,15 +314,17 @@ test("a recorded session replays into the same transcript", async () => {
     kind: "codex",
     cwd: "/work",
     model: "gpt-6-astra",
-    // Chosen with set_mode in the recording; it holds from the next turn.
-    mode: "untrusted",
+    // `-a untrusted -s read-only` is no named mode: it is shown as itself.
+    mode: "untrusted+read-only",
     usage: { context_window: 258400 },
   });
   expect(info.agent_session_id).toMatch(/^[0-9a-f-]{36}$/);
-  expect(info.modes.map((mode) => mode.id)).toEqual([
-    "untrusted",
-    "on-request",
-    "never",
+  expect(info.modes).toEqual([
+    ...CODEX_MODES,
+    {
+      id: "untrusted+read-only",
+      label: "Asks before commands, read-only sandbox",
+    },
   ]);
   expect(approvals).toEqual([]);
 
@@ -516,19 +550,34 @@ test("the session is ready once the thread exists", async () => {
   await settle();
   expect(agent.written.slice(1)).toEqual([
     { method: "initialized" },
-    { id: 2, method: "thread/start", params: { cwd: "/work", model: "gpt-x" } },
+    {
+      id: 2,
+      method: "thread/start",
+      params: {
+        cwd: "/work",
+        model: "gpt-x",
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+      },
+    },
   ]);
   expect(store.info.status).toBe("starting");
   agent.say({
     id: 2,
-    result: { thread: { id: "t1" }, model: "gpt-x", approvalPolicy: "never" },
+    result: {
+      thread: { id: "t1" },
+      model: "gpt-x",
+      approvalPolicy: "never",
+      sandbox: { type: "dangerFullAccess" },
+    },
   });
   await settle();
+  // The mode is what Codex reports the thread runs with.
   expect(store.info).toMatchObject({
     status: "idle",
     agent_session_id: "t1",
     model: "gpt-x",
-    mode: "never",
+    mode: "full-access",
   });
   agent.exit();
 });
@@ -547,6 +596,7 @@ test("a chosen approval policy rides on the next turn", async () => {
       threadId: "thread-1",
       input: [{ type: "text", text: "go", text_elements: [] }],
       approvalPolicy: "never",
+      sandboxPolicy: { type: "workspaceWrite" },
     },
   });
   agent.say({ id: 3, result: { turn: { id: "turn-1" } } });
@@ -564,6 +614,94 @@ test("a chosen approval policy rides on the next turn", async () => {
   expect(agent.written.at(-1)!.params.approvalPolicy).toBeUndefined();
   agent.say({ id: 4, result: { turn: { id: "turn-2" } } });
   await next;
+  agent.exit();
+});
+
+test("modes switch the sandbox too, keeping the thread's own settings", async () => {
+  const session = start(["-a", "never", "-s", "workspace-write"]);
+  const { agent, adapter, store } = session;
+  agent.say({ id: 1, result: {} });
+  await settle();
+  const workspace = {
+    type: "workspaceWrite",
+    writableRoots: ["/extra"],
+    networkAccess: true,
+  };
+  answer(agent, {
+    thread: { id: "thread-1" },
+    cwd: "/work",
+    approvalPolicy: "never",
+    sandbox: workspace,
+  });
+  await settle();
+  // "Never ask" is sandboxed, and says so.
+  expect(store.info.mode).toBe("never");
+  expect(store.info.modes.find((mode) => mode.id === "never")!.label).toBe(
+    "Never ask (sandboxed)",
+  );
+  const turn = async (prompt: string, id: string) => {
+    const sent = adapter.send(prompt);
+    await settle();
+    const params = agent.written.at(-1)!.params;
+    answer(agent, { turn: { id } });
+    await sent;
+    agent.say({
+      method: "turn/completed",
+      params: { threadId: "thread-1", turn: { id, status: "completed" } },
+    });
+    await settle();
+    return params;
+  };
+  await adapter.setMode("full-access");
+  expect(store.info.mode).toBe("full-access");
+  expect(await turn("one", "turn-1")).toMatchObject({
+    approvalPolicy: "never",
+    sandboxPolicy: { type: "dangerFullAccess" },
+  });
+  // Back to a workspace sandbox: the thread's writable roots and network.
+  await adapter.setMode("on-request");
+  expect(await turn("two", "turn-2")).toMatchObject({
+    approvalPolicy: "on-request",
+    sandboxPolicy: workspace,
+  });
+  // Only the policy changes: the sandbox is not sent again.
+  await adapter.setMode("untrusted");
+  const third = await turn("three", "turn-3");
+  expect(third.approvalPolicy).toBe("untrusted");
+  expect(third.sandboxPolicy).toBeUndefined();
+  // A pair of no named mode is offered as itself.
+  await adapter.setMode("on-request+danger-full-access");
+  expect(store.info.modes.at(-1)).toEqual({
+    id: "on-request+danger-full-access",
+    label: "Asks when needed, no sandbox",
+  });
+  await expect(adapter.setMode("sometimes+read-only")).rejects.toThrow(
+    "unknown mode",
+  );
+  // Codex reporting other settings moves the mode with them.
+  agent.say({
+    method: "thread/settings/updated",
+    params: {
+      threadId: "thread-1",
+      threadSettings: {
+        approvalPolicy: "on-request",
+        sandboxPolicy: { type: "readOnly" },
+      },
+    },
+  });
+  await turn("four", "turn-4");
+  agent.say({
+    method: "thread/settings/updated",
+    params: {
+      threadId: "thread-1",
+      threadSettings: {
+        approvalPolicy: "on-request",
+        sandboxPolicy: { type: "readOnly" },
+      },
+    },
+  });
+  await settle();
+  expect(store.info.mode).toBe("read-only");
   agent.exit();
 });
 
@@ -1002,7 +1140,7 @@ test("starting with resume continues the thread with the session's settings", as
     status: "idle",
     agent_session_id: "thread-9",
     model: "gpt-x",
-    mode: "never",
+    mode: "full-access",
   });
   expect(lines(store.snapshot().items)).toEqual(RESTORED);
   expect(events.filter((event) => event.type === "reset")).toHaveLength(1);
@@ -1058,7 +1196,13 @@ test("resume --last continues the directory's newest thread, or starts one", asy
   expect(agent.written.at(-1)).toEqual({
     id: 4,
     method: "thread/resume",
-    params: { threadId: "thread-7", excludeTurns: true, cwd: "/repo" },
+    params: {
+      threadId: "thread-7",
+      excludeTurns: true,
+      cwd: "/repo",
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+    },
   });
   answer(agent, { thread: { id: "thread-7" }, cwd: "/repo" });
   await settle();
@@ -1080,7 +1224,11 @@ test("resume --last continues the directory's newest thread, or starts one", asy
   expect(fresh.agent.written.at(-1)).toEqual({
     id: 3,
     method: "thread/start",
-    params: { cwd: "/work" },
+    params: {
+      cwd: "/work",
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+    },
   });
   answer(fresh.agent, { thread: { id: "thread-new" } });
   await settle();

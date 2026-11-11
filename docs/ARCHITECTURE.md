@@ -655,6 +655,11 @@ The host ends, killing the agent, on Ctrl+C, SIGTERM or SIGHUP (the pane closing
 An agent that crashes leaves the host running with status `exited` and `error`, so the transcript stays readable until the pane closes or the host is interrupted.
 The pane shows a plain running log (prompts, answers, one line per tool call, approval notices) with control characters removed, and no terminal UI.
 
+**Default arguments.** Every way of starting a session (the launcher's `gui` view, `thyra agent <kind>` typed into a pane, a resume) ends in `thyra agent`, which applies the deployment's `THYRA_AGENT_CLAUDE_ARGS` or `THYRA_AGENT_CODEX_ARGS` (`server/src/agent-session/default-args.ts`) when its arguments choose nothing but the conversation (none, `resume …`, `--resume …`, `--continue`): the defaults come first, split as a shell would, then the given arguments.
+A pane's shell does not inherit the service's environment, so the host reads the variables from its own environment over the service environment file (`THYRA_CONFIG_PATH`, else `~/.config/thyra/thyra.env`).
+
+**Modes.** A session's `modes` are its permission levels, and each label says both what the agent asks first and what it may touch, so a mode that never asks but is sandboxed does not read as full access; the page translates the labels it knows (`web/src/components/agentView/agentModes.ts`) and shows other hosts' labels as given.
+
 **Bounds.** A session keeps at most `AGENT_SESSION_ITEM_LIMIT` items and 2 MiB of transcript text; past either, the oldest items go, never the newest 20.
 Tool output is cut to `AGENT_TOOL_OUTPUT_LIMIT` keeping its start and end, a file's patch to 64 KiB at a line boundary with the cut hunk's header recounted, and a prompt may be `AGENT_PROMPT_LIMIT` long.
 A prompt attaches at most `AGENT_PROMPT_IMAGE_LIMIT` images of at most `AGENT_PROMPT_IMAGE_MAX_BYTES` each; see [prompt images](#prompt-images).
@@ -715,6 +720,7 @@ The pane's log shows the count (`[2 images]`), and a restored transcript shows a
 
 **Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, and `set_permission_mode`.
 It adds `--allow-dangerously-skip-permissions` unless the caller passed `--dangerously-skip-permissions`, so a session starts in the permission mode of the user's Claude settings or command line and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
+Claude Code runs tools without a sandbox in every mode, so `bypassPermissions` (what `--dangerously-skip-permissions` starts in, as the CLI's `init` message reports) is labelled full access.
 A prompt sent during a turn is written to the CLI at once, which steers or queues it; the CLI's `command_lifecycle` messages and prompt echoes tell when each prompt was taken.
 A prompt with images is a user message whose content is the text block (left out when the text is empty) followed by one base64 `image` block per image, the order the terminal UI stores a prompt with pasted images in; the CLI acknowledges it by the message's `uuid` like any other prompt.
 `Bash` becomes a `command` tool; `Edit`, `MultiEdit` and `Write` become `edit` tools whose `diffs` are built from the call's old and new text and replaced by the patch the CLI reports once the edit ran; `Task` and `Agent` become `task` tools.
@@ -743,8 +749,12 @@ The replaced child's exit is not the session's; a new child that cannot resume t
 A prompt's input is its `text` item (left out when the text is empty and images are attached) followed by one `localImage` item per image, which Codex reads from the file.
 Thread items map to transcript items (`commandExecution` to `command`, `read` or `search` tools by its parsed actions, `fileChange` to an `edit` tool with one diff per file, MCP and collaboration calls to `other` and `task`), `turn/plan/updated` to one `plan` item per turn, and notifications of other threads (sub-agents) are ignored.
 Approval requests for commands, file changes and permissions become approvals with the decisions the server offers; denying a command or a file change answers `cancel`, and denying a permission request grants nothing.
-The modes are the approval policies `untrusted`, `on-request` and `never`; a chosen mode is sent with the next `turn/start` and holds from that turn.
-Without arguments a thread uses the defaults of `~/.codex/config.toml`; `thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config`, `--yolo` and `resume [<id> | --last]`, and refuses any other argument.
+A mode is a pair of approval policy and sandbox (`server/src/agent-session/codex-modes.ts`): `read-only` (`on-request`, read-only sandbox), `untrusted`, `on-request` and `never` (each with the workspace-write sandbox), and `full-access` (`never`, `danger-full-access`: `--yolo`).
+`never` still runs commands in the workspace sandbox, which allows no writes outside the workspace, no network and no new privileges (`sudo` fails).
+The current mode is what `thread/start`, `thread/resume` and `thread/settings/updated` report (`approvalPolicy` and `sandbox`/`sandboxPolicy`); a pair no named mode covers is offered as a mode of its own, `<policy>+<sandbox>`.
+A chosen mode is sent with the next `turn/start` as `approvalPolicy`, plus `sandboxPolicy` when the sandbox changes, and holds from that turn on; switching back to a kind of sandbox the thread reported reuses that policy, keeping `config.toml`'s writable roots and network access.
+A session runs in full access unless its arguments choose an approval policy or a sandbox (`-a`, `-s`, `--yolo`, `-c approval_policy=…`, `-c sandbox_mode=…`); whichever of the two they leave out comes from `~/.codex/config.toml`, as do all other defaults.
+`thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config`, `--yolo` and `resume [<id> | --last]`, and refuses any other argument.
 
 History is `thread/list` for the session's directory, sorted by `updated_at` and answered from Codex's index (`useStateDbOnly`), because repairing the index from every rollout file takes many seconds on a long history; a thread's title is its name, else its first prompt.
 Resuming reads the thread's turns with `thread/turns/list` (newest first, 20 a page, until the transcript's item limit), maps their items like the live `item/*` notifications, and calls `thread/resume` with `excludeTurns` and the model, sandbox and approval policy of the session's arguments, on the same app-server.
@@ -757,7 +767,7 @@ The agent process runs without `HERDR_ENV`, which keeps Herdr's own hook integra
 Herdr therefore holds no native agent session for such a pane: [agent activity](#agent-activity) has no session file for it, and a Herdr restart does not resume it.
 
 **Launcher.** `launcher.launch` takes `view: "gui" | "terminal"` (default `terminal`).
-`gui` types `<this Thyra executable> agent <agent>` into the new pane, followed by the arguments of the configured command when that command starts with the agent's own name, else by the bridge's `THYRA_AGENT_CLAUDE_ARGS` or `THYRA_AGENT_CODEX_ARGS`, and is refused on connections without sessions.
+`gui` types `<this Thyra executable> agent <agent>` into the new pane, followed by the arguments of the configured command when that command starts with the agent's own name, else by the bridge's `THYRA_AGENT_CLAUDE_ARGS` or `THYRA_AGENT_CODEX_ARGS` (the [default arguments](#agent-sessions) `thyra agent` would apply itself), and is refused on connections without sessions.
 The executable is the running binary's absolute path, or Bun and the entry script when the bridge runs from source.
 
 ## Voice input
