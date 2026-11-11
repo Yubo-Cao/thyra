@@ -5,8 +5,8 @@
  * its protocol into the items below, and the bridge relays them to pages.
  *
  * A session is addressed by its pane ID. Pages read with `agent_session.list`
- * and `agent_session.subscribe`, and act with `send`, `interrupt`, `approve`
- * and `set_mode`.
+ * and `agent_session.subscribe`, and act with `send`, `interrupt`, `approve`,
+ * `set_mode` and `resume`.
  */
 
 export const AGENT_SESSION_KINDS = ["claude", "codex"] as const;
@@ -50,6 +50,11 @@ export type AgentSessionInfo = {
   usage?: AgentSessionUsage;
   /** Why the session is `exited`, when it did not end normally. */
   error?: string;
+  /**
+   * The host serves `agent_session.history` and `agent_session.resume`.
+   * Absent on a host started by a build from before they existed.
+   */
+  can_resume?: boolean;
 };
 
 export type AgentToolKind =
@@ -128,6 +133,16 @@ export type AgentApproval = {
   options: AgentApprovalOption[];
 };
 
+/** A conversation the agent has stored, which a session can resume. */
+export type AgentStoredSession = {
+  /** The agent's own session or thread ID. */
+  id: string;
+  /** Its title when the agent gave it one, else its first prompt; one line. */
+  title: string;
+  /** Milliseconds since the epoch of its last activity. */
+  updated_at: number;
+};
+
 /** Everything a page needs to draw a session from nothing. */
 export type AgentSessionSnapshot = {
   info: AgentSessionInfo;
@@ -150,11 +165,18 @@ export type AgentSessionEvent = { pane_id: string; seq: number } & (
   | { type: "delta"; id: string; text: string }
   | { type: "approval"; approval: AgentApproval }
   | { type: "approval_resolved"; id: string }
+  /**
+   * The session now continues a stored conversation: these items replace the
+   * whole transcript, and no approval is open.
+   */
+  | { type: "reset"; items: AgentItem[] }
 );
 
 export const AGENT_SESSION_ITEM_LIMIT = 2000;
 export const AGENT_TOOL_OUTPUT_LIMIT = 32 * 1024;
 export const AGENT_PROMPT_LIMIT = 256 * 1024;
+/** The most stored conversations `agent_session.history` returns. */
+export const AGENT_SESSION_HISTORY_LIMIT = 30;
 
 /**
  * Bridge RPC, per connection.
@@ -168,6 +190,19 @@ export const AGENT_PROMPT_LIMIT = 256 * 1024;
  * `agent_session.interrupt { pane_id }` stops the running turn.
  * `agent_session.approve { pane_id, approval_id, option_id }`.
  * `agent_session.set_mode { pane_id, mode }`.
+ * `agent_session.history { pane_id }` -> `{ sessions: AgentStoredSession[] }`:
+ *   the conversations the agent has stored for the session's working
+ *   directory, newest first, without the one the session is in. They include
+ *   conversations held in the agent's terminal UI.
+ * `agent_session.resume { pane_id, session_id }` continues a stored
+ *   conversation in this session: a `reset` event replaces the transcript
+ *   with that conversation's, and `info.agent_session_id` follows. Refused
+ *   while a turn is running.
+ *
+ * A session started with the agent's own resume arguments
+ * (`thyra agent claude --resume <id>` or `--continue`,
+ * `thyra agent codex resume <id>` or `resume --last`) restores the transcript
+ * the same way before it takes its first prompt.
  *
  * `agent_session.changed` (`{ sessions: AgentSessionInfo[] }`) is sent to every
  * page when a session appears, ends, or changes status, filtered like `list`.
