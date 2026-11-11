@@ -7,6 +7,7 @@ import {
   normalizeUiScale,
   type ResolvedTheme,
   resolveSystemTheme,
+  resolveTerminalFontFamily,
   SYSTEM_THEME_QUERY,
   TERMINAL_FONT_STORAGE_KEY,
   type ThemePreference,
@@ -221,6 +222,14 @@ export function useAppearance(
     }
     thyraLocalStorage.setItem(UI_SCALE_KEY, String(uiScale));
   }, [accentColor, resolvedTheme, theme, uiScale]);
+
+  // DOM text drawn as the terminal draws it (agent view code) reads this.
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty(
+      "--terminal-font",
+      resolveTerminalFontFamily(terminalFontFamily),
+    );
+  }, [terminalFontFamily]);
 
   const configuration: ConfigurationProps = {
     theme,

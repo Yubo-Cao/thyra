@@ -18,6 +18,9 @@
   --ui-font-size-xs: 11px;
   --mono-font:
     ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  /* The terminal's font stack (the chosen preset over the bundled Thyra
+     Mono), for code drawn as the terminal draws it; useAppearance sets it. */
+  --terminal-font: "Thyra Mono", var(--mono-font);
   --bg: #0e1014;
   --topbar: #121419;
   --panel: #121419;

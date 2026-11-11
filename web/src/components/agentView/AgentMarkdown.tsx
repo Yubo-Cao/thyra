@@ -1,10 +1,12 @@
 import { Check, Copy, Square, SquareCheck } from "lucide-react";
 import type { Token, Tokens } from "marked";
 import {
+  createContext,
   createElement,
   Fragment,
   memo,
   type ReactNode,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -17,11 +19,44 @@ import {
 } from "../../agentSession/markdownStream";
 import { t } from "../../i18n";
 import { copyTextFromUserGesture } from "../../terminalClipboard";
+import {
+  addTerminalFontFaces,
+  addTerminalFontStylesheets,
+} from "../../terminalFonts";
 import { isSafeMarkdownUrl } from "../markdown";
 import { IconButton } from "../ui/IconButton";
+import { AgentTable } from "./AgentTable";
+import { renderHighlighted, useHighlight } from "./highlightSpans";
 
-/** Code with a copy button: fenced blocks, commands, and tool input. */
-export function CodeBlock({ text, lang }: { text: string; lang?: string }) {
+// Code draws in the terminal's own font (--terminal-font): its faces load
+// with the view, the slices beyond the core once the page is idle.
+if (typeof document !== "undefined") {
+  addTerminalFontStylesheets();
+  const later = () => void addTerminalFontFaces();
+  if ("requestIdleCallback" in window)
+    requestIdleCallback(later, { timeout: 5000 });
+  else setTimeout(later, 2000);
+}
+
+/** True inside the block a streaming reply is still writing. */
+const LiveBlock = createContext(false);
+
+/**
+ * Code with a copy button: fenced blocks, commands, and tool input. `lang`
+ * labels it; `syntax` (default `lang`) names the language it is coloured
+ * as, once its fence has closed.
+ */
+export function CodeBlock({
+  text,
+  lang,
+  syntax = lang,
+}: {
+  text: string;
+  lang?: string;
+  syntax?: string;
+}) {
+  const live = useContext(LiveBlock);
+  const spans = useHighlight(text, syntax, !live);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -30,10 +65,10 @@ export function CodeBlock({ text, lang }: { text: string; lang?: string }) {
   }, [copied]);
   return (
     <div className="agent-code">
-      <pre>
-        <code>{text}</code>
+      <pre data-lang={lang || undefined}>
+        <code>{renderHighlighted(text, spans)}</code>
       </pre>
-      <div className="agent-code-tools">
+      <div className="agent-code-tools" data-md-skip="">
         {lang ? <span className="agent-code-lang">{lang}</span> : null}
         <IconButton
           label={copied ? t("Copied") : t("Copy code")}
@@ -146,9 +181,15 @@ function block(token: Token, run?: TextRun): ReactNode {
           className="agent-md-check"
           size={14}
           aria-label={t("Done")}
+          data-md-task="x"
         />
       ) : (
-        <Square className="agent-md-check" size={14} aria-label={t("To do")} />
+        <Square
+          className="agent-md-check"
+          size={14}
+          aria-label={t("To do")}
+          data-md-task=" "
+        />
       );
     case "list": {
       const list = token as Tokens.List;
@@ -172,16 +213,18 @@ function block(token: Token, run?: TextRun): ReactNode {
           inline(item.tokens, run),
         );
       return (
-        <table>
-          <thead>
-            <tr>{table.header.map(cell)}</tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row, index) => (
-              <tr key={index}>{row.map(cell)}</tr>
-            ))}
-          </tbody>
-        </table>
+        <AgentTable table={table}>
+          <table>
+            <thead>
+              <tr>{table.header.map(cell)}</tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, index) => (
+                <tr key={index}>{row.map(cell)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </AgentTable>
       );
     }
     default:
@@ -192,11 +235,17 @@ function block(token: Token, run?: TextRun): ReactNode {
 const MarkdownBlockView = memo(function MarkdownBlockView({
   token,
   run,
+  live,
 }: {
   token: Token;
   run?: TextRun;
+  live: boolean;
 }) {
-  return block(token, run);
+  return live ? (
+    <LiveBlock.Provider value>{block(token, run)}</LiveBlock.Provider>
+  ) : (
+    block(token, run)
+  );
 });
 
 /**
@@ -221,8 +270,13 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   previous.current = stream;
   return (
     <div className="file-preview-markdown agent-md">
-      {stream.blocks.map((item) => (
-        <MarkdownBlockView key={item.start} token={item.token} run={run} />
+      {stream.blocks.map((item, index) => (
+        <MarkdownBlockView
+          key={item.start}
+          token={item.token}
+          run={run}
+          live={streaming && index === stream.blocks.length - 1}
+        />
       ))}
     </div>
   );

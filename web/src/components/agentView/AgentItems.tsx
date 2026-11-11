@@ -1,5 +1,7 @@
 import {
   Bot,
+  Check,
+  Copy,
   Brain,
   ChevronRight,
   Circle,
@@ -20,6 +22,7 @@ import {
   memo,
   type ReactNode,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -36,12 +39,24 @@ import {
 } from "../../agentSession/promptImages";
 import type { AgentSessionStore } from "../../agentSession/session";
 import { t } from "../../i18n";
+import { copyTextFromUserGesture } from "../../terminalClipboard";
 import { composerImageToken } from "../../terminalComposer";
 import { openImageViewer } from "../promptEditor/imageViewer";
 import { Button } from "../ui/Button";
+import { IconButton } from "../ui/IconButton";
 import { Spinner } from "../ui/Spinner";
 import { Token } from "../ui/Token";
 import { AgentMarkdown, CodeBlock } from "./AgentMarkdown";
+import {
+  diffSides,
+  renderHighlighted,
+  spansByLine,
+  useHighlight,
+} from "./highlightSpans";
+import { installTranscriptCopy } from "./transcriptCopy";
+
+// A selection copied from the transcript reads as Markdown when pasted.
+installTranscriptCopy();
 
 type Tool = Extract<AgentItem, { type: "tool" }>;
 
@@ -70,6 +85,21 @@ export function DiffView({ diff }: { diff: AgentFileDiff }) {
   const { onOpenFile } = useContext(AgentViewContext);
   const parsed = useMemo(() => parseUnifiedDiff(diff.patch), [diff.patch]);
   const hidden = parsed.lines.length - DIFF_LINE_LIMIT;
+  const shown = useMemo(
+    () => parsed.lines.slice(0, DIFF_LINE_LIMIT),
+    [parsed.lines],
+  );
+  // Coloured by the file's language, each side parsed as its own file.
+  const sides = useMemo(() => diffSides(shown), [shown]);
+  const nextSpans = useHighlight(sides.next, diff.path);
+  const prevSpans = useHighlight(sides.prev, diff.path);
+  const lineSpans = useMemo(
+    () => ({
+      next: nextSpans ? spansByLine(sides.next, nextSpans) : null,
+      prev: prevSpans ? spansByLine(sides.prev, prevSpans) : null,
+    }),
+    [sides, nextSpans, prevSpans],
+  );
   return (
     <div className="agent-diff">
       <div className="agent-diff-head">
@@ -88,16 +118,32 @@ export function DiffView({ diff }: { diff: AgentFileDiff }) {
         <DiffCounts added={parsed.added} removed={parsed.removed} />
       </div>
       <div className="agent-diff-body">
-        <div className="agent-diff-lines">
-          {parsed.lines.slice(0, DIFF_LINE_LIMIT).map((line, index) => (
-            <div key={index} className={`agent-diff-line is-${line.kind}`}>
-              <span className="agent-diff-number">{line.line ?? ""}</span>
-              <span className="agent-diff-sign">
-                {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : ""}
-              </span>
-              <span>{line.text}</span>
-            </div>
-          ))}
+        <div className="agent-diff-lines" data-md-code="diff">
+          {shown.map((line, index) => {
+            const at = sides.at[index];
+            return (
+              <div key={index} className={`agent-diff-line is-${line.kind}`}>
+                <span className="agent-diff-number" data-md-skip="">
+                  {line.line ?? ""}
+                </span>
+                <span className="agent-diff-sign">
+                  {line.kind === "add"
+                    ? "+"
+                    : line.kind === "remove"
+                      ? "-"
+                      : line.kind === "context"
+                        ? " "
+                        : ""}
+                </span>
+                <span>
+                  {renderHighlighted(
+                    line.text,
+                    at ? lineSpans[at.side]?.[at.line] : null,
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
         {hidden > 0 ? (
           <div className="agent-detail-note">
@@ -200,7 +246,9 @@ function ToolRow({ item }: { item: Tool }) {
     >
       {hasDetail ? (
         <>
-          {item.command ? <CodeBlock text={item.command} /> : null}
+          {item.command ? (
+            <CodeBlock text={item.command} syntax="bash" />
+          ) : null}
           {item.input ? <CodeBlock text={item.input} lang="json" /> : null}
           {item.diffs?.map((diff, index) => (
             <DiffView key={`${index}:${diff.path}`} diff={diff} />
@@ -307,12 +355,45 @@ function UserMessage({ item }: { item: Extract<AgentItem, { type: "user" }> }) {
   );
 }
 
+/** A reply, with a button that copies its Markdown source once it is done. */
+function AssistantMessage({
+  item,
+}: {
+  item: Extract<AgentItem, { type: "assistant" }>;
+}) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <>
+      <AgentMarkdown text={item.text} streaming={item.streaming} />
+      {item.streaming || !item.text.trim() ? null : (
+        <div className="agent-message-tools" data-md-skip="">
+          <IconButton
+            label={copied ? t("Copied") : t("Copy as Markdown")}
+            icon={copied ? <Check size={13} /> : <Copy size={13} />}
+            onClick={() =>
+              void copyTextFromUserGesture(item.text).then(
+                () => setCopied(true),
+                () => {},
+              )
+            }
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 function Item({ item }: { item: AgentItem }) {
   switch (item.type) {
     case "user":
       return <UserMessage item={item} />;
     case "assistant":
-      return <AgentMarkdown text={item.text} streaming={item.streaming} />;
+      return <AssistantMessage item={item} />;
     case "thinking":
       return (
         <Disclosure
