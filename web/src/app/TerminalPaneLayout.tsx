@@ -4,10 +4,16 @@ import {
   type ComponentProps,
   Suspense,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import {
+  followAgentSessions,
+  useAgentPaneView,
+  useAgentSessionsAvailable,
+} from "../agentSessions";
 import type { TerminalWorkspaceFileRequest } from "../components/TerminalView";
 import { IconButton } from "../components/ui/IconButton";
 import { t } from "../i18n";
@@ -23,6 +29,8 @@ import { useWorkspaceCan } from "../capabilities";
 import { type State, store, useStoreSelector } from "../store";
 import { selectPanesWithoutActivity } from "../agentOrder";
 import { terminalMountKey } from "../terminalConnection";
+import { useConnectionClient } from "../useConnectionClient";
+import { agentViewPanel } from "./lazySurfaces";
 import { blurActiveInput } from "./MobileControls";
 import { usePaneDrag } from "./usePaneDrag";
 import { useShallow } from "zustand/react/shallow";
@@ -46,10 +54,32 @@ export function TerminalLoadingFallback({
   );
 }
 
-function TerminalView(props: ComponentProps<typeof LazyTerminalView>) {
+const AgentView = agentViewPanel.Component;
+
+/**
+ * A pane's content: the agent view when the pane (`agentPaneId`) has an agent
+ * session and has not been switched to its terminal, else the terminal.
+ */
+function PaneContent({
+  agentPaneId,
+  ...props
+}: ComponentProps<typeof LazyTerminalView> & { agentPaneId: string | null }) {
+  const connectionId = useStoreSelector((state) => state.activeConnectionId);
+  const view = useAgentPaneView(connectionId, agentPaneId);
+  if (view === "agent" && agentPaneId)
+    return (
+      <Suspense
+        fallback={<TerminalLoadingFallback label={t("Loading agent view")} />}
+      >
+        <AgentView
+          paneId={agentPaneId}
+          onOpenWorkspaceFile={props.onOpenWorkspaceFile}
+        />
+      </Suspense>
+    );
   return (
     <Suspense fallback={<TerminalLoadingFallback />}>
-      <LazyTerminalView {...props} />
+      <LazyTerminalView {...props} agentView={view ?? undefined} />
     </Suspense>
   );
 }
@@ -209,8 +239,19 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
       layout: state.layout,
       panes: selectPanesWithoutActivity(state),
       selectedPaneId: state.selectedPaneId,
+      connected: state.status === "connected" && !state.connectionPaused,
+      terminalAttachEpoch: state.terminalAttachEpoch,
     })),
   );
+  // Agent sessions are listed again after a reconnect, a socket change, or a
+  // connection switch, like terminals attach again.
+  const client = useConnectionClient();
+  const agentSessions = useAgentSessionsAvailable();
+  const { connected, terminalAttachEpoch } = s;
+  useEffect(() => {
+    void terminalAttachEpoch;
+    return connected && agentSessions ? followAgentSessions(client) : undefined;
+  }, [agentSessions, client, connected, terminalAttachEpoch]);
   const { mobile } = useLayoutPreferences();
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(
@@ -268,7 +309,13 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
   }, [layout, layoutElement]);
 
   if (!layout || layout.zoomed || visiblePanes.length <= 1) {
-    return <TerminalView key={mountKeyForPane(activePaneId)} {...props} />;
+    return (
+      <PaneContent
+        key={mountKeyForPane(activePaneId)}
+        agentPaneId={activePaneId}
+        {...props}
+      />
+    );
   }
 
   const dropTarget = paneDrag.drag?.target;
@@ -323,9 +370,10 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
             onClick={() => void store.focusPane(nextPane.pane_id)}
           />
         </div>
-        <TerminalView
+        <PaneContent
           key={mountKeyForPane(activePaneId)}
           paneId={activePaneId}
+          agentPaneId={activePaneId}
           {...props}
         />
       </div>
@@ -426,10 +474,11 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
               if (!isActive) void store.focusPane(layoutPane.pane_id);
             }}
           >
-            <TerminalView
+            <PaneContent
               key={mountKeyForPane(layoutPane.pane_id)}
               {...props}
               paneId={layoutPane.pane_id}
+              agentPaneId={layoutPane.pane_id}
               showMobileKeys={isActive}
               composerOpen={isActive && props.composerOpen}
               onComposerOpenChange={

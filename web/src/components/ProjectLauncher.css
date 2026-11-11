@@ -145,6 +145,18 @@
   gap: 6px;
 }
 
+/* The note, and the agent view / terminal choice when the bridge offers it. */
+.project-launcher-agents-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-launcher-agents-foot .project-launcher-note {
+  min-width: 0;
+}
+
 .button.project-launcher-agent {
   justify-content: flex-start;
   gap: 8px;

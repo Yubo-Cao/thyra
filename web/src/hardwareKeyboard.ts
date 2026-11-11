@@ -137,7 +137,8 @@ function report(kind: "hardware" | "software") {
 }
 
 // The on-screen keyboard shows for our editors and the terminal.
-const WATCHED_INPUTS = ".prompt-editor, .shell-editor, .terminal-engine";
+const WATCHED_INPUTS =
+  ".prompt-editor, .shell-editor, .terminal-engine, .agent-composer";
 // The mobile shortcut bar sends bytes, not keys; never count its presses.
 const SHORTCUT_BAR = ".terminal-mobile-keys, .terminal-mobile-side-shortcuts";
 

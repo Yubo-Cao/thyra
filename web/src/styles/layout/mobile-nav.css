@@ -62,7 +62,7 @@
      mobile browsers do not expose Composer keyboard geometry, so its focused
      textarea is the direct fallback signal. */
   .keyboard-open .mobile-nav:not(.mobile-terminal-tools),
-  .app:has(.terminal-composer-input:focus)
+  .app:has(:is(.terminal-composer-input, .agent-composer-input):focus)
     .mobile-nav:not(.mobile-terminal-tools) {
     opacity: 0;
     pointer-events: none;
@@ -143,7 +143,8 @@
      mobile browsers do not expose Composer keyboard geometry, so its focused
      textarea is the direct fallback signal. */
   .keyboard-open .mobile-terminal-controls,
-  .app:has(.terminal-composer-input:focus) .mobile-terminal-controls {
+  .app:has(:is(.terminal-composer-input, .agent-composer-input):focus)
+    .mobile-terminal-controls {
     opacity: 0;
     pointer-events: none;
     transform: translate3d(0, 12px, 0) scale(0.85);

@@ -50,6 +50,15 @@ const adminPage = /^\/admin(?:\/|$)/.test(window.location.pathname);
 
 initializeLayoutPreferences();
 if (!adminPage) {
+  // Development only: `?agentFixture` serves a scripted agent session
+  // (agentSession/fixture.ts); a production build drops this import.
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).has("agentFixture")
+  )
+    void import("./agentSession/fixture").then((fixture) =>
+      fixture.installAgentSessionFixture(),
+    );
   initializeShortcutPreferences();
   // Connect before the terminal chunks are requested.
   store.init();

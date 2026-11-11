@@ -58,6 +58,7 @@ If an open workspace already works in that folder, the agent opens in a new tab 
 Thyra focuses the new tab after the shell draws its prompt and types the configured command followed by Enter.
 Commands default to `claude` and `codex` and are edited under the launcher's settings button or **Configuration > Connection**; pins, commands, and launch history are saved on the Thyra server per connection, so every device shares them.
 The browser only chooses an agent, never the command text.
+Where the bridge runs agent sessions, a switch under the agent buttons chooses how the agent opens: in the [agent view](#agent-view) (the default) or as its own terminal UI. The browser remembers the choice.
 
 <!-- markdownlint-disable-next-line MD033 -->
 <img src="docs/images/thyra-mobile-launcher.png" alt="Project launcher on a phone: pinned and recent folders, with Claude and Codex offered for the selected folder" width="300">
@@ -144,6 +145,31 @@ The editor appears only at an available shell prompt while you hold input contro
 - Up/Down searches prefix-matched history at the first/last line; Ctrl+R searches history. Right/End accepts a history suggestion, and Alt+Right accepts one word.
 - Ctrl+C clears a draft, then forwards an interrupt when empty. Ctrl+] pastes the draft into the real shell without executing it.
 - Esc closes a popup first, then hides a nonempty draft until the next prompt. Empty-draft terminal controls pass through.
+
+## Agent View
+
+A pane whose Claude Code or Codex runs as an agent session shows an application view in place of the agent's terminal UI: the transcript, the requests it waits on, and a prompt box.
+The switch in the pane header changes that pane between the agent view and its terminal; the agent view is the default, and the choice lasts for the page.
+The view appears only where the bridge runs agent sessions, and its code loads with the first pane that shows one.
+
+- **Transcript.** Prompts, then replies as Markdown while they stream: text keeps its shape as it arrives (an open code fence, bold run or table is drawn as it will end up), code blocks have a copy button, and an image in a reply stays a link.
+  Thinking is a dimmed row that shows its latest line while it streams.
+  Tool calls are one-line rows with an icon for the kind of call (command, edit, read, search, fetch, task), its title, and its state; a row opens to the command, the input, the output, and each changed file as a diff under its path.
+  Clicking a diff's path opens the file in the [Inspector](#workspace-inspector). Plans are checklists, and notices and errors read inline.
+- **Following.** The view stays at the newest output while it streams.
+  Scrolling up stops that; **Jump to latest** (or scrolling back down) resumes it.
+  A long session mounts only the items around what is on screen and slides that window as you scroll.
+- **Approvals.** A request is pinned above the prompt box until it is answered, with the command or the diff in question and a button for each answer the agent offers (allow, allow always, deny); Shift+Tab from the prompt box reaches them.
+- **Prompt box.** Enter (or `Cmd+Enter` / `Ctrl+Enter`) sends; Shift+Enter and Alt+Enter break the line.
+  With an on-screen keyboard Return breaks the line and the send button sends.
+  A prompt sent while a turn runs is steered or queued by the agent.
+  The stop button, or Esc in an empty box, interrupts the turn; Page Up/Down in an empty box page the transcript.
+  The microphone dictates into the box, and an unsent draft is kept per pane while the page is open.
+- **Session line.** Under the box: the mode (a menu when the agent offers several), the model, and how much of the context window is in use.
+  The pane header shows the session's state: starting, working, needs approval, or ended.
+- **Viewers** follow the transcript and see open requests, without the prompt box or the answer buttons.
+  A session whose agent has exited stays readable, with its error shown and the box disabled.
+- **Phones.** The prompt box sits above the keyboard, answers are full-width buttons, and pane swipes and the floating controls work as over a terminal; the terminal composer and shortcut grid stay with the terminal view.
 
 ## Workspace Inspector
 

@@ -19,6 +19,7 @@ import {
 } from "./components/LazyBoundary";
 import { activePaneIdForSnapshot } from "./paneJump";
 import { selectPanesWithoutActivity } from "./agentOrder";
+import { useAgentPaneView } from "./agentSessions";
 import { type TaskNotificationTarget, store, useStoreSelector } from "./store";
 import {
   connectionClientScopeKey,
@@ -117,12 +118,15 @@ export default function App() {
       focusedWorkspace?.label ||
       "",
   );
+  // The agent view has its own composer: no terminal composer over it.
+  const agentViewShown =
+    useAgentPaneView(s.activeConnectionId, activePaneId) === "agent";
   const mobileControls = useMobileControls(
     mobile,
     focusedWorkspace,
     s.activeConnectionId,
     s.connectionGeneration,
-    activePane,
+    agentViewShown ? undefined : activePane,
   );
   const inspector = useWorkspaceInspector({
     s,
