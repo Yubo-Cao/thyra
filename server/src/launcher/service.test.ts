@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GuiSettings } from "../config/gui-settings";
 import type { LauncherHost } from "./host";
-import { createLauncherService } from "./service";
+import { agentSessionCommand, createLauncherService } from "./service";
 
 const NOW = 1_800_000_000_000;
 const HOME = "/home/me";
@@ -12,6 +12,8 @@ function harness(
     zoxide?: Array<{ path: string; score: number }> | null;
     failSend?: boolean;
     launcher?: GuiSettings["launcher"];
+    /** How panes start `thyra agent`; null where sessions are not served. */
+    agentHostCommand?: string | null;
   } = {},
 ) {
   const directories = new Set(
@@ -51,6 +53,7 @@ function harness(
   const service = createLauncherService({
     connectionId: "local",
     host,
+    agentHostCommand: () => options.agentHostCommand ?? null,
     now: () => NOW,
     readSettings: async () => settings,
     updateSettings: async (update, shouldCommit = () => true) => {
@@ -256,6 +259,103 @@ describe("launcher.launch", () => {
     })) as any;
     expect(result.root_pane.pane_id).toBe("p9");
     expect(result.start_error).toBe("pane gone");
+  });
+});
+
+describe("launcher.launch view", () => {
+  const sent = (calls: Array<{ method: string; params: any }>) =>
+    calls.find((call) => call.method === "pane.send_input")?.params.text;
+
+  test("the terminal view is the default and types the configured command", async () => {
+    const { service, calls } = harness({ agentHostCommand: "/opt/thyra" });
+    const result = (await service.call("launcher.launch", {
+      path: `${HOME}/repo`,
+      agent: "claude",
+    })) as any;
+    expect(sent(calls)).toBe("claude");
+    expect(result).toMatchObject({ view: "terminal", command: "claude" });
+    const explicit = harness({ agentHostCommand: "/opt/thyra" });
+    await explicit.service.call("launcher.launch", {
+      path: `${HOME}/repo`,
+      agent: "codex",
+      view: "terminal",
+    });
+    expect(sent(explicit.calls)).toBe("codex");
+  });
+
+  test("the gui view runs this executable's agent host with the command's arguments", async () => {
+    const { service, calls } = harness({
+      agentHostCommand: "/opt/thyra/bin/thyra",
+      launcher: {
+        local: {
+          pinned: [],
+          commands: { claude: "claude --model opus  --effort high" },
+          history: [],
+        },
+      },
+    });
+    const result = (await service.call("launcher.launch", {
+      path: `${HOME}/repo`,
+      agent: "claude",
+      view: "gui",
+    })) as any;
+    const command =
+      "/opt/thyra/bin/thyra agent claude --model opus  --effort high";
+    expect(sent(calls)).toBe(command);
+    expect(result).toMatchObject({
+      view: "gui",
+      agent: "claude",
+      command,
+      pane_id: "p9",
+    });
+    const plain = harness({ agentHostCommand: "/opt/thyra/bin/thyra" });
+    await plain.service.call("launcher.launch", {
+      path: `${HOME}/repo`,
+      agent: "codex",
+      view: "gui",
+    });
+    expect(sent(plain.calls)).toBe("/opt/thyra/bin/thyra agent codex");
+  });
+
+  test("a command that is not the agent's own contributes no arguments", () => {
+    const host = "bun /src/index.ts";
+    expect(agentSessionCommand(host, "claude", "claude")).toBe(
+      "bun /src/index.ts agent claude",
+    );
+    expect(agentSessionCommand(host, "codex", " codex  -m gpt-x ")).toBe(
+      "bun /src/index.ts agent codex -m gpt-x",
+    );
+    for (const configured of [
+      "claude-wrapper --flag",
+      "FOO=1 claude --flag",
+      "npx claude --flag",
+      "cc",
+      "codex --flag",
+    ])
+      expect(agentSessionCommand(host, "claude", configured)).toBe(
+        "bun /src/index.ts agent claude",
+      );
+  });
+
+  test("the gui view is refused where sessions are not served, and bad views always", async () => {
+    const remote = harness({ agentHostCommand: null });
+    await expect(
+      remote.service.call("launcher.launch", {
+        path: `${HOME}/repo`,
+        agent: "claude",
+        view: "gui",
+      }),
+    ).rejects.toThrow("only available on the default local connection");
+    expect(remote.methods()).toEqual([]);
+    const local = harness({ agentHostCommand: "/opt/thyra" });
+    await expect(
+      local.service.call("launcher.launch", {
+        path: `${HOME}/repo`,
+        agent: "claude",
+        view: "tui",
+      }),
+    ).rejects.toThrow('view must be "gui" or "terminal"');
+    expect(local.methods()).toEqual([]);
   });
 });
 

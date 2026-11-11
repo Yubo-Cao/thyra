@@ -8,6 +8,7 @@ import {
   emptyLauncherSettings,
   isLauncherAgentId,
   LAUNCHER_AGENTS,
+  type LauncherAgentId,
   type LauncherFolder,
   type LauncherSettings,
   liveFolderWeights,
@@ -35,6 +36,26 @@ export type LauncherFolderView = LauncherFolder & {
 };
 
 const PROMPT_WAIT_MS = 3000;
+
+export type LauncherView = "gui" | "terminal";
+
+/**
+ * The shell text that starts an agent session: the host command, then the
+ * arguments of the configured terminal command when that command is the
+ * agent's own (`claude --model x` gives `thyra agent claude --model x`).
+ * Any other configured command (a wrapper, an alias) contributes nothing.
+ */
+export function agentSessionCommand(
+  hostCommand: string,
+  agent: LauncherAgentId,
+  configured: string,
+): string {
+  const own = new RegExp(`^${agent}(?:\\s+(.*))?$`, "s").exec(
+    configured.trim(),
+  );
+  const extra = own?.[1]?.trim();
+  return `${hostCommand} agent ${agent}${extra ? ` ${extra}` : ""}`;
+}
 const MAX_PROBE_PATHS = 200;
 
 /**
@@ -50,6 +71,11 @@ export function createLauncherService(args: {
     update: (current: GuiSettings) => GuiSettings,
     shouldCommit?: () => boolean,
   ) => Promise<GuiSettings>;
+  /**
+   * Shell text that runs this Thyra executable, for the `gui` view; null
+   * where panes cannot host agent sessions (see `agent_session.*`).
+   */
+  agentHostCommand?: () => string | null;
   now?: () => number;
 }) {
   const now = args.now ?? Date.now;
@@ -318,12 +344,23 @@ export function createLauncherService(args: {
     const agent = params.agent;
     if (!isLauncherAgentId(agent))
       throw new Error("launcher.launch requires a known agent");
+    const view = params.view ?? "terminal";
+    if (view !== "gui" && view !== "terminal")
+      throw new Error('launcher.launch view must be "gui" or "terminal"');
+    const hostCommand = view === "gui" ? args.agentHostCommand?.() : null;
+    if (view === "gui" && !hostCommand)
+      throw new Error(
+        "Agent sessions are only available on the default local connection",
+      );
     const path = await hostPath(params.path);
     await requireDirectory(path);
-    const command = agentCommand(
+    const configured = agentCommand(
       launcherSettings(await args.readSettings()),
       agent,
     );
+    const command = hostCommand
+      ? agentSessionCommand(hostCommand, agent, configured)
+      : configured;
     const { workspaces, panes } = await topology();
     const workspaceId = workspaceForFolder(path, workspaces, panes);
     // Browser-local navigation must not move other clients; the initiating
@@ -375,6 +412,7 @@ export function createLauncherService(args: {
       ...created,
       path,
       agent,
+      view,
       command,
       pane_id: paneId,
       reused_workspace: workspaceId !== null,

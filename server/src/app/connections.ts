@@ -1,4 +1,5 @@
 import { rmSync } from "node:fs";
+import { thyraHostCommand } from "../agent-session/host-command";
 import { filterEvent } from "../authz/filters";
 import type { ClientRegistry } from "../bridge/client-registry";
 import { HerdrClient } from "../bridge/herdr-client";
@@ -209,6 +210,13 @@ export function createConnectionWiring(deps: {
           clientLabel,
           markRpcError,
           presentSnapshot: clientIdentity.annotateSnapshot,
+          // Agent sessions are served for the default connection's panes
+          // when its Herdr runs on this host (see app/agent-sessions.ts).
+          agentHostCommand: () =>
+            !profileConfig.sshHost &&
+            connectionManager.defaultId() === identity.id
+              ? thyraHostCommand()
+              : null,
           socketIdentity: (ws) => {
             const participantId = participantIds.get(ws);
             return participantId

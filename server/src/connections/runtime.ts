@@ -163,6 +163,8 @@ export function createLegacyConnectionRuntime(args: {
   presentSnapshot?: <T>(snapshot: T, context: PresenceContext) => T;
   /** The bridge-assigned participant and device of a browser socket. */
   socketIdentity?: (ws: ServerWebSocket<unknown>) => SocketIdentity | null;
+  /** How a pane starts `thyra agent`; null where sessions are not served. */
+  agentHostCommand?: () => string | null;
 }) {
   const { config } = args;
   const logger = args.logger ?? silentLogger;
@@ -311,6 +313,7 @@ export function createLegacyConnectionRuntime(args: {
       herdr.call(method, params, timeoutMs),
     readSettings: readGuiSettings,
     updateSettings: updateGuiSettings,
+    agentHostCommand: args.agentHostCommand,
   });
   const sshTunnel = createSshTunnelManager({
     connectionId: identity.id,
