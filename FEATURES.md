@@ -152,7 +152,8 @@ A pane whose Claude Code or Codex runs as an agent session shows an application 
 The switch in the pane header changes that pane between the agent view and its terminal; the agent view is the default, and the choice lasts for the page.
 The view appears only where the bridge runs agent sessions, and its code loads with the first pane that shows one.
 
-- **Transcript.** Prompts, then replies as Markdown while they stream: text keeps its shape as it arrives (an open code fence, bold run or table is drawn as it will end up), code blocks have a copy button, and an image in a reply stays a link.
+- **Transcript.** Prompts and replies as Markdown, replies while they stream: text keeps its shape as it arrives (an open code fence, bold run or table is drawn as it will end up), code blocks have a copy button, and an image in a reply stays a link.
+  A prompt shows the images sent with it where they stood in its text; a click opens one full size, and one that cannot be loaded (its file is gone from the host, or is not yours to read) shows as its `[Image #N]` placeholder.
   Thinking is a dimmed row that shows its latest line while it streams.
   Tool calls are one-line rows with an icon for the kind of call (command, edit, read, search, fetch, task), its title, and its state; a row opens to the command, the input, the output, and each changed file as a diff under its path.
   Clicking a diff's path opens the file in the [Inspector](#workspace-inspector). Plans are checklists, and notices and errors read inline.
@@ -166,12 +167,19 @@ The view appears only where the bridge runs agent sessions, and its code loads w
   If the agent refuses, the reason appears under the conversation; sending a prompt instead starts a new conversation.
   A session started with the agent's own resume arguments (`thyra agent claude --continue`, `thyra agent claude --resume <id>`, `thyra agent codex resume --last`) comes up with its transcript the same way.
   A session whose `thyra agent` process was started by a build without this has no list.
-- **Approvals.** A request is pinned above the prompt box until it is answered, with the command or the diff in question and a button for each answer the agent offers (allow, allow always, deny); Shift+Tab from the prompt box reaches them.
-- **Prompt box.** Enter (or `Cmd+Enter` / `Ctrl+Enter`) sends; Shift+Enter and Alt+Enter break the line.
+- **Approvals.** A request is pinned above the prompt box until it is answered, with the command or the diff in question and a button for each answer the agent offers (allow, allow always, deny); Shift+Tab from an empty prompt box reaches them.
+- **Prompt box.** The box edits like the [prompt editor](#prompt-editor), in the transcript's type: a plain field at once, then live-preview Markdown (headings, bold, `code`, lists, links, highlighted fenced code, multiple cursors, find), loaded as described there, on phones too. What is sent is the exact text typed.
+  Enter (or `Cmd+Enter` / `Ctrl+Enter`) sends; Shift+Enter and Alt+Enter break the line.
   With an on-screen keyboard Return breaks the line and the send button sends.
   A prompt sent while a turn runs is steered or queued by the agent.
   The stop button, or Esc in an empty box, interrupts the turn; Page Up/Down in an empty box page the transcript.
-  The microphone dictates into the box, and an unsent draft is kept per pane while the page is open.
+  Tab leaves an empty box; in a draft the live preview indents with it, and Esc then Tab leaves.
+  The microphone dictates at the caret, and an unsent draft is kept per pane, with its images, while the page is open.
+- **Images.** Paste an image, drop image files on the box, or use the image button, which on a phone opens the camera or the photo library.
+  Each image uploads to the host and shows as a picture in the text, in place of an `[Image #N]` placeholder; while it uploads it waits in a strip under the text, and sending waits for it. Deleting the picture removes the attachment.
+  An image over 3.5 MiB, or in a format other than PNG, JPEG, GIF or WebP, is redrawn in the browser first: long edge at most 2000 pixels, JPEG unless it has transparency, and smaller again while it is still too large. One the browser cannot read is refused.
+  A prompt takes up to 10 images, which reach the agent as image input in the order they appear, and it may consist of images alone.
+  Under the plain field the placeholders show as text and the pictures stay in the strip.
 - **Session line.** Under the box: the mode (a menu when the agent offers several), the model, and how much of the context window is in use.
   The pane header shows the session's state: starting, working, needs approval, or ended.
 - **Viewers** follow the transcript and see open requests, without the prompt box, the answer buttons, or the list of earlier conversations.
