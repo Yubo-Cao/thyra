@@ -1,7 +1,8 @@
 /**
  * A stand-in for `claude -p` in process-level tests: it speaks just enough
  * of the stream-json and control protocols for one text turn, and records
- * how it was started in the file named by FAKE_AGENT_RECORD.
+ * how it was started in the file named by FAKE_AGENT_RECORD. Started with
+ * `--resume <id>` it reports that conversation's ID as its own.
  */
 import { writeFileSync } from "node:fs";
 
@@ -19,7 +20,10 @@ if (process.env.FAKE_AGENT_RECORD)
 
 const say = (message: unknown) =>
   process.stdout.write(`${JSON.stringify(message)}\n`);
-const session_id = "00000000-0000-4000-8000-000000000001";
+const resumed = process.argv.indexOf("--resume");
+const session_id =
+  (resumed >= 0 && process.argv[resumed + 1]) ||
+  "00000000-0000-4000-8000-000000000001";
 
 function turn(uuid: string, prompt: string) {
   if (prompt === "crash") {
