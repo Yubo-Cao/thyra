@@ -1,5 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import {
+  type ReactNode,
   type Ref,
   useImperativeHandle,
   useLayoutEffect,
@@ -45,13 +46,16 @@ export type AgentTranscriptHandle = {
  * The transcript, oldest first. It stays at the newest output while that
  * streams in unless the reader scrolled up, and mounts a window of the items
  * (transcriptWindow.ts) so a long session costs what its visible part does.
+ * `children` follow the hint of a session with nothing in it yet.
  */
 export function AgentTranscript({
   store,
   ref,
+  children,
 }: {
   store: AgentSessionStore;
   ref: Ref<AgentTranscriptHandle>;
+  children?: ReactNode;
 }) {
   const order = useStore(store, (view) => view.session?.order ?? NO_ITEMS);
   const working = useStore(
@@ -64,6 +68,8 @@ export function AgentTranscript({
   );
   const [mounted, setMounted] = useState<TranscriptWindow>(TAIL_WINDOW);
   const { start, end } = windowRange(mounted, order);
+  // Nothing to follow yet: what stands in for the items reads from its top.
+  const blank = order.length === 0;
   const scroller = useRef<HTMLDivElement | null>(null);
   const content = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
@@ -133,6 +139,7 @@ export function AgentTranscript({
     const near =
       element.scrollTop > seen.current.top ? FOLLOW_DOWN_PX : FOLLOW_PX;
     see(element);
+    if (blank) return;
     // Any scroll up by the reader lets go, however short; reaching the
     // bottom (or nearly, scrolling down) follows again.
     if (mounted.anchor !== null || byReader) following.current = false;
@@ -154,7 +161,7 @@ export function AgentTranscript({
     const element = scroller.current;
     if (!element || !content.current) return;
     const pin = () => {
-      if (following.current) element.scrollTop = element.scrollHeight;
+      if (following.current && !blank) element.scrollTop = element.scrollHeight;
       see(element);
     };
     pin();
@@ -162,7 +169,7 @@ export function AgentTranscript({
     observer.observe(content.current);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [blank]);
 
   const showLatest = () => {
     following.current = true;
@@ -212,15 +219,22 @@ export function AgentTranscript({
         }}
       >
         <div ref={content} className="agent-transcript-content">
-          {order.length === 0 && !working && !starting ? (
-            <p className="agent-empty">
-              {t("Send a prompt to start working with the agent.")}
-            </p>
+          {blank && !working ? (
+            <>
+              {/* One line for both states, so what follows it never moves. */}
+              <p className="agent-empty" role={starting ? "status" : undefined}>
+                {starting ? <Spinner size="sm" /> : null}
+                {starting
+                  ? t("Starting the agent")
+                  : t("Send a prompt to start working with the agent.")}
+              </p>
+              {children}
+            </>
           ) : null}
           {order.slice(start, end).map((id) => (
             <AgentItemRow key={id} store={store} id={id} />
           ))}
-          {(working || starting) && mounted.anchor === null ? (
+          {(working || (starting && !blank)) && mounted.anchor === null ? (
             <div className="agent-activity" role="status">
               <Spinner size="sm" />
               {starting ? t("Starting the agent") : t("Working")}

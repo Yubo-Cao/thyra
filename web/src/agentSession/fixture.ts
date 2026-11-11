@@ -7,6 +7,7 @@
 //   ?agentFixture          replay in real time
 //   ?agentFixture=long     start from 1500 earlier items (scrolling, windowing)
 //   ?agentFixture=exited   end with the agent process gone
+//   ?agentFixture=resume   start empty, with stored conversations to continue
 //   &agentFixtureSpeed=8   replay faster
 import {
   AGENT_SESSION_EVENT,
@@ -15,9 +16,11 @@ import {
   type AgentItem,
   type AgentSessionEvent,
   type AgentSessionInfo,
+  type AgentStoredSession,
 } from "../../../shared/agentSession";
 import {
   type AgentSessionTransport,
+  agentSessionsStore,
   installAgentSessionTransport,
 } from "../agentSessions";
 import { store } from "../store";
@@ -131,6 +134,51 @@ const SUMMARY = `Done. The limiter now refills from elapsed time:
 
 One thing left for you: \`README.md\` still describes the interval refill.`;
 
+const README_PATCH = `@@ -21,5 +21,6 @@ ## Rate limits
+-The limiter refills its bucket once per second.
++The limiter refills continuously: \`rate\` tokens per second, up to
++\`capacity\`. \`take(count)\` takes several tokens at once.
+`;
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+/** A stored conversation whose resume the host refuses. */
+const UNREADABLE = "5d0e8a52-7c1b-4f0e-9d3a-0f6b2c8e4a17";
+/** Stored conversations of every session's agent, newest first. */
+const STORED: AgentStoredSession[] = (
+  [
+    [
+      "b7a1f3c9-2e44-4d0a-8c55-91f0a6d2e3b4",
+      "The rate limiter lets through twice its budget when a burst straddles a refill",
+      4 * MINUTE,
+    ],
+    [
+      "e2c9d7a0-63f1-4b8e-a2d4-5c7f9e1b0a36",
+      "Add retry with backoff to the webhook sender",
+      3 * HOUR,
+    ],
+    [
+      "91d4b6e8-0a2c-47f3-b5e9-d8c1a3f7e062",
+      "Why does the nightly export time out for the largest tenants? Start from the slow query log in ops/slow-2026-06.txt, compare the plans before and after the index change, and write up what you find",
+      26 * HOUR,
+    ],
+    [UNREADABLE, "Bisect the flaky queue test", 4 * DAY],
+    [
+      "3f8e2a1d-9b07-4c6e-8d15-a4e0c7b9f2d8",
+      "把限流器改成按经过时间连续补充令牌",
+      9 * DAY,
+    ],
+    [
+      "c05a9e7b-4d21-4f8a-9e63-2b7d1f0a8c5e",
+      "Update the README for the new config format",
+      21 * DAY,
+    ],
+    ["a64c0f2e-8b3d-4e19-b7a0-6d9e5c1f3a72", "", 70 * DAY],
+    ["7e1b5d9c-3a60-4f2b-8c4e-0a9d6f2e1b83", "Set up the project", 400 * DAY],
+  ] as const
+).map(([id, title, age]) => ({ id, title, updated_at: Date.now() - age }));
+
 class FixtureSession {
   info: AgentSessionInfo;
   items: AgentItem[] = [];
@@ -151,6 +199,7 @@ class FixtureSession {
       mode: "default",
       modes: MODES,
       usage: { context_tokens: 18_400, context_window: 200_000 },
+      can_resume: true,
     };
     if (variant === "long") {
       for (let index = 0; index < 500; index++) {
@@ -171,7 +220,109 @@ class FixtureSession {
         );
       }
     }
-    void this.script(this.run);
+    if (variant === "resume") void this.settle(this.run);
+    else void this.script(this.run);
+  }
+
+  /** A fresh session: the agent comes up and waits for a prompt. */
+  private async settle(run: number) {
+    try {
+      await this.wait(600, run);
+      this.setInfo({ status: "idle" });
+    } catch {
+      // Interrupted or resumed meanwhile.
+    }
+  }
+
+  /** The transcript of a stored conversation, as it ended. */
+  private stored(prompt: string, at: number): AgentItem[] {
+    const tool = (body: Omit<Tool, "id" | "at" | "type" | "status">) => ({
+      type: "tool",
+      status: "done",
+      ...body,
+    });
+    return [
+      { type: "user", text: prompt || "Fix the rate limiter." },
+      { type: "thinking", text: THINKING, streaming: false },
+      {
+        type: "plan",
+        entries: [
+          "Read the limiter and its callers",
+          "Switch to a continuous refill",
+          "Run the tests",
+        ].map((text) => ({ text, status: "done" })),
+      },
+      tool({ kind: "read", name: "Read", title: "src/limiter.ts" }),
+      tool({
+        kind: "search",
+        name: "Grep",
+        title: "limiter.take(",
+        output:
+          "src/server.ts:41:  if (!limiter.take()) return tooMany();\nsrc/queue.ts:17:    while (limiter.take()) drain();",
+      }),
+      { type: "assistant", text: REPLY, streaming: false },
+      {
+        ...tool({
+          kind: "command",
+          name: "Bash",
+          title: "bun test src/limiter.test.ts",
+          command: "bun test src/limiter.test.ts",
+          output: TEST_OUTPUT,
+        }),
+        status: "failed",
+      },
+      tool({
+        kind: "edit",
+        name: "Edit",
+        title: "src/limiter.ts",
+        diffs: [{ path: "src/limiter.ts", patch: PATCH }],
+      }),
+      tool({
+        kind: "command",
+        name: "Bash",
+        title: "bun test src/limiter.test.ts",
+        command: "bun test src/limiter.test.ts",
+        output: " 3 pass\n 0 fail\nRan 3 tests across 1 file. [41.00ms]",
+      }),
+      { type: "assistant", text: SUMMARY, streaming: false },
+      { type: "user", text: "Good. Bring the README in line with it." },
+      tool({
+        kind: "edit",
+        name: "Edit",
+        title: "README.md",
+        diffs: [{ path: "README.md", patch: README_PATCH }],
+      }),
+      {
+        type: "assistant",
+        text: "`README.md` now describes the continuous refill and `take(count)`.",
+        streaming: false,
+      },
+    ].map((body, index, all) => ({
+      ...this.item(body),
+      at: at - (all.length - index) * 20_000,
+    }));
+  }
+
+  /** Continue a stored conversation; Claude restarts its process for it. */
+  private async resume(run: number, stored: AgentStoredSession) {
+    try {
+      if (this.info.kind === "claude") {
+        this.setInfo({ status: "starting" });
+        await this.wait(1500, run);
+      } else {
+        await this.wait(300, run);
+      }
+      this.items = this.stored(stored.title, stored.updated_at);
+      this.approvals = [];
+      this.emit({ type: "reset", items: this.items });
+      this.setInfo({
+        status: "idle",
+        agent_session_id: stored.id,
+        usage: { context_tokens: 41_900, context_window: 200_000 },
+      });
+    } catch {
+      // Interrupted: `interrupt` already settled the state.
+    }
   }
 
   private item(body: Record<string, unknown>) {
@@ -440,6 +591,23 @@ class FixtureSession {
       case "agent_session.set_mode":
         this.setInfo({ mode: String(params.mode) });
         return {};
+      case "agent_session.history":
+        return structuredClone({
+          sessions: STORED.filter(
+            (stored) => stored.id !== this.info.agent_session_id,
+          ),
+        });
+      case "agent_session.resume": {
+        const stored = STORED.find((item) => item.id === params.session_id);
+        if (!stored) throw new Error("no such stored conversation");
+        if (/running|awaiting_approval/.test(this.info.status))
+          throw new Error("a turn is running");
+        if (stored.id === UNREADABLE)
+          throw new Error("its transcript file could not be read");
+        // Answered before the transcript is there, like a slow host would.
+        void this.resume(++this.run, stored);
+        return { ok: true };
+      }
       default:
         return {};
     }
@@ -486,6 +654,10 @@ const transport: AgentSessionTransport = {
 
 export function installAgentSessionFixture() {
   installAgentSessionTransport(() => transport);
+  // A bridge that runs agent sessions may be followed already. Off for a
+  // moment, the page lets go of it and follows again through the fixture.
+  agentSessionsStore.setState({ available: false, sessions: {} });
+  setTimeout(() => agentSessionsStore.setState({ available: true }));
   // New panes get a session, like agents started later would.
   let known = "";
   store.subscribe(() => {

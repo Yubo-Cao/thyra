@@ -22,6 +22,11 @@ export default {
   "Send a prompt to start working with the agent.":
     "发送提示，开始与 Agent 协作。",
   "Starting the agent": "正在启动 Agent",
+  "Continue a previous conversation": "继续之前的对话",
+  "Untitled conversation": "未命名对话",
+  "Loading the conversation": "正在加载对话",
+  "Could not continue this conversation: {reason}": "无法继续此对话：{reason}",
+  "Show {count} more": "再显示 {count} 条",
   "Jump to latest": "跳到最新",
   "Open {path}": "打开 {path}",
   "{count} more lines not shown": "还有 {count} 行未显示",

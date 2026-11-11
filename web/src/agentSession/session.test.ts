@@ -146,6 +146,27 @@ test("a skipped sequence number subscribes again for a fresh snapshot", async ()
   expect(h.text()).toBe("Hello there!");
 });
 
+test("a fresh snapshot continues the epoch a reset started", async () => {
+  const h = harness();
+  await h.reply(snapshot(5, "Hel"));
+  for (const listener of h.listeners)
+    listener("agent_session.event", {
+      pane_id: "p1",
+      seq: 6,
+      type: "reset",
+      items: [assistant("stored")],
+    });
+  h.frame();
+  expect(h.text()).toBe("stored");
+  expect(h.store.getState().session?.epoch).toBe(1);
+  // A gap subscribes again; the view must not start over a second time.
+  h.delta(8, "lost");
+  h.frame();
+  await h.reply(snapshot(8, "stored and more"));
+  expect(h.text()).toBe("stored and more");
+  expect(h.store.getState().session?.epoch).toBe(1);
+});
+
 test("a failed subscribe is reported and retried with a growing delay", async () => {
   const h = harness();
   await h.fail("no such session");
