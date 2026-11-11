@@ -9,11 +9,16 @@
 //   ?agentFixture=exited   end with the agent process gone
 //   ?agentFixture=resume   start empty, with stored conversations to continue
 //   &agentFixtureSpeed=8   replay faster
+//
+// Prompt images stay in the page: an "upload" takes a moment and gets a host
+// path the transcript can show again. A file named `fail...` is refused, and
+// so is a prompt that starts with `/refuse`.
 import {
   AGENT_SESSION_EVENT,
   AGENT_SESSIONS_CHANGED,
   type AgentApproval,
   type AgentItem,
+  type AgentPromptImage,
   type AgentSessionEvent,
   type AgentSessionInfo,
   type AgentStoredSession,
@@ -139,6 +144,30 @@ const README_PATCH = `@@ -21,5 +21,6 @@ ## Rate limits
 +The limiter refills continuously: \`rate\` tokens per second, up to
 +\`capacity\`. \`take(count)\` takes several tokens at once.
 `;
+
+/** Prompt images by the host path each was given, as addresses to show. */
+const uploads = new Map<string, string>();
+/** An image on the "host" from the start, and one that is no longer there. */
+const SAMPLE_IMAGE = "/tmp/herdr-img-fixture-load-test.png";
+const GONE_IMAGE = "/tmp/herdr-img-fixture-earlier-run.png";
+uploads.set(
+  SAMPLE_IMAGE,
+  `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="560" height="280" font-family="sans-serif" font-size="13">
+<rect width="560" height="280" fill="#f7f8fa"/>
+<text x="24" y="34" font-size="16" font-weight="700" fill="#24292f">Requests allowed per second</text>
+<line x1="24" y1="230" x2="536" y2="230" stroke="#636c76"/>
+<line x1="24" y1="150" x2="536" y2="150" stroke="#d03b3b" stroke-dasharray="6 4"/>
+<text x="536" y="142" text-anchor="end" fill="#d03b3b">budget: 10</text>
+${[10, 9, 20, 10, 8, 19, 10, 10]
+  .map(
+    (value, index) =>
+      `<rect x="${44 + index * 60}" y="${230 - value * 8}" width="36" height="${value * 8}" fill="${value > 10 ? "#d03b3b" : "#2f6fe0"}"/><text x="${62 + index * 60}" y="250" text-anchor="middle" fill="#636c76">${index + 1}s</text>`,
+  )
+  .join("")}
+</svg>`,
+  )}`,
+);
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -285,6 +314,16 @@ class FixtureSession {
         output: " 3 pass\n 0 fail\nRan 3 tests across 1 file. [41.00ms]",
       }),
       { type: "assistant", text: SUMMARY, streaming: false },
+      {
+        type: "user",
+        text: "Here is the load test before the change: [Image #1]\n\nThe run after it should be flat. I had a chart of an **earlier** run too: [Image #2]",
+        images: [{ path: SAMPLE_IMAGE }, { path: GONE_IMAGE }],
+      },
+      {
+        type: "assistant",
+        text: "The two red bars are the bursts that straddle a refill: 19 and 20 requests against a budget of 10. I cannot open the second image.",
+        streaming: false,
+      },
       { type: "user", text: "Good. Bring the README in line with it." },
       tool({
         kind: "edit",
@@ -389,7 +428,7 @@ class FixtureSession {
     return this.put({ ...item, status: "done", ...result }) as Tool;
   }
 
-  private async script(run: number, prompt?: string) {
+  private async script(run: number, prompt?: string, images = 0) {
     try {
       await this.wait(prompt ? 0 : 600, run);
       this.setInfo({ status: "running" });
@@ -397,7 +436,11 @@ class FixtureSession {
         await this.wait(400, run);
         await this.stream(
           "assistant",
-          `You said: *${prompt.trim()}*\n\nThe fixture has only one script, so here is \`a short reply\` instead.`,
+          `You said: *${prompt.trim()}*\n\n${
+            images
+              ? `It came with ${images} image${images > 1 ? "s" : ""}. `
+              : ""
+          }The fixture has only one script, so here is \`a short reply\` instead.`,
           run,
         );
         this.setInfo({ status: "idle" });
@@ -553,8 +596,20 @@ class FixtureSession {
         });
       case "agent_session.send": {
         const text = String(params.text ?? "");
-        this.put(this.item({ type: "user", text }));
-        if (this.info.status === "idle") void this.script(++this.run, text);
+        if (text.startsWith("/refuse"))
+          throw new Error("the agent did not take the prompt");
+        const images = Array.isArray(params.images)
+          ? (params.images as AgentPromptImage[])
+          : [];
+        this.put(
+          this.item({
+            type: "user",
+            text,
+            ...(images.length ? { images } : {}),
+          }),
+        );
+        if (this.info.status === "idle")
+          void this.script(++this.run, text, images.length);
         return {};
       }
       case "agent_session.interrupt": {
@@ -650,6 +705,19 @@ const transport: AgentSessionTransport = {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
+  async uploadImage(file) {
+    await new Promise((resolve) => setTimeout(resolve, 900 / speed));
+    if (file.name.startsWith("fail"))
+      throw new Error("the host did not take the image");
+    const path = `/tmp/herdr-img-fixture-${uploads.size}.${file.type.split("/")[1] || "png"}`;
+    uploads.set(path, URL.createObjectURL(file));
+    // What reached the "host", after the page prepared it.
+    console.info(
+      `[agentFixture] uploaded ${file.name}: ${file.type}, ${file.size} bytes`,
+    );
+    return path;
+  },
+  imageUrl: (path) => uploads.get(path) ?? null,
 };
 
 export function installAgentSessionFixture() {
