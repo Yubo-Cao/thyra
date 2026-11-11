@@ -5,6 +5,7 @@ import type {
   AgentApprovalOption,
   AgentItem,
   AgentSessionMode,
+  AgentSessionModel,
   AgentSessionUsage,
   AgentStoredSession,
 } from "../../../shared/agentSession";
@@ -74,6 +75,37 @@ const DENY_MESSAGE =
 const QUESTION_SKIPPED = "The user chose not to answer this question.";
 const QUESTION_UNSUPPORTED =
   "This interface cannot show this question dialog. Ask the user in plain text instead.";
+
+/**
+ * The models of the CLI's `initialize` answer, one per model it resolves
+ * to: aliases such as `default` and `opus` name the same model, and the
+ * session shows the model it runs by that ID (`set_model` takes it too).
+ */
+export function claudeModels(value: unknown): AgentSessionModel[] {
+  const models = new Map<string, AgentSessionModel>();
+  /** Models named so far only by the `default` alias, whose label says so. */
+  const byDefault = new Set<string>();
+  for (const entry of Array.isArray(value) ? value : []) {
+    const model = record(entry);
+    const id = text(model?.resolvedModel) ?? text(model?.value);
+    if (!model || !id || (models.has(id) && !byDefault.has(id))) continue;
+    if (model.value === "default") byDefault.add(id);
+    else byDefault.delete(id);
+    const efforts = Array.isArray(model.supportedEffortLevels)
+      ? model.supportedEffortLevels.filter((level) => typeof level === "string")
+      : [];
+    const description = text(model.description);
+    models.set(id, {
+      id,
+      label: text(model.displayName) ?? id,
+      ...(description ? { description } : {}),
+      ...(model.supportsEffort === true && efforts.length > 0
+        ? { efforts }
+        : {}),
+    });
+  }
+  return [...models.values()];
+}
 
 /** The command line of a session; the user's arguments come last. */
 export function claudeArgv(userArgs: string[]): string[] {
@@ -190,6 +222,7 @@ export class ClaudeAdapter implements AgentAdapter {
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private nextControlId = 1;
+  private nextSettingsId = 1;
   private nextLocalId = 1;
   private turn = 0;
   private readonly control = new Map<
@@ -217,6 +250,8 @@ export class ClaudeAdapter implements AgentAdapter {
   private readonly deniedTools = new Set<string>();
   private readonly subagentProgress = new Map<string, string[]>();
   private usage: AgentSessionUsage = {};
+  /** What the CLI's `initialize` listed. */
+  private models: AgentSessionModel[] = [];
 
   constructor(private readonly options: AdapterOptions) {
     this.store = options.store;
@@ -301,14 +336,47 @@ export class ClaudeAdapter implements AgentAdapter {
     this.readyTimer = setTimeout(() => this.ready(), READY_TIMEOUT_MS);
     this.request({ subtype: "initialize" }, READY_TIMEOUT_MS)
       .then((response) => {
+        if (this.process !== child) return;
         const mode = text(response.current_permission_mode);
-        if (mode && this.process === child) this.store.updateInfo({ mode });
+        this.models = claudeModels(response.models);
+        this.store.updateInfo({
+          ...(mode ? { mode } : {}),
+          models: this.models.length > 0 ? this.models : undefined,
+        });
+        // The model and effort before the first turn reports them.
+        void this.readSettings();
       })
       .catch(() => undefined)
       .finally(() => {
         if (this.process === child) this.ready();
       });
     return true;
+  }
+
+  /** The model and effort the CLI runs the next turn with. */
+  private async readSettings() {
+    const child = this.process;
+    const settings = await this.request(
+      { subtype: "get_settings" },
+      CONTROL_TIMEOUT_MS,
+      `thyra-settings-${this.nextSettingsId++}`,
+    ).catch(() => null);
+    const applied = record(settings?.applied);
+    if (!applied || this.process !== child) return;
+    const effort = text(applied.effort);
+    this.showModel(text(applied.model), effort ? { effort } : {});
+  }
+
+  /** A model, with the efforts it takes, in the session's info. */
+  private showModel(model: string | undefined, extra: { effort?: string }) {
+    const known = model ?? this.store.info.model;
+    const efforts = this.models.find((entry) => entry.id === known)?.efforts;
+    this.store.updateInfo({
+      ...(model ? { model } : {}),
+      efforts,
+      ...(efforts ? {} : { effort: undefined }),
+      ...(efforts ? extra : {}),
+    });
   }
 
   private ready() {
@@ -612,6 +680,33 @@ export class ClaudeAdapter implements AgentAdapter {
     this.store.updateInfo({ mode: text(response.mode) ?? mode });
   }
 
+  async setModel(model: string) {
+    this.requireRunningProcess();
+    if (!this.models.some((entry) => entry.id === model))
+      throw new AgentActionError(`unknown model: ${model}`);
+    const response = await this.request({ subtype: "set_model", model });
+    this.showModel(text(response.model) ?? model, {});
+    // Each model keeps an effort of its own in the user's settings.
+    await this.readSettings();
+  }
+
+  async setEffort(effort: string) {
+    this.requireRunningProcess();
+    if (!this.store.info.efforts?.includes(effort))
+      throw new AgentActionError(`unknown effort: ${effort}`);
+    // What the CLI's `--effort` sets; it holds from the next turn.
+    await this.request({
+      subtype: "apply_flag_settings",
+      settings: { effortLevel: effort },
+    });
+    await this.readSettings();
+  }
+
+  /** The CLI's own `/compact`, which a prompt runs as a command. */
+  async compact() {
+    await this.send("/compact");
+  }
+
   stop(force = false) {
     this.stopping = true;
     const signal = force ? "SIGKILL" : "SIGTERM";
@@ -629,11 +724,12 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /** Send a control request; resolves with the response body. */
+  /** `id` names a side request outside the numbered sequence. */
   private request(
     request: Record<string, unknown>,
     timeoutMs = CONTROL_TIMEOUT_MS,
+    id = `thyra-${this.nextControlId++}`,
   ): Promise<Record<string, unknown>> {
-    const id = `thyra-${this.nextControlId++}`;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.control.delete(id);
@@ -688,9 +784,9 @@ export class ClaudeAdapter implements AgentAdapter {
         const cwd = text(message.cwd);
         this.store.updateInfo({
           ...(mode ? { mode } : {}),
-          ...(model ? { model } : {}),
           ...(cwd ? { cwd } : {}),
         });
+        if (model && model !== this.store.info.model) this.showModel(model, {});
         this.beginActivity();
         return;
       }

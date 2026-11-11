@@ -97,7 +97,32 @@ test("only well-formed actions are accepted from the bridge", () => {
     action: "resume",
     session_id: "0a1b-2c3d",
   });
+  // How a prompt goes during a turn, and the actions that came with it.
+  expect(
+    parseBridgeMessage(
+      '{"type":"action","id":8,"action":"send","text":"hi","delivery":"queue"}',
+    ),
+  ).toEqual({
+    type: "action",
+    id: 8,
+    action: "send",
+    text: "hi",
+    delivery: "queue",
+  });
+  for (const [line, action] of [
+    ['"unqueue","prompt_id":"q1"', { action: "unqueue", prompt_id: "q1" }],
+    ['"set_model","model":"m"', { action: "set_model", model: "m" }],
+    ['"set_effort","effort":"high"', { action: "set_effort", effort: "high" }],
+    ['"compact"', { action: "compact" }],
+  ] as const)
+    expect(
+      parseBridgeMessage(`{"type":"action","id":9,"action":${line}}`),
+    ).toEqual({ type: "action", id: 9, ...action });
   for (const line of [
+    '{"type":"action","id":1,"action":"send","text":"x","delivery":"later"}',
+    '{"type":"action","id":1,"action":"unqueue"}',
+    '{"type":"action","id":1,"action":"set_model","model":1}',
+    '{"type":"action","id":1,"action":"set_effort"}',
     "not json",
     "[]",
     '{"type":"action","id":1,"action":"resume"}',

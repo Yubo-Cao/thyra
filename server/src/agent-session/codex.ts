@@ -7,6 +7,7 @@ import {
   type AgentPlanEntry,
   type AgentPromptImage,
   type AgentSessionMode,
+  type AgentSessionModel,
   type AgentStoredSession,
   type AgentToolKind,
 } from "../../../shared/agentSession";
@@ -56,6 +57,37 @@ const SANDBOX_MODES = ["read-only", "workspace-write", "danger-full-access"];
 /** Turns of a stored thread are read newest first, this many at a time. */
 const TURN_PAGE_SIZE = 20;
 const TURN_PAGE_LIMIT = 100;
+
+/** A model of `model/list`, with the effort Codex gives it by default. */
+type CodexModel = AgentSessionModel & { defaultEffort?: string };
+
+/** The models of a `model/list` page that its picker shows. */
+export function codexModels(data: unknown): CodexModel[] {
+  return (Array.isArray(data) ? data : []).flatMap((value): CodexModel[] => {
+    const model = record(value);
+    const id = text(model?.id) ?? text(model?.model);
+    if (!model || !id || model.hidden === true) return [];
+    const efforts = (
+      Array.isArray(model.supportedReasoningEfforts)
+        ? model.supportedReasoningEfforts
+        : []
+    ).flatMap((entry) => {
+      const effort = text(record(entry)?.reasoningEffort);
+      return effort ? [effort] : [];
+    });
+    const description = text(model.description);
+    const defaultEffort = text(model.defaultReasoningEffort);
+    return [
+      {
+        id,
+        label: text(model.displayName) ?? id,
+        ...(description ? { description } : {}),
+        ...(efforts.length > 0 ? { efforts } : {}),
+        ...(defaultEffort ? { defaultEffort } : {}),
+      },
+    ];
+  });
+}
 
 export type CodexLaunch = {
   /** Options `codex app-server` takes itself. */
@@ -464,7 +496,7 @@ export class CodexAdapter implements AgentAdapter {
   private nextRequestId = 1;
   private nextLocalId = 1;
   private readonly requests = new Map<
-    number,
+    number | string,
     {
       resolve(value: Record<string, unknown>): void;
       reject(error: Error): void;
@@ -483,6 +515,9 @@ export class CodexAdapter implements AgentAdapter {
   private undelivered = 0;
   /** An approval policy chosen with `setMode`, for the next turn. */
   private nextPolicy: string | null = null;
+  /** A model and effort chosen for the next turn; Codex keeps them after. */
+  private nextModel: { model?: string; effort?: string } = {};
+  private models: CodexModel[] = [];
   private readonly approvals = new Map<string, PendingApproval>();
   /** Items with streamed text that has not been completed. */
   private readonly streaming = new Set<string>();
@@ -552,6 +587,38 @@ export class CodexAdapter implements AgentAdapter {
     }
     if (note) this.notice("info", note);
     if (this.store.phase === "starting") this.store.setPhase("idle");
+    // The picker is an offer: a session works without it.
+    void this.listModels().catch(() => undefined);
+  }
+
+  private async listModels() {
+    const models: CodexModel[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 5; page++) {
+      const listed = await this.request(
+        "model/list",
+        cursor ? { cursor } : {},
+        `thyra-models-${page}`,
+      );
+      models.push(...codexModels(listed.data));
+      cursor = text(listed.nextCursor);
+      if (!cursor) break;
+    }
+    this.models = models;
+    this.store.updateInfo({
+      // What a page sees of a model; the default effort stays here.
+      models: models.map(({ id, label, description, efforts }) => ({
+        id,
+        label,
+        description,
+        efforts,
+      })),
+      efforts: this.modelOf(this.store.info.model)?.efforts,
+    });
+  }
+
+  private modelOf(id: string | undefined): CodexModel | undefined {
+    return this.models.find((model) => model.id === id);
   }
 
   /** What the user's arguments choose for a thread, started or resumed. */
@@ -570,7 +637,11 @@ export class CodexAdapter implements AgentAdapter {
     if (!threadId) throw new Error("no thread ID");
     this.threadId = threadId;
     const policy = text(opened.approvalPolicy);
+    const effort = text(opened.reasoningEffort);
+    this.nextModel = {};
     this.store.updateInfo({
+      ...(effort ? { effort } : {}),
+      efforts: this.modelOf(text(opened.model))?.efforts,
       agent_session_id: threadId,
       cwd: text(opened.cwd) ?? this.launch.thread.cwd ?? this.options.cwd,
       modes: CODEX_MODES,
@@ -702,6 +773,9 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   async send(prompt: string, images: PromptImage[] = []): Promise<void> {
+    // The app-server has no slash commands; this one has a request.
+    if (prompt.trim() === "/compact" && images.length === 0)
+      return this.compact();
     this.requireThread();
     if (this.resuming)
       throw new AgentActionError(
@@ -745,12 +819,15 @@ export class CodexAdapter implements AgentAdapter {
         }
       }
       const policy = this.nextPolicy;
+      const chosen = this.nextModel;
       const started = await this.request("turn/start", {
         threadId: this.threadId,
         input,
         ...(policy ? { approvalPolicy: policy } : {}),
+        ...chosen,
       });
       if (policy === this.nextPolicy) this.nextPolicy = null;
+      if (chosen === this.nextModel) this.nextModel = {};
       this.turnId ??= text(record(started.turn)?.id) ?? null;
     } catch (error) {
       const index = this.ownPrompts.indexOf(prompt);
@@ -802,6 +879,41 @@ export class CodexAdapter implements AgentAdapter {
     this.store.updateInfo({ mode });
   }
 
+  async setModel(id: string) {
+    this.requireThread();
+    const model = this.modelOf(id);
+    if (!model) throw new AgentActionError(`unknown model: ${id}`);
+    // Like the mode, it goes with the next `turn/start` and holds after.
+    const keeps = model.efforts?.includes(this.store.info.effort ?? "");
+    const effort = keeps ? this.store.info.effort : model.defaultEffort;
+    this.nextModel = { model: id, ...(effort ? { effort } : {}) };
+    this.store.updateInfo({ model: id, efforts: model.efforts, effort });
+  }
+
+  async setEffort(effort: string) {
+    this.requireThread();
+    if (!this.store.info.efforts?.includes(effort))
+      throw new AgentActionError(`unknown effort: ${effort}`);
+    this.nextModel = { ...this.nextModel, effort };
+    this.store.updateInfo({ effort });
+  }
+
+  /** `thread/compact/start`: Codex compacts in a turn of its own. */
+  async compact() {
+    this.requireThread();
+    if (this.turnId || this.undelivered > 0)
+      throw new AgentActionError(
+        "a turn is running; wait for it or interrupt it first",
+      );
+    this.store.setPhase("running");
+    try {
+      await this.request("thread/compact/start", { threadId: this.threadId });
+    } catch (error) {
+      if (!this.turnId) this.settle();
+      throw error;
+    }
+  }
+
   stop(force = false) {
     this.stopping = true;
     this.process?.kill(force ? "SIGKILL" : "SIGTERM");
@@ -818,11 +930,12 @@ export class CodexAdapter implements AgentAdapter {
     this.process?.write(JSON.stringify(message));
   }
 
+  /** `id` names a side request outside the numbered sequence. */
   private request(
     method: string,
     params: Record<string, unknown>,
+    id: number | string = this.nextRequestId++,
   ): Promise<Record<string, unknown>> {
-    const id = this.nextRequestId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.requests.delete(id);
@@ -846,7 +959,7 @@ export class CodexAdapter implements AgentAdapter {
     const hasId =
       typeof message.id === "number" || typeof message.id === "string";
     if (!method) {
-      if (typeof message.id === "number") this.handleResponse(message);
+      if (hasId) this.handleResponse(message);
       return;
     }
     const params = record(message.params) ?? {};
@@ -863,9 +976,9 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   private handleResponse(message: Record<string, unknown>) {
-    const waiting = this.requests.get(message.id as number);
+    const waiting = this.requests.get(message.id as number | string);
     if (!waiting) return;
-    this.requests.delete(message.id as number);
+    this.requests.delete(message.id as number | string);
     clearTimeout(waiting.timer);
     const error = record(message.error);
     if (error)
@@ -947,8 +1060,13 @@ export class CodexAdapter implements AgentAdapter {
       case "thread/settings/updated": {
         const settings = record(params.threadSettings);
         const policy = text(settings?.approvalPolicy);
+        const model = text(settings?.model);
+        const effort = text(settings?.effort);
         this.store.updateInfo({
-          ...(text(settings?.model) ? { model: text(settings?.model) } : {}),
+          ...(model && !this.nextModel.model
+            ? { model, efforts: this.modelOf(model)?.efforts }
+            : {}),
+          ...(effort && !this.nextModel.effort ? { effort } : {}),
           ...(policy && !this.nextPolicy ? { mode: policy } : {}),
         });
         return;

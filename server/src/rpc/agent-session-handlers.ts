@@ -1,6 +1,8 @@
 import {
+  AGENT_PROMPT_DELIVERIES,
   AGENT_PROMPT_IMAGE_LIMIT,
   AGENT_PROMPT_LIMIT,
+  type AgentPromptDelivery,
   type AgentPromptImage,
 } from "../../../shared/agentSession";
 import { isAgentSessionId } from "../agent-session/link";
@@ -89,10 +91,24 @@ async function agentSession(ctx: ConnectionRpcContext) {
         throw new Error("text required");
       if (text.length > AGENT_PROMPT_LIMIT)
         throw new Error("the prompt is too long");
+      const { delivery } = params;
+      if (
+        delivery !== undefined &&
+        !AGENT_PROMPT_DELIVERIES.includes(delivery as AgentPromptDelivery)
+      )
+        throw new Error(
+          `delivery must be ${AGENT_PROMPT_DELIVERIES.join(", ")}`,
+        );
       await agentSessions.act(pane, {
         action: "send",
         text,
         ...(images.length > 0 ? { images } : {}),
+        ...(delivery ? { delivery: delivery as AgentPromptDelivery } : {}),
+      });
+    } else if (method === "agent_session.unqueue") {
+      await agentSessions.act(pane, {
+        action: "unqueue",
+        prompt_id: stringParam(params, "prompt_id"),
       });
     } else if (method === "agent_session.interrupt") {
       await agentSessions.act(pane, { action: "interrupt" });
@@ -107,6 +123,18 @@ async function agentSession(ctx: ConnectionRpcContext) {
         action: "set_mode",
         mode: stringParam(params, "mode"),
       });
+    } else if (method === "agent_session.set_model") {
+      await agentSessions.act(pane, {
+        action: "set_model",
+        model: stringParam(params, "model"),
+      });
+    } else if (method === "agent_session.set_effort") {
+      await agentSessions.act(pane, {
+        action: "set_effort",
+        effort: stringParam(params, "effort"),
+      });
+    } else if (method === "agent_session.compact") {
+      await agentSessions.act(pane, { action: "compact" });
     } else if (method === "agent_session.resume") {
       // The ID reaches a command line and a file name on the host.
       const sessionId = params.session_id;
@@ -137,6 +165,10 @@ export const agentSessionRpcMethods: Record<
   "agent_session.interrupt": agentSession,
   "agent_session.approve": agentSession,
   "agent_session.set_mode": agentSession,
+  "agent_session.set_model": agentSession,
+  "agent_session.set_effort": agentSession,
+  "agent_session.unqueue": agentSession,
+  "agent_session.compact": agentSession,
   "agent_session.history": agentSession,
   "agent_session.resume": agentSession,
 };

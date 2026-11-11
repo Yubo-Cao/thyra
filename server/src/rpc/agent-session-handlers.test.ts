@@ -406,6 +406,41 @@ test("acting needs pane input rights and claims the pane like typing", async () 
   }
 });
 
+test("deliveries, the queue, the model, the effort and compacting are actions", async () => {
+  const h = harness();
+  for (const [method, params] of [
+    ["agent_session.send", { text: "next", delivery: "queue" }],
+    ["agent_session.unqueue", { prompt_id: "q1" }],
+    ["agent_session.set_model", { model: "m" }],
+    ["agent_session.set_effort", { effort: "high" }],
+    ["agent_session.compact", {}],
+  ] as const)
+    expect(
+      await h.call("editor", method, { pane_id: "w1:p1", ...params }),
+    ).toEqual({ ok: true });
+  expect(h.actions).toEqual([
+    ["w1:p1", { action: "send", text: "next", delivery: "queue" }],
+    ["w1:p1", { action: "unqueue", prompt_id: "q1" }],
+    ["w1:p1", { action: "set_model", model: "m" }],
+    ["w1:p1", { action: "set_effort", effort: "high" }],
+    ["w1:p1", { action: "compact" }],
+  ]);
+  for (const [method, params] of [
+    ["agent_session.send", { text: "x", delivery: "later" }],
+    ["agent_session.unqueue", {}],
+    ["agent_session.set_model", { model: "" }],
+    ["agent_session.set_effort", {}],
+  ] as const)
+    expect(
+      (await h.call("editor", method, { pane_id: "w1:p1", ...params })).error,
+    ).toBeString();
+  expect(
+    (await h.call("viewer", "agent_session.compact", { pane_id: "w1:p1" }))
+      .error,
+  ).toBeString();
+  expect(h.actions).toHaveLength(5);
+});
+
 test("history is for those who may act on the session; resuming is an action on it", async () => {
   const h = harness();
   const stored = [

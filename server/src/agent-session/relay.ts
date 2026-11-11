@@ -342,19 +342,30 @@ export function createAgentSessionRelay(args: {
       const link = session(paneId);
       if (!link)
         return Promise.reject(new Error("no agent session in this pane"));
-      // A host from before these actions existed would never answer them,
-      // and one from before prompts took images would send the prompt
-      // without them. Its info says which it has.
+      // A host from before an action existed would never answer it, one
+      // from before prompts took images would send the prompt without them,
+      // and one from before deliveries would steer every prompt. Its info
+      // says what it has.
       const info = link.mirror?.info;
+      const needs = (flag: boolean | undefined, what: string) =>
+        flag === true ? null : what;
       const missing =
-        (action.action === "history" || action.action === "resume") &&
-        info?.can_resume !== true
-          ? "resume conversations"
-          : action.action === "send" &&
-              action.images?.length &&
-              info?.can_attach_images !== true
-            ? "take images"
-            : null;
+        action.action === "history" || action.action === "resume"
+          ? needs(info?.can_resume, "resume conversations")
+          : action.action === "set_model" || action.action === "set_effort"
+            ? needs(info?.can_set_model, "change the model")
+            : action.action === "compact"
+              ? needs(info?.can_compact, "compact the conversation")
+              : action.action === "unqueue"
+                ? needs(info?.can_queue, "queue prompts")
+                : action.action === "send"
+                  ? ((action.images?.length
+                      ? needs(info?.can_attach_images, "take images")
+                      : null) ??
+                    (action.delivery && action.delivery !== "steer"
+                      ? needs(info?.can_queue, "queue prompts")
+                      : null))
+                  : null;
       if (missing)
         return Promise.reject(
           new Error(

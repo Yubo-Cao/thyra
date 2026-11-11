@@ -10,8 +10,49 @@ import {
 import { fakeAgent, loadFixture, sessionStore, settle } from "./test-support";
 import { SessionMirror } from "./transcript";
 
-function start(args: string[] = []) {
+/** What the fake app-server lists for `model/list`. */
+const MODEL_LIST = [
+  {
+    id: "gpt-test",
+    displayName: "GPT Test",
+    description: "The default",
+    supportedReasoningEfforts: [
+      { reasoningEffort: "low" },
+      { reasoningEffort: "high" },
+    ],
+    defaultReasoningEffort: "low",
+  },
+  { id: "gpt-mini", displayName: "GPT Mini", defaultReasoningEffort: "x" },
+  { id: "gpt-hidden", displayName: "Hidden", hidden: true },
+];
+
+/**
+ * A fake app-server that answers the host's side request for the model list
+ * itself, so the numbered requests stay those of a recorded session.
+ */
+function fakeCodex() {
   const agent = fakeAgent();
+  const spawn = agent.spawn;
+  agent.spawn = (args) => {
+    const child = spawn(args);
+    return {
+      ...child,
+      write(line) {
+        const message = JSON.parse(line);
+        if (message.method !== "model/list") return child.write(line);
+        queueMicrotask(() =>
+          args.onLine(
+            JSON.stringify({ id: message.id, result: { data: MODEL_LIST } }),
+          ),
+        );
+      },
+    };
+  };
+  return agent;
+}
+
+function start(args: string[] = []) {
+  const agent = fakeCodex();
   const { store, events } = sessionStore("codex");
   const exits: (string | undefined)[] = [];
   const adapter = new CodexAdapter({
@@ -564,6 +605,91 @@ test("a chosen approval policy rides on the next turn", async () => {
   expect(agent.written.at(-1)!.params.approvalPolicy).toBeUndefined();
   agent.say({ id: 4, result: { turn: { id: "turn-2" } } });
   await next;
+  agent.exit();
+});
+
+test("models come from model/list; a chosen model and effort ride on the next turn", async () => {
+  const { agent, adapter, store } = await ready();
+  // Hidden models stay out; the current model's efforts are offered.
+  expect(store.info.models).toEqual([
+    {
+      id: "gpt-test",
+      label: "GPT Test",
+      description: "The default",
+      efforts: ["low", "high"],
+    },
+    { id: "gpt-mini", label: "GPT Mini" },
+  ]);
+  expect(store.info.efforts).toEqual(["low", "high"]);
+  await expect(adapter.setModel("gpt-hidden")).rejects.toThrow("unknown model");
+  await expect(adapter.setEffort("max")).rejects.toThrow("unknown effort");
+  await adapter.setEffort("high");
+  expect(store.info.effort).toBe("high");
+  const sent = adapter.send("go");
+  await settle();
+  expect(agent.written.at(-1)!.params).toMatchObject({ effort: "high" });
+  expect(agent.written.at(-1)!.params.model).toBeUndefined();
+  agent.say({ id: 3, result: { turn: { id: "turn-1" } } });
+  await sent;
+  const complete = (id: string) =>
+    agent.say({
+      method: "turn/completed",
+      params: { threadId: "thread-1", turn: { id, status: "completed" } },
+    });
+  complete("turn-1");
+  // A model without efforts takes none, and the choice is sent once.
+  await adapter.setModel("gpt-mini");
+  expect(store.info.model).toBe("gpt-mini");
+  expect(store.info.efforts).toBeUndefined();
+  const next = adapter.send("again");
+  await settle();
+  expect(agent.written.at(-1)!.params).toMatchObject({ model: "gpt-mini" });
+  agent.say({ id: 4, result: { turn: { id: "turn-2" } } });
+  await next;
+  complete("turn-2");
+  const third = adapter.send("more");
+  await settle();
+  expect(agent.written.at(-1)!.params.model).toBeUndefined();
+  agent.say({ id: 5, result: { turn: { id: "turn-3" } } });
+  await third;
+  agent.exit();
+});
+
+test("compacting is a request of its own, and /compact asks for it", async () => {
+  const { agent, adapter, store } = await ready();
+  const compacting = adapter.send("/compact");
+  await settle();
+  expect(agent.written.at(-1)).toEqual({
+    id: 3,
+    method: "thread/compact/start",
+    params: { threadId: "thread-1" },
+  });
+  expect(store.info.status).toBe("running");
+  agent.say({ id: 3, result: {} });
+  await compacting;
+  agent.say({
+    method: "turn/started",
+    params: { threadId: "thread-1", turn: { id: "turn-c" } },
+  });
+  await expect(adapter.compact()).rejects.toThrow("a turn is running");
+  agent.say({
+    method: "item/completed",
+    params: {
+      threadId: "thread-1",
+      item: { type: "contextCompaction", id: "c1" },
+    },
+  });
+  agent.say({
+    method: "turn/completed",
+    params: {
+      threadId: "thread-1",
+      turn: { id: "turn-c", status: "completed" },
+    },
+  });
+  expect(store.info.status).toBe("idle");
+  expect(store.snapshot().items).toMatchObject([
+    { type: "notice", text: "Conversation compacted." },
+  ]);
   agent.exit();
 });
 

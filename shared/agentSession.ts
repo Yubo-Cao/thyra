@@ -6,7 +6,7 @@
  *
  * A session is addressed by its pane ID. Pages read with `agent_session.list`
  * and `agent_session.subscribe`, and act with `send`, `interrupt`, `approve`,
- * `set_mode` and `resume`.
+ * `set_mode`, `set_model`, `set_effort`, `unqueue`, `compact` and `resume`.
  */
 
 export const AGENT_SESSION_KINDS = ["claude", "codex"] as const;
@@ -34,6 +34,38 @@ export type AgentSessionUsage = {
 /** One selectable way of running, such as a permission or approval mode. */
 export type AgentSessionMode = { id: string; label: string };
 
+/** A model `agent_session.set_model` accepts. */
+export type AgentSessionModel = {
+  id: string;
+  label: string;
+  description?: string;
+  /** Reasoning efforts it takes; absent when it takes no setting. */
+  efforts?: string[];
+};
+
+/**
+ * What to do with a prompt sent while a turn runs: `queue` holds it in the
+ * host until the session is idle, `steer` gives it to the running turn at
+ * once (the agent steers or queues it itself), and `interrupt` stops the
+ * turn and sends it next. In an idle session all three send at once.
+ */
+export type AgentPromptDelivery = "queue" | "steer" | "interrupt";
+export const AGENT_PROMPT_DELIVERIES: readonly AgentPromptDelivery[] = [
+  "queue",
+  "steer",
+  "interrupt",
+];
+
+/** A prompt the host holds until the running turn ends. */
+export type AgentQueuedPrompt = {
+  /** Unique within the session; `agent_session.unqueue` takes it as `prompt_id`. */
+  id: string;
+  text: string;
+  images?: AgentPromptImage[];
+  /** Milliseconds since the epoch when it was queued. */
+  at: number;
+};
+
 export type AgentSessionInfo = {
   pane_id: string;
   kind: AgentSessionKind;
@@ -43,10 +75,19 @@ export type AgentSessionInfo = {
   started_at: number;
   /** The agent's own session or thread ID, once known. */
   agent_session_id?: string;
+  /** The model's ID; one of `models` when the agent listed it there. */
   model?: string;
+  /** Models `agent_session.set_model` accepts; absent until the agent lists them. */
+  models?: AgentSessionModel[];
+  /** The reasoning effort the next turn runs with. */
+  effort?: string;
+  /** Efforts `agent_session.set_effort` accepts: the current model's. */
+  efforts?: string[];
   mode?: string;
   /** Modes `agent_session.set_mode` accepts; empty when it cannot change. */
   modes: AgentSessionMode[];
+  /** Prompts waiting for the running turn to end, in the order they go. */
+  queued?: AgentQueuedPrompt[];
   usage?: AgentSessionUsage;
   /** Why the session is `exited`, when it did not end normally. */
   error?: string;
@@ -60,6 +101,19 @@ export type AgentSessionInfo = {
    * started by a build from before prompts took images.
    */
   can_attach_images?: boolean;
+  /**
+   * The host serves `agent_session.set_model` and `agent_session.set_effort`.
+   * Absent on a host started by a build from before they existed.
+   */
+  can_set_model?: boolean;
+  /**
+   * The host takes a prompt's `delivery` and serves `agent_session.unqueue`.
+   * Absent on a host started by a build from before; such a host gives every
+   * prompt to the running turn, as `steer` does.
+   */
+  can_queue?: boolean;
+  /** The host serves `agent_session.compact`. */
+  can_compact?: boolean;
 };
 
 export type AgentToolKind =
@@ -208,13 +262,24 @@ export const AGENT_SESSION_HISTORY_LIMIT = 30;
  * `agent_session.subscribe { pane_id }` -> `AgentSessionSnapshot`; the page
  *   then receives `agent_session.event` (`AgentSessionEvent`) until
  *   `agent_session.unsubscribe { pane_id }`, the session ends, or it disconnects.
- * `agent_session.send { pane_id, text, images? }` starts a turn, or
- *   steers/queues the prompt when one is running. `images`
- *   (`AgentPromptImage[]`) go to the agent as image input, not as paths in
- *   the text; with images the text may be empty.
+ * `agent_session.send { pane_id, text, images?, delivery? }` starts a turn,
+ *   or does what `delivery` (`AgentPromptDelivery`, default `steer`) says
+ *   when one is running. `images` (`AgentPromptImage[]`) go to the agent as
+ *   image input, not as paths in the text; with images the text may be
+ *   empty. A queued prompt shows in `info.queued` until it is sent, then as
+ *   a `user` item like any other; one that fails to go adds an error notice.
+ * `agent_session.unqueue { pane_id, prompt_id }` takes a queued prompt back before
+ *   it is sent; refused once it has gone.
  * `agent_session.interrupt { pane_id }` stops the running turn.
  * `agent_session.approve { pane_id, approval_id, option_id }`.
  * `agent_session.set_mode { pane_id, mode }`.
+ * `agent_session.set_model { pane_id, model }` and
+ *   `agent_session.set_effort { pane_id, effort }` choose from
+ *   `info.models` and `info.efforts` for the next turn; usable before the
+ *   first prompt. A new model may bring other efforts and its own effort.
+ * `agent_session.compact { pane_id }` compacts the conversation, as the
+ *   agent's `/compact` does (which a prompt may also say); a `notice` item
+ *   shows when it has. Refused while a turn is running.
  * `agent_session.history { pane_id }` -> `{ sessions: AgentStoredSession[] }`:
  *   the conversations the agent has stored for the session's working
  *   directory, newest first, without the one the session is in. They include

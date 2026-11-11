@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentItem } from "../../../shared/agentSession";
-import { ClaudeAdapter, claudeArgv } from "./claude";
+import { ClaudeAdapter, claudeArgv, claudeModels } from "./claude";
 import { checkPromptImages } from "./prompt-images";
 import {
   fakeAgent,
@@ -88,7 +88,8 @@ async function replay(name: string, session: ReturnType<typeof start>) {
       void adapter.setMode(message.request.mode).catch((e) => failures.push(e));
     }
     await settle();
-    const written = agent.written[cursor++];
+    // Reading the settings is a side request a recording does not hold.
+    const written = sent(agent)[cursor++];
     expect(written).toBeDefined();
     if (message.type === "user") {
       uuids.set(message.uuid, written!.uuid);
@@ -101,9 +102,12 @@ async function replay(name: string, session: ReturnType<typeof start>) {
       expect(written).toEqual(message);
     }
   }
-  expect(agent.written).toHaveLength(cursor);
+  expect(sent(agent)).toHaveLength(cursor);
   expect(failures).toEqual([]);
 }
+
+const sent = (agent: ReturnType<typeof fakeAgent>) =>
+  agent.written.filter((line) => line.request?.subtype !== "get_settings");
 
 test("the command line asks for permissions unless the user chose otherwise", () => {
   expect(claudeArgv(["--model", "haiku"])).toEqual([
@@ -936,4 +940,122 @@ test("a requested stop and a missing program are told apart", async () => {
     error: "could not start claude: ENOENT: claude",
   });
   expect(exits).toEqual([store.info.error]);
+});
+
+test("models are the ones initialize lists, one per model they resolve to", () => {
+  expect(
+    claudeModels([
+      {
+        value: "default",
+        resolvedModel: "claude-opus-5-5",
+        displayName: "Default (recommended)",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "high"],
+      },
+      {
+        value: "opus",
+        resolvedModel: "claude-opus-5-5",
+        displayName: "Opus 5.5",
+        description: "For complex work",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "high"],
+      },
+      { value: "haiku", resolvedModel: "claude-haiku-5-5", displayName: "H" },
+      { value: "sonnet", displayName: "S" },
+      { displayName: "nameless" },
+      "junk",
+    ]),
+  ).toEqual([
+    {
+      id: "claude-opus-5-5",
+      label: "Opus 5.5",
+      description: "For complex work",
+      efforts: ["low", "high"],
+    },
+    { id: "claude-haiku-5-5", label: "H" },
+    { id: "sonnet", label: "S" },
+  ]);
+});
+
+test("the model and effort are read before the first turn and changed over control requests", async () => {
+  const { agent, adapter, store } = start();
+  const answer = (response: Record<string, unknown>) =>
+    agent.say({
+      type: "control_response",
+      response: {
+        subtype: "success",
+        request_id: agent.written.at(-1)!.request_id,
+        response,
+      },
+    });
+  answer({
+    current_permission_mode: "default",
+    models: [
+      {
+        value: "opus",
+        resolvedModel: "claude-opus-5-5",
+        displayName: "Opus",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "max"],
+      },
+      { value: "haiku", resolvedModel: "claude-haiku-4-5", displayName: "H" },
+    ],
+  });
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    request: { subtype: "get_settings" },
+  });
+  const settings = (model: string, effort: string) =>
+    answer({ applied: { model, effort } });
+  settings("claude-opus-5-5", "low");
+  await settle();
+  expect(store.info).toMatchObject({
+    status: "idle",
+    model: "claude-opus-5-5",
+    effort: "low",
+    efforts: ["low", "max"],
+  });
+  expect(store.info.models?.map((model) => model.id)).toEqual([
+    "claude-opus-5-5",
+    "claude-haiku-4-5",
+  ]);
+
+  await expect(adapter.setEffort("medium")).rejects.toThrow("unknown effort");
+  const effort = adapter.setEffort("max");
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    type: "control_request",
+    request: {
+      subtype: "apply_flag_settings",
+      settings: { effortLevel: "max" },
+    },
+  });
+  answer({});
+  await settle();
+  settings("claude-opus-5-5", "max");
+  await effort;
+  expect(store.info.effort).toBe("max");
+
+  await expect(adapter.setModel("gpt")).rejects.toThrow("unknown model");
+  const model = adapter.setModel("claude-haiku-4-5");
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    request: { subtype: "set_model", model: "claude-haiku-4-5" },
+  });
+  answer({ model: "claude-haiku-4-5" });
+  await settle();
+  settings("claude-haiku-4-5", "max");
+  await model;
+  // A model without effort levels shows none.
+  expect(store.info.model).toBe("claude-haiku-4-5");
+  expect(store.info.effort).toBeUndefined();
+  expect(store.info.efforts).toBeUndefined();
+
+  // Compacting is the CLI's own command, sent as a prompt.
+  await adapter.compact();
+  expect(agent.written.at(-1)).toMatchObject({
+    type: "user",
+    message: { content: "/compact" },
+  });
+  agent.exit();
 });
