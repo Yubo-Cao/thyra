@@ -721,6 +721,29 @@ The [agent browser](../FEATURES.md#agent-browser) needs two services on the Thyr
 Either may be missing: the button stays hidden for SSH and non-default connections and for non-admins, the view reports a missing display, and Thyra reconnects to the proxy's event stream with backoff.
 Anyone who can open the view drives the host owner's signed-in browser, so it is limited to instance admins.
 
+## Agent sessions
+
+`thyra agent <claude|codex> [agent arguments...]` runs Claude Code or Codex in the current Herdr pane as an [agent session](./ARCHITECTURE.md#agent-sessions): Thyra shows the pane as a conversation with tool calls, diffs and approvals instead of the agent's terminal UI.
+Start it from the project launcher's GUI view, or type it in a pane:
+
+```bash
+thyra agent claude                       # asks before edits and commands
+thyra agent claude --model opus --permission-mode acceptEdits
+thyra agent codex -m gpt-5 -a on-request -s workspace-write
+```
+
+- The agent's own CLI must be installed on the pane's `PATH` and logged in (`claude`, `codex`); sessions use that login and need no API key.
+- It must run inside a Herdr pane (`HERDR_PANE_ID` and `HERDR_SOCKET_PATH` set), as the pane's foreground program, on the host of the default connection; panes of SSH and other connections, and Windows, have no agent sessions.
+- Claude Code receives the arguments after the agent's name unchanged. A session starts in the `default` permission mode even when your Claude settings choose another; pass `--permission-mode <mode>` or `--dangerously-skip-permissions` to start differently.
+- Codex starts with the defaults of `~/.codex/config.toml`. `-m/--model`, `-s/--sandbox`, `-a/--ask-for-approval`, `-C/--cd`, `-c/--config`, `--enable`, `--disable`, `--strict-config` and `--yolo` are accepted; other `codex` options are refused.
+- The pane prints a plain log of the session. Ctrl+C, or closing the pane, ends it; the transcript lives in the host process and ends with it.
+- Sessions survive Thyra restarts and updates. A Herdr restart ends them: Herdr does not restore a `thyra agent` pane.
+
+Hosts and the bridge meet in `$XDG_RUNTIME_DIR/thyra/agents` (`${XDG_STATE_HOME:-~/.local/state}/thyra/agents` without a runtime directory), a directory only the user can open; set `THYRA_AGENT_SOCKET_DIR` for both the bridge and the panes to use another.
+`THYRA_AGENT_TRACE=<file>` makes a host append every protocol line it exchanges with the agent to that file.
+
+Two scripts check the feature outside the test suite: `bun scripts/agent-session-smoke.ts` drives a throwaway Herdr and bridge with a stand-in agent (no quota), and `bun scripts/agent-session-probe.ts [claude] [codex] [--herdr]` runs a few small turns with the real, logged-in agents.
+
 ## VS Code Inspector
 
 The [Inspector](../FEATURES.md#workspace-inspector) shows VS Code when Thyra can reach a VS Code server with Thyra's base path, on loopback, run by the same user.
@@ -871,6 +894,7 @@ The [project launcher](../FEATURES.md#project-launcher) stores its state in the 
 ```
 
 `commands` overrides the defaults `claude` and `codex`; each command is one line of at most 256 characters, typed into the new pane's shell on the connection's host, so it can be an alias or a script on that host's `PATH`.
+A launch in the GUI view runs `thyra agent <agent>` by the bridge's absolute path instead, and keeps the command's arguments only when the command starts with the agent's own name (`claude --model opus` gives `thyra agent claude --model opus`; an alias or wrapper contributes none); see [agent sessions](#agent-sessions).
 Edit it from the launcher's settings button or **Configuration > Connection** rather than by hand while Thyra runs.
 Pinned paths must be existing directories when added; `history` keeps the 60 most recent launch folders.
 Recent folders also use `zoxide query --list --score` when `zoxide` is on the bridge user's `PATH` (local) or the SSH login shell's `PATH` (remote).

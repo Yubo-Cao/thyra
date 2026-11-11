@@ -643,6 +643,71 @@ available version. CLI commands have five-second timeouts; missing binaries,
 failed SSH commands, malformed output, and version mismatches leave missing
 metadata unknown without failing the list. There is no remote-to-local fallback.
 
+## Agent sessions
+
+`shared/agentSession.ts` defines the contract: a session's info, its transcript items, open approvals, the snapshot a page starts from, and the events that follow it.
+A session is the structured view of a coding agent that runs under `thyra agent <claude|codex>` in a Herdr pane, and is addressed by that pane's ID.
+
+**Host.** `thyra agent` (`server/src/agent-session/host.ts`) is the pane's foreground program: it spawns and owns the agent process, turns the agent's protocol into contract items, and keeps the session in memory.
+It lives in the pane, not in the bridge, so a session survives every bridge restart and deploy.
+A pane hosts one session; a second host for the same pane refuses to start.
+The host ends, killing the agent, on Ctrl+C, SIGTERM or SIGHUP (the pane closing), and when the agent ends by itself with success.
+An agent that crashes leaves the host running with status `exited` and `error`, so the transcript stays readable until the pane closes or the host is interrupted.
+The pane shows a plain running log (prompts, answers, one line per tool call, approval notices) and no terminal UI.
+
+**Bounds.** A session keeps at most `AGENT_SESSION_ITEM_LIMIT` items and 2 MiB of transcript text; past either, the oldest items go, never the newest 20.
+Tool output is cut to `AGENT_TOOL_OUTPUT_LIMIT` keeping its start and end, a file's patch to 64 KiB at a line boundary with the cut hunk's header recounted, and a prompt may be `AGENT_PROMPT_LIMIT` long.
+
+**Host link.** Each host listens on a Unix socket (mode 0600) named `<key>-<pane>.sock`: `key` is the first 12 hex digits of the SHA-256 of the pane's Herdr control socket path (resolved through symlinks), and `pane` is the URI-encoded pane ID.
+The directory is `THYRA_AGENT_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/thyra/agents`, else `${XDG_STATE_HOME:-~/.local/state}/thyra/agents`; it must be a real directory owned by the user with mode 0700, and the bridge reads no other.
+Traffic is newline-delimited JSON.
+The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "interrupt" | "approve" | "set_mode", ...}`, each answered by `{type: "result", id, error?}`.
+A host replaces a socket file nobody listens on; the bridge deletes one that refuses connections and is older than five seconds.
+
+**Relay.** The bridge (`server/src/agent-session/relay.ts`) serves the sessions of the default connection when its Herdr runs on this host, like the [agent browser](#agent-browser); other connections have none.
+It scans the directory on change and every three seconds, connects to sockets carrying its Herdr's key, and keeps a copy of each session current by applying the host's events in order; an event out of order drops the link, and the next scan reconnects for a fresh snapshot.
+A host counts as a session only while Herdr's `pane.process_info` lists its process in the foreground of the pane it names, checked at connection and every ten seconds: a pane's ID changes when it moves to another workspace and may later name another pane.
+A session ends when its link closes; a restarted bridge rebuilds everything from the sockets.
+
+**RPC.** `agent_session.list` returns `{sessions}` (empty on connections without sessions).
+`agent_session.subscribe {pane_id}` returns the snapshot and starts `agent_session.event` for that pane on the calling socket until `agent_session.unsubscribe {pane_id}`, the session's end, or the socket closing.
+`agent_session.send {pane_id, text}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}` and `agent_session.set_mode {pane_id, mode}` return `{ok: true}` or the host's refusal as the error.
+Both notifications use the connection envelope: `{connection_id, connection_generation, event: "agent_session.event", data: AgentSessionEvent}` and `{..., event: "agent_session.changed", data: {sessions}}`.
+`agent_session.changed` goes to every page when a session appears, ends or changes status, at most once per 25 ms.
+The hello's `capabilities.agent_sessions` is `true` when the bridge serves these methods.
+
+**Authorization.** Listing and subscribing need read access to the pane; a list and `agent_session.changed` hold only the sessions of panes the caller may read, filtered like pane lists, and each event delivery rechecks the subscriber's access.
+Acting needs what `pane.send_input` needs: the editor role and the pane's input claim, which an unclaimed pane grants to the caller.
+`agent_session.unsubscribe` only affects the calling socket.
+
+**Events.** `seq` rises by one per event; a snapshot's `seq` is the last event it reflects, and it never holds text a later `delta` would repeat.
+Streamed text is announced at once and then at most every 40 ms per session, and always before the next event of another type.
+`status` is `running` from a prompt until the agent has finished every prompt it was given, and `awaiting_approval` while a running turn has an open approval.
+`interrupt` does nothing in an idle session.
+Denying a tool call marks its item `denied` and stops the turn, as the agents' own interfaces do.
+
+**Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, and `set_permission_mode`.
+It adds `--permission-mode default` and `--allow-dangerously-skip-permissions` unless the caller chose a permission mode or `--dangerously-skip-permissions`, so a session starts by asking and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
+A prompt sent during a turn is written to the CLI at once, which steers or queues it; the CLI's `command_lifecycle` messages and prompt echoes tell when each prompt was taken.
+`Bash` becomes a `command` tool; `Edit`, `MultiEdit` and `Write` become `edit` tools whose `diffs` are built from the call's old and new text and replaced by the patch the CLI reports once the edit ran; `Task` and `Agent` become `task` tools.
+`TodoWrite` updates one `plan` item per turn instead of a tool item.
+Messages of a sub-agent (those naming a parent tool call) never enter the transcript: its tool calls show as progress lines in the parent task's `output` until the task's result replaces them.
+An approval offers allow, always allow when the CLI suggests a rule or mode change (sent back as `updatedPermissions`), and deny; `AskUserQuestion` with one single-choice question becomes an approval whose options are the answers, and other dialogs are refused so the agent asks in text.
+
+**Codex.** The host runs `codex app-server` and speaks its JSON-RPC: `initialize`, `thread/start` in the pane's directory, `turn/start` per prompt, `turn/steer` for a prompt during a turn (falling back to `turn/start` when the turn has just ended), and `turn/interrupt`.
+Thread items map to transcript items (`commandExecution` to `command`, `read` or `search` tools by its parsed actions, `fileChange` to an `edit` tool with one diff per file, MCP and collaboration calls to `other` and `task`), `turn/plan/updated` to one `plan` item per turn, and notifications of other threads (sub-agents) are ignored.
+Approval requests for commands, file changes and permissions become approvals with the decisions the server offers; denying a command or a file change answers `cancel`, and denying a permission request grants nothing.
+The modes are the approval policies `untrusted`, `on-request` and `never`; a chosen mode is sent with the next `turn/start` and holds from that turn.
+Without arguments a thread uses the defaults of `~/.codex/config.toml`; `thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config` and `--yolo`, and refuses any other argument.
+
+**Herdr status.** The host reports the pane's agent to Herdr over the control socket with `pane.report_agent` (`source: "thyra:agent"`, the agent's name, `idle`, `working`, or `blocked` with the approval's title, and a rising `seq`) and `pane.release_agent` when the agent ends, so the workspace tree and [task notifications](#task-notifications) treat the pane like one running the agent's terminal UI.
+The agent process runs without `HERDR_ENV`, which keeps Herdr's own hook integration from claiming the pane's agent session (Herdr would then ignore the host's reports), and with `HERDR_AGENT` naming the agent.
+Herdr therefore holds no native agent session for such a pane: [agent activity](#agent-activity) has no session file for it, and a Herdr restart does not resume it.
+
+**Launcher.** `launcher.launch` takes `view: "gui" | "terminal"` (default `terminal`).
+`gui` types `<this Thyra executable> agent <agent>` into the new pane, followed by the arguments of the configured command when that command starts with the agent's own name, and is refused on connections without sessions.
+The executable is the running binary's absolute path, or Bun and the entry script when the bridge runs from source.
+
 ## Voice input
 
 The AudioContext is created and resumed synchronously in the tap handler, before any `await`, because iOS Safari only starts audio during a user gesture; an interrupted context (calls, app switches) resumes when the page is visible again.
