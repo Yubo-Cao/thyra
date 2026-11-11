@@ -29,6 +29,7 @@ export const AGENT_SESSION_ACTION_METHODS = new Set([
   "agent_session.interrupt",
   "agent_session.approve",
   "agent_session.set_mode",
+  "agent_session.resume",
 ]);
 /**
  * Methods a page may send without an `id`: handled like the request, but

@@ -1,9 +1,13 @@
-import type {
-  AgentApprovalOption,
-  AgentFileDiff,
-  AgentPlanEntry,
-  AgentSessionMode,
-  AgentToolKind,
+import {
+  AGENT_SESSION_HISTORY_LIMIT,
+  AGENT_SESSION_ITEM_LIMIT,
+  type AgentApprovalOption,
+  type AgentFileDiff,
+  type AgentItem,
+  type AgentPlanEntry,
+  type AgentSessionMode,
+  type AgentStoredSession,
+  type AgentToolKind,
 } from "../../../shared/agentSession";
 import {
   type AdapterOptions,
@@ -14,6 +18,7 @@ import {
   record,
   remainingInput,
   text,
+  withItemTimes,
 } from "./adapter";
 import {
   type AgentExit,
@@ -22,6 +27,7 @@ import {
 } from "./agent-process";
 import { DIFF_PATCH_LIMIT } from "./claude-tools";
 import { hunksOf, patchForWholeFile, truncatePatch } from "./diff";
+import { isAgentSessionId } from "./link";
 import {
   type AgentItemInput,
   type AgentSessionStore,
@@ -31,9 +37,9 @@ import {
 
 /**
  * Codex as an agent session: `codex app-server` speaking JSON-RPC over its
- * pipes, one line per message. The host starts one thread, starts a turn per
- * prompt (or steers the running one), answers the server's approval requests
- * and maps thread items to transcript items.
+ * pipes, one line per message. The host starts one thread or resumes a
+ * stored one, starts a turn per prompt (or steers the running one), answers
+ * the server's approval requests and maps thread items to transcript items.
  */
 
 export const CODEX_MODES: AgentSessionMode[] = [
@@ -44,6 +50,9 @@ export const CODEX_MODES: AgentSessionMode[] = [
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const SANDBOX_MODES = ["read-only", "workspace-write", "danger-full-access"];
+/** Turns of a stored thread are read newest first, this many at a time. */
+const TURN_PAGE_SIZE = 20;
+const TURN_PAGE_LIMIT = 100;
 
 export type CodexLaunch = {
   /** Options `codex app-server` takes itself. */
@@ -55,17 +64,37 @@ export type CodexLaunch = {
     approvalPolicy?: string;
     cwd?: string;
   };
+  /** `resume <id>` or `resume --last`: the stored thread to continue. */
+  resume?: { id: string } | { last: true };
 };
 
 /**
  * `thyra agent codex` takes the `codex` options that have an app-server
- * counterpart; anything else is refused rather than silently dropped.
+ * counterpart, and `resume [<id> | --last]` among them; anything else is
+ * refused rather than silently dropped. A bare `resume` (the terminal UI's
+ * picker) starts a new thread: the page offers the list instead.
  */
 export function parseCodexArgs(args: string[]): CodexLaunch {
   const launch: CodexLaunch = { serverArgs: [], thread: {} };
   const queue = [...args];
+  let resuming = false;
   while (queue.length > 0) {
     const arg = queue.shift()!;
+    if (arg === "resume" && !resuming) {
+      resuming = true;
+      continue;
+    }
+    if (resuming && !launch.resume) {
+      if (arg === "--last") {
+        launch.resume = { last: true };
+        continue;
+      }
+      if (!arg.startsWith("-")) {
+        if (!isAgentSessionId(arg)) throw new Error(`not a thread ID: ${arg}`);
+        launch.resume = { id: arg };
+        continue;
+      }
+    }
     const [flag, inline] = arg.startsWith("--")
       ? (arg.split(/=(.*)/s, 2) as [string, string | undefined])
       : [arg, undefined];
@@ -117,7 +146,7 @@ export function parseCodexArgs(args: string[]): CodexLaunch {
         break;
       default:
         throw new Error(
-          `thyra agent codex does not support the argument ${arg} (supported: -m, -s, -a, -C, -c, --enable, --disable, --strict-config, --yolo)`,
+          `thyra agent codex does not support the argument ${arg} (supported: -m, -s, -a, -C, -c, --enable, --disable, --strict-config, --yolo, resume [<id> | --last])`,
         );
     }
   }
@@ -323,6 +352,83 @@ export function codexItem(
   }
 }
 
+/** The text of a `userMessage` item's content. */
+function promptText(content: unknown): string {
+  return (Array.isArray(content) ? content : [])
+    .map((value) => text(record(value)?.text) ?? "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** What the end of a turn adds to the transcript, when it did not just end. */
+function turnEndNotice(
+  turn: Record<string, unknown>,
+  denied: boolean,
+): { level: "info" | "error"; text: string } | null {
+  if (turn.status === "failed")
+    return {
+      level: "error",
+      text: text(record(turn.error)?.message) ?? "The turn failed.",
+    };
+  // A turn stopped by a denied approval shows the denial, not an interruption.
+  return turn.status === "interrupted" && !denied
+    ? { level: "info", text: "Interrupted." }
+    : null;
+}
+
+/**
+ * The turns of a stored thread as transcript items, oldest first. Each item
+ * maps as its notification did when the turn was live and keeps the time it
+ * started at. Nothing of a stored turn is still under way: a call without
+ * an outcome takes its turn's.
+ */
+export function codexThreadItems(turns: unknown[], cwd: string): AgentItem[] {
+  const items: AgentItem[] = [];
+  let at = 0;
+  for (const value of turns) {
+    const turn = record(value);
+    if (!turn) continue;
+    if (typeof turn.startedAt === "number")
+      at = Math.max(at, turn.startedAt * 1000);
+    let denied = false;
+    for (const entry of Array.isArray(turn.items) ? turn.items : []) {
+      const item = record(entry);
+      const id = text(item?.id);
+      if (!item || !id) continue;
+      if (typeof item.startedAtMs === "number") at = item.startedAtMs;
+      if (item.status === "declined") denied = true;
+      if (item.type === "userMessage") {
+        const body = promptText(item.content);
+        if (body.trim()) items.push({ id, type: "user", text: body, at });
+        continue;
+      }
+      const mapped = codexItem(item, cwd);
+      if (!mapped) continue;
+      const open =
+        mapped.type === "tool" &&
+        (mapped.status === "running" || mapped.status === "pending");
+      items.push({
+        ...mapped,
+        ...(open
+          ? { status: turn.status === "completed" ? "done" : "failed" }
+          : {}),
+        at,
+      } as AgentItem);
+    }
+    const notice = turnEndNotice(turn, denied);
+    if (typeof turn.completedAt === "number")
+      at = Math.max(at, turn.completedAt * 1000);
+    if (notice)
+      items.push({
+        id: `${text(turn.id) ?? "turn"}:end`,
+        type: "notice",
+        ...notice,
+        at,
+      });
+  }
+  return withItemTimes(items);
+}
+
 type PendingApproval = {
   requestId: string | number;
   method: string;
@@ -362,6 +468,8 @@ export class CodexAdapter implements AgentAdapter {
   /** Items with streamed text that has not been completed. */
   private readonly streaming = new Set<string>();
   private readonly openTools = new Set<string>();
+  /** A stored thread is being resumed; prompts wait for it to be settled. */
+  private resuming = false;
 
   constructor(private readonly options: AdapterOptions) {
     this.store = options.store;
@@ -403,32 +511,183 @@ export class CodexAdapter implements AgentAdapter {
     });
     this.write({ method: "initialized" });
     const cwd = this.launch.thread.cwd ?? this.options.cwd;
-    const started = await this.request("thread/start", {
-      cwd,
-      ...(this.launch.thread.model ? { model: this.launch.thread.model } : {}),
-      ...(this.launch.thread.sandbox
-        ? { sandbox: this.launch.thread.sandbox }
-        : {}),
-      ...(this.launch.thread.approvalPolicy
-        ? { approvalPolicy: this.launch.thread.approvalPolicy }
-        : {}),
-    });
-    const thread = record(started.thread);
-    this.threadId = text(thread?.id) ?? "";
-    if (!this.threadId) throw new Error("no thread ID");
-    const policy = text(started.approvalPolicy);
+    const resume = this.launch.resume;
+    let id = resume && "id" in resume ? resume.id : undefined;
+    let note: string | null = null;
+    if (resume && "last" in resume) {
+      id = (await this.storedThreads(cwd, 1))[0]?.id;
+      if (!id)
+        note = "No thread is stored for this directory; this is a new one.";
+    }
+    if (id) {
+      // The thread resumes with or without its earlier messages.
+      const turns = await this.storedTurns(id).catch((error) => {
+        note = `The earlier messages of ${id} could not be read (${(error as Error).message}).`;
+        return [];
+      });
+      await this.resumeThread(id, turns);
+    } else {
+      this.adoptThread(
+        await this.request("thread/start", { cwd, ...this.threadSettings() }),
+      );
+    }
+    if (note) this.notice("info", note);
+    if (this.store.phase === "starting") this.store.setPhase("idle");
+  }
+
+  /** What the user's arguments choose for a thread, started or resumed. */
+  private threadSettings(): Record<string, unknown> {
+    const { model, sandbox, approvalPolicy } = this.launch.thread;
+    return {
+      ...(model ? { model } : {}),
+      ...(sandbox ? { sandbox } : {}),
+      ...(approvalPolicy ? { approvalPolicy } : {}),
+    };
+  }
+
+  /** The session is in the thread a `thread/start` or `thread/resume` answered. */
+  private adoptThread(opened: Record<string, unknown>) {
+    const threadId = text(record(opened.thread)?.id);
+    if (!threadId) throw new Error("no thread ID");
+    this.threadId = threadId;
+    const policy = text(opened.approvalPolicy);
     this.store.updateInfo({
-      agent_session_id: this.threadId,
-      cwd: text(started.cwd) ?? cwd,
+      agent_session_id: threadId,
+      cwd: text(opened.cwd) ?? this.launch.thread.cwd ?? this.options.cwd,
       modes: CODEX_MODES,
-      ...(text(started.model) ? { model: text(started.model) } : {}),
+      ...(text(opened.model) ? { model: text(opened.model) } : {}),
       ...(policy ? { mode: policy } : {}),
     });
-    if (this.store.phase === "starting") this.store.setPhase("idle");
+  }
+
+  /** Stored threads of a directory, newest first, from Codex's own index. */
+  private async storedThreads(
+    cwd: string,
+    limit: number,
+  ): Promise<AgentStoredSession[]> {
+    const listed = await this.request("thread/list", {
+      cwd,
+      limit,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      // The index answers at once; repairing it from every rollout file
+      // takes many seconds on a long history.
+      useStateDbOnly: true,
+    });
+    return (Array.isArray(listed.data) ? listed.data : []).flatMap(
+      (value): AgentStoredSession[] => {
+        const thread = record(value);
+        const id = text(thread?.id);
+        // A thread without a prompt was never a conversation.
+        const title = text(thread?.name) || text(thread?.preview) || "";
+        if (!thread || !id || !title.trim()) return [];
+        return [
+          {
+            id,
+            title: oneLine(title, 200),
+            updated_at:
+              (typeof thread.updatedAt === "number" ? thread.updatedAt : 0) *
+              1000,
+          },
+        ];
+      },
+    );
+  }
+
+  async history(): Promise<AgentStoredSession[]> {
+    this.requireThread();
+    const threads = await this.storedThreads(
+      this.store.info.cwd,
+      AGENT_SESSION_HISTORY_LIMIT + 1,
+    );
+    return threads
+      .filter((thread) => thread.id !== this.threadId)
+      .slice(0, AGENT_SESSION_HISTORY_LIMIT);
+  }
+
+  /**
+   * The turns of a stored thread, oldest first: as many of the newest as
+   * the transcript can hold, read a page at a time.
+   */
+  private async storedTurns(id: string): Promise<unknown[]> {
+    const pages: unknown[][] = [];
+    let cursor: string | undefined;
+    let items = 0;
+    for (let page = 0; page < TURN_PAGE_LIMIT; page++) {
+      const listed = await this.request("thread/turns/list", {
+        threadId: id,
+        limit: TURN_PAGE_SIZE,
+        sortDirection: "desc",
+        itemsView: "full",
+        ...(cursor ? { cursor } : {}),
+      });
+      const turns = Array.isArray(listed.data) ? listed.data : [];
+      pages.push(turns);
+      for (const turn of turns) {
+        const held = record(turn)?.items;
+        items += Array.isArray(held) ? held.length : 0;
+      }
+      cursor = text(listed.nextCursor);
+      if (!cursor || turns.length === 0 || items >= AGENT_SESSION_ITEM_LIMIT)
+        break;
+    }
+    return pages.flat().reverse();
+  }
+
+  /** Continue a stored thread on this server, showing these turns of it. */
+  private async resumeThread(id: string, turns: unknown[]) {
+    const resumed = await this.request("thread/resume", {
+      threadId: id,
+      excludeTurns: true,
+      // Only a directory the user named moves the thread; else it keeps its own.
+      ...(this.launch.thread.cwd ? { cwd: this.launch.thread.cwd } : {}),
+      ...this.threadSettings(),
+    });
+    if (!text(record(resumed.thread)?.id)) throw new Error("no thread ID");
+    const left = this.threadId;
+    this.turnId = null;
+    this.nextPolicy = null;
+    this.denying = false;
+    this.ownPrompts.length = 0;
+    this.approvals.clear();
+    this.streaming.clear();
+    this.openTools.clear();
+    this.store.resetItems(
+      codexThreadItems(turns, text(resumed.cwd) ?? this.store.info.cwd),
+    );
+    this.store.updateInfo({ usage: undefined });
+    this.adoptThread(resumed);
+    // Codex gives a thread one writer and keeps a thread somebody follows
+    // loaded: let go of the one the session left, so other clients can
+    // open it again.
+    if (left && left !== this.threadId)
+      void this.request("thread/unsubscribe", { threadId: left }).catch(
+        () => undefined,
+      );
+  }
+
+  async resume(id: string) {
+    this.requireThread();
+    if (this.resuming)
+      throw new AgentActionError("a conversation is already being resumed");
+    if (this.store.phase === "running" || this.turnId || this.undelivered > 0)
+      throw new AgentActionError(
+        "a turn is running; wait for it or interrupt it first",
+      );
+    this.resuming = true;
+    try {
+      await this.resumeThread(id, await this.storedTurns(id));
+    } finally {
+      this.resuming = false;
+    }
   }
 
   async send(prompt: string): Promise<void> {
     this.requireThread();
+    if (this.resuming)
+      throw new AgentActionError(
+        "a conversation is being resumed; send the prompt again in a moment",
+      );
     this.store.upsertItem({
       id: `user-${this.nextLocalId++}`,
       type: "user",
@@ -759,10 +1018,7 @@ export class CodexAdapter implements AgentAdapter {
 
   /** A prompt that did not come from this host (another client, a hook). */
   private showForeignPrompt(id: string, content: unknown) {
-    const body = (Array.isArray(content) ? content : [])
-      .map((value) => text(record(value)?.text) ?? "")
-      .filter(Boolean)
-      .join("\n");
+    const body = promptText(content);
     const own = this.ownPrompts.indexOf(body);
     if (own >= 0) {
       this.ownPrompts.splice(own, 1);
@@ -773,12 +1029,8 @@ export class CodexAdapter implements AgentAdapter {
 
   private finishTurn(turn: Record<string, unknown>) {
     this.closeOpenItems(turn.status === "completed" ? "done" : "failed");
-    if (turn.status === "failed") {
-      const message = text(record(turn.error)?.message);
-      this.notice("error", message ?? "The turn failed.");
-    } else if (turn.status === "interrupted" && !this.denying) {
-      this.notice("info", "Interrupted.");
-    }
+    const notice = turnEndNotice(turn, this.denying);
+    if (notice) this.notice(notice.level, notice.text);
     this.denying = false;
     this.turnId = null;
     if (this.undelivered === 0) this.settle();

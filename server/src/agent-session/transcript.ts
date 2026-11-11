@@ -100,7 +100,7 @@ export class Transcript {
 export class SessionMirror {
   info: AgentSessionInfo;
   seq: number;
-  private readonly transcript: Transcript;
+  private transcript: Transcript;
   private readonly approvals = new Map<string, AgentApproval>();
 
   constructor(snapshot: AgentSessionSnapshot) {
@@ -130,6 +130,10 @@ export class SessionMirror {
         break;
       case "approval_resolved":
         this.approvals.delete(event.id);
+        break;
+      case "reset":
+        this.transcript = new Transcript(event.items);
+        this.approvals.clear();
         break;
     }
     return true;

@@ -29,8 +29,10 @@ const RPC_MATRIX: Record<string, string> = {
   "agent.prompt": "-",
   // Agent sessions: reading follows the pane, acting follows pane input.
   "agent_session.approve": "admin owner editor",
+  "agent_session.history": "admin owner editor viewer guest guest-pane",
   "agent_session.interrupt": "admin owner editor",
   "agent_session.list": "admin owner editor viewer guest guest-pane",
+  "agent_session.resume": "admin owner editor",
   "agent_session.send": "admin owner editor",
   "agent_session.set_mode": "admin owner editor",
   "agent_session.subscribe": "admin owner editor viewer guest guest-pane",
@@ -387,6 +389,7 @@ describe("authorize", () => {
         "agent_session.interrupt",
         "agent_session.approve",
         "agent_session.set_mode",
+        "agent_session.resume",
       ]) {
         const decision = await request(role, method, W1_PARAMS, claimed);
         expect(decision.allowed).toBe(false);

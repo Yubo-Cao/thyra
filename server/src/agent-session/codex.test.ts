@@ -3,6 +3,7 @@ import type { AgentItem } from "../../../shared/agentSession";
 import {
   CodexAdapter,
   codexItem,
+  codexThreadItems,
   parseCodexArgs,
   unwrapShellCommand,
 } from "./codex";
@@ -122,9 +123,44 @@ test("codex options map to app-server arguments and thread settings", () => {
   expect(parseCodexArgs([])).toEqual({ serverArgs: [], thread: {} });
   // Options without an app-server counterpart are refused, not dropped.
   expect(() => parseCodexArgs(["--search"])).toThrow("does not support");
-  expect(() => parseCodexArgs(["resume", "abc"])).toThrow("does not support");
   expect(() => parseCodexArgs(["-s", "open"])).toThrow("unknown sandbox");
   expect(() => parseCodexArgs(["-a"])).toThrow("needs a value");
+});
+
+test("resume takes a thread ID or --last, with options on either side", () => {
+  expect(
+    parseCodexArgs(["--yolo", "resume", "0a1b-2c3d", "-m", "gpt-x"]),
+  ).toEqual({
+    serverArgs: [],
+    thread: {
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+      model: "gpt-x",
+    },
+    resume: { id: "0a1b-2c3d" },
+  });
+  expect(parseCodexArgs(["resume", "-m", "gpt-x", "0a1b-2c3d"]).resume).toEqual(
+    { id: "0a1b-2c3d" },
+  );
+  expect(parseCodexArgs(["resume", "--last", "-a", "never"])).toEqual({
+    serverArgs: [],
+    thread: { approvalPolicy: "never" },
+    resume: { last: true },
+  });
+  // The terminal UI's picker: the page offers the list instead.
+  expect(parseCodexArgs(["resume"])).toEqual({ serverArgs: [], thread: {} });
+  expect(parseCodexArgs(["resume", "--yolo"]).resume).toBeUndefined();
+  // Not an ID, a second thread, a prompt, or a flag of the terminal UI.
+  expect(() => parseCodexArgs(["resume", "../x"])).toThrow("not a thread ID");
+  expect(() => parseCodexArgs(["resume", "a1", "b2"])).toThrow(
+    "does not support the argument b2",
+  );
+  expect(() => parseCodexArgs(["resume", "a1", "--last"])).toThrow(
+    "does not support the argument --last",
+  );
+  expect(() => parseCodexArgs(["resume", "--all"])).toThrow("does not support");
+  expect(() => parseCodexArgs(["--last"])).toThrow("does not support");
+  expect(() => parseCodexArgs(["fork", "a1"])).toThrow("does not support");
 });
 
 test("the shell wrapper around a command is removed", () => {
@@ -624,4 +660,480 @@ test("a crash or a thread that never starts ends the session with the reason", a
     status: "exited",
     error: "codex did not start a thread: not logged in",
   });
+});
+
+/** Two stored turns as `thread/turns/list` returns them, newest first. */
+const STORED_TURNS = [
+  {
+    id: "turn-2",
+    status: "interrupted",
+    startedAt: 1700000100,
+    completedAt: 1700000109,
+    items: [
+      {
+        type: "userMessage",
+        id: "u2",
+        startedAtMs: 1700000100500,
+        content: [{ type: "text", text: "now deploy" }],
+      },
+      {
+        type: "commandExecution",
+        id: "c2",
+        startedAtMs: 1700000101000,
+        command: "/bin/bash -lc 'make deploy'",
+        status: "inProgress",
+        commandActions: [],
+      },
+    ],
+  },
+  {
+    id: "turn-1",
+    status: "completed",
+    startedAt: 1700000000,
+    completedAt: 1700000009,
+    items: [
+      {
+        type: "userMessage",
+        id: "u1",
+        startedAtMs: 1700000000500,
+        content: [{ type: "text", text: "remember mango" }],
+      },
+      { type: "reasoning", id: "r1", summary: [], content: [] },
+      {
+        type: "commandExecution",
+        id: "c1",
+        startedAtMs: 1700000002000,
+        command: "/bin/bash -lc 'echo mango'",
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: "mango\n",
+        commandActions: [],
+      },
+      {
+        type: "fileChange",
+        id: "f1",
+        status: "completed",
+        changes: [
+          { path: "/work/a.txt", kind: { type: "add" }, diff: "mango" },
+        ],
+      },
+      {
+        type: "agentMessage",
+        id: "a1",
+        startedAtMs: 1700000004000,
+        text: "I will remember mango.",
+      },
+    ],
+  },
+];
+
+const RESTORED = [
+  "user: remember mango",
+  "shell[done] echo mango",
+  "apply_patch[done] a.txt",
+  "assistant: I will remember mango.",
+  "user: now deploy",
+  "shell[failed] make deploy",
+  "notice: Interrupted.",
+];
+
+const lines = (items: AgentItem[]) =>
+  items.map((item) =>
+    item.type === "tool"
+      ? `${item.name}[${item.status}] ${item.title}`
+      : item.type === "plan"
+        ? "plan"
+        : `${item.type}: ${item.text}`,
+  );
+
+test("a stored thread's turns map like their notifications did", () => {
+  const items = codexThreadItems(STORED_TURNS.toReversed(), "/work");
+  expect(lines(items)).toEqual(RESTORED);
+  // Items keep the time they started at; one without takes the last known.
+  expect(items.map((item) => item.at)).toEqual([
+    1700000000500, 1700000002000, 1700000002000, 1700000004000, 1700000100500,
+    1700000101000, 1700000109000,
+  ]);
+  expect(items[1]).toMatchObject({ command: "echo mango", output: "mango\n" });
+  expect(items[2]).toMatchObject({
+    kind: "edit",
+    diffs: [{ path: "/work/a.txt", patch: "@@ -0,0 +1,1 @@\n+mango" }],
+  });
+  expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
+
+  // A failed turn says why; one stopped by a denial shows the denial only.
+  expect(
+    lines(
+      codexThreadItems(
+        [
+          {
+            id: "t1",
+            status: "failed",
+            error: { message: "quota" },
+            items: [],
+          },
+          {
+            id: "t2",
+            status: "interrupted",
+            items: [
+              {
+                type: "commandExecution",
+                id: "c9",
+                command: "rm -rf /",
+                status: "declined",
+              },
+            ],
+          },
+          { id: "t3", status: "inProgress", items: [{ type: "sleep" }] },
+          "not a turn",
+        ],
+        "/work",
+      ),
+    ),
+  ).toEqual(["notice: quota", "shell[denied] rm -rf /"]);
+
+  // Older history has no times: items take the first one there is.
+  const untimed = codexThreadItems(
+    [
+      {
+        id: "t1",
+        status: "completed",
+        items: [{ type: "agentMessage", id: "a1", text: "early" }],
+      },
+      {
+        id: "t2",
+        status: "completed",
+        startedAt: 1700000000,
+        items: [{ type: "agentMessage", id: "a2", text: "later" }],
+      },
+    ],
+    "/work",
+  );
+  expect(untimed.map((item) => item.at)).toEqual([
+    1700000000000, 1700000000000,
+  ]);
+  const before = Date.now();
+  const never = codexThreadItems(
+    [{ id: "t1", items: [{ type: "agentMessage", id: "a1", text: "x" }] }],
+    "/work",
+  );
+  expect(never[0]!.at).toBeGreaterThanOrEqual(before);
+});
+
+/** Answer the request written last. */
+function answer(agent: ReturnType<typeof fakeAgent>, result: unknown) {
+  agent.say({ id: agent.written.at(-1)!.id, result });
+}
+
+test("starting with resume continues the thread with the session's settings", async () => {
+  const session = start(["--yolo", "-m", "gpt-x", "resume", "thread-9"]);
+  const { agent, store, events } = session;
+  agent.say({ id: 1, result: {} });
+  await settle();
+  // Its turns are read newest first, a page at a time.
+  expect(agent.written.at(-1)).toEqual({
+    id: 2,
+    method: "thread/turns/list",
+    params: {
+      threadId: "thread-9",
+      limit: 20,
+      sortDirection: "desc",
+      itemsView: "full",
+    },
+  });
+  answer(agent, { data: [STORED_TURNS[0]], nextCursor: "page-2" });
+  await settle();
+  expect(agent.written.at(-1)!.params).toMatchObject({ cursor: "page-2" });
+  answer(agent, { data: [STORED_TURNS[1]], nextCursor: null });
+  await settle();
+  // The arguments' overrides apply to the resumed thread too; without
+  // `-C` it keeps the directory it was stored with.
+  expect(agent.written.at(-1)).toEqual({
+    id: 4,
+    method: "thread/resume",
+    params: {
+      threadId: "thread-9",
+      excludeTurns: true,
+      model: "gpt-x",
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+    },
+  });
+  expect(store.info.status).toBe("starting");
+  answer(agent, {
+    thread: { id: "thread-9", turns: [] },
+    model: "gpt-x",
+    cwd: "/work",
+    approvalPolicy: "never",
+    sandbox: { type: "dangerFullAccess" },
+  });
+  await settle();
+  expect(store.info).toMatchObject({
+    status: "idle",
+    agent_session_id: "thread-9",
+    model: "gpt-x",
+    mode: "never",
+  });
+  expect(lines(store.snapshot().items)).toEqual(RESTORED);
+  expect(events.filter((event) => event.type === "reset")).toHaveLength(1);
+  expect(agent.written.some((line) => line.method === "thread/start")).toBe(
+    false,
+  );
+
+  // The next prompt goes to the resumed thread.
+  const sent = session.adapter.send("and now?");
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "turn/start",
+    params: { threadId: "thread-9" },
+  });
+  answer(agent, { turn: { id: "turn-3" } });
+  await sent;
+  agent.exit();
+});
+
+test("resume --last continues the directory's newest thread, or starts one", async () => {
+  const session = start(["resume", "--last", "-C", "/repo"]);
+  const { agent, store } = session;
+  agent.say({ id: 1, result: {} });
+  await settle();
+  // From Codex's index: repairing it from the rollout files takes too long.
+  expect(agent.written.at(-1)).toEqual({
+    id: 2,
+    method: "thread/list",
+    params: {
+      cwd: "/repo",
+      limit: 1,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      useStateDbOnly: true,
+    },
+  });
+  answer(agent, {
+    data: [
+      { id: "thread-7", preview: "remember mango", updatedAt: 1700000009 },
+    ],
+  });
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "thread/turns/list",
+    params: { threadId: "thread-7" },
+  });
+  // The thread resumes even when its earlier messages cannot be read.
+  agent.say({
+    id: agent.written.at(-1)!.id,
+    error: { code: -32601, message: "unknown method" },
+  });
+  await settle();
+  expect(agent.written.at(-1)).toEqual({
+    id: 4,
+    method: "thread/resume",
+    params: { threadId: "thread-7", excludeTurns: true, cwd: "/repo" },
+  });
+  answer(agent, { thread: { id: "thread-7" }, cwd: "/repo" });
+  await settle();
+  expect(store.info).toMatchObject({
+    status: "idle",
+    agent_session_id: "thread-7",
+    cwd: "/repo",
+  });
+  expect(lines(store.snapshot().items)).toEqual([
+    "notice: The earlier messages of thread-7 could not be read (unknown method).",
+  ]);
+  agent.exit();
+
+  const fresh = start(["resume", "--last"]);
+  fresh.agent.say({ id: 1, result: {} });
+  await settle();
+  answer(fresh.agent, { data: [] });
+  await settle();
+  expect(fresh.agent.written.at(-1)).toEqual({
+    id: 3,
+    method: "thread/start",
+    params: { cwd: "/work" },
+  });
+  answer(fresh.agent, { thread: { id: "thread-new" } });
+  await settle();
+  expect(fresh.store.info).toMatchObject({
+    status: "idle",
+    agent_session_id: "thread-new",
+  });
+  expect(lines(fresh.store.snapshot().items)).toEqual([
+    "notice: No thread is stored for this directory; this is a new one.",
+  ]);
+  fresh.agent.exit();
+
+  // A thread that cannot be resumed is a failed start.
+  const refused = start(["resume", "thread-9"]);
+  refused.agent.say({ id: 1, result: {} });
+  await settle();
+  answer(refused.agent, { data: [] });
+  await settle();
+  refused.agent.say({
+    id: refused.agent.written.at(-1)!.id,
+    error: {
+      code: -32600,
+      message: "thread thread-9 already has an active writer",
+    },
+  });
+  await settle();
+  refused.agent.exit({ code: null, signal: "SIGTERM" });
+  expect(refused.store.info).toMatchObject({
+    status: "exited",
+    error:
+      "codex did not start a thread: thread thread-9 already has an active writer",
+  });
+});
+
+test("history lists the directory's threads without the session's own", async () => {
+  const early = start();
+  await expect(early.adapter.history()).rejects.toThrow("still starting");
+  early.agent.exit();
+
+  const { agent, adapter } = await ready();
+  const listed = adapter.history();
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "thread/list",
+    params: { cwd: "/work", limit: 31, useStateDbOnly: true },
+  });
+  answer(agent, {
+    data: [
+      { id: "thread-1", preview: "the session's own", updatedAt: 1700000300 },
+      { id: "t-named", name: "Fix login", preview: "p", updatedAt: 1700000200 },
+      {
+        id: "t-plain",
+        name: null,
+        preview: "first prompt\nmore",
+        updatedAt: 17,
+      },
+      // Never prompted: not a conversation.
+      { id: "t-empty", name: null, preview: "", updatedAt: 1700000000 },
+      { preview: "no id" },
+    ],
+  });
+  expect(await listed).toEqual([
+    { id: "t-named", title: "Fix login", updated_at: 1700000200000 },
+    { id: "t-plain", title: "first prompt", updated_at: 17000 },
+  ]);
+  agent.exit();
+});
+
+test("resuming in place switches threads on the same server", async () => {
+  const session = await ready(["--yolo"]);
+  const { agent, adapter, store, events } = session;
+  expect(agent.written.at(-1)!.params).toMatchObject({
+    sandbox: "danger-full-access",
+    approvalPolicy: "never",
+  });
+  await adapter.setMode("untrusted");
+  const before = events.length;
+  const resumed = adapter.resume("thread-9");
+  // A prompt cannot slip in between the two threads.
+  await expect(adapter.send("too early")).rejects.toThrow("being resumed");
+  await expect(adapter.resume("thread-8")).rejects.toThrow(
+    "already being resumed",
+  );
+  await settle();
+  answer(agent, { data: STORED_TURNS, nextCursor: null });
+  await settle();
+  // A `--yolo` session stays one after resuming.
+  expect(agent.written.at(-1)).toEqual({
+    id: 4,
+    method: "thread/resume",
+    params: {
+      threadId: "thread-9",
+      excludeTurns: true,
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+    },
+  });
+  answer(agent, {
+    thread: { id: "thread-9" },
+    model: "gpt-test",
+    cwd: "/work",
+    approvalPolicy: "never",
+  });
+  await resumed;
+  expect(agent.children).toHaveLength(1);
+  expect(events.slice(before).map((event) => event.type)).toEqual([
+    "reset",
+    "info",
+  ]);
+  // The thread the session left is let go of, so other clients can open it.
+  expect(agent.written.at(-1)).toEqual({
+    id: 5,
+    method: "thread/unsubscribe",
+    params: { threadId: "thread-1" },
+  });
+  answer(agent, { status: "unsubscribed" });
+  expect(store.info).toMatchObject({
+    status: "idle",
+    agent_session_id: "thread-9",
+    mode: "never",
+  });
+  expect(lines(store.snapshot().items)).toEqual(RESTORED);
+
+  // The old thread's notifications no longer count; the new one's do.
+  agent.say({
+    method: "thread/tokenUsage/updated",
+    params: { threadId: "thread-1", tokenUsage: { last: { totalTokens: 1 } } },
+  });
+  expect(store.info.usage).toBeUndefined();
+  agent.say({
+    method: "thread/tokenUsage/updated",
+    params: { threadId: "thread-9", tokenUsage: { last: { totalTokens: 9 } } },
+  });
+  expect(store.info.usage).toEqual({ context_tokens: 9 });
+
+  // The mode chosen for the old thread does not ride on the new one's turn.
+  const sent = adapter.send("and now?");
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "turn/start",
+    params: { threadId: "thread-9" },
+  });
+  expect(agent.written.at(-1)!.params.approvalPolicy).toBeUndefined();
+  answer(agent, { turn: { id: "turn-3" } });
+  await sent;
+
+  // Refused while a turn runs.
+  await expect(adapter.resume("thread-8")).rejects.toThrow("a turn is running");
+  agent.say({
+    method: "turn/completed",
+    params: {
+      threadId: "thread-9",
+      turn: { id: "turn-3", status: "completed" },
+    },
+  });
+  expect(store.info.status).toBe("idle");
+
+  // A refusal from Codex leaves the session in the thread it was in.
+  const refused = adapter.resume("thread-8");
+  await settle();
+  answer(agent, { data: [] });
+  await settle();
+  agent.say({
+    id: agent.written.at(-1)!.id,
+    error: {
+      code: -32600,
+      message: "thread thread-8 already has an active writer",
+    },
+  });
+  await expect(refused).rejects.toThrow("already has an active writer");
+  expect(store.info).toMatchObject({
+    status: "idle",
+    agent_session_id: "thread-9",
+  });
+  expect(store.snapshot().items.length).toBeGreaterThan(RESTORED.length);
+  // And prompts are taken again.
+  const again = adapter.send("still here");
+  await settle();
+  expect(agent.written.at(-1)).toMatchObject({
+    method: "turn/start",
+    params: { threadId: "thread-9" },
+  });
+  answer(agent, { turn: { id: "turn-4" } });
+  await again;
+  agent.exit();
 });

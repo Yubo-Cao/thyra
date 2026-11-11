@@ -730,13 +730,18 @@ Start it from the project launcher's GUI view, or type it in a pane:
 thyra agent claude                       # the permission mode of your Claude settings
 thyra agent claude --model opus --permission-mode acceptEdits
 thyra agent codex -m gpt-5 -a on-request -s workspace-write
+thyra agent claude --continue            # the directory's newest conversation
+thyra agent claude --resume <session-id>
+thyra agent codex --yolo resume --last   # or: resume <thread-id>
 ```
 
 - The agent's own CLI must be installed on the pane's `PATH` and logged in (`claude`, `codex`); sessions use that login and need no API key.
 - It must run inside a Herdr pane (`HERDR_PANE_ID` and `HERDR_SOCKET_PATH` set), as the pane's foreground program, on the host of the default connection; panes of SSH and other connections, and Windows, have no agent sessions.
 - Claude Code receives the arguments after the agent's name unchanged. A session starts in the permission mode of your Claude settings (`permissions.defaultMode`), as the terminal UI does; pass `--permission-mode <mode>` or `--dangerously-skip-permissions` to start differently, and switch modes in the session at any time.
-- Codex starts with the defaults of `~/.codex/config.toml`. `-m/--model`, `-s/--sandbox`, `-a/--ask-for-approval`, `-C/--cd`, `-c/--config`, `--enable`, `--disable`, `--strict-config` and `--yolo` are accepted; other `codex` options are refused.
-- The pane prints a plain log of the session. Ctrl+C, or closing the pane, ends it; the transcript lives in the host process and ends with it.
+- Codex starts with the defaults of `~/.codex/config.toml`. `-m/--model`, `-s/--sandbox`, `-a/--ask-for-approval`, `-C/--cd`, `-c/--config`, `--enable`, `--disable`, `--strict-config`, `--yolo` and `resume [<id> | --last]` are accepted; other `codex` options are refused.
+- The pane prints a plain log of the session. Ctrl+C, or closing the pane, ends it. The transcript lives in the host process, but the conversation is the agent's own and stays stored where the agent keeps it (`~/.claude/projects`, `~/.codex/sessions`).
+- A stored conversation continues with its transcript restored, whether a session or the agent's terminal UI held it: start with the agent's resume arguments (above), or pick it from the session's history in Thyra. The reverse works too: `claude --resume` and `codex resume` open a session's conversation in the terminal UI.
+- Codex lets one process write a thread. A thread that is open in the Codex terminal UI or another client cannot be resumed until that client has closed it and released it, which takes a few minutes; Thyra shows Codex's error meanwhile.
 - Sessions survive Thyra restarts and updates. A Herdr restart ends them: Herdr does not restore a `thyra agent` pane.
 
 Hosts and the bridge meet in `$XDG_RUNTIME_DIR/thyra/agents` (`${XDG_STATE_HOME:-~/.local/state}/thyra/agents` without a runtime directory), a directory only the user can open; set `THYRA_AGENT_SOCKET_DIR` for both the bridge and the panes to use another.

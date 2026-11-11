@@ -661,7 +661,8 @@ Tool output is cut to `AGENT_TOOL_OUTPUT_LIMIT` keeping its start and end, a fil
 **Host link.** Each host listens on a Unix socket (mode 0600) named `<key>-<pane>.sock`: `key` is the first 12 hex digits of the SHA-256 of the pane's Herdr control socket path (resolved through symlinks), and `pane` is the URI-encoded pane ID.
 The directory is `THYRA_AGENT_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/thyra/agents`, else `${XDG_STATE_HOME:-~/.local/state}/thyra/agents`; it must be a real directory owned by the user with mode 0700, and the bridge reads no other.
 Traffic is newline-delimited JSON.
-The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "interrupt" | "approve" | "set_mode", ...}`, each answered by `{type: "result", id, error?}`.
+The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "interrupt" | "approve" | "set_mode" | "history" | "resume", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` answers with).
+The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`).
 A host replaces a socket file nobody listens on; the bridge deletes one that refuses connections and is older than five seconds.
 
 **Relay.** The bridge (`server/src/agent-session/relay.ts`) serves the sessions of the default connection when its Herdr runs on this host, like the [agent browser](#agent-browser); other connections have none.
@@ -671,12 +672,13 @@ A session ends when its link closes; a restarted bridge rebuilds everything from
 
 **RPC.** `agent_session.list` returns `{sessions}` (empty on connections without sessions).
 `agent_session.subscribe {pane_id}` returns the snapshot and starts `agent_session.event` for that pane on the calling socket until `agent_session.unsubscribe {pane_id}`, the session's end, or the socket closing.
-`agent_session.send {pane_id, text}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}` and `agent_session.set_mode {pane_id, mode}` return `{ok: true}` or the host's refusal as the error.
+`agent_session.send {pane_id, text}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}` and `agent_session.resume {pane_id, session_id}` return `{ok: true}` or the host's refusal as the error.
+`agent_session.history {pane_id}` returns `{sessions: AgentStoredSession[]}`; see [stored conversations](#stored-conversations).
 Both notifications use the connection envelope: `{connection_id, connection_generation, event: "agent_session.event", data: AgentSessionEvent}` and `{..., event: "agent_session.changed", data: {sessions}}`.
 `agent_session.changed` goes to every page when a session appears, ends or changes status, at most once per 25 ms.
 The hello's `capabilities.agent_sessions` is `true` when the bridge serves these methods.
 
-**Authorization.** Listing and subscribing need read access to the pane; a list and `agent_session.changed` hold only the sessions of panes the caller may read, filtered like pane lists, and each event delivery rechecks the subscriber's access.
+**Authorization.** Listing, subscribing and reading the history need read access to the pane; a list and `agent_session.changed` hold only the sessions of panes the caller may read, filtered like pane lists, and each event delivery rechecks the subscriber's access.
 Acting needs what `pane.send_input` needs: the editor role and the pane's input claim, which an unclaimed pane grants to the caller.
 `agent_session.unsubscribe` only affects the calling socket.
 
@@ -685,6 +687,17 @@ Streamed text is announced at once and then at most every 40 ms per session, and
 `status` is `running` from a prompt until the agent has finished every prompt it was given, and `awaiting_approval` while a running turn has an open approval.
 `interrupt` does nothing in an idle session.
 Denying a tool call marks its item `denied` and stops the turn, as the agents' own interfaces do.
+A `reset` event replaces the whole transcript with the items it carries and closes every approval; a host sends it when the session starts continuing a stored conversation.
+
+<a id="stored-conversations"></a>
+**Stored conversations.** A host keeps its transcript in memory only; what outlives it is the conversation the agent stores itself, and a session can continue one with its transcript restored.
+`agent_session.history` lists at most `AGENT_SESSION_HISTORY_LIMIT` conversations stored for the session's working directory, newest first, without the one the session is in, whether a Thyra session or the agent's terminal UI held them.
+`agent_session.resume` continues one in the session: one `reset` event carries its transcript, within the usual [bounds](#agent-sessions) and with each item at the time it was stored with, and an `info` event with the new `agent_session_id` follows.
+It is refused while a turn is running or an approval is open.
+`session_id` must be a plain ID (letters, digits, `-` and `_`, not starting with `-` or `_`, at most 128 characters), because the host uses it as a command-line argument and a file name; the bridge and the host both check it.
+Starting a session with the agent's own resume arguments restores the transcript the same way before the session first becomes `idle`.
+A resumed conversation runs with the model and mode the session's arguments choose; a mode switched to earlier in the session does not carry over.
+`info.can_resume` is `true` on hosts that serve both calls, and the bridge refuses them for a host without it, since a host of an older build would never answer.
 
 **Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, and `set_permission_mode`.
 It adds `--allow-dangerously-skip-permissions` unless the caller passed `--dangerously-skip-permissions`, so a session starts in the permission mode of the user's Claude settings or command line and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
@@ -694,11 +707,32 @@ A prompt sent during a turn is written to the CLI at once, which steers or queue
 Messages of a sub-agent (those naming a parent tool call) never enter the transcript: its tool calls show as progress lines in the parent task's `output` until the task's result replaces them.
 An approval offers allow, always allow when the CLI suggests a rule or mode change (sent back as `updatedPermissions`), and deny; `AskUserQuestion` with one single-choice question becomes an approval whose options are the answers, and other dialogs are refused so the agent asks in text.
 
+Claude Code stores each conversation as `<session ID>.jsonl` under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<name>/` (`server/src/agent-session/claude-stored.ts`).
+`<name>` is the working directory's real path (symlinks resolved) with every character outside `A-Z`, `a-z` and `0-9` replaced by `-`; past 200 characters it is the first 200, a `-` and a hash of the path.
+History orders the files by modification time and reads the first 64 KiB and the last 128 KiB of each: a conversation's title is its last `custom-title` entry, else its last `ai-title` entry, else the first prompt the user typed, else its latest prompt (the `last-prompt` entry).
+Files with none of these, empty files and sub-agent files are left out.
+A transcript is the chain that ends at the last entry written, followed back through `parentUuid`, so a branch abandoned by a rewind is not shown.
+A compaction boundary starts a new chain; its `logicalParentUuid` (or the head of its preserved segment) leads into the history before it, which is shown too.
+Results of tool calls made in parallel hang off the chain and are added by their call IDs.
+Sub-agent (`isSidechain`) and injected (`isMeta`) entries are skipped; the rest go through the handlers that show the same messages live, so titles, diffs and plans match, a slash command shows as the prompt `/name arguments`, and a call without a stored result shows as `failed`.
+The file is read in 1 MiB pieces, once for the links of every entry and once for the entries of the newest items, so restoring does not load a file whole.
+`--resume <id>`, `--resume=<id>` and `-r <id>` restore that conversation at startup.
+`--continue` and `-c` become `--resume` with the directory's newest stored conversation, so what is shown is what continues; with none stored they are dropped and a notice says so.
+A `--resume` without an ID (the terminal UI's picker) is dropped, and a value that is not an ID is left to the CLI without restoring a transcript.
+`agent_session.resume` replaces the CLI process, since one process holds one conversation: the host stops the child, starts another with `--resume <id>` in place of any earlier `--resume`, `--continue`, `--fork-session` or `--session-id` and with every other argument kept, and the session is `starting` until the new child answers `initialize`.
+The replaced child's exit is not the session's; a new child that cannot resume the conversation ends the session with its error.
+
 **Codex.** The host runs `codex app-server` and speaks its JSON-RPC: `initialize`, `thread/start` in the pane's directory, `turn/start` per prompt, `turn/steer` for a prompt during a turn (falling back to `turn/start` when the turn has just ended), and `turn/interrupt`.
 Thread items map to transcript items (`commandExecution` to `command`, `read` or `search` tools by its parsed actions, `fileChange` to an `edit` tool with one diff per file, MCP and collaboration calls to `other` and `task`), `turn/plan/updated` to one `plan` item per turn, and notifications of other threads (sub-agents) are ignored.
 Approval requests for commands, file changes and permissions become approvals with the decisions the server offers; denying a command or a file change answers `cancel`, and denying a permission request grants nothing.
 The modes are the approval policies `untrusted`, `on-request` and `never`; a chosen mode is sent with the next `turn/start` and holds from that turn.
-Without arguments a thread uses the defaults of `~/.codex/config.toml`; `thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config` and `--yolo`, and refuses any other argument.
+Without arguments a thread uses the defaults of `~/.codex/config.toml`; `thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config`, `--yolo` and `resume [<id> | --last]`, and refuses any other argument.
+
+History is `thread/list` for the session's directory, sorted by `updated_at` and answered from Codex's index (`useStateDbOnly`), because repairing the index from every rollout file takes many seconds on a long history; a thread's title is its name, else its first prompt.
+Resuming reads the thread's turns with `thread/turns/list` (newest first, 20 a page, until the transcript's item limit), maps their items like the live `item/*` notifications, and calls `thread/resume` with `excludeTurns` and the model, sandbox and approval policy of the session's arguments, on the same app-server.
+A call a stored turn left without an outcome takes the turn's: `done` in a completed turn, else `failed`.
+`resume <id>` starts the session in that thread, `resume --last` in the directory's newest (or a new one, with a notice, when none is stored), and a bare `resume` (the terminal UI's picker) in a new one.
+Codex gives a thread one writer: a thread open in another Codex process, such as its terminal UI, is refused with Codex's error until that process has let go of it, which takes a few minutes after the terminal UI closes.
 
 **Herdr status.** The host reports the pane's agent to Herdr over the control socket with `pane.report_agent` (`source: "thyra:agent"`, the agent's name, `idle`, `working`, or `blocked` with the approval's title, and a rising `seq`) and `pane.release_agent` when the agent ends, so the workspace tree and [task notifications](#task-notifications) treat the pane like one running the agent's terminal UI.
 The agent process runs without `HERDR_ENV`, which keeps Herdr's own hook integration from claiming the pane's agent session (Herdr would then ignore the host's reports), and with `HERDR_AGENT` naming the agent.

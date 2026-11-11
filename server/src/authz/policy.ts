@@ -225,6 +225,9 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "agent_session.interrupt": write(r.pane, { writer: "input" }),
   "agent_session.approve": write(r.pane, { writer: "input" }),
   "agent_session.set_mode": write(r.pane, { writer: "input" }),
+  // The titles of the conversations stored for the session's directory.
+  "agent_session.history": read(r.pane),
+  "agent_session.resume": write(r.pane, { writer: "input" }),
 
   // Workspace files and Git.
   "file.list": read(r.files),

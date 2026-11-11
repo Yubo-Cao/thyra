@@ -40,6 +40,7 @@ test("agent session actions are ordered per pane across pages", () => {
   );
   expect(key("c1", "agent_session.approve", { pane_id: "w1:p1" })).toBe(first);
   expect(key("c1", "agent_session.set_mode", { pane_id: "w1:p1" })).toBe(first);
+  expect(key("c2", "agent_session.resume", { pane_id: "w1:p1" })).toBe(first);
   expect(key("c1", "agent_session.send", { pane_id: "w1:p2" })).not.toBe(first);
   expect(
     key("c1", "agent_session.send", { pane_id: "w1:p1" }, "other"),
@@ -48,6 +49,7 @@ test("agent session actions are ordered per pane across pages", () => {
   expect(key("c1", "pane.send_input", { pane_id: "w1:p1" })).not.toBe(first);
   expect(key("c1", "agent_session.subscribe", { pane_id: "w1:p1" })).toBeNull();
   expect(key("c1", "agent_session.list", {})).toBeNull();
+  expect(key("c1", "agent_session.history", { pane_id: "w1:p1" })).toBeNull();
   expect(key("c1", "agent_session.send", {})).toBeNull();
 });
 

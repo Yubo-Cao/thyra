@@ -1,3 +1,7 @@
+import type {
+  AgentItem,
+  AgentStoredSession,
+} from "../../../shared/agentSession";
 import type { SpawnAgent } from "./agent-process";
 import type { AgentSessionStore } from "./store";
 
@@ -15,6 +19,16 @@ export interface AgentAdapter {
   interrupt(): Promise<void>;
   approve(approvalId: string, optionId: string): Promise<void>;
   setMode(mode: string): Promise<void>;
+  /**
+   * The conversations the agent has stored for the session's directory,
+   * newest first, without the one the session is in.
+   */
+  history(): Promise<AgentStoredSession[]>;
+  /**
+   * Continue a stored conversation in this session: the store's transcript
+   * is reset to that conversation's. Refused while a turn is running.
+   */
+  resume(sessionId: string): Promise<void>;
   /**
    * End the agent process (`force`: kill it); its exit still arrives through
    * `onExit`.
@@ -35,6 +49,19 @@ export type AdapterOptions = {
 
 /** A request refused because of what the session is doing; shown to the user. */
 export class AgentActionError extends Error {}
+
+/**
+ * Restored items whose stored record had no time (`at` 0) take the first
+ * time the conversation does have, else the time of the restore. Converters
+ * carry the last known time forward, so only leading items can lack one.
+ */
+export function withItemTimes(
+  items: AgentItem[],
+  now = Date.now(),
+): AgentItem[] {
+  const known = items.find((item) => item.at > 0)?.at ?? now;
+  return items.map((item) => (item.at > 0 ? item : { ...item, at: known }));
+}
 
 export function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)

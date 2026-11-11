@@ -9,17 +9,26 @@
  * PATH, and then acts as a page over the WebSocket: the hello capability,
  * `launcher.launch` with the `gui` view, the session list and its change
  * events, subscribing, a turn with streamed events, a bridge restart under a
- * running session, and closing the pane.
+ * running session, the history of stored conversations and resuming one in
+ * place, and closing the pane.
  *
  * `--binary` runs a compiled executable instead of the source tree, which
  * also checks the command the launcher types. Needs `herdr` on PATH. Nothing
  * of a live Herdr or Thyra is read or written.
  */
-import { chmodSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import type { Subprocess } from "bun";
+import { claudeProjectName } from "../server/src/agent-session/claude-stored";
 
 const { values: options } = parseArgs({
   args: process.argv.slice(2),
@@ -76,6 +85,42 @@ const bridgeEnv = {
   HOST: "127.0.0.1",
   PORT: String(port),
 };
+// A conversation the stand-in "stored" for the work directory, where a pane's
+// Claude Code would keep it.
+const storedId = "0a1b2c3d-0000-4000-8000-00000000beef";
+const storedDir = join(
+  herdrEnv.HOME,
+  ".claude",
+  "projects",
+  claudeProjectName(realpathSync(work)),
+);
+mkdirSync(storedDir, { recursive: true });
+await Bun.write(
+  join(storedDir, `${storedId}.jsonl`),
+  `${[
+    {
+      type: "user",
+      uuid: "u1",
+      parentUuid: null,
+      timestamp: "2026-01-02T03:04:05.000Z",
+      message: { role: "user", content: "stored prompt" },
+    },
+    {
+      type: "assistant",
+      uuid: "u2",
+      parentUuid: "u1",
+      timestamp: "2026-01-02T03:04:06.000Z",
+      message: {
+        id: "msg_stored",
+        role: "assistant",
+        content: [{ type: "text", text: "stored answer" }],
+      },
+    },
+    { type: "ai-title", aiTitle: "A stored conversation" },
+  ]
+    .map((entry) => JSON.stringify(entry))
+    .join("\n")}\n`,
+);
 const herdrSocket = join(herdrEnv.XDG_CONFIG_HOME, "herdr", "herdr.sock");
 const herdrClientSocket = join(
   herdrEnv.XDG_CONFIG_HOME,
@@ -330,6 +375,70 @@ try {
   await page.call("agent_session.send", { pane_id: pane, text: "again" });
   await waitFor("the turn after the restart", answered("You said: again"));
   check("the session keeps working after the restart", true);
+
+  check("the session says it can resume", restored.can_resume === true);
+  const history = await page.call("agent_session.history", { pane_id: pane });
+  check(
+    "history lists the directory's stored conversation by its title",
+    history.sessions.length === 1 &&
+      history.sessions[0].id === storedId &&
+      history.sessions[0].title === "A stored conversation",
+    JSON.stringify(history.sessions),
+  );
+  const malformed = await page
+    .call("agent_session.resume", { pane_id: pane, session_id: "../x" })
+    .then(
+      () => "",
+      (error: Error) => error.message,
+    );
+  check(
+    "a session ID that is not a plain ID is refused",
+    malformed.includes("conversation ID"),
+    malformed,
+  );
+  await page.call("agent_session.resume", {
+    pane_id: pane,
+    session_id: storedId,
+  });
+  const reset = await waitFor("the reset event", () =>
+    page
+      .pushed("agent_session.event")
+      .find((message) => message.data.type === "reset"),
+  );
+  check(
+    "resuming replaces the transcript with the stored conversation's",
+    reset.data.items.length === 2 &&
+      reset.data.items[0].text === "stored prompt" &&
+      reset.data.items[0].at === Date.parse("2026-01-02T03:04:05.000Z") &&
+      reset.data.items[1].text === "stored answer",
+    `${reset.data.items.length} items`,
+  );
+  await waitFor("the resumed session to be ready", async () =>
+    (await page.call("agent_session.list")).sessions.some(
+      (info: any) =>
+        info.pane_id === pane &&
+        info.status === "idle" &&
+        info.agent_session_id === storedId,
+    ),
+  );
+  await page.call("agent_session.send", { pane_id: pane, text: "resumed" });
+  await waitFor("the turn after resuming", answered("You said: resumed"));
+  const continued = await page.call("agent_session.subscribe", {
+    pane_id: pane,
+  });
+  check(
+    "the session continues the stored conversation under its ID",
+    continued.info.agent_session_id === storedId &&
+      continued.info.status !== "exited" &&
+      continued.items.map((item: any) => item.text).join("|") ===
+        "stored prompt|stored answer|resumed|You said: resumed",
+    continued.items.map((item: any) => item.text).join("|"),
+  );
+  check(
+    "the conversation the session is in is not in its own history",
+    (await page.call("agent_session.history", { pane_id: pane })).sessions
+      .length === 0,
+  );
 
   await herdr("pane", "close", pane);
   await waitFor(

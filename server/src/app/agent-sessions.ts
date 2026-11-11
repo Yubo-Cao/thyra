@@ -1,10 +1,12 @@
 import type { ServerWebSocket } from "bun";
 import {
   AGENT_SESSION_EVENT,
+  AGENT_SESSION_HISTORY_LIMIT,
   AGENT_SESSIONS_CHANGED,
   type AgentSessionEvent,
   type AgentSessionInfo,
   type AgentSessionSnapshot,
+  type AgentStoredSession,
 } from "../../../shared/agentSession";
 import type { AgentAction } from "../agent-session/link";
 import { agentSocketDir } from "../agent-session/paths";
@@ -39,6 +41,24 @@ export function visibleSessions(
       sessions: AgentSessionInfo[];
     }
   ).sessions;
+}
+
+/** A host's answer to `history`, kept only as far as it is well formed. */
+export function storedSessionsOf(value: unknown): AgentStoredSession[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((entry): AgentStoredSession[] => {
+      const { id, title, updated_at } = (entry ?? {}) as Record<
+        string,
+        unknown
+      >;
+      return typeof id === "string" &&
+        typeof title === "string" &&
+        typeof updated_at === "number"
+        ? [{ id, title, updated_at }]
+        : [];
+    })
+    .slice(0, AGENT_SESSION_HISTORY_LIMIT);
 }
 
 /**
@@ -180,8 +200,12 @@ export function createAgentSessionService(deps: {
     unsubscribe(ws: Socket, paneId: string) {
       subscriptions.get(ws)?.delete(paneId);
     },
-    act(paneId: string, action: AgentAction): Promise<void> {
-      return relay.act(paneId, action);
+    async act(paneId: string, action: AgentAction): Promise<void> {
+      await relay.act(paneId, action);
+    },
+    /** The conversations the pane's agent has stored for its directory. */
+    async history(paneId: string): Promise<AgentStoredSession[]> {
+      return storedSessionsOf(await relay.act(paneId, { action: "history" }));
     },
     /** The relay's callbacks, for a relay created outside (tests). */
     publishEvent,

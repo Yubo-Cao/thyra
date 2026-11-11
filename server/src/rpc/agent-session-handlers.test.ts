@@ -46,6 +46,7 @@ function harness() {
   const actions: [string, AgentAction][] = [];
   const claims: unknown[] = [];
   let refusal: string | null = null;
+  let answer: unknown;
   let served = true;
   const relay: AgentSessionRelay = {
     start() {},
@@ -56,6 +57,7 @@ function harness() {
     async act(paneId, action) {
       actions.push([paneId, action]);
       if (refusal) throw new Error(refusal);
+      return answer;
     },
   };
   const matrix = testDeps();
@@ -155,6 +157,10 @@ function harness() {
       sent.get(pages[role])!.filter((message) => message.id === undefined),
     refuse(message: string | null) {
       refusal = message;
+    },
+    /** What the host answers its next actions with. */
+    answer(value: unknown) {
+      answer = value;
     },
     unserve() {
       served = false;
@@ -391,12 +397,93 @@ test("acting needs pane input rights and claims the pane like typing", async () 
       ["agent_session.interrupt", {}],
       ["agent_session.approve", { approval_id: "a", option_id: "allow" }],
       ["agent_session.set_mode", { mode: "plan" }],
+      ["agent_session.resume", { session_id: "abc-1" }],
     ] as const)
       expect(
         (await h.call(role, method, { pane_id: "w1:p1", ...params })).error,
       ).toBeString();
     expect(h.actions).toHaveLength(before);
   }
+});
+
+test("history is read like the session; resuming is an action on it", async () => {
+  const h = harness();
+  const stored = [
+    { id: "abc-1", title: "Fix the login flow", updated_at: 1700000000000 },
+    { id: "abc-2", title: "Older", updated_at: 1600000000000 },
+  ];
+  // Only well-formed entries of a host's answer are passed on.
+  h.answer([
+    ...stored,
+    { id: "abc-3", title: 5, updated_at: 1 },
+    { id: "abc-4", title: "no time" },
+    "junk",
+    null,
+  ]);
+  for (const role of ["admin", "owner", "editor", "viewer", "guest"] as const)
+    expect(
+      await h.call(role, "agent_session.history", { pane_id: "w1:p1" }),
+    ).toEqual({ sessions: stored });
+  expect(h.actions.at(-1)).toEqual(["w1:p1", { action: "history" }]);
+  // Never more than the contract's limit, whatever a host sends.
+  h.answer(
+    Array.from({ length: 50 }, (_, index) => ({
+      id: `s${index}`,
+      title: "t",
+      updated_at: index,
+    })),
+  );
+  expect(
+    (await h.call("viewer", "agent_session.history", { pane_id: "w1:p1" }))
+      .sessions,
+  ).toHaveLength(30);
+  h.answer("not a list");
+  expect(
+    await h.call("viewer", "agent_session.history", { pane_id: "w1:p1" }),
+  ).toEqual({ sessions: [] });
+  // Reading a pane's history needs the pane, like its session.
+  const before = h.actions.length;
+  expect(
+    (await h.call("outsider", "agent_session.history", { pane_id: "w1:p1" }))
+      .error,
+  ).toBeString();
+  expect(
+    (await h.call("guest-pane", "agent_session.history", { pane_id: "w1:p2" }))
+      .error,
+  ).toBeString();
+  expect(await h.call("admin", "agent_session.history", {})).toEqual({
+    error: "pane_id required",
+  });
+  expect(h.actions).toHaveLength(before);
+
+  h.answer(undefined);
+  expect(
+    await h.call("editor", "agent_session.resume", {
+      pane_id: "w1:p1",
+      session_id: "abc-1",
+    }),
+  ).toEqual({ ok: true });
+  expect(h.actions.at(-1)).toEqual([
+    "w1:p1",
+    { action: "resume", session_id: "abc-1" },
+  ]);
+  // Resuming claims the pane like any other action on the session.
+  expect(h.claims.at(-1)).toEqual([
+    "collaboration.claim",
+    { participant_id: "web-editor", pane_id: "w1:p1", protect_ms: 15_000 },
+  ]);
+  h.refuse("a turn is running; wait for it or interrupt it first");
+  expect(
+    await h.call("editor", "agent_session.resume", {
+      pane_id: "w1:p1",
+      session_id: "abc-1",
+    }),
+  ).toEqual({ error: "a turn is running; wait for it or interrupt it first" });
+
+  h.unserve();
+  expect(
+    await h.call("admin", "agent_session.history", { pane_id: "w1:p1" }),
+  ).toEqual({ error: "no agent session in this pane" });
 });
 
 test("malformed actions are refused before they reach a host", async () => {
@@ -418,6 +505,26 @@ test("malformed actions are refused before they reach a host", async () => {
   expect(
     await h.call("admin", "agent_session.set_mode", { pane_id: "w1:p1" }),
   ).toEqual({ error: "mode required" });
+  // The ID becomes an argument and a file name on the host: a plain token
+  // only, nothing that reads as an option or a path.
+  for (const session_id of [
+    undefined,
+    "",
+    7,
+    "--dangerously-skip-permissions",
+    "-r",
+    "../../etc/passwd",
+    "a/b",
+    "a b",
+    "abc.jsonl",
+    "x".repeat(129),
+  ])
+    expect(
+      await h.call("admin", "agent_session.resume", {
+        pane_id: "w1:p1",
+        session_id,
+      }),
+    ).toEqual({ error: "session_id must be a conversation ID" });
   expect(h.actions).toEqual([]);
 });
 

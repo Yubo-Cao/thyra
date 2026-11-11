@@ -2,6 +2,7 @@ import { chmodSync, rmSync } from "node:fs";
 import * as net from "node:net";
 import {
   AGENT_PROMPT_LIMIT,
+  AGENT_SESSION_HISTORY_LIMIT,
   type AgentSessionEvent,
   type AgentSessionKind,
 } from "../../../shared/agentSession";
@@ -19,6 +20,7 @@ import {
   type AgentAction,
   createLineReader,
   encodeLine,
+  isAgentSessionId,
   parseBridgeMessage,
 } from "./link";
 import { agentSocketPath, prepareAgentSocketDir } from "./paths";
@@ -94,6 +96,7 @@ export async function startAgentHost(options: AgentHostOptions) {
       cwd: options.cwd,
       started_at: Date.now(),
       modes: [],
+      can_resume: true,
     },
     onEvent: publish,
   });
@@ -155,8 +158,8 @@ export async function startAgentHost(options: AgentHostOptions) {
       : new CodexAdapter(adapterOptions);
 
   // Each adapter call is awaited where it is made, so a refusal always has
-  // a handler by the time it is raised.
-  async function act(action: AgentAction): Promise<void> {
+  // a handler by the time it is raised. What an action answers is returned.
+  async function act(action: AgentAction): Promise<unknown> {
     switch (action.action) {
       case "send":
         if (!action.text.trim()) throw new AgentActionError("empty prompt");
@@ -173,13 +176,21 @@ export async function startAgentHost(options: AgentHostOptions) {
       case "set_mode":
         await adapter.setMode(action.mode);
         return;
+      case "history":
+        return (await adapter.history()).slice(0, AGENT_SESSION_HISTORY_LIMIT);
+      case "resume":
+        if (!isAgentSessionId(action.session_id))
+          throw new AgentActionError("not a conversation ID");
+        await adapter.resume(action.session_id);
+        return;
     }
   }
 
   async function answer(socket: net.Socket, id: number, action: AgentAction) {
     let error: string | undefined;
+    let value: unknown;
     try {
-      await act(action);
+      value = await act(action);
     } catch (failure) {
       error =
         failure instanceof Error && failure.message
@@ -187,7 +198,11 @@ export async function startAgentHost(options: AgentHostOptions) {
           : "the action failed";
     }
     socket.write(
-      encodeLine({ type: "result", id, ...(error ? { error } : {}) }),
+      encodeLine({
+        type: "result",
+        id,
+        ...(error ? { error } : value !== undefined ? { value } : {}),
+      }),
     );
   }
 
