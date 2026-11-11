@@ -182,6 +182,93 @@ test("the bridge's mirror follows the store event by event", () => {
   expect(mirror.apply({ ...events.at(-1)!, seq: final.seq + 2 })).toBe(false);
 });
 
+test("a reset replaces the transcript in one event and closes approvals", () => {
+  jest.useFakeTimers();
+  try {
+    let time = 1000;
+    const { store, events } = harness(() => time);
+    const mirror = new SessionMirror(store.snapshot());
+    store.setPhase("running");
+    store.upsertItem({ id: "u", type: "user", text: "old prompt" });
+    store.upsertItem({ id: "m", type: "assistant", text: "", streaming: true });
+    store.appendDelta("m", "sent at once");
+    store.appendDelta("m", ", then held back");
+    store.addApproval({ id: "ap", title: "t", options: [] });
+    expect(store.info.status).toBe("awaiting_approval");
+    const before = events.length;
+
+    time = 5000;
+    store.resetItems([
+      { id: "r1", type: "user", text: "stored prompt", at: 10 },
+      { id: "r2", type: "assistant", text: "stored", streaming: false, at: 20 },
+    ]);
+    // One reset; the status follows because no approval is open any more.
+    expect(events.slice(before).map((event) => event.type)).toEqual([
+      "reset",
+      "info",
+    ]);
+    expect(events[before]).toMatchObject({
+      type: "reset",
+      seq: before + 1,
+      items: [{ id: "r1" }, { id: "r2" }],
+    });
+    expect(store.info.status).toBe("running");
+    const snapshot = store.snapshot();
+    expect(snapshot.approvals).toEqual([]);
+    // Restored items keep their own times, not the time of the reset.
+    expect(snapshot.items.map((item) => [item.id, item.at])).toEqual([
+      ["r1", 10],
+      ["r2", 20],
+    ]);
+    // Text held back for the old transcript is never announced.
+    jest.advanceTimersByTime(DELTA_FLUSH_MS * 2);
+    expect(events.slice(before).some((event) => event.type === "delta")).toBe(
+      false,
+    );
+    expect(store.item("m")).toBeUndefined();
+    expect(store.approval("ap")).toBeUndefined();
+
+    store.upsertItem({ id: "n", type: "user", text: "next" });
+    for (const event of events) expect(mirror.apply(event)).toBe(true);
+    expect(mirror.snapshot()).toEqual(store.snapshot());
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("a reset keeps the newest items within the bounds", () => {
+  const { store, events } = harness();
+  const mirror = new SessionMirror(store.snapshot());
+  store.resetItems(
+    Array.from({ length: AGENT_SESSION_ITEM_LIMIT + 7 }, (_, index) => ({
+      id: `r${index}`,
+      type: "user" as const,
+      text: "x",
+      at: index,
+    })),
+  );
+  const reset = events.at(-1)!;
+  expect(reset.type === "reset" && reset.items).toHaveLength(
+    AGENT_SESSION_ITEM_LIMIT,
+  );
+  expect(store.snapshot().items[0]!.id).toBe("r7");
+
+  const big = "x".repeat(AGENT_SESSION_TEXT_BUDGET / 40);
+  store.resetItems(
+    Array.from({ length: 60 }, (_, index) => ({
+      id: `b${index}`,
+      type: "user" as const,
+      text: big,
+      at: index,
+    })),
+  );
+  const { items } = store.snapshot();
+  expect(items.length).toBeLessThanOrEqual(40);
+  expect(items.at(-1)!.id).toBe("b59");
+  for (const event of events) expect(mirror.apply(event)).toBe(true);
+  expect(mirror.snapshot()).toEqual(store.snapshot());
+});
+
 test("the oldest items go past the item limit", () => {
   const { store } = harness();
   for (let index = 0; index < AGENT_SESSION_ITEM_LIMIT + 5; index++)

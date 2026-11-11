@@ -126,3 +126,40 @@ test("the end of the session is announced once", () => {
   event({ type: "info", info });
   expect(text()).toBe("! agent exited: claude exited with code 1\n");
 });
+
+test("a resumed conversation is one line, not its transcript", () => {
+  const { text, event } = log();
+  const info = {
+    pane_id: "w1:p1",
+    kind: "claude" as const,
+    status: "idle" as const,
+    cwd: "/",
+    started_at: 1,
+    modes: [],
+  };
+  event({ type: "item", item: { id: "u1", type: "user", text: "old", at: 1 } });
+  event({
+    type: "reset",
+    items: [
+      { id: "r1", type: "user", text: "stored prompt", at: 1 },
+      { id: "r2", type: "assistant", text: "stored", streaming: false, at: 2 },
+    ],
+  });
+  // The session's new ID arrives with the `info` that follows.
+  event({ type: "info", info: { ...info, agent_session_id: "abc-1" } });
+  event({ type: "info", info: { ...info, agent_session_id: "abc-1" } });
+  event({ type: "item", item: { id: "u1", type: "user", text: "new", at: 3 } });
+  expect(text()).toBe("\n> old\n- resumed abc-1 (2 items)\n\n> new\n");
+
+  // Without that `info` the line still comes, before whatever is next.
+  const bare = log();
+  bare.event({
+    type: "reset",
+    items: [{ id: "r1", type: "user", text: "stored", at: 1 }],
+  });
+  bare.event({
+    type: "item",
+    item: { id: "u2", type: "user", text: "next", at: 3 },
+  });
+  expect(bare.text()).toBe("- resumed (1 item)\n\n> next\n");
+});

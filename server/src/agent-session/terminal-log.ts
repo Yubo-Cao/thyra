@@ -20,6 +20,8 @@ export function createTerminalLog(write: (text: string) => void) {
   let streaming: string | null = null;
   let atLineStart = true;
   let exited = false;
+  /** Items of a resumed conversation, until the session's new ID is known. */
+  let resumed: number | null = null;
 
   /** Remember an ID; the oldest go so a long session stays bounded. */
   const remember = (ids: Set<string> | Map<string, string>) => {
@@ -105,10 +107,30 @@ export function createTerminalLog(write: (text: string) => void) {
     }
   }
 
+  /** One line for a resumed conversation; its transcript is not printed. */
+  const announceResume = (id?: string) => {
+    if (resumed === null) return;
+    const count = resumed;
+    resumed = null;
+    line(
+      `- resumed ${id ? `${id} ` : ""}(${count} ${count === 1 ? "item" : "items"})`,
+    );
+  };
+
   return {
     line,
     event(event: AgentSessionEvent) {
+      // The `info` after a `reset` names the conversation that was resumed.
+      announceResume(
+        event.type === "info" ? event.info.agent_session_id : undefined,
+      );
       switch (event.type) {
+        case "reset":
+          tools.clear();
+          seen.clear();
+          streaming = null;
+          resumed = event.items.length;
+          return;
         case "item":
           return item(event.item);
         case "delta":

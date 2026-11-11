@@ -68,7 +68,7 @@ function wholeCharacters(text: string, cut: "start" | "end"): string {
 export class AgentSessionStore {
   private info_: AgentSessionInfo;
   private phase_: AgentPhase = "starting";
-  private readonly transcript = new Transcript();
+  private transcript = new Transcript();
   private readonly approvals_ = new Map<string, AgentApproval>();
   private seq = 0;
   /** Streamed text already in the transcript and not yet announced, by item. */
@@ -166,6 +166,21 @@ export class AgentSessionStore {
     this.transcript.upsert(stored);
     this.emit({ type: "item", item: stored });
     return stored;
+  }
+
+  /**
+   * Replace the whole transcript with a stored conversation's, in one `reset`
+   * event. The items keep their own times, no approval stays open, and text
+   * still held back belonged to the transcript that goes away.
+   */
+  resetItems(items: AgentItem[]) {
+    if (this.deltaTimer) clearTimeout(this.deltaTimer);
+    this.deltaTimer = null;
+    this.pendingDeltas.clear();
+    this.transcript = new Transcript(items);
+    this.approvals_.clear();
+    this.emit({ type: "reset", items: this.transcript.list() });
+    this.setInfo(this.info_);
   }
 
   /** Append streamed text to an `assistant` or `thinking` item. */
