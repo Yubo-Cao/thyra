@@ -39,6 +39,7 @@ import {
   toolResultText,
 } from "./claude-tools";
 import { isAgentSessionId } from "./link";
+import { type PromptImage, readPromptImage } from "./prompt-images";
 import {
   AgentSessionStore,
   type AgentToolItem,
@@ -445,8 +446,10 @@ export class ClaudeAdapter implements AgentAdapter {
       onExit: () => undefined,
     });
     for await (const entry of readClaudeConversation(path)) {
-      // Items carry the time their entry was written.
-      at = Date.parse(text(entry.timestamp) ?? "") || at;
+      // Items carry the time their entry was written. A prompt queued
+      // during a turn is stamped when it was typed, before entries that
+      // precede it: times never run backwards down the transcript.
+      at = Math.max(at, Date.parse(text(entry.timestamp) ?? "") || 0);
       replay.replayStored(entry);
     }
     // A call left without a result did not finish.
@@ -462,8 +465,9 @@ export class ClaudeAdapter implements AgentAdapter {
     if (entry.type === "system") return this.handleSystem(entry);
     const prompt = storedPrompt(entry) ?? storedCommand(entry);
     if (prompt !== null) {
-      // The turn before a prompt is over, as its result said when live.
-      this.endTurn(false);
+      // The turn before a prompt is over, as its result said when live. A
+      // prompt taken during a turn (stored as an attachment) joined it.
+      if (entry.type === "user") this.endTurn(false);
       this.store.upsertItem({
         id: `user-${this.nextLocalId++}`,
         type: "user",
@@ -471,6 +475,7 @@ export class ClaudeAdapter implements AgentAdapter {
       });
       return;
     }
+    if (entry.type !== "user") return;
     // Tool results and interruptions, in the shape the CLI streams them.
     const content = record(entry.message)?.content;
     const denial = text(entry.toolDenialKind);
@@ -487,23 +492,46 @@ export class ClaudeAdapter implements AgentAdapter {
     });
   }
 
-  async send(prompt: string) {
+  async send(prompt: string, images: PromptImage[] = []) {
     // A prompt waits for a transcript that is being restored at startup.
     if (this.restoring) await this.restoring;
     this.requireRunningProcess();
+    // The text, then the images in order: the shape the terminal UI gives
+    // a prompt with pasted images. The CLI shrinks large images itself.
+    const content: Record<string, unknown>[] = prompt.trim()
+      ? [{ type: "text", text: prompt }]
+      : [];
+    for (const [index, image] of images.entries())
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: image.mediaType,
+          data: (await readPromptImage(image, index + 1)).toString("base64"),
+        },
+      });
+    // The process may have ended while the files were read.
+    if (images.length > 0) this.requireRunningProcess();
+    // The CLI acknowledges a prompt by this ID, whatever its content.
     const uuid = randomUUID();
     this.unacked.add(uuid);
     this.store.upsertItem({
       id: `user-${this.nextLocalId++}`,
       type: "user",
       text: prompt,
+      ...(images.length > 0
+        ? { images: images.map(({ path }) => ({ path })) }
+        : {}),
     });
     this.write({
       type: "user",
       uuid,
       session_id: this.store.info.agent_session_id ?? "",
       parent_tool_use_id: null,
-      message: { role: "user", content: prompt },
+      message: {
+        role: "user",
+        content: images.length > 0 ? content : prompt,
+      },
     });
     this.interrupting = false;
     this.store.setPhase("running");

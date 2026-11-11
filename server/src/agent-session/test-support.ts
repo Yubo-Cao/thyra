@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import * as net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -268,4 +269,34 @@ export function storedClaude(start = "2026-01-02T03:04:05.000Z") {
     },
     text: () => `${lines.join("\n")}\n`,
   };
+}
+
+/** The smallest valid file of each image format a prompt can attach. */
+const TINY_IMAGES = {
+  png: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  jpeg: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AR//Z",
+  gif: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+  webp: "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==",
+} as const;
+
+/** A one-pixel image of a format, as bytes. */
+export function tinyImage(format: keyof typeof TINY_IMAGES): Buffer {
+  return Buffer.from(TINY_IMAGES[format], "base64");
+}
+
+/**
+ * Write a file the way the upload endpoint names one, in `directory`;
+ * returns its path. `content` defaults to a one-pixel PNG.
+ */
+export function uploadedImage(
+  directory: string,
+  content: Uint8Array = tinyImage("png"),
+  extension = "png",
+): string {
+  const path = join(
+    directory,
+    `herdr-img-${Date.now()}-${randomBytes(16).toString("hex")}.${extension}`,
+  );
+  writeFileSync(path, content, { mode: 0o600 });
+  return path;
 }

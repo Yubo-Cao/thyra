@@ -2,7 +2,8 @@
  * A stand-in for `claude -p` in process-level tests: it speaks just enough
  * of the stream-json and control protocols for one text turn, and records
  * how it was started in the file named by FAKE_AGENT_RECORD. Started with
- * `--resume <id>` it reports that conversation's ID as its own.
+ * `--resume <id>` it reports that conversation's ID as its own. A prompt
+ * with images is answered with its text and each image's media type.
  */
 import { writeFileSync } from "node:fs";
 
@@ -100,8 +101,21 @@ process.stdin.on("data", (chunk: string) => {
                 : {},
         },
       });
-    else if (message.type === "user")
-      turn(message.uuid, message.message.content);
+    else if (message.type === "user") {
+      const { content } = message.message;
+      turn(
+        message.uuid,
+        typeof content === "string"
+          ? content
+          : content
+              .map((block: { type: string; text?: string; source?: any }) =>
+                block.type === "text"
+                  ? block.text
+                  : `<${block.source?.media_type}>`,
+              )
+              .join(" "),
+      );
+    }
   }
 });
 process.stdin.on("end", () => process.exit(0));

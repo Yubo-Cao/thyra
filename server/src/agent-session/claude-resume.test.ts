@@ -328,6 +328,60 @@ test("a stored conversation reads as it did when it was live", async () => {
   expect(turn).toBeGreaterThan(1);
 });
 
+test("a prompt taken during a turn is restored inside that turn", async () => {
+  const file = storedClaude();
+  file.prompt("start the build");
+  file.calls("t1", "TodoWrite", {
+    todos: [{ content: "build", status: "in_progress" }],
+  });
+  file.result("t1", "Todos have been modified");
+  file.calls("t2", "Bash", { command: "make" });
+  // The CLI stores a prompt it takes while a turn runs as an attachment of
+  // that turn, and task notifications the same way.
+  const queued = (attachment: Record<string, unknown>) =>
+    file.add({
+      type: "attachment",
+      attachment: {
+        type: "queued_command",
+        commandMode: "prompt",
+        ...attachment,
+      },
+    });
+  queued({
+    prompt: [
+      { type: "text", text: "also check [Image #1]" },
+      { type: "image", source: { type: "base64", data: "eA==" } },
+    ],
+    origin: { kind: "human" },
+  });
+  queued({
+    commandMode: "task-notification",
+    prompt: "<task-notification>a task finished</task-notification>",
+  });
+  queued({ prompt: "from another session", isMeta: true });
+  file.result("t2", "built");
+  file.calls("t3", "TodoWrite", {
+    todos: [{ content: "build", status: "completed" }],
+  });
+  file.result("t3", "Todos have been modified");
+  file.says("m9", [{ type: "text", text: "Built and checked." }]);
+  const dir = mkdtempSync(join(tmpdir(), "thyra-cr-"));
+  roots.push(dir);
+  const path = join(dir, "stored.jsonl");
+  writeFileSync(path, file.text());
+
+  const { items } = await ClaudeAdapter.storedTranscript(path, "/work");
+  // The turn goes on around the prompt: its plan stays one item, and the
+  // command that was running finishes.
+  expect(texts(items)).toEqual([
+    "user: start the build",
+    "plan done",
+    "Bash[done] make",
+    "user: also check [Image #1]",
+    "assistant: Built and checked.",
+  ]);
+});
+
 test("starting with --resume shows the conversation before the first prompt", async () => {
   const session = start(["--model", "haiku", "--resume", "abc-1"], {
     "abc-1": conversation("mango"),

@@ -657,12 +657,14 @@ The pane shows a plain running log (prompts, answers, one line per tool call, ap
 
 **Bounds.** A session keeps at most `AGENT_SESSION_ITEM_LIMIT` items and 2 MiB of transcript text; past either, the oldest items go, never the newest 20.
 Tool output is cut to `AGENT_TOOL_OUTPUT_LIMIT` keeping its start and end, a file's patch to 64 KiB at a line boundary with the cut hunk's header recounted, and a prompt may be `AGENT_PROMPT_LIMIT` long.
+A prompt attaches at most `AGENT_PROMPT_IMAGE_LIMIT` images of at most `AGENT_PROMPT_IMAGE_MAX_BYTES` each; see [prompt images](#prompt-images).
 
 **Host link.** Each host listens on a Unix socket (mode 0600) named `<key>-<pane>.sock`: `key` is the first 12 hex digits of the SHA-256 of the pane's Herdr control socket path (resolved through symlinks), and `pane` is the URI-encoded pane ID.
 The directory is `THYRA_AGENT_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/thyra/agents`, else `${XDG_STATE_HOME:-~/.local/state}/thyra/agents`; it must be a real directory owned by the user with mode 0700, and the bridge reads no other.
 Traffic is newline-delimited JSON.
 The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "interrupt" | "approve" | "set_mode" | "history" | "resume", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` answers with).
 The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`).
+A `send` action may carry `images: [{path}]`: paths only, which the host reads itself.
 A host replaces a socket file nobody listens on; the bridge deletes one that refuses connections and is older than five seconds.
 
 **Relay.** The bridge (`server/src/agent-session/relay.ts`) serves the sessions of the default connection when its Herdr runs on this host, like the [agent browser](#agent-browser); other connections have none.
@@ -672,7 +674,7 @@ A session ends when its link closes; a restarted bridge rebuilds everything from
 
 **RPC.** `agent_session.list` returns `{sessions}` (empty on connections without sessions).
 `agent_session.subscribe {pane_id}` returns the snapshot and starts `agent_session.event` for that pane on the calling socket until `agent_session.unsubscribe {pane_id}`, the session's end, or the socket closing.
-`agent_session.send {pane_id, text}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}` and `agent_session.resume {pane_id, session_id}` return `{ok: true}` or the host's refusal as the error.
+`agent_session.send {pane_id, text, images?}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}` and `agent_session.resume {pane_id, session_id}` return `{ok: true}` or the host's refusal as the error.
 `agent_session.history {pane_id}` returns `{sessions: AgentStoredSession[]}`; see [stored conversations](#stored-conversations).
 Both notifications use the connection envelope: `{connection_id, connection_generation, event: "agent_session.event", data: AgentSessionEvent}` and `{..., event: "agent_session.changed", data: {sessions}}`.
 `agent_session.changed` goes to every page when a session appears, ends or changes status, at most once per 25 ms.
@@ -700,9 +702,21 @@ Starting a session with the agent's own resume arguments restores the transcript
 A resumed conversation runs with the model and mode the session's arguments choose; a mode switched to earlier in the session does not carry over.
 `info.can_resume` is `true` on hosts that serve both calls, and the bridge refuses them for a host without it, since a host of an older build would never answer.
 
+<a id="prompt-images"></a>
+**Prompt images.** `agent_session.send` takes `images: AgentPromptImage[]`, each `{path}` naming a file the connection's `/upload-image` endpoint stored on the host; the agent gets them as image input, and the prompt's `user` item lists them in `images`.
+`[Image #N]` in the text names the Nth image, from 1, and with images the text may be empty.
+The bridge accepts only paths the upload handler makes (`isUploadedImagePath` in `server/src/http/image-upload.ts`: its directory and a `herdr-img-<time>-<32 hex digits>.<extension>` name), so a page cannot have the host read any other file.
+The host then checks each file itself on the open file: opened without following a symlink, a regular file, owned by the host's user, at most `AGENT_PROMPT_IMAGE_MAX_BYTES`, and starting with the signature of a PNG, JPEG, GIF or WebP file.
+The media type comes from those bytes, never from the file's name.
+One failing image refuses the whole prompt with an error that names it by number, and nothing reaches the agent.
+A host without `can_resume` predates prompt images and would send the prompt without them, so the bridge refuses a prompt with images for it.
+Both agents shrink large images themselves before the model sees them; the size limit bounds what a host reads and writes for one prompt, not what the agents can take.
+The pane's log shows the count (`[2 images]`), and a restored transcript shows a Codex prompt's images again when their paths are upload paths, and a Claude prompt's as the `[Image #N]` text of the prompt.
+
 **Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, and `set_permission_mode`.
 It adds `--allow-dangerously-skip-permissions` unless the caller passed `--dangerously-skip-permissions`, so a session starts in the permission mode of the user's Claude settings or command line and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
 A prompt sent during a turn is written to the CLI at once, which steers or queues it; the CLI's `command_lifecycle` messages and prompt echoes tell when each prompt was taken.
+A prompt with images is a user message whose content is the text block (left out when the text is empty) followed by one base64 `image` block per image, the order the terminal UI stores a prompt with pasted images in; the CLI acknowledges it by the message's `uuid` like any other prompt.
 `Bash` becomes a `command` tool; `Edit`, `MultiEdit` and `Write` become `edit` tools whose `diffs` are built from the call's old and new text and replaced by the patch the CLI reports once the edit ran; `Task` and `Agent` become `task` tools.
 `TodoWrite` updates one `plan` item per turn instead of a tool item.
 Messages of a sub-agent (those naming a parent tool call) never enter the transcript: its tool calls show as progress lines in the parent task's `output` until the task's result replaces them.
@@ -716,6 +730,8 @@ A transcript is the chain that ends at the last entry written, followed back thr
 A compaction boundary starts a new chain; its `logicalParentUuid` (or the head of its preserved segment) leads into the history before it, which is shown too.
 Results of tool calls made in parallel hang off the chain and are added by their call IDs.
 Sub-agent (`isSidechain`) and injected (`isMeta`) entries are skipped; the rest go through the handlers that show the same messages live, so titles, diffs and plans match, a slash command shows as the prompt `/name arguments`, and a call without a stored result shows as `failed`.
+A prompt the CLI took while a turn was running is stored as a `queued_command` attachment of that turn, not as a `user` entry, and is restored at that place without ending the turn.
+Item times follow the entries' timestamps and never run backwards.
 The file is read in 1 MiB pieces, once for the links of every entry and once for the entries of the newest items, so restoring does not load a file whole.
 `--resume <id>`, `--resume=<id>` and `-r <id>` restore that conversation at startup.
 `--continue` and `-c` become `--resume` with the directory's newest stored conversation, so what is shown is what continues; with none stored they are dropped and a notice says so.
@@ -724,6 +740,7 @@ A `--resume` without an ID (the terminal UI's picker) is dropped, and a value th
 The replaced child's exit is not the session's; a new child that cannot resume the conversation ends the session with its error.
 
 **Codex.** The host runs `codex app-server` and speaks its JSON-RPC: `initialize`, `thread/start` in the pane's directory, `turn/start` per prompt, `turn/steer` for a prompt during a turn (falling back to `turn/start` when the turn has just ended), and `turn/interrupt`.
+A prompt's input is its `text` item (left out when the text is empty and images are attached) followed by one `localImage` item per image, which Codex reads from the file.
 Thread items map to transcript items (`commandExecution` to `command`, `read` or `search` tools by its parsed actions, `fileChange` to an `edit` tool with one diff per file, MCP and collaboration calls to `other` and `task`), `turn/plan/updated` to one `plan` item per turn, and notifications of other threads (sub-agents) are ignored.
 Approval requests for commands, file changes and permissions become approvals with the decisions the server offers; denying a command or a file change answers `cancel`, and denying a permission request grants nothing.
 The modes are the approval policies `untrusted`, `on-request` and `never`; a chosen mode is sent with the next `turn/start` and holds from that turn.

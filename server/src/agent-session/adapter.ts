@@ -3,6 +3,7 @@ import type {
   AgentStoredSession,
 } from "../../../shared/agentSession";
 import type { SpawnAgent } from "./agent-process";
+import type { PromptImage } from "./prompt-images";
 import type { AgentSessionStore } from "./store";
 
 /**
@@ -13,8 +14,11 @@ import type { AgentSessionStore } from "./store";
 export interface AgentAdapter {
   /** Start the agent process; the store leaves `starting` once it is ready. */
   start(): void;
-  /** Start a turn, or steer or queue the prompt when one is running. */
-  send(text: string): Promise<void>;
+  /**
+   * Start a turn, or steer or queue the prompt when one is running. `images`
+   * are files the host has checked; the agent gets them as image input.
+   */
+  send(text: string, images?: PromptImage[]): Promise<void>;
   /** Stop the running turn; nothing happens when none is running. */
   interrupt(): Promise<void>;
   approve(approvalId: string, optionId: string): Promise<void>;

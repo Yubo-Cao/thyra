@@ -51,9 +51,17 @@ export function createTerminalLog(write: (text: string) => void) {
     seen.add(value.id);
     remember(seen);
     switch (value.type) {
-      case "user":
-        if (first) line(`\n${indent(value.text, "> ")}`);
+      case "user": {
+        if (!first) return;
+        // Attached images are named by their number, never drawn.
+        const count = value.images?.length ?? 0;
+        const attached =
+          count > 0 ? `[${count} ${count === 1 ? "image" : "images"}]` : "";
+        line(
+          `\n${indent([value.text, attached].filter(Boolean).join(" "), "> ")}`,
+        );
         return;
+      }
       case "assistant":
         if (first && value.streaming) {
           if (!atLineStart) out("\n");

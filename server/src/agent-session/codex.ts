@@ -5,6 +5,7 @@ import {
   type AgentFileDiff,
   type AgentItem,
   type AgentPlanEntry,
+  type AgentPromptImage,
   type AgentSessionMode,
   type AgentStoredSession,
   type AgentToolKind,
@@ -27,7 +28,9 @@ import {
 } from "./agent-process";
 import { DIFF_PATCH_LIMIT } from "./claude-tools";
 import { hunksOf, patchForWholeFile, truncatePatch } from "./diff";
+import { isUploadedImagePath } from "../http/image-upload";
 import { isAgentSessionId } from "./link";
+import type { PromptImage } from "./prompt-images";
 import {
   type AgentItemInput,
   type AgentSessionStore,
@@ -360,6 +363,20 @@ function promptText(content: unknown): string {
     .join("\n");
 }
 
+/**
+ * The images of a `userMessage` item's content that a page attached: local
+ * files at paths the upload endpoint gives. Other images stay unnamed.
+ */
+function promptImages(content: unknown): { images?: AgentPromptImage[] } {
+  const images = (Array.isArray(content) ? content : []).flatMap((value) => {
+    const part = record(value);
+    return part?.type === "localImage" && isUploadedImagePath(part.path)
+      ? [{ path: part.path }]
+      : [];
+  });
+  return images.length > 0 ? { images } : {};
+}
+
 /** What the end of a turn adds to the transcript, when it did not just end. */
 function turnEndNotice(
   turn: Record<string, unknown>,
@@ -399,7 +416,9 @@ export function codexThreadItems(turns: unknown[], cwd: string): AgentItem[] {
       if (item.status === "declined") denied = true;
       if (item.type === "userMessage") {
         const body = promptText(item.content);
-        if (body.trim()) items.push({ id, type: "user", text: body, at });
+        const attached = promptImages(item.content);
+        if (body.trim() || attached.images)
+          items.push({ id, type: "user", text: body, ...attached, at });
         continue;
       }
       const mapped = codexItem(item, cwd);
@@ -682,7 +701,7 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
-  async send(prompt: string): Promise<void> {
+  async send(prompt: string, images: PromptImage[] = []): Promise<void> {
     this.requireThread();
     if (this.resuming)
       throw new AgentActionError(
@@ -692,17 +711,26 @@ export class CodexAdapter implements AgentAdapter {
       id: `user-${this.nextLocalId++}`,
       type: "user",
       text: prompt,
+      ...(images.length > 0
+        ? { images: images.map(({ path }) => ({ path })) }
+        : {}),
     });
     this.ownPrompts.push(prompt);
     this.undelivered += 1;
     this.store.setPhase("running");
-    const sent = this.sending.then(() => this.deliver(prompt));
+    const sent = this.sending.then(() => this.deliver(prompt, images));
     this.sending = sent.catch(() => undefined);
     return sent;
   }
 
-  private async deliver(prompt: string) {
-    const input = [{ type: "text", text: prompt, text_elements: [] }];
+  private async deliver(prompt: string, images: PromptImage[]) {
+    // Codex reads an attached image from its file, and shrinks it itself.
+    const input = [
+      ...(prompt.trim() || images.length === 0
+        ? [{ type: "text", text: prompt, text_elements: [] }]
+        : []),
+      ...images.map(({ path }) => ({ type: "localImage", path })),
+    ];
     try {
       if (this.turnId) {
         try {
@@ -1024,7 +1052,9 @@ export class CodexAdapter implements AgentAdapter {
       this.ownPrompts.splice(own, 1);
       return;
     }
-    if (body.trim()) this.store.upsertItem({ id, type: "user", text: body });
+    const attached = promptImages(content);
+    if (body.trim() || attached.images)
+      this.store.upsertItem({ id, type: "user", text: body, ...attached });
   }
 
   private finishTurn(turn: Record<string, unknown>) {

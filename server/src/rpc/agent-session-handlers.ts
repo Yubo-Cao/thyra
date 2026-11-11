@@ -1,5 +1,10 @@
-import { AGENT_PROMPT_LIMIT } from "../../../shared/agentSession";
+import {
+  AGENT_PROMPT_IMAGE_LIMIT,
+  AGENT_PROMPT_LIMIT,
+  type AgentPromptImage,
+} from "../../../shared/agentSession";
 import { isAgentSessionId } from "../agent-session/link";
+import { isUploadedImagePath } from "../http/image-upload";
 import type { ConnectionRpcContext, RpcHandler } from "./context";
 
 const NO_SESSION = "no agent session in this pane";
@@ -15,6 +20,26 @@ function stringParam(params: Record<string, unknown>, name: string): string {
   const value = params[name];
   if (typeof value !== "string" || !value) throw new Error(`${name} required`);
   return value;
+}
+
+/**
+ * The images of a prompt: each must be a file the upload endpoint made, so a
+ * page cannot have the host read (and the agent see) any other file.
+ */
+function promptImages(params: Record<string, unknown>): AgentPromptImage[] {
+  const { images } = params;
+  if (images === undefined || images === null) return [];
+  if (!Array.isArray(images)) throw new Error("images must be a list");
+  if (images.length > AGENT_PROMPT_IMAGE_LIMIT)
+    throw new Error(
+      `a prompt takes at most ${AGENT_PROMPT_IMAGE_LIMIT} images`,
+    );
+  return images.map((image, index) => {
+    const path = (image as { path?: unknown } | null)?.path;
+    if (!isUploadedImagePath(path))
+      throw new Error(`image ${index + 1} is not an uploaded image`);
+    return { path };
+  });
 }
 
 /**
@@ -57,11 +82,18 @@ async function agentSession(ctx: ConnectionRpcContext) {
       return;
     }
     if (method === "agent_session.send") {
-      const text = stringParam(params, "text");
-      if (!text.trim()) throw new Error("text required");
+      const images = promptImages(params);
+      // With images the text may be empty; without, it is the prompt.
+      const text = params.text ?? "";
+      if (typeof text !== "string" || (!text.trim() && images.length === 0))
+        throw new Error("text required");
       if (text.length > AGENT_PROMPT_LIMIT)
         throw new Error("the prompt is too long");
-      await agentSessions.act(pane, { action: "send", text });
+      await agentSessions.act(pane, {
+        action: "send",
+        text,
+        ...(images.length > 0 ? { images } : {}),
+      });
     } else if (method === "agent_session.interrupt") {
       await agentSessions.act(pane, { action: "interrupt" });
     } else if (method === "agent_session.approve") {

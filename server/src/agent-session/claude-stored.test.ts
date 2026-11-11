@@ -121,6 +121,16 @@ test("only what the user typed counts as a prompt", () => {
       ]),
     ),
   ).toBe("[image]\nwhat is this?");
+  // An image the text already names is not named a second time.
+  expect(
+    storedPrompt(
+      user([
+        { type: "text", text: "compare [Image #1] and [Image #2]" },
+        { type: "image", source: {} },
+        { type: "image", source: {} },
+      ]),
+    ),
+  ).toBe("compare [Image #1] and [Image #2]");
   for (const entry of [
     user("injected", { isMeta: true }),
     user("summary", { isCompactSummary: true }),
@@ -138,6 +148,46 @@ test("only what the user typed counts as a prompt", () => {
     user([{ type: "text", text: "<ide_selection>x</ide_selection>" }]),
     user("   "),
     { type: "assistant", message: { content: "hello" } },
+  ])
+    expect(storedPrompt(entry)).toBeNull();
+
+  // A prompt the CLI took during a turn is stored as an attachment of it.
+  const queued = (attachment: Record<string, unknown>) => ({
+    type: "attachment",
+    attachment: {
+      type: "queued_command",
+      commandMode: "prompt",
+      ...attachment,
+    },
+  });
+  expect(
+    storedPrompt(
+      queued({ prompt: "also run the tests", origin: { kind: "human" } }),
+    ),
+  ).toBe("also run the tests");
+  expect(
+    storedPrompt(
+      queued({
+        prompt: [
+          { type: "text", text: "and look at [Image #1]" },
+          { type: "image", source: {} },
+        ],
+      }),
+    ),
+  ).toBe("and look at [Image #1]");
+  for (const entry of [
+    queued({
+      prompt: "from another session",
+      isMeta: true,
+      origin: { kind: "peer" },
+    }),
+    queued({
+      commandMode: "task-notification",
+      prompt: "<task-notification>done</task-notification>",
+    }),
+    queued({ prompt: "a notification", origin: { kind: "task-notification" } }),
+    { ...queued({ prompt: "in a sub-agent" }), isSidechain: true },
+    { type: "attachment", attachment: { type: "hook_success", prompt: "x" } },
   ])
     expect(storedPrompt(entry)).toBeNull();
 
