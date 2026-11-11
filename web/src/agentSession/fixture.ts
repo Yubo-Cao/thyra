@@ -12,12 +12,14 @@
 //
 // Prompt images stay in the page: an "upload" takes a moment and gets a host
 // path the transcript can show again. A file named `fail...` is refused, and
-// so is a prompt that starts with `/refuse`.
+// so is a prompt that starts with `/refuse`. A prompt sent while the script
+// runs waits in the queue (or steers, or stops it), and `/compact` compacts.
 import {
   AGENT_SESSION_EVENT,
   AGENT_SESSIONS_CHANGED,
   type AgentApproval,
   type AgentItem,
+  type AgentPromptDelivery,
   type AgentPromptImage,
   type AgentSessionEvent,
   type AgentSessionInfo,
@@ -45,6 +47,22 @@ const MODES = [
   { id: "default", label: "Ask before edits" },
   { id: "acceptEdits", label: "Accept edits" },
   { id: "plan", label: "Plan mode" },
+];
+
+const MODELS = [
+  {
+    id: "claude-fable-5",
+    label: "Fable 5",
+    description: "Most capable for your hardest tasks",
+    efforts: ["low", "medium", "high", "max"],
+  },
+  {
+    id: "claude-sonnet-5",
+    label: "Sonnet 5",
+    description: "Efficient for routine tasks",
+    efforts: ["low", "medium", "high"],
+  },
+  { id: "claude-haiku-4-5", label: "Haiku 4.5", description: "Fastest" },
 ];
 
 const THINKING = `The limiter refills on a fixed interval, so a burst right after a refill can take twice the budget.
@@ -224,12 +242,18 @@ class FixtureSession {
       status: "starting",
       cwd,
       started_at: Date.now(),
-      model: kind === "claude" ? "claude-fable-5" : "gpt-5.2-codex",
+      model: "claude-fable-5",
+      models: MODELS,
+      effort: "high",
+      efforts: MODELS[0]!.efforts,
       mode: "default",
       modes: MODES,
       usage: { context_tokens: 18_400, context_window: 200_000 },
       can_resume: true,
       can_attach_images: true,
+      can_set_model: true,
+      can_queue: true,
+      can_compact: true,
     };
     if (variant === "long") {
       for (let index = 0; index < 500; index++) {
@@ -390,6 +414,31 @@ class FixtureSession {
     this.info = { ...this.info, ...patch };
     this.emit({ type: "info", info: this.info });
     if (statusChanged) announceSessions();
+    // Idle again: the next queued prompt goes, as a host sends it.
+    const [next, ...rest] = this.info.queued ?? [];
+    if (this.info.status === "idle" && next) {
+      this.setInfo({ queued: rest.length ? rest : undefined });
+      this.prompt(next.text, next.images ?? []);
+    }
+  }
+
+  private prompt(text: string, images: AgentPromptImage[]) {
+    this.put(
+      this.item({ type: "user", text, ...(images.length ? { images } : {}) }),
+    );
+    if (text.trim() === "/compact") {
+      this.put(
+        this.item({
+          type: "notice",
+          level: "info",
+          text: "Conversation compacted.",
+        }),
+      );
+      this.setInfo({
+        usage: { context_tokens: 6_200, context_window: 200_000 },
+      });
+    } else if (this.info.status === "idle")
+      void this.script(++this.run, text, images.length);
   }
 
   /** Waits, then says whether this run was interrupted meanwhile. */
@@ -602,17 +651,55 @@ class FixtureSession {
         const images = Array.isArray(params.images)
           ? (params.images as AgentPromptImage[])
           : [];
-        this.put(
-          this.item({
-            type: "user",
+        const delivery = params.delivery as AgentPromptDelivery | undefined;
+        if (this.info.status !== "idle" && delivery && delivery !== "steer") {
+          const entry = {
+            id: `q${++this.count}`,
             text,
             ...(images.length ? { images } : {}),
-          }),
-        );
-        if (this.info.status === "idle")
-          void this.script(++this.run, text, images.length);
+            at: Date.now(),
+          };
+          const queued = this.info.queued ?? [];
+          this.setInfo({
+            queued:
+              delivery === "interrupt"
+                ? [entry, ...queued]
+                : [...queued, entry],
+          });
+          if (delivery === "interrupt")
+            this.call("agent_session.interrupt", {});
+          return {};
+        }
+        this.prompt(text, images);
         return {};
       }
+      case "agent_session.unqueue": {
+        const queued = this.info.queued ?? [];
+        if (!queued.some((prompt) => prompt.id === params.prompt_id))
+          throw new Error("that prompt is no longer queued");
+        const rest = queued.filter((prompt) => prompt.id !== params.prompt_id);
+        this.setInfo({ queued: rest.length ? rest : undefined });
+        return {};
+      }
+      case "agent_session.set_model": {
+        const model = MODELS.find((item) => item.id === params.model);
+        if (!model) throw new Error(`unknown model: ${String(params.model)}`);
+        this.setInfo({
+          model: model.id,
+          efforts: model.efforts,
+          effort: model.efforts?.includes(this.info.effort ?? "")
+            ? this.info.effort
+            : model.efforts?.[0],
+        });
+        return {};
+      }
+      case "agent_session.set_effort":
+        this.setInfo({ effort: String(params.effort) });
+        return {};
+      case "agent_session.compact":
+        if (this.info.status !== "idle") throw new Error("a turn is running");
+        this.prompt("/compact", []);
+        return {};
       case "agent_session.interrupt": {
         this.run++;
         this.answer = null;

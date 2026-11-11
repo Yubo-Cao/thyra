@@ -171,8 +171,8 @@ The view appears only where the bridge runs agent sessions, and its code loads w
 - **Prompt box.** The box edits like the [prompt editor](#prompt-editor), in the transcript's type: a plain field at once, then live-preview Markdown (headings, bold, `code`, lists, links, highlighted fenced code, multiple cursors, find), loaded as described there, on phones too. What is sent is the exact text typed.
   Enter (or `Cmd+Enter` / `Ctrl+Enter`) sends; Shift+Enter and Alt+Enter break the line.
   With an on-screen keyboard Return breaks the line and the send button sends.
-  A prompt sent while a turn runs is steered or queued by the agent.
-  The stop button, or Esc in an empty box, interrupts the turn; Page Up/Down in an empty box page the transcript.
+  A prompt sent while a turn runs waits until the turn ends: it shows above the box, where it can be taken back into the box to edit (one without images) or removed, and it is kept through page reloads. The menu beside the send button sends it into the running turn instead, or stops the turn and sends it.
+  The stop button, or Esc in the box, interrupts the turn; Page Up/Down in an empty box page the transcript.
   Tab leaves an empty box; in a draft the live preview indents with it, and Esc then Tab leaves.
   The microphone dictates at the caret, and an unsent draft is kept per pane, with its images, while the page is open.
 - **Images.** Paste an image, drop image files on the box, or use the image button, which on a phone opens the camera or the photo library.
@@ -180,7 +180,7 @@ The view appears only where the bridge runs agent sessions, and its code loads w
   An image over 3.5 MiB, or in a format other than PNG, JPEG, GIF or WebP, is redrawn in the browser first: long edge at most 2000 pixels, JPEG unless it has transparency, and smaller again while it is still too large. One the browser cannot read is refused.
   A prompt takes up to 10 images, which reach the agent as image input in the order they appear, and it may consist of images alone.
   Under the plain field the placeholders show as text and the pictures stay in the strip.
-- **Session line.** Under the box: the mode (a menu when the agent offers several), the model, and how much of the context window is in use.
+- **Session line.** Under the box: the mode, the model and the reasoning effort (menus when the agent offers choices, usable before the first prompt; a change holds from the next turn), how much of the context window is in use, and a button that compacts the conversation, as typing `/compact` does.
   The pane header shows the session's state: starting, working, needs approval, or ended.
 - **Viewers** follow the transcript and see open requests, without the prompt box, the answer buttons, or the list of earlier conversations.
   A session whose agent has exited stays readable, with its error shown and the box disabled.

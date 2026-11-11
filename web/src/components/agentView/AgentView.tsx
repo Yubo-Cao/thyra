@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type {
+  AgentPromptDelivery,
   AgentPromptImage,
+  AgentQueuedPrompt,
   AgentSessionInfo,
   AgentSessionStatus,
 } from "../../../../shared/agentSession";
@@ -25,6 +27,8 @@ import { store, useStoreSelector } from "../../store";
 import {
   agentComposerDraftKey,
   clearTerminalComposerDraft,
+  readTerminalComposerDraft,
+  writeTerminalComposerDraft,
 } from "../../terminalComposer";
 import { uploadTerminalImage } from "../../terminalImageUpload";
 import { useConnectionClient } from "../../useConnectionClient";
@@ -39,6 +43,7 @@ import { Token, type TokenTone } from "../ui/Token";
 import { AgentApprovals } from "./AgentApprovals";
 import { AgentComposer, AgentMeta } from "./AgentComposer";
 import { AgentViewContext } from "./AgentItems";
+import { AgentQueue } from "./AgentQueue";
 import { AgentResume } from "./AgentResume";
 import { AgentTranscript, type AgentTranscriptHandle } from "./AgentTranscript";
 import "./AgentView.css";
@@ -222,12 +227,30 @@ export function AgentView({
         });
         throw reason;
       });
+    const quietly =
+      (method: string, failure: string) =>
+      (params: Record<string, unknown> = {}) =>
+        void call(method, params, failure).catch(() => {});
     return {
-      send: (text: string, images: AgentPromptImage[]) =>
+      send: (
+        text: string,
+        images: AgentPromptImage[],
+        delivery?: AgentPromptDelivery,
+      ) =>
         call(
           "agent_session.send",
-          images.length ? { text, images } : { text },
+          {
+            text,
+            ...(images.length ? { images } : {}),
+            ...(delivery ? { delivery } : {}),
+          },
           t("Could not send the prompt"),
+        ),
+      unqueue: (promptId: string) =>
+        call(
+          "agent_session.unqueue",
+          { prompt_id: promptId },
+          t("Could not take the prompt back"),
         ),
       // An image for a prompt: made small enough here, then put on the host.
       upload: async (file: File) => {
@@ -253,12 +276,32 @@ export function AgentView({
           { approval_id: approvalId, option_id: optionId },
           t("Could not answer the request"),
         ),
-      setMode: (mode: string) =>
-        void call(
-          "agent_session.set_mode",
-          { mode },
-          t("Could not change the mode"),
-        ).catch(() => {}),
+      meta: {
+        onSetMode: (mode: string) =>
+          quietly(
+            "agent_session.set_mode",
+            t("Could not change the mode"),
+          )({
+            mode,
+          }),
+        onSetModel: (model: string) =>
+          quietly(
+            "agent_session.set_model",
+            t("Could not change the model"),
+          )({
+            model,
+          }),
+        onSetEffort: (effort: string) =>
+          quietly(
+            "agent_session.set_effort",
+            t("Could not change the reasoning effort"),
+          )({ effort }),
+        onCompact: () =>
+          quietly(
+            "agent_session.compact",
+            t("Could not compact the conversation"),
+          )(),
+      },
       // Neither notifies: the list is an offer that may be missing, and a
       // refused resume reads on its row.
       history: () => request("agent_session.history", {}).then(storedSessions),
@@ -314,6 +357,16 @@ export function AgentView({
     ],
   );
 
+  // Taken back into the box, ahead of what is typed there.
+  const editQueued = async (prompt: AgentQueuedPrompt) => {
+    await actions.unqueue(prompt.id);
+    const typed = readTerminalComposerDraft(draftKey);
+    writeTerminalComposerDraft(
+      draftKey,
+      typed.trim() ? `${prompt.text}\n\n${typed}` : prompt.text,
+    );
+  };
+
   if (!pane) return null;
   return (
     <div ref={setRoot} className="terminal-shell agent-view">
@@ -354,6 +407,20 @@ export function AgentView({
                 store={session}
                 onAnswer={canEdit ? actions.approve : undefined}
               />
+              <AgentQueue
+                queued={info.queued ?? []}
+                onRemove={
+                  canEdit
+                    ? (prompt) =>
+                        void actions.unqueue(prompt.id).catch(() => {})
+                    : undefined
+                }
+                onEdit={
+                  canEdit
+                    ? (prompt) => void editQueued(prompt).catch(() => {})
+                    : undefined
+                }
+              />
               {info.status === "exited" && info.error ? (
                 <div className="agent-ended" role="alert">
                   {info.error}
@@ -382,7 +449,7 @@ export function AgentView({
                   }}
                   onUploadImage={actions.upload}
                   onInterrupt={actions.interrupt}
-                  onSetMode={actions.setMode}
+                  meta={actions.meta}
                   onPage={(direction) => transcript.current?.page(direction)}
                 />
               ) : (

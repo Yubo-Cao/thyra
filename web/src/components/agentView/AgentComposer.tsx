@@ -1,7 +1,16 @@
-import { ArrowUp, ImagePlus, Mic, MicOff, Square } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronDown,
+  FoldVertical,
+  ImagePlus,
+  Mic,
+  MicOff,
+  Square,
+} from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import {
   AGENT_PROMPT_IMAGE_LIMIT,
+  type AgentPromptDelivery,
   type AgentPromptImage,
   type AgentSessionInfo,
 } from "../../../../shared/agentSession";
@@ -33,6 +42,7 @@ import { PromptSurface, usePromptDraft } from "../promptEditor/promptDraft";
 import type { PromptEditorSurfaceProps } from "../promptEditor/surface";
 import { IconButton } from "../ui/IconButton";
 import { keepFocus } from "../ui/keepFocus";
+import { Menu } from "../ui/Menu";
 import { keyboardOverlayOpen } from "../ui/overlayState";
 import { Select } from "../ui/Select";
 import { Token } from "../ui/Token";
@@ -40,22 +50,36 @@ import { Token } from "../ui/Token";
 const compact = (count: number) =>
   count >= 1000 ? `${Math.round(count / 1000)}k` : String(count);
 
-/** How the session runs: its mode (a choice when it offers several), model, and context use. */
+/** Session settings a page may change; absent for viewers and ended sessions. */
+export type AgentMetaActions = {
+  onSetMode: (mode: string) => void;
+  onSetModel: (model: string) => void;
+  onSetEffort: (effort: string) => void;
+  onCompact: () => void;
+};
+
+/**
+ * How the session runs: its mode, model and reasoning effort (choices when
+ * the agent offers them), and context use, with a button that compacts the
+ * conversation.
+ */
 export function AgentMeta({
   info,
-  onSetMode,
+  actions,
 }: {
   info: AgentSessionInfo;
-  /** Absent for viewers and ended sessions: the mode is shown, not chosen. */
-  onSetMode?: (mode: string) => void;
+  actions?: AgentMetaActions;
 }) {
   const usage = info.usage;
   const used = usage?.context_tokens;
   const modes = info.modes ?? [];
   const mode = modes.find((item) => item.id === info.mode);
+  const models = info.can_set_model ? (info.models ?? []) : [];
+  const model = models.find((item) => item.id === info.model);
+  const efforts = info.can_set_model ? (info.efforts ?? []) : [];
   return (
     <div className="agent-meta">
-      {onSetMode && modes.length > 0 ? (
+      {actions && modes.length > 0 ? (
         <Select
           variant="ghost"
           aria-label={t("Mode")}
@@ -65,15 +89,43 @@ export function AgentMeta({
             value: item.id,
             label: item.label,
           }))}
-          onChange={onSetMode}
+          onChange={actions.onSetMode}
         />
       ) : info.mode ? (
         <Token>{mode?.label ?? info.mode}</Token>
       ) : null}
-      {info.model ? (
+      {actions && models.length > 0 ? (
+        <Select
+          variant="ghost"
+          className="agent-meta-model"
+          aria-label={t("Model")}
+          title={info.model}
+          value={info.model ?? ""}
+          placeholder={info.model ?? t("Model")}
+          options={models.map((item) => ({
+            value: item.id,
+            label: item.label,
+            description: item.description,
+          }))}
+          onChange={actions.onSetModel}
+        />
+      ) : info.model ? (
         <Token code className="agent-meta-model" title={info.model}>
-          {info.model}
+          {model?.label ?? info.model}
         </Token>
+      ) : null}
+      {actions && efforts.length > 0 ? (
+        <Select
+          variant="ghost"
+          aria-label={t("Reasoning effort")}
+          title={t("Reasoning effort")}
+          value={info.effort ?? ""}
+          placeholder={info.effort ?? t("Effort")}
+          options={efforts.map((effort) => ({ value: effort, label: effort }))}
+          onChange={actions.onSetEffort}
+        />
+      ) : info.effort ? (
+        <Token title={t("Reasoning effort")}>{info.effort}</Token>
       ) : null}
       {used === undefined ? null : usage?.context_window ? (
         <Token
@@ -89,6 +141,16 @@ export function AgentMeta({
       ) : (
         <Token>{t("{count} tokens", { count: compact(used) })}</Token>
       )}
+      {actions && info.can_compact ? (
+        <IconButton
+          size="sm"
+          label={t("Compact the conversation")}
+          icon={<FoldVertical size={14} />}
+          disabled={info.status !== "idle"}
+          onMouseDown={keepFocus}
+          onClick={actions.onCompact}
+        />
+      ) : null}
     </div>
   );
 }
@@ -101,8 +163,9 @@ const notifyError = (message: string, detail: string) =>
  * the live Markdown preview) over a draft kept per pane, with images
  * attached as `[Image #N]` placeholders. Enter sends and Shift+Enter or
  * Alt+Enter break the line; with an on-screen keyboard Return breaks the
- * line and the button sends. A prompt sent while a turn runs steers or
- * queues, as the agent decides.
+ * line and the button sends. While a turn runs, a prompt waits for it to
+ * end; the menu beside the button sends it into the turn, or stops the turn
+ * and sends it, and Escape stops the turn.
  */
 export function AgentComposer({
   draftKey,
@@ -112,7 +175,7 @@ export function AgentComposer({
   imageUrl,
   onSend,
   onInterrupt,
-  onSetMode,
+  meta,
   onPage,
   onUploadImage,
 }: {
@@ -126,9 +189,13 @@ export function AgentComposer({
   /** Where images the draft names by path load from. */
   imageUrl: (source: string) => string | null;
   /** `images` are the ones the text's placeholders name, in their order. */
-  onSend: (text: string, images: AgentPromptImage[]) => Promise<unknown>;
+  onSend: (
+    text: string,
+    images: AgentPromptImage[],
+    delivery?: AgentPromptDelivery,
+  ) => Promise<unknown>;
   onInterrupt: () => void;
-  onSetMode: (mode: string) => void;
+  meta: AgentMetaActions;
   onPage: (direction: "up" | "down") => void;
   /** Prepares and uploads an image; resolves to its path on the host. */
   onUploadImage: (file: File) => Promise<string>;
@@ -153,6 +220,8 @@ export function AgentComposer({
   const { mobile } = useLayoutPreferences();
   const exited = info.status === "exited";
   const busy = info.status === "running" || info.status === "awaiting_approval";
+  // Hosts from before the queue give every prompt to the running turn.
+  const queues = busy && info.can_queue === true;
   const uploading = uploadCount > 0;
   const ready = !exited && info.status !== "starting" && !sending && !uploading;
 
@@ -194,7 +263,10 @@ export function AgentComposer({
     onError: (message) => notifyError(t("Voice typing"), message),
   });
 
-  const submit = async (fromButton: boolean) => {
+  const submit = async (
+    fromButton: boolean,
+    delivery: AgentPromptDelivery | undefined = queues ? "queue" : undefined,
+  ) => {
     if (!ready) return;
     if (composingRef.current) {
       // The IME owns Enter while it composes; the button makes it commit.
@@ -224,7 +296,7 @@ export function AgentComposer({
     // prompt travels is the next prompt and not lost keystrokes.
     try {
       await submitComposerDraft(draftKey, typed, () =>
-        onSend(prompt.text, prompt.images),
+        onSend(prompt.text, prompt.images, delivery),
       );
     } catch {
       // Reported by the caller; the draft and its images are back in the box.
@@ -241,6 +313,12 @@ export function AgentComposer({
       // An on-screen keyboard's Return has no Shift: it breaks the line.
       enterSends: !coarse || keyboard === "hardware",
     });
+    // Escape stops a running turn, with a draft too, as in Claude Code; the
+    // editor still sees it (Escape then Tab leaves the box).
+    if (busy && !empty && event.key === "Escape" && !event.isComposing) {
+      onInterrupt();
+      return false;
+    }
     if (!action) return false;
     if (action.type === "send") void submit(false);
     else if (action.type === "newline") surfaceRef.current?.insertText("\n");
@@ -264,9 +342,11 @@ export function AgentComposer({
       ? t("This session has ended")
       : info.status === "starting"
         ? t("The agent is starting")
-        : busy
-          ? t("Add to the running turn")
-          : t("Ask the agent"),
+        : queues
+          ? t("Queue a prompt for after this turn")
+          : busy
+            ? t("Add to the running turn")
+            : t("Ask the agent"),
     label: t("Prompt"),
     readOnly: exited,
     prose: true,
@@ -319,7 +399,7 @@ export function AgentComposer({
       </div>
       <ComposerImages images={draft.strip} />
       <div className="agent-composer-foot">
-        <AgentMeta info={info} onSetMode={exited ? undefined : onSetMode} />
+        <AgentMeta info={info} actions={exited ? undefined : meta} />
         <input
           ref={picker}
           type="file"
@@ -366,12 +446,44 @@ export function AgentComposer({
         <IconButton
           size="md"
           variant="primary"
-          label={uploading ? t("Uploading image…") : t("Send")}
+          label={
+            uploading
+              ? t("Uploading image…")
+              : queues
+                ? t("Send when the turn ends")
+                : t("Send")
+          }
           icon={<ArrowUp size={16} />}
           disabled={!ready || !text.trim()}
           onMouseDown={keepFocus}
           onClick={() => void submit(true)}
         />
+        {queues ? (
+          <Menu
+            aria-label={t("Send now")}
+            placement="top end"
+            items={[
+              {
+                id: "steer",
+                label: t("Send into the running turn"),
+                onAction: () => void submit(true, "steer"),
+              },
+              {
+                id: "interrupt",
+                label: t("Stop the turn and send"),
+                onAction: () => void submit(true, "interrupt"),
+              },
+            ]}
+            trigger={
+              <IconButton
+                size="md"
+                label={t("Send now")}
+                icon={<ChevronDown size={14} />}
+                disabled={!ready || !text.trim()}
+              />
+            }
+          />
+        ) : null}
       </div>
     </div>
   );

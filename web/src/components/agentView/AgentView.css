@@ -719,6 +719,37 @@
   overflow-wrap: anywhere;
 }
 
+/* Prompts waiting for the turn to end, one line each, in sending order. */
+.agent-queue {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 140px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.agent-queued {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 2px 12px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: var(--ui-font-size);
+}
+
+.agent-queued-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The prompt box: one filled surface holding the text and its controls. */
 .agent-composer {
   flex: 0 0 auto;
