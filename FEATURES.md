@@ -159,6 +159,13 @@ The view appears only where the bridge runs agent sessions, and its code loads w
 - **Following.** The view stays at the newest output while it streams.
   Scrolling up stops that; **Jump to latest** (or scrolling back down) resumes it.
   A long session mounts only the items around what is on screen and slides that window as you scroll.
+- **Earlier conversations.** A session with nothing in it yet lists the conversations its agent has stored for the working directory, newest first, under **Continue a previous conversation**: each with its title and when it was last active.
+  Conversations held in the agent's terminal UI are among them.
+  Five show at first, and a button shows the rest, up to the 30 most recent.
+  Choosing one loads its transcript, and the session continues that conversation; Claude Code restarts for it, so the session reads as starting for a moment.
+  If the agent refuses, the reason appears under the conversation; sending a prompt instead starts a new conversation.
+  A session started with the agent's own resume arguments (`thyra agent claude --continue`, `thyra agent claude --resume <id>`, `thyra agent codex resume --last`) comes up with its transcript the same way.
+  A session whose `thyra agent` process was started by a build without this has no list.
 - **Approvals.** A request is pinned above the prompt box until it is answered, with the command or the diff in question and a button for each answer the agent offers (allow, allow always, deny); Shift+Tab from the prompt box reaches them.
 - **Prompt box.** Enter (or `Cmd+Enter` / `Ctrl+Enter`) sends; Shift+Enter and Alt+Enter break the line.
   With an on-screen keyboard Return breaks the line and the send button sends.
@@ -167,7 +174,7 @@ The view appears only where the bridge runs agent sessions, and its code loads w
   The microphone dictates into the box, and an unsent draft is kept per pane while the page is open.
 - **Session line.** Under the box: the mode (a menu when the agent offers several), the model, and how much of the context window is in use.
   The pane header shows the session's state: starting, working, needs approval, or ended.
-- **Viewers** follow the transcript and see open requests, without the prompt box or the answer buttons.
+- **Viewers** follow the transcript and see open requests, without the prompt box, the answer buttons, or the list of earlier conversations.
   A session whose agent has exited stays readable, with its error shown and the box disabled.
 - **Phones.** The prompt box sits above the keyboard, answers are full-width buttons, and pane swipes and the floating controls work as over a terminal; the terminal composer and shortcut grid stay with the terminal view.
 
