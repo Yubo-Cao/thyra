@@ -89,6 +89,7 @@ export function AgentComposer({
   draftKey,
   info,
   active,
+  epoch,
   onSend,
   onInterrupt,
   onSetMode,
@@ -98,6 +99,8 @@ export function AgentComposer({
   info: AgentSessionInfo;
   /** The pane is the active one: the box may take focus. */
   active: boolean;
+  /** The session's transcript epoch: a resumed conversation refocuses the box. */
+  epoch: number;
   onSend: (text: string) => Promise<unknown>;
   onInterrupt: () => void;
   onSetMode: (mode: string) => void;
@@ -137,10 +140,12 @@ export function AgentComposer({
     box.style.minHeight = "";
   }, [text]);
 
-  // Selecting the pane puts the caret here, unless that would raise an
+  // Selecting the pane, or resuming a conversation in it (the list that was
+  // focused is gone), puts the caret here, unless that would raise an
   // on-screen keyboard or take focus from another field.
   const focusAllowed = programmaticFocusAllowed(coarse, keyboard);
   useEffect(() => {
+    void epoch;
     if (
       active &&
       focusAllowed &&
@@ -148,7 +153,7 @@ export function AgentComposer({
       !isEditableElement(document.activeElement)
     )
       field.current?.focus({ preventScroll: true });
-  }, [active, focusAllowed]);
+  }, [active, focusAllowed, epoch]);
 
   const voice = useVoiceDictation({
     onText: (spoken, join) => {

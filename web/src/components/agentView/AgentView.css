@@ -34,6 +34,8 @@
   flex: 1 1 0;
   min-height: 0;
   display: flex;
+  /* The empty state places itself by the height the pane has (cqh). */
+  container-type: size;
 }
 
 .agent-transcript {
@@ -57,9 +59,68 @@
 }
 
 .agent-empty {
-  margin: 18vh 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 20cqh 0 0;
   color: var(--muted);
   text-align: center;
+}
+
+/* Under the hint of an empty session: stored conversations to continue. */
+.agent-resume {
+  max-width: 560px;
+  margin: 28px auto 0;
+}
+
+.agent-resume-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 6px;
+  color: var(--muted);
+  font-size: var(--ui-font-size-sm);
+  font-weight: 600;
+}
+
+.agent-resume-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A stored conversation: a Button laid out as a list row. */
+.button.agent-resume-row {
+  --button-height: calc(var(--ui-row-height) + 4px);
+  justify-content: flex-start;
+  gap: 12px;
+  font-size: var(--ui-font-size);
+  font-weight: 400;
+}
+
+/* The one being resumed stays readable while the others dim. */
+.button.agent-resume-row[aria-busy="true"] {
+  opacity: 1;
+}
+
+.agent-resume-age {
+  flex: 0 0 auto;
+  font-size: var(--ui-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-resume-refused {
+  margin: 0;
+  padding: 2px 8px 6px;
+  color: var(--danger-text);
+  font-size: var(--ui-font-size-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.button.agent-resume-more {
+  margin-top: 2px;
 }
 
 .agent-item {
@@ -216,6 +277,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
+  /* Taller than the button's own line, which would clip descenders. */
+  line-height: 1.5;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -669,6 +732,11 @@
     font-size: 15px;
   }
 
+  /* Higher up, so the first conversations clear the floating controls. */
+  .agent-empty {
+    margin-top: 12cqh;
+  }
+
   .agent-dock {
     /* In flow above the keyboard: the app shell owns the main lift, and
        iOS adds its accessory-bar gap (see TerminalComposer.css). */
@@ -685,6 +753,12 @@
 
   .agent-composer-foot .button {
     --button-height: 36px;
+  }
+
+  /* Conversations and "show more" are thumb targets. */
+  .button:is(.agent-resume-row, .agent-resume-more) {
+    --button-height: 44px;
+    font-size: inherit;
   }
 
   /* Answers are thumb targets that share the row. */
