@@ -170,12 +170,15 @@
   line-height: inherit;
 }
 
-/* An image sent with a prompt, where its placeholder stood. */
+/* An image sent with a prompt, where its placeholder stood, on a line of
+   its own: beside the text it would leave the line as tall as the image. */
 .button.agent-user-image {
   --button-height: auto;
+  display: block;
+  width: fit-content;
   max-width: 100%;
+  margin: 6px 0;
   padding: 0;
-  vertical-align: bottom;
   cursor: zoom-in;
 }
 
@@ -194,6 +197,10 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+}
+
+.agent-user-images .agent-user-image {
+  margin: 0;
 }
 
 /* Replies reuse the Markdown preview's type, at the transcript's density. */
