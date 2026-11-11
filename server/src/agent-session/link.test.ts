@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { createLineReader, parseBridgeMessage, parseHostMessage } from "./link";
+import {
+  AGENT_LINK_PROTOCOL,
+  createLineReader,
+  isAgentSessionId,
+  parseBridgeMessage,
+  parseHostMessage,
+} from "./link";
 
 function reader(maxLineBytes?: number) {
   const lines: string[] = [];
@@ -60,9 +66,24 @@ test("only well-formed actions are accepted from the bridge", () => {
     id: 3,
     action: "interrupt",
   });
+  expect(
+    parseBridgeMessage('{"type":"action","id":4,"action":"history","x":1}'),
+  ).toEqual({ type: "action", id: 4, action: "history" });
+  expect(
+    parseBridgeMessage(
+      '{"type":"action","id":5,"action":"resume","session_id":"0a1b-2c3d"}',
+    ),
+  ).toEqual({
+    type: "action",
+    id: 5,
+    action: "resume",
+    session_id: "0a1b-2c3d",
+  });
   for (const line of [
     "not json",
     "[]",
+    '{"type":"action","id":1,"action":"resume"}',
+    '{"type":"action","id":1,"action":"resume","session_id":7}',
     '{"type":"action","action":"interrupt"}',
     '{"type":"action","id":"1","action":"interrupt"}',
     '{"type":"action","id":1,"action":"send"}',
@@ -102,6 +123,10 @@ test("host messages are checked as far as the bridge relies on them", () => {
     type: "result",
     id: 4,
   });
+  // What an action answers with comes through as it is.
+  expect(
+    parseHostMessage('{"type":"result","id":5,"value":[{"id":"a"}]}'),
+  ).toEqual({ type: "result", id: 5, value: [{ id: "a" }] });
   const event = {
     type: "event",
     event: { pane_id: "w1:p1", seq: 1, type: "delta", id: "m", text: "x" },
@@ -118,4 +143,39 @@ test("host messages are checked as far as the bridge relies on them", () => {
     '{"type":"unknown"}',
   ])
     expect(parseHostMessage(bad)).toBeNull();
+});
+
+test("a conversation ID is a plain token", () => {
+  for (const id of [
+    "0a1b2c3d-0000-4000-8000-000000000001",
+    "01a1cbe0-ba9f-73d2-a43a-69d53e781ff4",
+    "abc_1",
+    "A",
+  ])
+    expect(isAgentSessionId(id)).toBe(true);
+  // It becomes an argument and a file name: nothing that reads as an
+  // option, a path or a second argument.
+  for (const id of [
+    "",
+    "-r",
+    "--resume",
+    "_x",
+    "a/b",
+    "..",
+    "a.b",
+    "a b",
+    "a\nb",
+    "caf\u00e9",
+    "x".repeat(129),
+    5,
+    null,
+    undefined,
+  ])
+    expect(isAgentSessionId(id)).toBe(false);
+});
+
+test("hosts of builds before and after resume speak the same protocol number", () => {
+  // The bridge drops a host that reports another number, and hosts keep
+  // their binary across deploys: new actions do not raise it.
+  expect(AGENT_LINK_PROTOCOL).toBe(1);
 });

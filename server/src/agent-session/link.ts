@@ -11,6 +11,12 @@ import type {
  * actions, each answered by one result.
  */
 
+/**
+ * Stays 1 while old and new builds can talk: hosts keep running their binary
+ * across deploys, and the bridge drops a host that reports another number.
+ * A host from before an action existed never answers it, so the bridge only
+ * sends `history` and `resume` to hosts whose info says `can_resume`.
+ */
 export const AGENT_LINK_PROTOCOL = 1;
 /** A snapshot stays far below this; a longer line is not from a host. */
 export const AGENT_LINK_MAX_LINE_BYTES = 16 * 1024 * 1024;
@@ -19,7 +25,21 @@ export type AgentAction =
   | { action: "send"; text: string }
   | { action: "interrupt" }
   | { action: "approve"; approval_id: string; option_id: string }
-  | { action: "set_mode"; mode: string };
+  | { action: "set_mode"; mode: string }
+  /** The stored conversations of the session's directory; answers a `value`. */
+  | { action: "history" }
+  | { action: "resume"; session_id: string };
+
+/**
+ * An agent's session or thread ID as this code accepts one from outside. It
+ * ends up in a command line and a file name, so it is a plain token: no path
+ * separator, no leading dash, bounded.
+ */
+export function isAgentSessionId(value: unknown): value is string {
+  return (
+    typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)
+  );
+}
 
 export type HostMessage =
   | {
@@ -32,8 +52,11 @@ export type HostMessage =
       snapshot: AgentSessionSnapshot;
     }
   | { type: "event"; event: AgentSessionEvent }
-  /** The outcome of the action with this `id`; `error` when it failed. */
-  | { type: "result"; id: number; error?: string };
+  /**
+   * The outcome of the action with this `id`: `error` when it failed, `value`
+   * when the action answers with data.
+   */
+  | { type: "result"; id: number; error?: string; value?: unknown };
 
 export type BridgeMessage = { type: "action"; id: number } & AgentAction;
 
@@ -126,6 +149,17 @@ export function parseBridgeMessage(line: string): BridgeMessage | null {
       return typeof message.mode === "string"
         ? { type: "action", id, action: "set_mode", mode: message.mode }
         : null;
+    case "history":
+      return { type: "action", id, action: "history" };
+    case "resume":
+      return typeof message.session_id === "string"
+        ? {
+            type: "action",
+            id,
+            action: "resume",
+            session_id: message.session_id,
+          }
+        : null;
     default:
       return null;
   }
@@ -175,6 +209,7 @@ export function parseHostMessage(line: string): HostMessage | null {
       type: "result",
       id: message.id,
       ...(typeof message.error === "string" ? { error: message.error } : {}),
+      ...(message.value !== undefined ? { value: message.value } : {}),
     };
   }
   return null;
