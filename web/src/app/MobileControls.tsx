@@ -21,6 +21,10 @@ import {
   terminalComposerDraftKey,
 } from "../terminalComposer";
 import type { Pane, Workspace } from "../types";
+import {
+  type MobileControlsDrag,
+  useMobileControlsDrag,
+} from "./mobileControlsDrag";
 import type { MobileView } from "./useShellLayout";
 import type { WorkspaceInspector } from "./useWorkspaceInspector";
 
@@ -47,6 +51,7 @@ export function useMobileControls(
     );
   }, [activeConnectionId, connectionGeneration]);
   const [collapsed, setCollapsed] = useState(false);
+  const drag = useMobileControlsDrag(mobile, collapsed);
   const [tabSheetOpen, setTabSheetOpen] = useState(false);
   const composerScopeKey = JSON.stringify([
     activeConnectionId,
@@ -86,6 +91,7 @@ export function useMobileControls(
     readOnly,
     collapsed,
     setCollapsed,
+    drag,
     tabSheetOpen,
     setTabSheetOpen,
     composerDraftKey,
@@ -117,10 +123,12 @@ function useComposerHasDraft(draftKey: string | null) {
 export function MobileViewNav({
   mobileView,
   collapsed,
+  drag,
   inspector,
 }: {
   mobileView: MobileView;
   collapsed: boolean;
+  drag: MobileControlsDrag;
   inspector: Pick<WorkspaceInspector, "activateTerminalSurface" | "openEditor">;
 }) {
   const tabIndex = collapsed ? -1 : 0;
@@ -129,6 +137,7 @@ export function MobileViewNav({
       className="mobile-nav"
       aria-label={t("Workspace view switcher")}
       aria-hidden={collapsed}
+      {...drag}
     >
       <IconButton
         className={mobileView === "session" ? "active" : ""}
@@ -171,7 +180,8 @@ export function MobileTerminalControls({
   /** The active agent pane's browser, else the whole one, when offered. */
   onOpenAgentBrowser?: () => void;
 }) {
-  const { collapsed, tabSheetOpen, composerDraftKey, composerOpen } = controls;
+  const { collapsed, drag, tabSheetOpen, composerDraftKey, composerOpen } =
+    controls;
   const composerHasDraft = useComposerHasDraft(composerDraftKey);
   const tabIndex = collapsed ? -1 : 0;
   // The project launcher starts commands on the host: instance admins only.
@@ -192,10 +202,14 @@ export function MobileTerminalControls({
         aria-pressed={mobileView === "workspaces"}
         aria-hidden={collapsed}
         tabIndex={tabIndex}
-        onPointerDown={blurActiveInput}
+        onPointerDown={(event) => {
+          blurActiveInput(event);
+          drag.onPointerDown(event);
+        }}
+        onClickCapture={drag.onClickCapture}
         onClick={mobileView === "workspaces" ? onShowSession : onOpenWorkspaces}
       />
-      <div className="mobile-terminal-controls">
+      <div className="mobile-terminal-controls" {...drag}>
         <nav
           className="mobile-nav mobile-terminal-tools"
           aria-label={

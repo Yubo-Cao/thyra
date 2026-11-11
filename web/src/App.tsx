@@ -196,6 +196,7 @@ export default function App() {
       <MobileViewNav
         mobileView={mobileView}
         collapsed={mobileControls.collapsed}
+        drag={mobileControls.drag}
         inspector={inspector}
       />
       {projectLauncherOpen ? (

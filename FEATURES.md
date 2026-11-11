@@ -296,6 +296,9 @@ that another fetch could change.
   **Configuration > Behavior > Pane swipe** switches to three or four fingers or turns it off, and **Reverse swipe direction** makes dragging right move to the next pane.
   Three fingers take the gesture over from iOS's three-finger undo/redo while a text field is focused, though iOS may still show its own edit banner.
   Four-finger mode on an iPad requires turning off **Settings > Multitasking & Gestures > Gestures** (four- and five-finger app switching), which otherwise receives the swipe.
+- The floating controls (workspaces, launcher, tabs, composer, view switcher) start in the lower right corner; drag any of their buttons to move them out of the way.
+  They move together, stay on screen below the top bar, and return to the corner when dropped next to it.
+  The place is remembered in this browser; the **✕** button still folds them down to one button, which can be dragged the same way.
 - The default grid holds latching **Ctrl**/**Alt**/**Shift**, Ctrl+C/D/R, Esc,
   Tab, Enter, arrows, and PgUp/PgDn.
 - **Ctrl**, **Alt**, and **Shift** in the shortcut grid apply to the next key

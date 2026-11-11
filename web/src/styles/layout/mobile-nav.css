@@ -115,7 +115,8 @@
     right: auto;
     bottom: auto;
     z-index: auto;
-    max-width: 110px;
+    /* Room for its four buttons; only the collapse animates it. */
+    max-width: 140px;
     padding: 0;
     overflow: visible;
     border: 0;
@@ -156,6 +157,17 @@
 
   .mobile-controls-collapsed .mobile-terminal-controls {
     gap: 0;
+  }
+
+  /* The floating controls can be dragged away from their corner, as one
+     (mobileControlsDrag.ts). `translate` leaves their own transforms to the
+     show and hide motion. */
+  .mobile-nav:not(.mobile-terminal-tools),
+  .mobile-terminal-controls,
+  .mobile-workspace-shortcut {
+    translate: var(--mobile-controls-dx, 0px) var(--mobile-controls-dy, 0px);
+    /* A drag that starts on them must not scroll or zoom the page. */
+    touch-action: none;
   }
 
   .mobile-controls-collapsed .mobile-terminal-tools {
