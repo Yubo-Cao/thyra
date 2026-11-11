@@ -69,6 +69,24 @@ test("only well-formed actions are accepted from the bridge", () => {
   expect(
     parseBridgeMessage('{"type":"action","id":4,"action":"history","x":1}'),
   ).toEqual({ type: "action", id: 4, action: "history" });
+  // A prompt's images travel as paths; anything else in an entry is dropped,
+  // and an entry without a path is left for the host to refuse by number.
+  expect(
+    parseBridgeMessage(
+      '{"type":"action","id":6,"action":"send","text":"","images":[{"path":"/tmp/a.png","data":"x"},{},"junk"]}',
+    ),
+  ).toEqual({
+    type: "action",
+    id: 6,
+    action: "send",
+    text: "",
+    images: [{ path: "/tmp/a.png" }, { path: "" }, { path: "" }],
+  });
+  expect(
+    parseBridgeMessage(
+      '{"type":"action","id":7,"action":"send","text":"hi","images":[]}',
+    ),
+  ).toEqual({ type: "action", id: 7, action: "send", text: "hi" });
   expect(
     parseBridgeMessage(
       '{"type":"action","id":5,"action":"resume","session_id":"0a1b-2c3d"}',
@@ -88,6 +106,8 @@ test("only well-formed actions are accepted from the bridge", () => {
     '{"type":"action","id":"1","action":"interrupt"}',
     '{"type":"action","id":1,"action":"send"}',
     '{"type":"action","id":1,"action":"send","text":5}',
+    '{"type":"action","id":1,"action":"send","text":"x","images":"/tmp/a.png"}',
+    '{"type":"action","id":1,"action":"send","images":[{"path":"/tmp/a.png"}]}',
     '{"type":"action","id":1,"action":"approve","approval_id":"a"}',
     '{"type":"action","id":1,"action":"set_mode"}',
     '{"type":"action","id":1,"action":"shutdown"}',

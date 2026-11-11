@@ -163,3 +163,34 @@ test("a resumed conversation is one line, not its transcript", () => {
   });
   expect(bare.text()).toBe("- resumed (1 item)\n\n> next\n");
 });
+
+test("a prompt's images are counted on its line", () => {
+  const { text, event } = log();
+  event({
+    type: "item",
+    item: {
+      id: "u1",
+      type: "user",
+      text: "compare [Image #1] with [Image #2]",
+      images: [{ path: "/tmp/a.png" }, { path: "/tmp/b.png" }],
+      at: 1,
+    },
+  });
+  event({
+    type: "item",
+    item: {
+      id: "u2",
+      type: "user",
+      text: "",
+      images: [{ path: "/tmp/c.png" }],
+      at: 2,
+    },
+  });
+  event({
+    type: "item",
+    item: { id: "u3", type: "user", text: "plain", at: 3 },
+  });
+  expect(text()).toBe(
+    "\n> compare [Image #1] with [Image #2] [2 images]\n\n> [1 image]\n\n> plain\n",
+  );
+});

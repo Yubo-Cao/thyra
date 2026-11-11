@@ -376,6 +376,136 @@ test("a prompt during a turn steers it, and an abandoned answer stops streaming"
   session.agent.exit();
 });
 
+test("a prompt's images go to Codex as local image input", async () => {
+  const { agent, adapter, store } = await ready();
+  const upload = (n: number) => ({
+    path: `/tmp/herdr-img-179442179712${n}-${String(n).repeat(32)}.png`,
+    mediaType: "image/png" as const,
+  });
+  const text = "what is in [Image #1] and [Image #2]?";
+  const sent = adapter.send(text, [upload(1), upload(2)]);
+  await settle();
+  // Codex reads the files itself: the turn names them, after the text.
+  expect(agent.written.at(-1)).toEqual({
+    id: 3,
+    method: "turn/start",
+    params: {
+      threadId: "thread-1",
+      input: [
+        { type: "text", text, text_elements: [] },
+        { type: "localImage", path: upload(1).path },
+        { type: "localImage", path: upload(2).path },
+      ],
+    },
+  });
+  agent.say({ id: 3, result: { turn: { id: "turn-1" } } });
+  await sent;
+  const echo = (id: string, content: unknown[]) =>
+    agent.say({
+      method: "item/started",
+      params: {
+        threadId: "thread-1",
+        item: { type: "userMessage", id, content },
+      },
+    });
+  // Codex lists the prompt back with its images; it is the host's own.
+  echo("um-1", [
+    { type: "text", text, text_elements: [] },
+    { type: "localImage", detail: null, path: upload(1).path },
+    { type: "localImage", detail: null, path: upload(2).path },
+  ]);
+  expect(store.snapshot().items).toMatchObject([
+    {
+      id: "user-1",
+      type: "user",
+      text,
+      images: [{ path: upload(1).path }, { path: upload(2).path }],
+    },
+  ]);
+  expect(store.snapshot().items).toHaveLength(1);
+
+  // During the turn a prompt with an image steers it like any other, and
+  // with an image the text may be empty: no empty text item is sent.
+  const steered = adapter.send("", [upload(3)]);
+  await settle();
+  expect(agent.written.at(-1)).toEqual({
+    id: 4,
+    method: "turn/steer",
+    params: {
+      threadId: "thread-1",
+      expectedTurnId: "turn-1",
+      input: [{ type: "localImage", path: upload(3).path }],
+    },
+  });
+  agent.say({ id: 4, result: {} });
+  await steered;
+  echo("um-2", [{ type: "localImage", detail: null, path: upload(3).path }]);
+  expect(store.snapshot().items).toHaveLength(2);
+  expect(store.snapshot().items[1]).toMatchObject({
+    id: "user-2",
+    text: "",
+    images: [{ path: upload(3).path }],
+  });
+
+  // A prompt from another client shows the images a page could have
+  // attached, and no other file's path.
+  echo("um-3", [
+    { type: "text", text: "from the terminal UI", text_elements: [] },
+    { type: "localImage", detail: null, path: upload(4).path },
+    { type: "localImage", detail: null, path: "/home/user/secret.png" },
+    { type: "image", url: "https://example.com/a.png" },
+  ]);
+  expect(store.snapshot().items[2]).toEqual({
+    id: "um-3",
+    type: "user",
+    text: "from the terminal UI",
+    images: [{ path: upload(4).path }],
+    at: expect.any(Number),
+  });
+  // Without images a prompt is the text item it always was.
+  const plain = adapter.send("plain");
+  await settle();
+  expect(agent.written.at(-1)!.params.input).toEqual([
+    { type: "text", text: "plain", text_elements: [] },
+  ]);
+  agent.say({ id: agent.written.at(-1)!.id, result: {} });
+  await plain;
+  expect(store.snapshot().items.at(-1)).not.toHaveProperty("images");
+
+  // A stored thread restores the same way.
+  expect(
+    codexThreadItems(
+      [
+        {
+          id: "t1",
+          status: "completed",
+          startedAt: 1700000000,
+          items: [
+            {
+              type: "userMessage",
+              id: "u1",
+              content: [
+                { type: "localImage", path: upload(5).path },
+                { type: "localImage", path: "/etc/passwd" },
+              ],
+            },
+          ],
+        },
+      ],
+      "/work",
+    ),
+  ).toEqual([
+    {
+      id: "u1",
+      type: "user",
+      text: "",
+      images: [{ path: upload(5).path }],
+      at: 1700000000000,
+    },
+  ]);
+  agent.exit();
+});
+
 test("the session is ready once the thread exists", async () => {
   const session = start(["-m", "gpt-x", "-c", "a=b"]);
   const { agent, store, adapter } = session;

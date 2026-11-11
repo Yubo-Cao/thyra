@@ -1,5 +1,6 @@
 import { StringDecoder } from "node:string_decoder";
 import type {
+  AgentPromptImage,
   AgentSessionEvent,
   AgentSessionSnapshot,
 } from "../../../shared/agentSession";
@@ -14,15 +15,17 @@ import type {
 /**
  * Stays 1 while old and new builds can talk: hosts keep running their binary
  * across deploys, and the bridge drops a host that reports another number.
- * A host from before an action existed never answers it, so the bridge only
- * sends `history` and `resume` to hosts whose info says `can_resume`.
+ * A host from before an action existed never answers it, and one from
+ * before prompts took images would drop them, so the bridge only sends
+ * `history`, `resume` and images to hosts whose info says `can_resume`.
  */
 export const AGENT_LINK_PROTOCOL = 1;
 /** A snapshot stays far below this; a longer line is not from a host. */
 export const AGENT_LINK_MAX_LINE_BYTES = 16 * 1024 * 1024;
 
 export type AgentAction =
-  | { action: "send"; text: string }
+  /** `images` are paths on the host; the host reads the files itself. */
+  | { action: "send"; text: string; images?: AgentPromptImage[] }
   | { action: "interrupt" }
   | { action: "approve"; approval_id: string; option_id: string }
   | { action: "set_mode"; mode: string }
@@ -128,10 +131,30 @@ export function parseBridgeMessage(line: string): BridgeMessage | null {
     return null;
   const { id } = message;
   switch (message.action) {
-    case "send":
-      return typeof message.text === "string"
-        ? { type: "action", id, action: "send", text: message.text }
-        : null;
+    case "send": {
+      const { images } = message;
+      if (
+        typeof message.text !== "string" ||
+        (images !== undefined && !Array.isArray(images))
+      )
+        return null;
+      return {
+        type: "action",
+        id,
+        action: "send",
+        text: message.text,
+        // An entry that names no path fails the host's check of its file,
+        // so the bridge gets a refusal rather than no answer.
+        ...(images && images.length > 0
+          ? {
+              images: images.map((image) => {
+                const path = record(image)?.path;
+                return { path: typeof path === "string" ? path : "" };
+              }),
+            }
+          : {}),
+      };
+    }
     case "interrupt":
       return { type: "action", id, action: "interrupt" };
     case "approve":

@@ -24,6 +24,7 @@ import {
   parseBridgeMessage,
 } from "./link";
 import { agentSocketPath, prepareAgentSocketDir } from "./paths";
+import { checkPromptImages } from "./prompt-images";
 import { AgentSessionStore } from "./store";
 import { createTerminalLog } from "./terminal-log";
 
@@ -161,12 +162,17 @@ export async function startAgentHost(options: AgentHostOptions) {
   // a handler by the time it is raised. What an action answers is returned.
   async function act(action: AgentAction): Promise<unknown> {
     switch (action.action) {
-      case "send":
-        if (!action.text.trim()) throw new AgentActionError("empty prompt");
+      case "send": {
         if (action.text.length > AGENT_PROMPT_LIMIT)
           throw new AgentActionError("the prompt is too long");
-        await adapter.send(action.text);
+        // Checked here, before anything reaches the agent: one bad image
+        // refuses the whole prompt.
+        const images = await checkPromptImages(action.images ?? []);
+        if (!action.text.trim() && images.length === 0)
+          throw new AgentActionError("empty prompt");
+        await adapter.send(action.text, images);
         return;
+      }
       case "interrupt":
         await adapter.interrupt();
         return;

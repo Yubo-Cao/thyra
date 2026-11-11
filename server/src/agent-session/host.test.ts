@@ -18,7 +18,9 @@ import {
   settle,
   socketRoot,
   storedClaude,
+  tinyImage,
   until,
+  uploadedImage,
 } from "./test-support";
 
 const HERDR = "/nonexistent/herdr.sock";
@@ -157,6 +159,85 @@ test("actions reach the agent and report refusals", async () => {
   // Nothing runs: interrupting is accepted and does nothing.
   expect(await link.act({ action: "interrupt" })).toBeNull();
   expect(agent.written).toHaveLength(written);
+  link.close();
+});
+
+test("a prompt's images are checked on the host before the agent gets them", async () => {
+  const { host, agent, root, terminal } = await hostFor();
+  initialize(agent);
+  const link = await connectToHost(host.socketPath);
+  const png = uploadedImage(root);
+  const gif = uploadedImage(root, tinyImage("gif"), "png");
+  const before = agent.written.length;
+
+  // One bad image refuses the whole prompt, and nothing is sent.
+  const notImage = uploadedImage(root, Buffer.from("plain text"));
+  for (const [images, refusal] of [
+    [
+      [{ path: png }, { path: notImage }],
+      "image 2 is not a PNG, JPEG, GIF or WebP file",
+    ],
+    [[{ path: `${png}.gone` }], "image 1 is no longer on the host"],
+    [[{ path: "" }], "image 1 is no longer on the host"],
+    [
+      Array.from({ length: 11 }, () => ({ path: png })),
+      "a prompt takes at most 10 images",
+    ],
+  ] as const)
+    expect(
+      await link.act({ action: "send", text: "look", images: [...images] }),
+    ).toBe(refusal);
+  expect(await link.act({ action: "send", text: "  ", images: [] })).toBe(
+    "empty prompt",
+  );
+  expect(agent.written).toHaveLength(before);
+  expect(host.store.snapshot().items).toEqual([]);
+  expect(host.store.info.status).toBe("idle");
+
+  expect(
+    await link.act({
+      action: "send",
+      text: "compare [Image #1] with [Image #2]",
+      images: [{ path: png }, { path: gif }],
+    }),
+  ).toBeNull();
+  // The agent gets the files' bytes, typed by what they are.
+  expect(agent.written.at(-1)!.message.content).toEqual([
+    { type: "text", text: "compare [Image #1] with [Image #2]" },
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/png",
+        data: tinyImage("png").toString("base64"),
+      },
+    },
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/gif",
+        data: tinyImage("gif").toString("base64"),
+      },
+    },
+  ]);
+  expect(host.store.snapshot().items).toMatchObject([
+    {
+      type: "user",
+      text: "compare [Image #1] with [Image #2]",
+      images: [{ path: png }, { path: gif }],
+    },
+  ]);
+  expect(terminal.join("")).toContain(
+    "> compare [Image #1] with [Image #2] [2 images]\n",
+  );
+  // With an image the text may be empty.
+  expect(
+    await link.act({ action: "send", text: "", images: [{ path: png }] }),
+  ).toBeNull();
+  expect(agent.written.at(-1)!.message.content).toMatchObject([
+    { type: "image" },
+  ]);
   link.close();
 });
 

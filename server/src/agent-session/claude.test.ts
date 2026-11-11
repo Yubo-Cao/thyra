@@ -1,7 +1,18 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentItem } from "../../../shared/agentSession";
 import { ClaudeAdapter, claudeArgv } from "./claude";
-import { fakeAgent, loadFixture, sessionStore, settle } from "./test-support";
+import { checkPromptImages } from "./prompt-images";
+import {
+  fakeAgent,
+  loadFixture,
+  sessionStore,
+  settle,
+  tinyImage,
+  uploadedImage,
+} from "./test-support";
 import { SessionMirror } from "./transcript";
 
 function start(args: string[] = []) {
@@ -310,6 +321,124 @@ test("a prompt sent during a turn keeps the session running until its own turn e
   });
   expect(store.info.status).toBe("idle");
   agent.exit();
+});
+
+test("a prompt's images go to the CLI as image blocks after its text", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "thyra-ci-"));
+  try {
+    const { agent, adapter, store } = await ready();
+    const [png, webp] = await checkPromptImages([
+      { path: uploadedImage(dir) },
+      { path: uploadedImage(dir, tinyImage("webp"), "png") },
+    ]);
+    const block = (media_type: string, format: "png" | "webp") => ({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type,
+        data: tinyImage(format).toString("base64"),
+      },
+    });
+    const text = "what is in [Image #1]?";
+
+    // The same text twice, with different images: two prompts of their own.
+    await adapter.send(text, [png!]);
+    const first = agent.written.at(-1)!;
+    expect(first).toMatchObject({
+      type: "user",
+      parent_tool_use_id: null,
+      message: {
+        role: "user",
+        content: [{ type: "text", text }, block("image/png", "png")],
+      },
+    });
+    await adapter.send(text, [webp!, png!]);
+    const second = agent.written.at(-1)!;
+    expect(second.message.content).toEqual([
+      { type: "text", text },
+      block("image/webp", "webp"),
+      block("image/png", "png"),
+    ]);
+    expect(second.uuid).not.toBe(first.uuid);
+    expect(store.snapshot().items).toMatchObject([
+      { type: "user", text, images: [{ path: png!.path }] },
+      {
+        type: "user",
+        text,
+        images: [{ path: webp!.path }, { path: png!.path }],
+      },
+    ]);
+
+    // The CLI acknowledges each prompt by its ID. Its echo holds the image
+    // as the CLI shrank it, not as it was sent, and is not shown again.
+    const echo = (uuid: string) =>
+      agent.say({
+        type: "user",
+        isReplay: true,
+        uuid,
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/jpeg",
+                data: "eA==",
+              },
+            },
+          ],
+        },
+      });
+    agent.say({
+      type: "command_lifecycle",
+      command_uuid: first.uuid,
+      state: "started",
+    });
+    echo(first.uuid);
+    agent.say({ type: "result", subtype: "success", is_error: false });
+    // The second prompt has not been taken yet: its turn is still to come.
+    expect(store.info.status).toBe("running");
+    agent.say({
+      type: "command_lifecycle",
+      command_uuid: second.uuid,
+      state: "started",
+    });
+    echo(second.uuid);
+    agent.say({ type: "result", subtype: "success", is_error: false });
+    expect(store.info.status).toBe("idle");
+    expect(store.snapshot().items).toHaveLength(2);
+
+    // With an image the text may be empty: no empty text block is sent.
+    await adapter.send("", [png!]);
+    expect(agent.written.at(-1)!.message.content).toEqual([
+      block("image/png", "png"),
+    ]);
+    expect(store.snapshot().items.at(-1)).toMatchObject({
+      type: "user",
+      text: "",
+      images: [{ path: png!.path }],
+    });
+    // Without images a prompt is the plain string it always was.
+    await adapter.send("plain");
+    expect(agent.written.at(-1)!.message.content).toBe("plain");
+    expect(store.snapshot().items.at(-1)).not.toHaveProperty("images");
+
+    // A file gone since it was checked refuses the prompt: nothing is
+    // sent and nothing is shown.
+    rmSync(webp!.path);
+    const written = agent.written.length;
+    const shown = store.snapshot().items.length;
+    await expect(adapter.send("look", [png!, webp!])).rejects.toThrow(
+      "image 2 is no longer on the host",
+    );
+    expect(agent.written).toHaveLength(written);
+    expect(store.snapshot().items).toHaveLength(shown);
+    agent.exit();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("interrupt does nothing when idle and settles a stuck session", async () => {
