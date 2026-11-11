@@ -77,6 +77,9 @@ const RPC_MATRIX: Record<string, string> = {
   "pane.get": "admin owner editor viewer guest guest-pane",
   "pane.layout": "admin owner editor viewer guest guest-pane",
   "pane.list": "admin owner editor viewer guest guest-pane",
+  // The matrix request names no source/target or destination; see the
+  // rearranging tests below.
+  "pane.move": "-",
   "pane.paste": "admin owner editor",
   "pane.resize": "admin owner editor",
   "pane.send_input": "admin owner editor",
@@ -88,6 +91,7 @@ const RPC_MATRIX: Record<string, string> = {
   "pane.send_keys": "admin owner editor",
   "pane.send_text": "admin owner editor",
   "pane.split": "admin owner editor",
+  "pane.swap": "-",
   "pane.zoom": "admin owner editor",
   "plugin.action.invoke": "admin",
   "plugin.disable": "-",
@@ -482,6 +486,100 @@ describe("authorize", () => {
 
   test("routine host calls from members get a harmless answer", async () => {
     expect((await request("viewer", "settings.get", {})).allowed).toBe(false);
+  });
+
+  test("swapping panes needs write on both panes", async () => {
+    const swap = (role: keyof typeof PRINCIPALS, params: object) =>
+      request(role, "pane.swap", { ...params }).then((d) => d.allowed);
+    const both = { source_pane_id: "w1:p1", target_pane_id: "w1:p2" };
+    expect(await swap("editor", both)).toBe(true);
+    expect(await swap("owner", both)).toBe(true);
+    expect(await swap("viewer", both)).toBe(false);
+    expect(await swap("guest", both)).toBe(false);
+    // The outsider owns w2 but cannot write w1, in either position.
+    const cross = { source_pane_id: "w2:p1", target_pane_id: "w1:p1" };
+    expect(await swap("outsider", cross)).toBe(false);
+    expect(
+      await swap("outsider", {
+        source_pane_id: "w1:p1",
+        target_pane_id: "w2:p1",
+      }),
+    ).toBe(false);
+    // Both panes must be named; the directional form is not exposed.
+    expect(await swap("editor", { source_pane_id: "w1:p1" })).toBe(false);
+    expect(await swap("editor", { target_pane_id: "w1:p2" })).toBe(false);
+    expect(await swap("admin", { direction: "right", pane_id: "w1:p1" })).toBe(
+      false,
+    );
+  });
+
+  test("moving a pane stays inside its own tab", async () => {
+    const move = (
+      role: keyof typeof PRINCIPALS,
+      destination: Record<string, unknown>,
+      paneId = "w1:p1",
+    ) =>
+      request(role, "pane.move", {
+        pane_id: paneId,
+        focus: false,
+        destination: {
+          split: "right",
+          position: "after",
+          ...destination,
+        },
+      }).then((d) => d.allowed);
+    const sameTab = { type: "tab", tab_id: "w1:t1", target_pane_id: "w1:p2" };
+    expect(await move("editor", sameTab)).toBe(true);
+    expect(await move("admin", sameTab)).toBe(true);
+    expect(await move("viewer", sameTab)).toBe(false);
+    expect(await move("guest-pane", sameTab)).toBe(false);
+    // Another tab of the same workspace, named directly or through its pane.
+    expect(
+      await move("admin", {
+        type: "tab",
+        tab_id: "w1:t2",
+        target_pane_id: "w1:p3",
+      }),
+    ).toBe(false);
+    expect(
+      await move("admin", {
+        type: "tab",
+        tab_id: "w1:t1",
+        target_pane_id: "w1:p3",
+      }),
+    ).toBe(false);
+    expect(
+      await move(
+        "admin",
+        { type: "tab", tab_id: "w1:t2", target_pane_id: "w1:p1" },
+        "w1:p3",
+      ),
+    ).toBe(false);
+    // Another workspace.
+    expect(
+      await move("admin", {
+        type: "tab",
+        tab_id: "w2:t1",
+        target_pane_id: "w2:p1",
+      }),
+    ).toBe(false);
+    // New tabs and workspaces, and incomplete destinations.
+    expect(await move("admin", { type: "new_tab", workspace_id: "w1" })).toBe(
+      false,
+    );
+    expect(await move("admin", { type: "new_workspace" })).toBe(false);
+    expect(await move("admin", { type: "tab", tab_id: "w1:t1" })).toBe(false);
+    expect(
+      (await request("admin", "pane.move", { pane_id: "w1:p1" })).allowed,
+    ).toBe(false);
+    // Unknown panes fail closed, even for admins.
+    expect(
+      await move("admin", {
+        type: "tab",
+        tab_id: "w1:t1",
+        target_pane_id: "w1:p9",
+      }),
+    ).toBe(false);
   });
 
   test("routing: another connection grants nothing", async () => {

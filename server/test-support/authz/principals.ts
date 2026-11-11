@@ -110,10 +110,14 @@ const GRANTS: Record<string, Record<string, WorkspaceRole>> = {
 
 type Located = { workspace: string; pane: string; tab: string };
 
-/** Terminals t1 (pane w1:p1), t3 (w1:p2, same tab) and t2 (w2:p1). */
+/**
+ * Terminals t1 (pane w1:p1), t3 (w1:p2, same tab), t4 (w1:p3, another tab)
+ * and t2 (w2:p1).
+ */
 export const TERMINALS: Record<string, Located> = {
   t1: { workspace: "w1", pane: "w1:p1", tab: "w1:t1" },
   t3: { workspace: "w1", pane: "w1:p2", tab: "w1:t1" },
+  t4: { workspace: "w1", pane: "w1:p3", tab: "w1:t2" },
   t2: { workspace: "w2", pane: "w2:p1", tab: "w2:t1" },
 };
 

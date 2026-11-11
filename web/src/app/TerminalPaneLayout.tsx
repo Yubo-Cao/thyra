@@ -17,12 +17,14 @@ import type {
   MobileTerminalShortcutRows,
   MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
+import { paneDropPreviewRect } from "../paneDrop";
 import { paneLayoutNeedsSwitcher } from "../paneLayoutSizing";
 import { useWorkspaceCan } from "../capabilities";
 import { type State, store, useStoreSelector } from "../store";
 import { selectPanesWithoutActivity } from "../agentOrder";
 import { terminalMountKey } from "../terminalConnection";
 import { blurActiveInput } from "./MobileControls";
+import { usePaneDrag } from "./usePaneDrag";
 import { useShallow } from "zustand/react/shallow";
 
 const LazyTerminalView = lazyWithReload("terminal-view", () =>
@@ -223,6 +225,15 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
       s.panes.some((pane) => pane.pane_id === lp.pane_id),
     ) ?? [];
   const fallbackPaneId = visiblePanes[0]?.pane_id ?? null;
+  // Dragging a pane header onto another pane swaps or moves it; like
+  // resizing it changes the tab for everyone.
+  const canRearrange =
+    canResize && !!layout && !layout.zoomed && visiblePanes.length > 1;
+  const paneDrag = usePaneDrag(
+    layout && { ...layout, panes: visiblePanes },
+    layoutRef,
+    canRearrange,
+  );
   const activePaneId =
     visiblePanes.find((lp) => lp.pane_id === s.selectedPaneId)?.pane_id ??
     visiblePanes.find((lp) => lp.pane_id === layout?.focused_pane_id)
@@ -259,6 +270,15 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
   if (!layout || layout.zoomed || visiblePanes.length <= 1) {
     return <TerminalView key={mountKeyForPane(activePaneId)} {...props} />;
   }
+
+  const dropTarget = paneDrag.drag?.target;
+  const dropPane = dropTarget
+    ? layout.panes.find((lp) => lp.pane_id === dropTarget.paneId)
+    : null;
+  const dropRect =
+    dropTarget && dropPane
+      ? paneDropPreviewRect(dropTarget.zone, dropPane.rect)
+      : null;
 
   if ((mobile || responsivePaneSwitcher) && activePaneId) {
     const activeIndex = Math.max(
@@ -380,8 +400,9 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
   return (
     <div
       ref={setLayoutContainer}
-      className="pane-layout"
+      className={`pane-layout ${canRearrange ? "can-rearrange" : ""}`}
       aria-label={t("Terminal panes")}
+      onPointerDown={paneDrag.onPointerDown}
     >
       {visiblePanes.map((layoutPane) => {
         const rect = layoutPane.rect;
@@ -390,6 +411,7 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
           <div
             key={mountKeyForPane(layoutPane.pane_id)}
             className={`pane-layout-cell ${isActive ? "is-active" : ""}`}
+            data-pane-id={layoutPane.pane_id}
             style={{
               left: `${rectPercent(rect.x, area.x, areaWidth)}%`,
               top: `${rectPercent(rect.y, area.y, areaHeight)}%`,
@@ -413,6 +435,18 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
           </div>
         );
       })}
+      {dropRect ? (
+        <div
+          className="pane-drop-preview"
+          aria-hidden="true"
+          style={{
+            left: `${rectPercent(dropRect.x, area.x, areaWidth)}%`,
+            top: `${rectPercent(dropRect.y, area.y, areaHeight)}%`,
+            width: `${(dropRect.width / areaWidth) * 100}%`,
+            height: `${(dropRect.height / areaHeight) * 100}%`,
+          }}
+        />
+      ) : null}
       {(canResize ? layout.splits : []).map((split) => {
         const horizontal = split.direction === "right";
         const boundary = splitBoundaryFromPaneRects(layout.panes, split);

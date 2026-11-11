@@ -2,6 +2,11 @@
 // zoom and resize. New targets are adopted by browser-local navigation.
 import { projectBrowserLayout } from "../browserNavigation";
 import { t } from "../i18n";
+import {
+  type PaneDropTarget,
+  paneDropRequest,
+  paneDropResultLayout,
+} from "../paneDrop";
 import { rememberTabLayout } from "../tabLayout";
 import { action, noticeFor } from "./actions";
 import { errorNotice, failWith, setForConnection, state } from "./core";
@@ -195,6 +200,28 @@ export const workspaceActions = {
         });
       return result;
     });
+  },
+
+  /**
+   * Drop a pane on another pane of the same tab: swap them (centre) or move
+   * the pane beside the target (edge). The returned layout shows at once.
+   */
+  rearrangePane(paneId: string, target: PaneDropTarget, tabId: string) {
+    const request = paneDropRequest(paneId, target, tabId);
+    if (!request) return Promise.resolve(null);
+    return action(
+      async (lease) => {
+        const result = await lease.client.call(request.method, request.params);
+        const layout = paneDropResultLayout(result);
+        rememberTabLayout(lease.connectionId, lease.generation, layout);
+        if (layout && state.layout?.tab_id === layout.tab_id)
+          setForConnection(lease, {
+            layout: projectBrowserLayout(layout, state.selectedPaneId),
+          });
+        return result;
+      },
+      { failureNotice: failWith(t("Could not rearrange panes")) },
+    );
   },
 
   closePane(paneId: string) {

@@ -138,6 +138,7 @@ export default {
   // Workspaces and tabs
   "Tab created, but naming failed": "标签页已创建，但命名失败",
   "Tab creation failed": "创建标签页失败",
+  "Could not rearrange panes": "无法重新排列窗格",
   "Workspace creation failed": "创建工作区失败",
   "Workspace belongs to a group": "工作区属于一个分组",
   "Workspace close failed": "关闭工作区失败",

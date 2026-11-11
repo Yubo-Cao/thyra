@@ -9,6 +9,9 @@ A Web/PWA client for a running [Herdr](https://herdr.dev) server.
 - Create, rename, pin, switch, and close workspaces/tabs. Linked Git worktrees
   group under their repository; pins and collapsed groups stay in this browser.
 - Split right/down, resize, focus neighbors, zoom, or close panes.
+- In a split tab, drag a pane by its header onto another pane (mouse or pen):
+  the centre swaps the two, an edge moves the pane to that side of the
+  target. Escape cancels. Editors and up only; not while zoomed.
 - Search workspaces, worktrees, files, tabs, panes, and agents in the command
   menu. Enter a relative/absolute path to open a file.
 - Desktop **Zen mode** hides app chrome. Hover the top edge to reveal controls

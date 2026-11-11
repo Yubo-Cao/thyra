@@ -399,6 +399,19 @@
   flex: 1 1 auto;
 }
 
+/* Pane headers drag onto another pane to swap or move it. */
+.pane-layout.can-rearrange .terminal-pane-identity {
+  cursor: grab;
+}
+
+/* Where a dragged pane lands: the whole target (swap) or its half (move). */
+.pane-drop-preview {
+  position: absolute;
+  z-index: 3;
+  background: var(--accent-active);
+  pointer-events: none;
+}
+
 /* Split handles double as the single 1px divider between panes. */
 .pane-resize-handle {
   position: absolute;

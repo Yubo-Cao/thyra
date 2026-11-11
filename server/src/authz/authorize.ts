@@ -119,6 +119,21 @@ async function withinPane(
   return !!tab && tabs.every((id) => id === tab);
 }
 
+/** Whether every pane a target names lives in its named tab (fail closed). */
+async function panesInTab(
+  connectionId: string | null,
+  target: RpcTarget,
+  deps: AuthzDeps,
+): Promise<boolean> {
+  const panes = [target.pane, ...(target.panes ?? [])];
+  if (!connectionId || !target.tab || panes.some((pane) => !pane)) return false;
+  for (const pane of panes) {
+    const located = await deps.locate(connectionId, { pane });
+    if (located?.tab !== target.tab) return false;
+  }
+  return true;
+}
+
 /**
  * Resolve every id in a target to a workspace and the caller's role there.
  * Returns an error message when an id cannot be resolved (fail closed).
@@ -131,13 +146,16 @@ export async function resolveTarget(
 ): Promise<Resolved | string> {
   const workspaces = new Set<string>();
   let pane = target.pane;
-  const panes = new Set<string>(target.pane ? [target.pane] : []);
+  const named = [target.pane, ...(target.panes ?? [])].filter(
+    (value): value is string => !!value,
+  );
+  const panes = new Set<string>(named);
   const tabs = target.tab ? [target.tab] : [];
   if (target.workspace) workspaces.add(target.workspace);
   for (const [kind, value] of [
-    ["tab", target.tab],
-    ["pane", target.pane],
-  ] as const) {
+    ["tab", target.tab] as const,
+    ...named.map((value) => ["pane", value] as const),
+  ]) {
     if (!value) continue;
     const scoped = workspaceOfScopedId(value);
     if (scoped) {
@@ -268,6 +286,8 @@ export async function authorize(
     return { allowed: true, entry, params };
   }
 
+  const invalid = entry.check?.(params);
+  if (invalid) return deny(`${method}: ${invalid}`);
   const target = entry.resolve?.(params) ?? {};
   const minimum = minimumRole(entry);
   const decision = await authorizeTarget({
@@ -278,6 +298,8 @@ export async function authorize(
     deps,
   });
   if (!decision.ok) return deny(`${method}: ${decision.message}`);
+  if (target.sameTab && !(await panesInTab(connectionId, target, deps)))
+    return deny(`${method}: panes move only within their own tab`);
   const { resolved } = decision;
   const paneId = resolved.pane;
   const roleFloor = (): WorkspaceRole | null => {

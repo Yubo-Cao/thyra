@@ -37,7 +37,11 @@ export type RpcTarget = {
   workspace?: string;
   tab?: string;
   pane?: string;
+  /** Further panes the request acts on, each authorized like `pane`. */
+  panes?: string[];
   terminal?: string;
+  /** Every named pane must live in the named `tab`. */
+  sameTab?: boolean;
   /** The request reaches outside any workspace (host filesystem, repo). */
   host?: boolean;
 };
@@ -48,6 +52,8 @@ export type RpcPolicyEntry = {
   /** The bridge forwards the call to Herdr unchanged (after enrichment). */
   herdr?: true;
   resolve?: (params: Record<string, unknown>) => RpcTarget;
+  /** Rejects parameter shapes browsers may not send (why), before resolving. */
+  check?: (params: Record<string, unknown>) => string | null;
   /** Least workspace role; defaults by class. */
   minimum?: WorkspaceRole;
   writer?: "input" | "control";
@@ -63,6 +69,31 @@ export type RpcPolicyEntry = {
 
 function id(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/** Browsers swap two named panes; Herdr's directional form is not exposed. */
+function checkPaneSwap(p: Record<string, unknown>): string | null {
+  if (p.direction !== undefined) return "name the source and target panes";
+  return id(p.source_pane_id) && id(p.target_pane_id)
+    ? null
+    : "name the source and target panes";
+}
+
+/** Browsers move a pane only beside another pane of its own tab. */
+function checkPaneMoveInTab(p: Record<string, unknown>): string | null {
+  const destination = record(p.destination);
+  if (destination.type !== "tab") return "panes move only within their own tab";
+  return id(p.pane_id) &&
+    id(destination.tab_id) &&
+    id(destination.target_pane_id)
+    ? null
+    : "name the pane, its tab and the target pane";
 }
 
 export const targetResolvers = {
@@ -89,6 +120,23 @@ export const targetResolvers = {
   /** A workspace-scoped listing, or the host when no workspace is named. */
   workspaceOrHost: (p: Record<string, unknown>): RpcTarget =>
     id(p.workspace_id) ? { workspace: id(p.workspace_id) } : { host: true },
+  /** Two panes swapped with each other. */
+  paneSwap: (p: Record<string, unknown>): RpcTarget => ({
+    pane: id(p.source_pane_id),
+    panes: [id(p.target_pane_id)].filter((pane) => pane !== undefined),
+  }),
+  /** A pane moved beside another pane of its own tab. */
+  paneMoveInTab: (p: Record<string, unknown>): RpcTarget => {
+    const destination = record(p.destination);
+    return {
+      pane: id(p.pane_id),
+      panes: [id(destination.target_pane_id)].filter(
+        (pane) => pane !== undefined,
+      ),
+      tab: id(destination.tab_id),
+      sameTab: true,
+    };
+  },
   /** Creation inside a workspace, optionally from a browser source pane. */
   creation: (p: Record<string, unknown>): RpcTarget => {
     const source =
@@ -271,6 +319,9 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "pane.close": herdr(write(r.pane)),
   "pane.resize": herdr(write(r.pane)),
   "pane.zoom": herdr(write(r.pane)),
+  // Rearranging a tab needs write on every pane it touches.
+  "pane.swap": herdr(write(r.paneSwap, { check: checkPaneSwap })),
+  "pane.move": herdr(write(r.paneMoveInTab, { check: checkPaneMoveInTab })),
   "pane.focus_direction": herdr(write(r.pane)),
   "pane.send_input": herdr(write(r.pane, { writer: "input" })),
   "shell.submit": write(r.pane, { writer: "input" }),
