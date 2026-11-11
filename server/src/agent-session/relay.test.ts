@@ -1,5 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import * as net from "node:net";
 import { join } from "node:path";
 import type { AgentSessionEvent } from "../../../shared/agentSession";
@@ -16,6 +22,7 @@ import {
   leaveDeadSocket,
   settle,
   socketRoot,
+  storedClaude,
   until,
 } from "./test-support";
 
@@ -32,7 +39,12 @@ function root() {
   return dir;
 }
 
-async function host(dir: string, paneId: string, herdrSocketPath = HERDR) {
+async function host(
+  dir: string,
+  paneId: string,
+  herdrSocketPath = HERDR,
+  env: Record<string, string> = {},
+) {
   const agent = fakeAgent();
   const started = await startAgentHost({
     kind: "claude",
@@ -41,13 +53,11 @@ async function host(dir: string, paneId: string, herdrSocketPath = HERDR) {
     herdrSocketPath,
     cwd: "/work",
     socketDir: dir,
+    env,
     spawn: agent.spawn,
   });
-  const kill = agent.killed.push.bind(agent.killed);
-  agent.killed.push = (...signals: string[]) => {
-    queueMicrotask(() => agent.exit({ code: null, signal: signals[0]! }));
-    return kill(...signals);
-  };
+  agent.hooks.onKill = (child, signal) =>
+    queueMicrotask(() => child.exit({ code: null, signal }));
   cleanups.push(() => started.shutdown());
   agent.say({
     type: "control_response",
@@ -172,6 +182,97 @@ test("a host's refusal comes back as the action's error", async () => {
   await expect(bridge.act("w3:p3", { action: "interrupt" })).rejects.toThrow(
     "no agent session in this pane",
   );
+});
+
+test("what an action answers comes back, and a host from before it is not asked", async () => {
+  const dir = root();
+  // The host's CLI configuration holds one stored conversation.
+  const config = join(dir, "claude");
+  mkdirSync(join(config, "projects", "-work"), { recursive: true });
+  const stored = storedClaude();
+  stored.prompt("remember mango");
+  stored.says("m1", [{ type: "text", text: "ok" }]);
+  writeFileSync(
+    join(config, "projects", "-work", "abc-1.jsonl"),
+    stored.text(),
+  );
+  const { agent } = await host(dir, "w1:p1", HERDR, {
+    CLAUDE_CONFIG_DIR: config,
+  });
+
+  // A host of an older build: it greets without `can_resume`, and would
+  // never answer an action it does not know.
+  const received: string[] = [];
+  const old = net.createServer((socket) => {
+    socket.on("error", () => undefined);
+    socket.on("data", (chunk) => received.push(String(chunk)));
+    socket.write(
+      `${JSON.stringify({
+        type: "hello",
+        protocol: 1,
+        pane_id: "w1:p2",
+        herdr_socket: HERDR,
+        pid: 1,
+        snapshot: {
+          info: {
+            pane_id: "w1:p2",
+            kind: "claude",
+            status: "idle",
+            cwd: "/",
+            started_at: 1,
+            modes: [],
+          },
+          items: [],
+          approvals: [],
+          seq: 0,
+        },
+      })}\n`,
+    );
+  });
+  cleanups.push(() => void old.close());
+  await new Promise<void>((resolve) =>
+    old.listen(
+      join(dir, agentSocketName(herdrSocketKey(HERDR), "w1:p2")),
+      resolve,
+    ),
+  );
+
+  const { relay: bridge, events } = relay(dir);
+  await until(() => bridge.list().length === 2, "both hosts");
+  expect(
+    bridge.list().map((info) => [info.pane_id, info.can_resume === true]),
+  ).toContainEqual(["w1:p1", true]);
+  expect(await bridge.act("w1:p1", { action: "interrupt" })).toBeUndefined();
+  expect(await bridge.act("w1:p1", { action: "history" })).toEqual([
+    { id: "abc-1", title: "remember mango", updated_at: expect.any(Number) },
+  ]);
+  await bridge.act("w1:p1", { action: "resume", session_id: "abc-1" });
+  await until(
+    () => events.some((event) => event.type === "reset"),
+    "the reset event",
+  );
+  // The bridge's copy was reset with the host's transcript.
+  expect(bridge.snapshot("w1:p1")!.items.map((item) => item.type)).toEqual([
+    "user",
+    "assistant",
+  ]);
+  expect(bridge.snapshot("w1:p1")!.info.agent_session_id).toBe("abc-1");
+  expect(agent.children).toHaveLength(2);
+  await expect(
+    bridge.act("w1:p1", { action: "resume", session_id: "../x" }),
+  ).rejects.toThrow("not a conversation ID");
+
+  for (const action of [
+    { action: "history" },
+    { action: "resume", session_id: "abc-1" },
+  ] as const)
+    await expect(bridge.act("w1:p2", action)).rejects.toThrow(
+      "started by an older Thyra",
+    );
+  // Its other actions still reach it.
+  void bridge.act("w1:p2", { action: "interrupt" }).catch(() => undefined);
+  await until(() => received.length > 0, "the old host's action");
+  expect(received.join("")).not.toMatch(/history|resume/);
 });
 
 test("a session ends when its host goes away", async () => {

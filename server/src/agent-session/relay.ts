@@ -55,7 +55,7 @@ type Link = {
   actions: Map<
     number,
     {
-      resolve(): void;
+      resolve(value: unknown): void;
       reject(error: Error): void;
       timer: ReturnType<typeof setTimeout>;
     }
@@ -221,7 +221,7 @@ export function createAgentSessionRelay(args: {
       link.actions.delete(message.id);
       clearTimeout(action.timer);
       if (message.error) action.reject(new Error(message.error));
-      else action.resolve();
+      else action.resolve(message.value);
       return;
     }
     if (!link.mirror || message.event.pane_id !== link.paneId) return;
@@ -334,11 +334,24 @@ export function createAgentSessionRelay(args: {
     snapshot(paneId: string): AgentSessionSnapshot | null {
       return session(paneId)?.mirror?.snapshot() ?? null;
     },
-    /** Pass an action to the pane's host; rejects with the host's refusal. */
-    act(paneId: string, action: AgentAction): Promise<void> {
+    /**
+     * Pass an action to the pane's host: resolves with what the host answers
+     * (nothing, for most actions), rejects with its refusal.
+     */
+    act(paneId: string, action: AgentAction): Promise<unknown> {
       const link = session(paneId);
       if (!link)
         return Promise.reject(new Error("no agent session in this pane"));
+      // A host from before these actions existed would never answer them.
+      if (
+        (action.action === "history" || action.action === "resume") &&
+        link.mirror?.info.can_resume !== true
+      )
+        return Promise.reject(
+          new Error(
+            "this agent session was started by an older Thyra and cannot resume conversations; start a new one",
+          ),
+        );
       const id = link.nextActionId++;
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {

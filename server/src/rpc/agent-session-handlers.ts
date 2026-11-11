@@ -1,4 +1,5 @@
 import { AGENT_PROMPT_LIMIT } from "../../../shared/agentSession";
+import { isAgentSessionId } from "../agent-session/link";
 import type { ConnectionRpcContext, RpcHandler } from "./context";
 
 const NO_SESSION = "no agent session in this pane";
@@ -50,6 +51,11 @@ async function agentSession(ctx: ConnectionRpcContext) {
       sendReply({ id, result: agentSessions.subscribe(ws, pane) }, method);
       return;
     }
+    if (method === "agent_session.history") {
+      const sessions = await agentSessions.history(pane);
+      sendReply({ id, result: { sessions } }, method);
+      return;
+    }
     if (method === "agent_session.send") {
       const text = stringParam(params, "text");
       if (!text.trim()) throw new Error("text required");
@@ -68,6 +74,15 @@ async function agentSession(ctx: ConnectionRpcContext) {
       await agentSessions.act(pane, {
         action: "set_mode",
         mode: stringParam(params, "mode"),
+      });
+    } else if (method === "agent_session.resume") {
+      // The ID reaches a command line and a file name on the host.
+      const sessionId = params.session_id;
+      if (!isAgentSessionId(sessionId))
+        throw new Error("session_id must be a conversation ID");
+      await agentSessions.act(pane, {
+        action: "resume",
+        session_id: sessionId,
       });
     } else {
       throw new Error(`unknown agent session method: ${method}`);
@@ -90,4 +105,6 @@ export const agentSessionRpcMethods: Record<
   "agent_session.interrupt": agentSession,
   "agent_session.approve": agentSession,
   "agent_session.set_mode": agentSession,
+  "agent_session.history": agentSession,
+  "agent_session.resume": agentSession,
 };
