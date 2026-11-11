@@ -111,6 +111,7 @@ export function loadServerConfig(
 Usage: thyra [options]
        thyra service <action>
        thyra shell-integration install|uninstall|status [--shell bash|zsh|fish|all]
+       thyra agent <claude|codex> [agent arguments...]   run an agent session in this Herdr pane
        thyra user|session|grant|share ... accounts, logins and sharing (see \`thyra user --help\`)
 
 Service actions:

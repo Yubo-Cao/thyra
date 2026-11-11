@@ -1,4 +1,5 @@
 import { runAccountsCommand } from "../accounts/cli";
+import { runAgentCommand } from "../agent-session/cli";
 import {
   runServiceCommand,
   SERVICE_COMMAND_CONTINUE,
@@ -8,10 +9,13 @@ import { runMessageBoardCommand } from "../message-board/cli";
 import { runShellIntegrationCommand } from "../shell/cli";
 
 /**
- * Subcommands (message board, shell integration, service, herdr, accounts)
- * run and exit here; this returns only when the process should serve.
+ * Subcommands (agent host, message board, shell integration, service, herdr,
+ * accounts) run and exit here; this returns only when the process should
+ * serve.
  */
 export async function runStartupCommands(APP_VERSION: string): Promise<void> {
+  const agentCommandResult = await runAgentCommand(process.argv.slice(2));
+  if (agentCommandResult !== null) process.exit(agentCommandResult);
   const boardCommandResult = await runMessageBoardCommand(
     process.argv.slice(2),
   );
