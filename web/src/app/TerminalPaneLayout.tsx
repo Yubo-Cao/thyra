@@ -407,10 +407,14 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
       {visiblePanes.map((layoutPane) => {
         const rect = layoutPane.rect;
         const isActive = layoutPane.pane_id === activePaneId;
+        const dragSource =
+          paneDrag.drag?.sourcePaneId === layoutPane.pane_id
+            ? paneDrag.drag
+            : null;
         return (
           <div
             key={mountKeyForPane(layoutPane.pane_id)}
-            className={`pane-layout-cell ${isActive ? "is-active" : ""}`}
+            className={`pane-layout-cell ${isActive ? "is-active" : ""} ${dragSource ? "is-drag-source" : ""} ${dragSource?.moving ? "is-drag-moving" : ""}`}
             data-pane-id={layoutPane.pane_id}
             style={{
               left: `${rectPercent(rect.x, area.x, areaWidth)}%`,

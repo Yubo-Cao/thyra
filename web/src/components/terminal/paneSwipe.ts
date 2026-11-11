@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { paneDragHeld } from "../../paneDragGesture";
 import { paneSwipeFingers } from "../../touchGestures";
 
 type Motion = typeof import("./PaneSwipeOverlay");
@@ -47,7 +48,8 @@ function installPaneSwipe(surface: HTMLElement): () => void {
   let early: TouchEvent | null = null;
   const onTouch = (e: TouchEvent) => {
     const fingers = paneSwipeFingers();
-    if (!fingers) return;
+    // A finger dragging a pane by its header is not a swipe.
+    if (!fingers || paneDragHeld()) return;
     if (!motion && e.type === "touchstart") {
       early = e;
       void loadMotion().then((module) => {

@@ -404,6 +404,23 @@
   cursor: grab;
 }
 
+/* A finger long-presses the header to drag: the page must not scroll, select
+   text, or open the callout under it. */
+.pane-layout.can-rearrange .terminal-pane-head {
+  -webkit-touch-callout: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The pane being dragged: its header is held, and it dims once it moves. */
+.pane-layout-cell.is-drag-source .terminal-pane-head {
+  background: var(--accent-soft);
+}
+.pane-layout-cell.is-drag-moving {
+  opacity: 0.6;
+}
+
 /* Where a dragged pane lands: the whole target (swap) or its half (move). */
 .pane-drop-preview {
   position: absolute;
