@@ -20,20 +20,38 @@ export type AgentSessionState = {
   approvals: readonly AgentApproval[];
   /** Sequence number of the last event reflected here. */
   seq: number;
+  /**
+   * Rises when the items became another conversation's (a `reset`). What a
+   * view keeps per item (its place, open rows, parsed text) ends with it.
+   */
+  epoch: number;
 };
 
+/** Items by ID and their order; an ID sent twice keeps its first position and its last content. */
+function indexItems(list: readonly AgentItem[] | undefined) {
+  const items: Record<string, AgentItem> = {};
+  for (const item of list ?? []) items[item.id] = item;
+  return { items, order: Object.keys(items) };
+}
+
+/**
+ * The session a snapshot describes. `previous` is the state it replaces, when
+ * the page subscribed again: a resume missed meanwhile shows as another
+ * conversation ID and starts a new epoch like the `reset` would have.
+ */
 export function sessionFromSnapshot(
   snapshot: AgentSessionSnapshot,
+  previous?: AgentSessionState | null,
 ): AgentSessionState {
-  const items: Record<string, AgentItem> = {};
-  for (const item of snapshot.items ?? []) items[item.id] = item;
+  const before = previous?.info.agent_session_id;
+  const resumed =
+    before !== undefined && before !== snapshot.info.agent_session_id;
   return {
     info: snapshot.info,
-    // An ID sent twice keeps its first position and its last content.
-    order: Object.keys(items),
-    items,
+    ...indexItems(snapshot.items),
     approvals: snapshot.approvals ?? [],
     seq: snapshot.seq,
+    epoch: (previous?.epoch ?? 0) + (resumed ? 1 : 0),
   };
 }
 
@@ -98,6 +116,14 @@ export function applySessionEvent(
         ...state,
         approvals: state.approvals.filter((item) => item.id !== event.id),
         seq,
+      };
+    case "reset":
+      return {
+        ...state,
+        ...indexItems(event.items),
+        approvals: [],
+        seq,
+        epoch: state.epoch + 1,
       };
     default:
       // An event kind from a newer host: nothing to draw, still in sequence.
