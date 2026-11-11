@@ -687,7 +687,7 @@ Streamed text is announced at once and then at most every 40 ms per session, and
 Denying a tool call marks its item `denied` and stops the turn, as the agents' own interfaces do.
 
 **Claude Code.** The host runs `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --replay-user-messages --verbose --permission-prompt-tool stdio`, then the caller's arguments, and speaks the CLI's control protocol on the same pipes: `initialize`, `can_use_tool` requests answered from approvals, `interrupt`, and `set_permission_mode`.
-It adds `--permission-mode default` and `--allow-dangerously-skip-permissions` unless the caller chose a permission mode or `--dangerously-skip-permissions`, so a session starts by asking and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
+It adds `--allow-dangerously-skip-permissions` unless the caller passed `--dangerously-skip-permissions`, so a session starts in the permission mode of the user's Claude settings or command line and can switch among the modes `default`, `acceptEdits`, `plan` and `bypassPermissions`.
 A prompt sent during a turn is written to the CLI at once, which steers or queues it; the CLI's `command_lifecycle` messages and prompt echoes tell when each prompt was taken.
 `Bash` becomes a `command` tool; `Edit`, `MultiEdit` and `Write` become `edit` tools whose `diffs` are built from the call's old and new text and replaced by the patch the CLI reports once the edit ran; `Task` and `Agent` become `task` tools.
 `TodoWrite` updates one `plan` item per turn instead of a tool item.

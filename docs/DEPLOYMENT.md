@@ -727,14 +727,14 @@ Anyone who can open the view drives the host owner's signed-in browser, so it is
 Start it from the project launcher's GUI view, or type it in a pane:
 
 ```bash
-thyra agent claude                       # asks before edits and commands
+thyra agent claude                       # the permission mode of your Claude settings
 thyra agent claude --model opus --permission-mode acceptEdits
 thyra agent codex -m gpt-5 -a on-request -s workspace-write
 ```
 
 - The agent's own CLI must be installed on the pane's `PATH` and logged in (`claude`, `codex`); sessions use that login and need no API key.
 - It must run inside a Herdr pane (`HERDR_PANE_ID` and `HERDR_SOCKET_PATH` set), as the pane's foreground program, on the host of the default connection; panes of SSH and other connections, and Windows, have no agent sessions.
-- Claude Code receives the arguments after the agent's name unchanged. A session starts in the `default` permission mode even when your Claude settings choose another; pass `--permission-mode <mode>` or `--dangerously-skip-permissions` to start differently.
+- Claude Code receives the arguments after the agent's name unchanged. A session starts in the permission mode of your Claude settings (`permissions.defaultMode`), as the terminal UI does; pass `--permission-mode <mode>` or `--dangerously-skip-permissions` to start differently, and switch modes in the session at any time.
 - Codex starts with the defaults of `~/.codex/config.toml`. `-m/--model`, `-s/--sandbox`, `-a/--ask-for-approval`, `-C/--cd`, `-c/--config`, `--enable`, `--disable`, `--strict-config` and `--yolo` are accepted; other `codex` options are refused.
 - The pane prints a plain log of the session. Ctrl+C, or closing the pane, ends it; the transcript lives in the host process and ends with it.
 - Sessions survive Thyra restarts and updates. A Herdr restart ends them: Herdr does not restore a `thyra agent` pane.

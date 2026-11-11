@@ -75,13 +75,13 @@ export function claudeArgv(userArgs: string[]): string[] {
     "--permission-prompt-tool",
     "stdio",
   ];
-  const bypass = has("--dangerously-skip-permissions");
-  // Start by asking, whatever the user's settings default to; an explicit
-  // choice on the command line wins.
-  if (!bypass && !has("--permission-mode"))
-    argv.push("--permission-mode", "default");
-  // Without this the CLI refuses a later switch to bypassPermissions.
-  if (!bypass && !has("--allow-dangerously-skip-permissions"))
+  // The session starts in the permission mode of the user's Claude settings,
+  // like the terminal UI, unless the command line chooses one. Without this
+  // flag the CLI refuses a later switch to bypassPermissions.
+  if (
+    !has("--dangerously-skip-permissions") &&
+    !has("--allow-dangerously-skip-permissions")
+  )
     argv.push("--allow-dangerously-skip-permissions");
   return [...argv, ...userArgs];
 }

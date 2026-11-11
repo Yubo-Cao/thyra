@@ -107,13 +107,12 @@ test("the command line asks for permissions unless the user chose otherwise", ()
     "--verbose",
     "--permission-prompt-tool",
     "stdio",
-    "--permission-mode",
-    "default",
     "--allow-dangerously-skip-permissions",
     "--model",
     "haiku",
   ]);
-  expect(claudeArgv(["--permission-mode=plan"])).not.toContain("default");
+  // The permission mode is the user's own choice: settings or command line.
+  expect(claudeArgv([])).not.toContain("--permission-mode");
   const bypass = claudeArgv(["--dangerously-skip-permissions"]);
   expect(bypass).not.toContain("--permission-mode");
   expect(bypass).not.toContain("--allow-dangerously-skip-permissions");
