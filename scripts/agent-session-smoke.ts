@@ -10,7 +10,7 @@
  * `launcher.launch` with the `gui` view, the session list and its change
  * events, subscribing, a turn with streamed events, a bridge restart under a
  * running session, the history of stored conversations and resuming one in
- * place, and closing the pane.
+ * place, a prompt with an uploaded image, and closing the pane.
  *
  * `--binary` runs a compiled executable instead of the source tree, which
  * also checks the command the launcher types. Needs `herdr` on PATH. Nothing
@@ -439,6 +439,64 @@ try {
     (await page.call("agent_session.history", { pane_id: pane })).sessions
       .length === 0,
   );
+
+  // A prompt with an image: uploaded as a page uploads one, then attached
+  // by the path the upload got. The upload lands in the real /tmp.
+  const uploaded = (await (
+    await fetch(`http://127.0.0.1:${port}/api/upload-image`, {
+      method: "POST",
+      headers: { Origin: `http://127.0.0.1:${port}`, "x-image-ext": "png" },
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    })
+  ).json()) as { path?: string; error?: string };
+  try {
+    check(
+      "an image uploads to the host",
+      typeof uploaded.path === "string",
+      uploaded.path ?? uploaded.error,
+    );
+    await page.call("agent_session.send", {
+      pane_id: pane,
+      text: "look at [Image #1]",
+      images: [{ path: uploaded.path }],
+    });
+    await waitFor(
+      "the turn with an image",
+      answered("You said: look at [Image #1] <image/png>"),
+    );
+    const pictured = await page.call("agent_session.subscribe", {
+      pane_id: pane,
+    });
+    check(
+      "the agent gets the image, and the prompt's item names it",
+      pictured.items.some(
+        (item: any) =>
+          item.type === "user" &&
+          item.text === "look at [Image #1]" &&
+          item.images?.[0]?.path === uploaded.path,
+      ),
+    );
+    const foreign = await page
+      .call("agent_session.send", {
+        pane_id: pane,
+        text: "look",
+        images: [{ path: "/etc/hostname" }],
+      })
+      .then(
+        () => "",
+        (error: Error) => error.message,
+      );
+    check(
+      "a file that was not uploaded cannot be attached",
+      foreign.includes("image 1 is not an uploaded image"),
+      foreign,
+    );
+  } finally {
+    if (uploaded.path) rmSync(uploaded.path, { force: true });
+  }
 
   await herdr("pane", "close", pane);
   await waitFor(
