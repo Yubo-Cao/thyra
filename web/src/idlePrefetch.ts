@@ -31,7 +31,8 @@ export function idlePrefetchAllowed(
  * prefetched when idle only on a link the browser reports as fast 4G,
  * never under Data Saver or on 2G, and otherwise on first use. Without the
  * Network Information API the speed is unknown, so it waits for first use.
- * Phones never get here: the mobile layout keeps its own textarea composer.
+ * Phones get here through the agent view's prompt box only: over a terminal
+ * the mobile layout keeps its own textarea composer.
  */
 export function richEditorLoadPolicy(
   connection: (NetworkInformationLike & { downlink?: number }) | undefined = (

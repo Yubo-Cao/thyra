@@ -29,6 +29,17 @@
   }
 }
 
+/* Everything under the pane header. The prompt box caps its height by this
+   one's (cqh), so a tall draft in a short pane still leaves the dock whole. */
+.agent-body {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: size;
+}
+
 .agent-transcript-frame {
   position: relative;
   flex: 1 1 0;
@@ -150,8 +161,39 @@
   background: var(--panel-2);
   color: var(--text-strong);
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* A prompt reads as it did in the box: Markdown in the prompt's own tone. */
+.agent-user .agent-md.file-preview-markdown {
+  color: inherit;
+  line-height: inherit;
+}
+
+/* An image sent with a prompt, where its placeholder stood. */
+.button.agent-user-image {
+  --button-height: auto;
+  max-width: 100%;
+  padding: 0;
+  vertical-align: bottom;
+  cursor: zoom-in;
+}
+
+.agent-user-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+}
+
+.agent-user-image-missing {
+  color: var(--muted);
+}
+
+.agent-user-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* Replies reuse the Markdown preview's type, at the transcript's density. */
@@ -682,15 +724,64 @@
   box-shadow: inset 0 -2px 0 var(--focus);
 }
 
-.agent-composer .agent-composer-input {
-  min-height: 42px;
-  max-height: 40vh;
+/* The prompt editor's surfaces (promptEditor/) in the transcript's type and
+   the app's colours: they read these variables. The height is the draft's,
+   up to the cap; past it the surface scrolls. */
+.agent-composer-editor {
+  --prompt-editor-fg: var(--text);
+  --prompt-editor-bg: var(--field-bg);
+  --prompt-editor-dim: var(--muted);
+  --prompt-editor-panel: var(--panel-2);
+  --prompt-editor-caret: var(--text-strong);
+  --prompt-editor-selection: var(--accent-active);
+  --prompt-editor-red: var(--red);
+  --prompt-editor-green: var(--syntax-string);
+  --prompt-editor-yellow: var(--syntax-number);
+  --prompt-editor-blue: var(--syntax-function);
+  --prompt-editor-magenta: var(--syntax-keyword);
+  --prompt-editor-cyan: var(--syntax-type);
+  --agent-composer-max: min(40vh, 40cqh);
+  box-sizing: content-box;
+  flex: 0 0 auto;
+  min-height: var(--prompt-editor-row);
+  max-height: var(--agent-composer-max);
   padding: 10px 12px 4px;
-  background: transparent;
+  color: var(--text);
+  line-height: var(--prompt-editor-row);
+}
+
+/* The rich surface grows with its text by itself, with no frame of lag. */
+.agent-composer-editor .prompt-editor-rich {
+  height: auto;
+}
+
+.agent-composer-editor .cm-editor {
+  height: auto;
+  max-height: var(--agent-composer-max);
+}
+
+.agent-composer-editor[data-disabled] {
+  opacity: 0.6;
+}
+
+/* The box marks focus; the field's own underline would sit inside it. */
+.agent-composer .prompt-editor-textarea:focus {
   box-shadow: none;
-  font-size: 14px;
-  line-height: 1.5;
-  resize: none;
+}
+
+/* Code keeps the transcript's look: monospace, in the text's colour. */
+.agent-composer-editor :is(.prompt-md-code, .prompt-md-code-line) {
+  font-family: var(--mono-font);
+  font-size: 0.92em;
+}
+
+.agent-composer-editor .prompt-md-code,
+.agent-composer-editor .prompt-md-code * {
+  color: var(--text-code);
+}
+
+.agent-composer > .composer-images {
+  padding-inline: 12px;
 }
 
 .agent-composer-foot {
@@ -744,10 +835,11 @@
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   }
 
-  .agent-composer .agent-composer-input {
-    max-height: 32dvh;
-    /* 16px keeps iOS Safari from zooming in on focus. */
-    font-size: 16px;
+  .agent-composer-editor {
+    --agent-composer-max: min(32dvh, 40cqh);
+  }
+
+  .agent-composer-editor :is(textarea, .cm-scroller) {
     overscroll-behavior: contain;
   }
 

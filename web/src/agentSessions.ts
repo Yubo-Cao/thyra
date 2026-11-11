@@ -13,6 +13,12 @@ export type AgentSessionTransport = {
   call(method: string, params?: Record<string, unknown>): Promise<any>;
   /** `agent_session.*` pushes, until the returned function is called. */
   onEvent(listener: (name: string, data: unknown) => void): () => void;
+  /**
+   * Fixture only: where a prompt image goes instead of the connection's
+   * upload endpoint, and where one loads from instead of the host.
+   */
+  uploadImage?(file: File): Promise<string>;
+  imageUrl?(path: string): string | null;
 };
 
 export type AgentSessionTransportFactory = (

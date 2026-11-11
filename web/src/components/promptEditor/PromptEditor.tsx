@@ -18,8 +18,6 @@ import {
 } from "react";
 import type { AgentKind } from "../../agentKind";
 import { t } from "../../i18n";
-import { richEditorLoadPolicy } from "../../idlePrefetch";
-import { lazyPanel } from "../../lazyWithReload";
 import {
   type PromptEditorPlacement,
   promptEditorFrame,
@@ -35,39 +33,15 @@ import {
   shortcutTitle,
 } from "../../shortcutPreferences";
 import { editorMayTakeFocus } from "../../localEditorPolicy";
-import { useStartupSettled } from "../../startupGate";
 import {
-  clipboardImageFiles,
-  insertIntoTerminalComposerDraft,
-  composerImageInDraft,
-  composerImageToken,
-  composerImageUrl,
-  readComposerImages,
-  resolveComposerImages,
   readTerminalComposerDraft,
-  readTerminalComposerSelection,
   submitTerminalComposerDraft,
-  uploadTerminalComposerImages,
-  writeTerminalComposerDraft,
-  writeTerminalComposerSelection,
 } from "../../terminalComposer";
-import { useTerminalComposerDraft } from "../../useTerminalComposerDraft";
-import { LazyBoundary } from "../LazyBoundary";
 import { IconButton } from "../ui/IconButton";
-import type { PromptImages } from "./livePreview";
-import { PromptTextarea } from "./PromptTextarea";
-import type {
-  PromptEditorFont,
-  PromptEditorSurface,
-  PromptEditorSurfaceProps,
-} from "./surface";
+import { PromptSurface, usePromptDraft } from "./promptDraft";
+import type { PromptEditorFont, PromptEditorSurfaceProps } from "./surface";
 import "./PromptEditor.css";
-import { ComposerImages, useComposerImages } from "../ComposerImages";
-
-const promptRichPanel = lazyPanel("prompt-editor-rich", () =>
-  import("./PromptCodeMirror").then((module) => module.PromptCodeMirror),
-);
-const PromptCodeMirror = promptRichPanel.Component;
+import { ComposerImages } from "../ComposerImages";
 
 // Frames can arrive at display rate; the agent's box moves far less often.
 const SCAN_INTERVAL_MS = 100;
@@ -168,41 +142,6 @@ function sameMetrics(a: TerminalMetrics | null, b: TerminalMetrics | null) {
   );
 }
 
-/**
- * Loads the live-preview editor: at idle after startup on a fast 4G link,
- * otherwise once the editor is first used (`used`), and never under Data
- * Saver or on 2G.
- */
-function useRichSurface(used: boolean) {
-  const settled = useStartupSettled();
-  const [ready, setReady] = useState(() => promptRichPanel.isLoaded());
-  useEffect(() => {
-    if (!settled || ready) return;
-    const policy = richEditorLoadPolicy();
-    if (policy === "never" || (policy === "on-demand" && !used)) return;
-    let cancelled = false;
-    const load = () =>
-      void promptRichPanel.preload().then(() => {
-        if (!cancelled && promptRichPanel.isLoaded()) setReady(true);
-      });
-    if (policy === "on-demand") {
-      load();
-      return () => {
-        cancelled = true;
-      };
-    }
-    const idle = window.requestIdleCallback
-      ? window.requestIdleCallback(load, { timeout: 3000 })
-      : window.setTimeout(load, 250);
-    return () => {
-      cancelled = true;
-      if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
-      else window.clearTimeout(idle);
-    };
-  }, [ready, settled, used]);
-  return ready;
-}
-
 /** "Ctrl+↵" or "⌘↵" for the composer send shortcut. */
 function sendKeys() {
   const keys = shortcutLabel("composer.send").split(" / ")[0];
@@ -241,18 +180,26 @@ export function PromptEditor({
   onFocusTerminal,
   onSpanChange,
 }: PromptEditorProps) {
-  const { text, submissionPending, uploadCount } =
-    useTerminalComposerDraft(draftKey);
-  const images = useComposerImages(draftKey);
+  const draft = usePromptDraft({
+    draftKey,
+    imageUrl,
+    onUploadImage,
+    onError,
+  });
+  const {
+    text,
+    submissionPending,
+    uploadCount,
+    surfaceRef,
+    composingRef,
+    strip,
+  } = draft;
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const surfaceRef = useRef<PromptEditorSurface | null>(null);
   const [placement, setPlacement] = useState<PromptEditorPlacement>({
     mode: "hidden",
   });
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
   const [contentHeight, setContentHeight] = useState(0);
-  const [composing, setComposing] = useState(false);
-  const composingRef = useRef(false);
   const boxSeen = useRef(false);
   // Terminal rows moved up for the editor (useTerminalLift).
   const lifted = useRef(0);
@@ -361,7 +308,7 @@ export function PromptEditor({
       )
     )
       surfaceRef.current?.focus();
-  }, [focusAllowed, hidden, onFocusTerminal, term]);
+  }, [focusAllowed, hidden, onFocusTerminal, surfaceRef, term]);
 
   // The active pane's editor takes over from the terminal once it first
   // shows; a touch device without a hardware keyboard waits for a tap.
@@ -379,7 +326,7 @@ export function PromptEditor({
       )
     )
       surfaceRef.current?.focus();
-  }, [active, focusAllowed, term, visible]);
+  }, [active, focusAllowed, surfaceRef, term, visible]);
 
   useLayoutEffect(() => {
     controlRef.current = {
@@ -405,27 +352,6 @@ export function PromptEditor({
     },
     [controlRef],
   );
-
-  // Outside changes to the draft (a send clearing it, a failed send or an
-  // upload restoring text) reach the surface; local typing is already there.
-  useEffect(() => {
-    surfaceRef.current?.setText(
-      text,
-      readTerminalComposerSelection(draftKey)?.end,
-    );
-  }, [draftKey, text]);
-
-  // Swap the textarea for the rich editor when it arrives, never
-  // mid-composition.
-  const [used, setUsed] = useState(false);
-  const richReady = useRichSurface(used);
-  const [rich, setRich] = useState(richReady);
-  const focusRich = useRef(false);
-  useEffect(() => {
-    if (!richReady || rich || composing) return;
-    focusRich.current = !!surfaceRef.current?.hasFocus();
-    setRich(true);
-  }, [composing, rich, richReady]);
 
   const send = async () => {
     if (composingRef.current) return;
@@ -459,37 +385,6 @@ export function PromptEditor({
     else onPage(action.direction);
     return true;
   };
-  const onPasteFiles = (data: DataTransfer | null) => {
-    const images = clipboardImageFiles(data);
-    if (images.length === 0) return false;
-    void uploadTerminalComposerImages(
-      draftKey,
-      images,
-      onUploadImage,
-      // A placeholder, as in Claude Code; the path replaces it on send.
-      (key, _path, image) => {
-        const selection =
-          key === draftKey ? surfaceRef.current?.selection() : null;
-        insertIntoTerminalComposerDraft(
-          key,
-          composerImageToken(image.ref),
-          selection?.start,
-          selection?.end,
-        );
-      },
-    ).catch((error) =>
-      onError(
-        error instanceof Error ? error.message : t("Image upload failed"),
-      ),
-    );
-    return true;
-  };
-
-  // The rich surface shows pasted images in the text; the strip keeps the
-  // ones still uploading (and all of them under the plain textarea).
-  const strip = images.filter((image) =>
-    rich ? image.path === null : composerImageInDraft(image, text),
-  );
   const frame =
     metrics &&
     promptEditorFrame(
@@ -500,46 +395,18 @@ export function PromptEditor({
       Math.max(1, Math.ceil((contentHeight - 1) / metrics.rowHeight)),
       strip.length ? Math.ceil(IMAGE_STRIP_HEIGHT / metrics.rowHeight) : 0,
     );
-  const promptImages: PromptImages = {
-    url: (source) => {
-      const pasted = readComposerImages(draftKey).find(
-        (image) => image.path === source,
-      );
-      return pasted ? composerImageUrl(pasted) : (imageUrl?.(source) ?? null);
-    },
-    pasted: (ref, doc) => {
-      const pasted = resolveComposerImages(draftKey, doc).get(ref);
-      if (pasted?.file) return composerImageUrl({ file: pasted.file });
-      return pasted?.path ? (imageUrl?.(pasted.path) ?? null) : null;
-    },
-  };
-
   const font: PromptEditorFont = {
     family: term.cssFontFamily,
     size: metrics?.fontSize ?? term.options.fontSize,
     lineHeight: metrics?.rowHeight ?? 17,
   };
   const surfaceProps: PromptEditorSurfaceProps = {
-    surfaceRef,
-    initialText: readTerminalComposerDraft(draftKey),
-    initialSelection: readTerminalComposerSelection(draftKey),
-    focus: focusRich.current,
+    ...draft.surface,
     placeholder: t("Write a prompt for the agent"),
     label: t("Prompt editor"),
     font,
-    onChange: (next, start, end) => {
-      writeTerminalComposerDraft(draftKey, next);
-      writeTerminalComposerSelection(draftKey, start, end);
-    },
     onKey,
-    onPasteFiles,
     onContentHeight: setContentHeight,
-    images: promptImages,
-    onUse: () => setUsed(true),
-    onCompositionChange: (active) => {
-      composingRef.current = active;
-      setComposing(active);
-    },
   };
 
   const style =
@@ -604,13 +471,7 @@ export function PromptEditor({
         {marker}
       </span>
       <div className="prompt-editor-body">
-        {rich ? (
-          <LazyBoundary>
-            <PromptCodeMirror {...surfaceProps} />
-          </LazyBoundary>
-        ) : (
-          <PromptTextarea {...surfaceProps} />
-        )}
+        <PromptSurface rich={draft.rich} {...surfaceProps} />
       </div>
       <ComposerImages images={strip} />
       <div className="prompt-editor-actions">

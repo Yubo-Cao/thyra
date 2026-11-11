@@ -4,10 +4,7 @@ import { keepFocus } from "./ui/keepFocus";
 import { lazyPanel } from "../lazyWithReload";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
-import {
-  resolveWorkspaceMarkdownPath,
-  workspaceFileUrl,
-} from "../workspaceFileUrl";
+import { promptDraftImageUrl } from "../workspaceFileUrl";
 import { shortcutMatches } from "../shortcutPreferences";
 import type { TerminalEngine, TerminalTheme } from "../terminalEngine";
 import { Keyboard } from "lucide-react";
@@ -632,15 +629,10 @@ export function TerminalView({
   const workspaceId = pane?.workspace_id;
   const paneCwd = pane?.cwd;
   const promptImageUrl = useCallback(
-    (source: string) => {
-      if (!workspaceId || !paneCwd) return null;
-      const path = resolveWorkspaceMarkdownPath(source, `${paneCwd}/prompt.md`);
-      return path
-        ? workspaceFileUrl(connectionClient, workspaceId, path, {
-            inline: true,
-          })
-        : null;
-    },
+    (source: string) =>
+      workspaceId && paneCwd
+        ? promptDraftImageUrl(connectionClient, workspaceId, paneCwd, source)
+        : null,
     [connectionClient, paneCwd, workspaceId],
   );
   const setPromptEditorOpen = useCallback(

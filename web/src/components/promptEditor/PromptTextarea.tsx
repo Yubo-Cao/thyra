@@ -15,6 +15,9 @@ export function PromptTextarea({
   label,
   activeDescendant,
   controls,
+  readOnly,
+  prose,
+  emptyTabMovesFocus,
   font,
   onChange,
   onKey,
@@ -45,6 +48,7 @@ export function PromptTextarea({
     const surface: PromptEditorSurface = {
       focus: () => textarea.focus({ preventScroll: true }),
       hasFocus: () => document.activeElement === textarea,
+      text: () => textarea.value,
       selection: () => ({
         start: textarea.selectionStart,
         end: textarea.selectionEnd,
@@ -93,10 +97,11 @@ export function PromptTextarea({
       ref={ref}
       className="prompt-editor-textarea"
       rows={1}
-      spellCheck={false}
+      spellCheck={!!prose}
       autoComplete="off"
-      autoCapitalize="off"
+      autoCapitalize={prose ? undefined : "off"}
       {...PASSWORD_MANAGER_IGNORE}
+      readOnly={readOnly}
       placeholder={placeholder}
       aria-label={label}
       aria-controls={controls}
@@ -109,8 +114,9 @@ export function PromptTextarea({
       onPointerDown={onUse}
       onKeyDown={(event) => {
         onUse?.();
-        if (onKey(event.nativeEvent, event.currentTarget.value === ""))
-          event.preventDefault();
+        const empty = event.currentTarget.value === "";
+        if (emptyTabMovesFocus && empty && event.key === "Tab") return;
+        if (onKey(event.nativeEvent, empty)) event.preventDefault();
       }}
       onCompositionStart={() => onCompositionChange(true)}
       onCompositionEnd={() => onCompositionChange(false)}

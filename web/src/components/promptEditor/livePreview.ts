@@ -25,6 +25,7 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { type MarkdownParser, parseCode } from "@lezer/markdown";
+import { openImageViewer } from "./imageViewer";
 
 /**
  * Typora-style live preview for the prompt editor: Markdown renders as it is
@@ -40,6 +41,12 @@ export type PromptImages = {
   url(source: string): string | null;
   /** The image a draft's `[Image #N]` names (the whole text decides). */
   pasted(ref: number, doc: string): string | null;
+  /**
+   * Pasted images also draw on the lines being edited, each one unit to the
+   * caret and to deletion: for a box where the image is the attachment, not
+   * a placeholder the agent's own box shows as text.
+   */
+  atoms?: boolean;
 };
 
 /** Without a resolver, only web and inline images load. */
@@ -245,7 +252,11 @@ class ImageWidget extends WidgetType {
     // A click opens it full size and leaves the caret where it was.
     image.addEventListener("mousedown", (event) => event.preventDefault());
     image.addEventListener("click", () =>
-      openImageViewer(this.src, this.alt, view),
+      openImageViewer(
+        this.src,
+        this.alt,
+        view.hasFocus ? () => view.focus() : undefined,
+      ),
     );
     // The line grows once the size is known.
     image.addEventListener("load", () => view.requestMeasure());
@@ -262,34 +273,6 @@ class ImageWidget extends WidgetType {
   ignoreEvent(event: Event) {
     return event.type === "mousedown" || event.type === "click";
   }
-}
-
-/** The image full size over the page; a click or Esc closes it. */
-function openImageViewer(src: string, alt: string, view: EditorView) {
-  const refocus = view.hasFocus;
-  const viewer = document.createElement("div");
-  viewer.className = "prompt-md-viewer";
-  viewer.setAttribute("role", "dialog");
-  viewer.setAttribute("aria-label", alt);
-  const image = document.createElement("img");
-  image.src = src;
-  image.alt = alt;
-  viewer.append(image);
-  const close = () => {
-    viewer.remove();
-    window.removeEventListener("keydown", onKey, true);
-    if (refocus) view.focus();
-  };
-  // Esc must not reach the agent too.
-  const onKey = (event: KeyboardEvent) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    close();
-  };
-  viewer.addEventListener("click", close);
-  window.addEventListener("keydown", onKey, true);
-  document.body.append(viewer);
 }
 
 const hide = Decoration.replace({});
@@ -445,10 +428,11 @@ function pastedImages(
     src: string | null,
     alt: string,
     literal: Set<string>,
+    atom = false,
   ) => {
     if (src && !inside(from, literal))
       ranges.push(
-        Decoration.replace({ widget: new ImageWidget(src, alt) }).range(
+        Decoration.replace({ widget: new ImageWidget(src, alt), atom }).range(
           from,
           to,
         ),
@@ -459,7 +443,8 @@ function pastedImages(
     for (let pos = from; pos <= to; ) {
       const line = state.doc.lineAt(pos);
       pos = line.to + 1;
-      if (edited.has(line.number)) continue;
+      const editing = edited.has(line.number);
+      if (editing && !images.atoms) continue;
       for (const match of line.text.matchAll(IMAGE_TOKEN)) {
         const start = line.from + match.index;
         add(
@@ -468,8 +453,11 @@ function pastedImages(
           images.pasted(Number(match[1]), doc),
           match[0],
           CODE_NODES,
+          images.atoms,
         );
       }
+      // A path still being typed stays text.
+      if (editing) continue;
       for (const match of line.text.matchAll(IMAGE_PATH)) {
         const start = line.from + match.index + match[1]!.length;
         const path = match[2]!;
@@ -503,7 +491,18 @@ const livePreviewPlugin = ViewPlugin.fromClass(
         );
     }
   },
-  { decorations: (plugin) => plugin.decorations },
+  {
+    decorations: (plugin) => plugin.decorations,
+    // Pasted images drawn as units (PromptImages.atoms); none otherwise.
+    provide: (plugin) =>
+      EditorView.atomicRanges.of((view) =>
+        view.state.facet(promptImages).atoms
+          ? (view.plugin(plugin)?.decorations.update({
+              filter: (_from, _to, value) => value.spec.atom === true,
+            }) ?? Decoration.none)
+          : Decoration.none,
+      ),
+  },
 );
 
 /** The http(s) address of the link or autolink at `pos`, if any. */

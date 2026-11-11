@@ -238,8 +238,25 @@ function terminalComposerDraftScopePrefix(
 function terminalComposerDraftKeyIsActive(key: string): boolean {
   return (
     !retiredDraftKeys.has(key) &&
-    (activeDraftScopePrefix === null || key.startsWith(activeDraftScopePrefix))
+    (activeDraftScopePrefix === null ||
+      key.startsWith(activeDraftScopePrefix) ||
+      key.startsWith(AGENT_DRAFT_PREFIX))
   );
+}
+
+const AGENT_DRAFT_PREFIX = "agent:";
+
+/**
+ * The key of the prompt drafted for a pane's agent session, apart from the
+ * draft of the pane's terminal. It is outside the routing scope: the prompt
+ * goes to the session by RPC, not into a terminal, so it stays through
+ * reconnects for as long as the page is open.
+ */
+export function agentComposerDraftKey(
+  connectionId: string,
+  paneId: string,
+): string {
+  return `${AGENT_DRAFT_PREFIX}${JSON.stringify([connectionId, paneId])}`;
 }
 
 export function terminalComposerDraftKey(
@@ -533,13 +550,16 @@ export function clipboardImageFiles(data: DataTransfer | null): File[] {
 /**
  * Uploads images one by one and inserts each path into the draft as it
  * lands. The count is tracked on the draft key, so a remounted editor still
- * shows the upload and send waits for it.
+ * shows the upload and send waits for it. `paneHistory` false numbers the
+ * images within the draft alone and keeps them out of the pane's history:
+ * for a draft whose images go with the prompt instead of into a pane.
  */
 export async function uploadTerminalComposerImages(
   key: string,
   files: readonly File[],
   upload: (file: File) => Promise<string>,
   insertPath: (key: string, path: string, image: ComposerImage) => void,
+  paneHistory = true,
 ): Promise<void> {
   const images = terminalComposerImageFiles(files);
   if (images.length === 0 || !beginTerminalComposerUpload(key)) return;
@@ -547,7 +567,7 @@ export async function uploadTerminalComposerImages(
   let ref = Math.max(
     0,
     ...readComposerImages(key).map((image) => image.ref),
-    ...pastedImageHistory(key).map((image) => image.ref),
+    ...(paneHistory ? pastedImageHistory(key) : []).map((image) => image.ref),
   );
   const pending = images.map(
     (file): ComposerImage => ({
@@ -574,7 +594,8 @@ export async function uploadTerminalComposerImages(
           item.id === image.id ? { ...item, path } : item,
         ),
       );
-      rememberPastedImage(key, { ref: image.ref, path, file: image.file });
+      if (paneHistory)
+        rememberPastedImage(key, { ref: image.ref, path, file: image.file });
       insertPath(key, path, { ...image, path });
     }
   } finally {

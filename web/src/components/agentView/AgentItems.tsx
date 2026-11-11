@@ -30,8 +30,14 @@ import type {
   AgentToolKind,
 } from "../../../../shared/agentSession";
 import { diffTotals, parseUnifiedDiff } from "../../agentSession/diff";
+import {
+  splitPromptImages,
+  unplacedPromptImages,
+} from "../../agentSession/promptImages";
 import type { AgentSessionStore } from "../../agentSession/session";
 import { t } from "../../i18n";
+import { composerImageToken } from "../../terminalComposer";
+import { openImageViewer } from "../promptEditor/imageViewer";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { Token } from "../ui/Token";
@@ -39,9 +45,11 @@ import { AgentMarkdown, CodeBlock } from "./AgentMarkdown";
 
 type Tool = Extract<AgentItem, { type: "tool" }>;
 
-/** What rows share: which are open (kept while they scroll out) and file opening. */
+/** What rows share: which are open (kept while they scroll out), where a prompt's images load from, and file opening. */
 export const AgentViewContext = createContext<{
   expanded: Map<string, boolean>;
+  /** The address of an image at `path` on the agent's host. */
+  imageUrl?: (path: string) => string | null;
   onOpenFile?: (path: string) => void;
 }>({ expanded: new Map() });
 
@@ -217,10 +225,92 @@ function lastLine(text: string) {
   return trimmed.slice(trimmed.lastIndexOf("\n") + 1);
 }
 
+/**
+ * An image sent with a prompt; a click shows it full size. Its placeholder
+ * stands in when it does not load: the file is gone from the host, or is
+ * not this viewer's to read.
+ */
+function PromptImage({ path, number }: { path: string; number: number }) {
+  const { imageUrl } = useContext(AgentViewContext);
+  const [failed, setFailed] = useState(false);
+  const src = imageUrl?.(path);
+  const name = t("Image {number}", { number });
+  if (!src || failed)
+    return (
+      <span
+        className="agent-user-image-missing"
+        title={t("This image is not available")}
+      >
+        {composerImageToken(number)}
+      </span>
+    );
+  return (
+    <Button
+      className="agent-user-image"
+      onClick={(event) => {
+        const button = event.currentTarget;
+        openImageViewer(src, name, () => button.focus());
+      }}
+    >
+      <img
+        src={src}
+        alt={name}
+        loading="lazy"
+        draggable={false}
+        onError={() => setFailed(true)}
+      />
+    </Button>
+  );
+}
+
+/** A prompt as Markdown, each image where its placeholder stands. */
+function UserMessage({ item }: { item: Extract<AgentItem, { type: "user" }> }) {
+  const { text, images } = item;
+  const run = useMemo(
+    () =>
+      images?.length
+        ? (plain: string) =>
+            splitPromptImages(plain, images.length).map((part, index) =>
+              typeof part === "string" ? (
+                part
+              ) : (
+                <PromptImage
+                  key={index}
+                  path={images[part].path}
+                  number={part + 1}
+                />
+              ),
+            )
+        : undefined,
+    [images],
+  );
+  // Images no placeholder shows follow the text.
+  const rest = useMemo(
+    () => (images?.length ? unplacedPromptImages(text, images.length) : []),
+    [images, text],
+  );
+  return (
+    <div className="agent-user">
+      <AgentMarkdown text={text} streaming={false} run={run} />
+      {rest.length ? (
+        <div className="agent-user-images">
+          {rest.map((index) => (
+            <PromptImage
+              key={index}
+              path={images![index].path}
+              number={index + 1}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Item({ item }: { item: AgentItem }) {
   switch (item.type) {
     case "user":
-      return <div className="agent-user">{item.text}</div>;
+      return <UserMessage item={item} />;
     case "assistant":
       return <AgentMarkdown text={item.text} streaming={item.streaming} />;
     case "thinking":

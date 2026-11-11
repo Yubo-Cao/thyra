@@ -100,6 +100,9 @@ export function PromptCodeMirror({
   focus,
   placeholder,
   label,
+  readOnly = false,
+  prose = false,
+  emptyTabMovesFocus = false,
   font,
   onChange,
   onKey,
@@ -111,6 +114,8 @@ export function PromptCodeMirror({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const fontCompartment = useRef(new Compartment());
+  const placeholderCompartment = useRef(new Compartment());
+  const readOnlyCompartment = useRef(new Compartment());
   const latest = useRef({
     onChange,
     onKey,
@@ -141,6 +146,10 @@ export function PromptCodeMirror({
       if (height === reported) return;
       reported = height;
       latest.current.onContentHeight(height);
+    };
+    // CodeMirror's tab-focus mode: Tab is the browser's, not a key binding.
+    const tabFocus = (view: EditorView) => {
+      if (emptyTabMovesFocus) view.setTabFocusMode(view.state.doc.length === 0);
     };
     const view = new EditorView({
       parent: container,
@@ -208,13 +217,14 @@ export function PromptCodeMirror({
             "replace all": t("Replace all"),
             close: t("Close"),
           }),
-          placeholderText(placeholder),
+          placeholderCompartment.current.of(placeholderText(placeholder)),
+          readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
           EditorView.contentAttributes.of({
             "aria-label": label,
             "aria-multiline": "true",
-            autocapitalize: "off",
-            autocorrect: "off",
-            spellcheck: "false",
+            autocapitalize: prose ? "sentences" : "off",
+            autocorrect: prose ? "on" : "off",
+            spellcheck: prose ? "true" : "false",
             ...PASSWORD_MANAGER_IGNORE,
           }),
           livePreview({
@@ -222,10 +232,12 @@ export function PromptCodeMirror({
               latest.current.images?.url(source) ?? webImageUrl(source),
             pasted: (ref, doc) =>
               latest.current.images?.pasted(ref, doc) ?? null,
+            atoms: images?.atoms,
           }),
           surfaceTheme,
           fontCompartment.current.of(fontTheme(font)),
           EditorView.updateListener.of((update) => {
+            if (update.docChanged) tabFocus(update.view);
             if (update.docChanged || update.selectionSet) {
               const main = update.state.selection.main;
               latest.current.onChange(
@@ -241,9 +253,11 @@ export function PromptCodeMirror({
       }),
     });
     viewRef.current = view;
+    tabFocus(view);
     const surface: PromptEditorSurface = {
       focus: () => view.focus(),
       hasFocus: () => view.hasFocus,
+      text: () => view.state.doc.toString(),
       selection: () => {
         const main = view.state.selection.main;
         return { start: main.from, end: main.to };
@@ -290,6 +304,18 @@ export function PromptCodeMirror({
       ),
     });
   }, [family, size, lineHeight]);
+  useLayoutEffect(() => {
+    viewRef.current?.dispatch({
+      effects: [
+        placeholderCompartment.current.reconfigure(
+          placeholderText(placeholder),
+        ),
+        readOnlyCompartment.current.reconfigure(
+          EditorState.readOnly.of(readOnly),
+        ),
+      ],
+    });
+  }, [placeholder, readOnly]);
 
   return <div ref={containerRef} className="prompt-editor-rich" />;
 }
