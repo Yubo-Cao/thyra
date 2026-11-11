@@ -269,10 +269,26 @@ test("what an action answers comes back, and a host from before it is not asked"
     await expect(bridge.act("w1:p2", action)).rejects.toThrow(
       "started by an older Thyra",
     );
-  // Its other actions still reach it.
+  // Nor a prompt with images, which it would send without them.
+  await expect(
+    bridge.act("w1:p2", {
+      action: "send",
+      text: "look",
+      images: [{ path: "/tmp/a.png" }],
+    }),
+  ).rejects.toThrow(
+    "this agent session was started by an older Thyra and cannot take images; start a new one",
+  );
+  // Its other actions still reach it, a prompt without images among them.
   void bridge.act("w1:p2", { action: "interrupt" }).catch(() => undefined);
-  await until(() => received.length > 0, "the old host's action");
-  expect(received.join("")).not.toMatch(/history|resume/);
+  void bridge
+    .act("w1:p2", { action: "send", text: "plain" })
+    .catch(() => undefined);
+  await until(
+    () => received.join("").includes("plain"),
+    "the old host's actions",
+  );
+  expect(received.join("")).not.toMatch(/history|resume|images/);
 });
 
 test("a session ends when its host goes away", async () => {

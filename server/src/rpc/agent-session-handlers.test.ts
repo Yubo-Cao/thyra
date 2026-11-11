@@ -485,6 +485,94 @@ test("history is for those who may act on the session; resuming is an action on 
   ).toEqual({ error: "no agent session in this pane" });
 });
 
+test("a prompt may attach uploaded images, and only those", async () => {
+  const h = harness();
+  const uploaded = (n: number) =>
+    `/tmp/herdr-img-179442179712${n}-${String(n).repeat(32)}.png`;
+  const send = (params: Record<string, unknown>) =>
+    h.call("editor", "agent_session.send", { pane_id: "w1:p1", ...params });
+
+  expect(
+    await send({
+      text: "compare [Image #1] with [Image #2]",
+      images: [{ path: uploaded(1), name: "a.png" }, { path: uploaded(2) }],
+    }),
+  ).toEqual({ ok: true });
+  // Paths only reach the host, in the order they were given.
+  expect(h.actions.at(-1)).toEqual([
+    "w1:p1",
+    {
+      action: "send",
+      text: "compare [Image #1] with [Image #2]",
+      images: [{ path: uploaded(1) }, { path: uploaded(2) }],
+    },
+  ]);
+  // With an image the text may be empty, blank or left out.
+  for (const text of ["", "  \n", undefined]) {
+    expect(await send({ text, images: [{ path: uploaded(3) }] })).toEqual({
+      ok: true,
+    });
+    expect(h.actions.at(-1)![1]).toEqual({
+      action: "send",
+      text: text ?? "",
+      images: [{ path: uploaded(3) }],
+    });
+  }
+  // No images is a plain prompt.
+  expect(await send({ text: "plain", images: [] })).toEqual({ ok: true });
+  expect(h.actions.at(-1)![1]).toEqual({ action: "send", text: "plain" });
+
+  const before = h.actions.length;
+  expect(await send({ text: "", images: [] })).toEqual({
+    error: "text required",
+  });
+  expect(await send({ text: 7, images: [{ path: uploaded(1) }] })).toEqual({
+    error: "text required",
+  });
+  expect(await send({ text: "x", images: uploaded(1) })).toEqual({
+    error: "images must be a list",
+  });
+  expect(
+    await send({
+      text: "x",
+      images: Array.from({ length: 11 }, () => ({ path: uploaded(1) })),
+    }),
+  ).toEqual({ error: "a prompt takes at most 10 images" });
+  // A page cannot have the host read any other file: only what the upload
+  // endpoint made, named exactly as it names things.
+  for (const path of [
+    "/etc/passwd",
+    "/home/user/.ssh/id_ed25519",
+    `/tmp/../home/user/${uploaded(1).slice(5)}`,
+    `${uploaded(1)}/../../etc/passwd`,
+    "/tmp/screenshot.png",
+    uploaded(1).slice(5),
+    "",
+    7,
+    undefined,
+  ])
+    expect(
+      await send({ text: "x", images: [{ path: uploaded(1) }, { path }] }),
+    ).toEqual({ error: "image 2 is not an uploaded image" });
+  for (const entry of [null, "junk", uploaded(1), [uploaded(1)]])
+    expect(await send({ text: "x", images: [entry] })).toEqual({
+      error: "image 1 is not an uploaded image",
+    });
+  expect(h.actions).toHaveLength(before);
+
+  // Sending images is still sending: readers of the pane cannot.
+  expect(
+    (
+      await h.call("viewer", "agent_session.send", {
+        pane_id: "w1:p1",
+        text: "x",
+        images: [{ path: uploaded(1) }],
+      })
+    ).error,
+  ).toBeString();
+  expect(h.actions).toHaveLength(before);
+});
+
 test("malformed actions are refused before they reach a host", async () => {
   const h = harness();
   const send = (params: Record<string, unknown>) =>
