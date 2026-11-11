@@ -895,6 +895,7 @@ The [project launcher](../FEATURES.md#project-launcher) stores its state in the 
 
 `commands` overrides the defaults `claude` and `codex`; each command is one line of at most 256 characters, typed into the new pane's shell on the connection's host, so it can be an alias or a script on that host's `PATH`.
 A launch in the GUI view runs `thyra agent <agent>` by the bridge's absolute path instead, and keeps the command's arguments only when the command starts with the agent's own name (`claude --model opus` gives `thyra agent claude --model opus`; an alias or wrapper contributes none); see [agent sessions](#agent-sessions).
+When the command gives no arguments, the launch uses the bridge's `THYRA_AGENT_CLAUDE_ARGS` or `THYRA_AGENT_CODEX_ARGS` instead: for example `THYRA_AGENT_CODEX_ARGS=--yolo` and `THYRA_AGENT_CLAUDE_ARGS=--dangerously-skip-permissions` start every launched session without approvals.
 Edit it from the launcher's settings button or **Configuration > Connection** rather than by hand while Thyra runs.
 Pinned paths must be existing directories when added; `history` keeps the 60 most recent launch folders.
 Recent folders also use `zoxide query --list --score` when `zoxide` is on the bridge user's `PATH` (local) or the SSH login shell's `PATH` (remote).

@@ -705,7 +705,7 @@ The agent process runs without `HERDR_ENV`, which keeps Herdr's own hook integra
 Herdr therefore holds no native agent session for such a pane: [agent activity](#agent-activity) has no session file for it, and a Herdr restart does not resume it.
 
 **Launcher.** `launcher.launch` takes `view: "gui" | "terminal"` (default `terminal`).
-`gui` types `<this Thyra executable> agent <agent>` into the new pane, followed by the arguments of the configured command when that command starts with the agent's own name, and is refused on connections without sessions.
+`gui` types `<this Thyra executable> agent <agent>` into the new pane, followed by the arguments of the configured command when that command starts with the agent's own name, else by the bridge's `THYRA_AGENT_CLAUDE_ARGS` or `THYRA_AGENT_CODEX_ARGS`, and is refused on connections without sessions.
 The executable is the running binary's absolute path, or Bun and the entry script when the bridge runs from source.
 
 ## Voice input

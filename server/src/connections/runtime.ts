@@ -49,7 +49,10 @@ import {
   createLocalLauncherHost,
   createSshLauncherHost,
 } from "../launcher/host";
-import { createLauncherService } from "../launcher/service";
+import {
+  agentSessionDefaultArgs,
+  createLauncherService,
+} from "../launcher/service";
 import {
   createRecoveryReporter,
   type Logger,
@@ -314,6 +317,7 @@ export function createLegacyConnectionRuntime(args: {
     readSettings: readGuiSettings,
     updateSettings: updateGuiSettings,
     agentHostCommand: args.agentHostCommand,
+    agentSessionArgs: agentSessionDefaultArgs,
   });
   const sshTunnel = createSshTunnelManager({
     connectionId: identity.id,

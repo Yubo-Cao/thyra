@@ -43,18 +43,35 @@ export type LauncherView = "gui" | "terminal";
  * The shell text that starts an agent session: the host command, then the
  * arguments of the configured terminal command when that command is the
  * agent's own (`claude --model x` gives `thyra agent claude --model x`).
- * Any other configured command (a wrapper, an alias) contributes nothing.
+ * Any other configured command (a wrapper, an alias) contributes nothing;
+ * a command that gives no arguments leaves the deployment's `defaultArgs`.
  */
 export function agentSessionCommand(
   hostCommand: string,
   agent: LauncherAgentId,
   configured: string,
+  defaultArgs = "",
 ): string {
   const own = new RegExp(`^${agent}(?:\\s+(.*))?$`, "s").exec(
     configured.trim(),
   );
-  const extra = own?.[1]?.trim();
+  const extra = own?.[1]?.trim() || defaultArgs.trim();
   return `${hostCommand} agent ${agent}${extra ? ` ${extra}` : ""}`;
+}
+
+/**
+ * `THYRA_AGENT_CLAUDE_ARGS` and `THYRA_AGENT_CODEX_ARGS`: the arguments a
+ * deployment gives agent sessions started from the launcher, as shell text.
+ * A value with control characters, or an overlong one, counts as unset.
+ */
+export function agentSessionDefaultArgs(
+  agent: LauncherAgentId,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const value = env[`THYRA_AGENT_${agent.toUpperCase()}_ARGS`]?.trim() ?? "";
+  return value.length > 1000 || /[\u0000-\u001f\u007f]/.test(value)
+    ? ""
+    : value;
 }
 const MAX_PROBE_PATHS = 200;
 
@@ -76,6 +93,8 @@ export function createLauncherService(args: {
    * where panes cannot host agent sessions (see `agent_session.*`).
    */
   agentHostCommand?: () => string | null;
+  /** Arguments for a `gui` launch whose configured command gives none. */
+  agentSessionArgs?: (agent: LauncherAgentId) => string;
   now?: () => number;
 }) {
   const now = args.now ?? Date.now;
@@ -359,7 +378,12 @@ export function createLauncherService(args: {
       agent,
     );
     const command = hostCommand
-      ? agentSessionCommand(hostCommand, agent, configured)
+      ? agentSessionCommand(
+          hostCommand,
+          agent,
+          configured,
+          args.agentSessionArgs?.(agent),
+        )
       : configured;
     const { workspaces, panes } = await topology();
     const workspaceId = workspaceForFolder(path, workspaces, panes);

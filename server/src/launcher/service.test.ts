@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { GuiSettings } from "../config/gui-settings";
 import type { LauncherHost } from "./host";
-import { agentSessionCommand, createLauncherService } from "./service";
+import {
+  agentSessionCommand,
+  agentSessionDefaultArgs,
+  createLauncherService,
+} from "./service";
 
 const NOW = 1_800_000_000_000;
 const HOME = "/home/me";
@@ -335,6 +339,34 @@ describe("launcher.launch view", () => {
       expect(agentSessionCommand(host, "claude", configured)).toBe(
         "bun /src/index.ts agent claude",
       );
+  });
+
+  test("the deployment's arguments apply when the command gives none", () => {
+    const host = "/opt/thyra/bin/thyra";
+    // An alias or a bare command leaves the deployment's arguments.
+    for (const configured of ["x", "codex", "wrapper --flag"])
+      expect(agentSessionCommand(host, "codex", configured, " --yolo ")).toBe(
+        "/opt/thyra/bin/thyra agent codex --yolo",
+      );
+    // The command's own arguments win.
+    expect(
+      agentSessionCommand(host, "codex", "codex -a on-request", "--yolo"),
+    ).toBe("/opt/thyra/bin/thyra agent codex -a on-request");
+    expect(
+      agentSessionDefaultArgs("codex", { THYRA_AGENT_CODEX_ARGS: " --yolo " }),
+    ).toBe("--yolo");
+    expect(
+      agentSessionDefaultArgs("claude", {
+        THYRA_AGENT_CLAUDE_ARGS: "--permission-mode plan",
+        THYRA_AGENT_CODEX_ARGS: "--yolo",
+      }),
+    ).toBe("--permission-mode plan");
+    expect(agentSessionDefaultArgs("claude", {})).toBe("");
+    expect(
+      agentSessionDefaultArgs("claude", {
+        THYRA_AGENT_CLAUDE_ARGS: "--model x\nrm -rf /",
+      }),
+    ).toBe("");
   });
 
   test("the gui view is refused where sessions are not served, and bad views always", async () => {
