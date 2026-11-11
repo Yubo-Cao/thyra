@@ -4,6 +4,8 @@ import type {
 } from "../../../shared/agentSession";
 
 const MEMORY_LIMIT = 8192;
+/** Everything below space except tab and newline, and DEL. */
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b-\u001f\u007f\u009b]/g;
 
 /**
  * The pane's own view of a session: a running plain-text log of prompts,
@@ -23,7 +25,10 @@ export function createTerminalLog(write: (text: string) => void) {
   const remember = (ids: Set<string> | Map<string, string>) => {
     if (ids.size > MEMORY_LIMIT) ids.delete(ids.keys().next().value as string);
   };
-  const out = (value: string) => {
+  const out = (text: string) => {
+    // Prompts, answers and tool titles are data: they never drive the
+    // terminal (escape sequences, carriage returns, bells).
+    const value = text.replace(CONTROL_CHARACTERS, "");
     if (!value) return;
     write(value);
     atLineStart = value.endsWith("\n");

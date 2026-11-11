@@ -147,7 +147,10 @@ export function createAgentSessionService(deps: {
   }
 
   return {
-    start: () => relay.start(),
+    /** Hosts exist only where `thyra agent` runs: not on Windows. */
+    start() {
+      if (process.platform !== "win32") relay.start();
+    },
     /** Look for hosts now (the connection just became available). */
     rescan: () => relay.rescan(),
     stop() {
