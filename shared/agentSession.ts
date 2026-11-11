@@ -84,6 +84,12 @@ export type AgentPlanEntry = {
   status: "pending" | "in_progress" | "done";
 };
 
+/**
+ * An image attached to a prompt: a file on the agent's host, at the path the
+ * connection's `/upload-image` endpoint returned for it.
+ */
+export type AgentPromptImage = { path: string };
+
 type ItemBase = {
   /** Stable within the session; later `item` events with it replace the item. */
   id: string;
@@ -92,7 +98,12 @@ type ItemBase = {
 };
 
 export type AgentItem =
-  | (ItemBase & { type: "user"; text: string })
+  | (ItemBase & {
+      type: "user";
+      text: string;
+      /** Attached images; `[Image #N]` in `text` names the Nth, from 1. */
+      images?: AgentPromptImage[];
+    })
   | (ItemBase & { type: "assistant"; text: string; streaming: boolean })
   | (ItemBase & { type: "thinking"; text: string; streaming: boolean })
   | (ItemBase & {
@@ -175,6 +186,13 @@ export type AgentSessionEvent = { pane_id: string; seq: number } & (
 export const AGENT_SESSION_ITEM_LIMIT = 2000;
 export const AGENT_TOOL_OUTPUT_LIMIT = 32 * 1024;
 export const AGENT_PROMPT_LIMIT = 256 * 1024;
+/** The most images one prompt can attach. */
+export const AGENT_PROMPT_IMAGE_LIMIT = 10;
+/**
+ * The largest image file a prompt can attach. Pages shrink a larger image
+ * before uploading it; PNG, JPEG, GIF and WebP are the accepted formats.
+ */
+export const AGENT_PROMPT_IMAGE_MAX_BYTES = 3.5 * 1024 * 1024;
 /** The most stored conversations `agent_session.history` returns. */
 export const AGENT_SESSION_HISTORY_LIMIT = 30;
 
@@ -185,8 +203,10 @@ export const AGENT_SESSION_HISTORY_LIMIT = 30;
  * `agent_session.subscribe { pane_id }` -> `AgentSessionSnapshot`; the page
  *   then receives `agent_session.event` (`AgentSessionEvent`) until
  *   `agent_session.unsubscribe { pane_id }`, the session ends, or it disconnects.
- * `agent_session.send { pane_id, text }` starts a turn, or steers/queues the
- *   prompt when one is running.
+ * `agent_session.send { pane_id, text, images? }` starts a turn, or
+ *   steers/queues the prompt when one is running. `images`
+ *   (`AgentPromptImage[]`) go to the agent as image input, not as paths in
+ *   the text; with images the text may be empty.
  * `agent_session.interrupt { pane_id }` stops the running turn.
  * `agent_session.approve { pane_id, approval_id, option_id }`.
  * `agent_session.set_mode { pane_id, mode }`.
