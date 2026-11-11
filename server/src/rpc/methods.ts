@@ -34,6 +34,8 @@ export const AGENT_SESSION_ACTION_METHODS = new Set([
   "agent_session.unqueue",
   "agent_session.compact",
   "agent_session.resume",
+  "agent_session.rewind",
+  "agent_session.fork",
 ]);
 /**
  * Methods a page may send without an `id`: handled like the request, but

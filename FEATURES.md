@@ -172,6 +172,13 @@ The view appears only where the bridge runs agent sessions, and its code loads w
   If the agent refuses, the reason appears under the conversation; sending a prompt instead starts a new conversation.
   A session started with the agent's own resume arguments (`thyra agent claude --continue`, `thyra agent claude --resume <id>`, `thyra agent codex resume --last`) comes up with its transcript the same way.
   A session whose `thyra agent` process was started by a build without this has no list.
+- **Going back.** Hovering a prompt (or focusing into it) shows three buttons over its corner; on a touch screen a long press opens them as a menu.
+  **Rewind** takes the conversation back to just before the prompt: after a confirmation, the agent forgets the prompt and everything after it, and the transcript ends there.
+  **Edit** does the same and puts the prompt, with its images, in the box to be changed and sent again.
+  **Branch** leaves this session as it is and opens a new pane beside it whose session continues a copy of the conversation from just before the prompt, with the prompt waiting in its box; **Branch from here**, under the newest reply, copies the whole conversation.
+  Files the agent changed stay as they are.
+  The buttons wait while a turn runs, and show only on prompts the agent can go back to: a prompt sent into a running turn is part of that turn.
+  Restored conversations offer them too; a session whose `thyra agent` process was started by a build without them has none.
 - **Approvals.** A request is pinned above the prompt box until it is answered, with the command or the diff in question and a button for each answer the agent offers (allow, allow always, deny); Shift+Tab from an empty prompt box reaches them.
 - **Prompt box.** The box edits like the [prompt editor](#prompt-editor), in the transcript's type: a plain field at once, then live-preview Markdown (headings, bold, `code`, lists, links, highlighted fenced code, multiple cursors, find), loaded as described there, on phones too. What is sent is the exact text typed.
   Enter (or `Cmd+Enter` / `Ctrl+Enter`) sends; Shift+Enter and Alt+Enter break the line.
@@ -187,7 +194,7 @@ The view appears only where the bridge runs agent sessions, and its code loads w
   Under the plain field the placeholders show as text and the pictures stay in the strip.
 - **Session line.** Under the box: the mode, the model and the reasoning effort (menus when the agent offers choices, usable before the first prompt; a change holds from the next turn), how much of the context window is in use, and a button that compacts the conversation, as typing `/compact` does.
   The pane header shows the session's state: starting, working, needs approval, or ended.
-- **Viewers** follow the transcript and see open requests, without the prompt box, the answer buttons, or the list of earlier conversations.
+- **Viewers** follow the transcript and see open requests, without the prompt box, the answer buttons, the prompt buttons, or the list of earlier conversations.
   A session whose agent has exited stays readable, with its error shown and the box disabled.
 - **Phones.** The prompt box sits above the keyboard, answers are full-width buttons, and pane swipes and the floating controls work as over a terminal; the terminal composer and shortcut grid stay with the terminal view.
 

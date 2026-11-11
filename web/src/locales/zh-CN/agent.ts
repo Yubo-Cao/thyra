@@ -58,6 +58,24 @@ export default {
   "Download Markdown": "下载 Markdown",
   "Image {number}": "图片 {number}",
   "This image is not available": "此图片不可用",
+  // Going back to a prompt, and branching
+  "Prompt actions": "提示操作",
+  "Edit this prompt": "编辑此提示",
+  "Rewind to before this prompt": "回退到此提示之前",
+  "Branch from before this prompt": "从此提示之前分支",
+  "Branch from here": "从这里分支",
+  "Wait for the agent to finish": "请等 Agent 完成",
+  "Edit the prompt": "编辑提示",
+  "Rewind the conversation": "回退对话",
+  "Go back to before this prompt to change it? It and everything after it leave the conversation. Files the agent changed stay as they are.":
+    "回到此提示之前并修改它？此提示及其后的全部内容都会从对话中移除。Agent 改过的文件保持不变。",
+  "Go back to before this prompt? It and everything after it leave the conversation. Files the agent changed stay as they are.":
+    "回到此提示之前？此提示及其后的全部内容都会从对话中移除。Agent 改过的文件保持不变。",
+  Rewind: "回退",
+  "Could not rewind the conversation": "无法回退对话",
+  "Could not branch the conversation": "无法创建对话分支",
+  "The branch opened, but the agent did not start":
+    "分支窗格已打开，但 Agent 未能启动",
   // Approvals
   "Approval requests": "批准请求",
   "Waiting for someone who can answer.": "正在等待有权限的人答复。",

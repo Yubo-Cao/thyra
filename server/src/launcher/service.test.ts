@@ -5,6 +5,7 @@ import {
   agentSessionCommand,
   agentSessionDefaultArgs,
   createLauncherService,
+  shellWord,
 } from "./service";
 
 const NOW = 1_800_000_000_000;
@@ -93,6 +94,11 @@ function harness(
           workspace: { workspace_id: "w2" },
           tab: { tab_id: "w2:t1", workspace_id: "w2" },
           root_pane: { pane_id: "p10", tab_id: "w2:t1", workspace_id: "w2" },
+        };
+      if (method === "pane.split")
+        return {
+          type: "pane_info",
+          pane: { pane_id: "p11", tab_id: "w1:t1", workspace_id: "w1" },
         };
       if (method === "pane.send_input" && options.failSend)
         throw new Error("pane gone");
@@ -459,4 +465,57 @@ test("launcher.browse lists subfolders from home by default", async () => {
   await expect(
     service.call("launcher.browse", { path: "/missing" }),
   ).rejects.toThrow("Cannot open folder /missing");
+});
+
+describe("an agent session beside a pane", () => {
+  test("splits the pane and types the host with each argument quoted", async () => {
+    const { service, calls } = harness({ agentHostCommand: "/opt/thyra" });
+    const result = await service.launchBeside({
+      agent: "claude",
+      paneId: "p1",
+      cwd: `${HOME}/repo`,
+      args: ["--model", "opus[1m]", "--resume", "abc-1", "it's here"],
+    });
+    expect(calls.find((call) => call.method === "pane.split")?.params).toEqual({
+      target_pane_id: "p1",
+      direction: "right",
+      cwd: `${HOME}/repo`,
+      focus: false,
+    });
+    const command =
+      "/opt/thyra agent claude --model 'opus[1m]' --resume abc-1 'it'\\''s here'";
+    expect(
+      calls.find((call) => call.method === "pane.send_input")?.params,
+    ).toEqual({ pane_id: "p11", text: command, keys: ["enter"] });
+    expect(result).toMatchObject({ pane_id: "p11", agent: "claude", command });
+    // Not where sessions are not served.
+    await expect(
+      harness({ agentHostCommand: null }).service.launchBeside({
+        agent: "codex",
+        paneId: "p1",
+        cwd: HOME,
+        args: [],
+      }),
+    ).rejects.toThrow("only available on the default local connection");
+    // A command that does not reach the pane is reported, not thrown.
+    const failing = harness({ agentHostCommand: "/opt/thyra", failSend: true });
+    expect(
+      await failing.service.launchBeside({
+        agent: "codex",
+        paneId: "p1",
+        cwd: HOME,
+        args: ["fork", "t-1"],
+      }),
+    ).toMatchObject({ pane_id: "p11", start_error: "pane gone" });
+  });
+
+  test("plain words stay as they are; anything else is quoted", () => {
+    expect(shellWord("--resume-session-at=abc-1")).toBe(
+      "--resume-session-at=abc-1",
+    );
+    expect(shellWord("")).toBe("''");
+    expect(shellWord("$(rm -rf ~)")).toBe("'$(rm -rf ~)'");
+    expect(shellWord("a'b")).toBe("'a'\\''b'");
+    expect(shellWord("~/x")).toBe("'~/x'");
+  });
 });

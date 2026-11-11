@@ -46,16 +46,19 @@ export type AgentTranscriptHandle = {
  * The transcript, oldest first. It stays at the newest output while that
  * streams in unless the reader scrolled up, and mounts a window of the items
  * (transcriptWindow.ts) so a long session costs what its visible part does.
- * `children` follow the hint of a session with nothing in it yet.
+ * `children` follow the hint of a session with nothing in it yet, and
+ * `footer` follows the newest item while the agent waits for a prompt.
  */
 export function AgentTranscript({
   store,
   ref,
   children,
+  footer,
 }: {
   store: AgentSessionStore;
   ref: Ref<AgentTranscriptHandle>;
   children?: ReactNode;
+  footer?: ReactNode;
 }) {
   const order = useStore(store, (view) => view.session?.order ?? NO_ITEMS);
   const working = useStore(
@@ -240,6 +243,7 @@ export function AgentTranscript({
               {starting ? t("Starting the agent") : t("Working")}
             </div>
           ) : null}
+          {footer && !blank && !working && end === order.length ? footer : null}
         </div>
       </div>
       {away ? (

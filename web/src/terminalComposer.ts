@@ -429,6 +429,31 @@ export function activateTerminalComposerDraftScope(
   }
 }
 
+/**
+ * Puts a sent prompt back in a draft to be edited, in place of what it held:
+ * `text` names its Nth image `[Image #N]`, and `images` are those images,
+ * already on the host, in order.
+ */
+export function replaceComposerDraft(
+  key: string,
+  text: string,
+  images: readonly { file: File; path: string }[],
+): void {
+  if (!terminalComposerDraftKeyIsActive(key)) return;
+  clearTerminalComposerDraft(key);
+  setComposerImages(
+    key,
+    images.map((image, index) => ({
+      id: crypto.randomUUID(),
+      file: image.file,
+      path: image.path,
+      ref: index + 1,
+    })),
+  );
+  selections.set(key, { start: text.length, end: text.length });
+  writeTerminalComposerDraft(key, text);
+}
+
 /** Inserts into the latest shared draft so async completions cannot overwrite it. */
 export function insertIntoTerminalComposerDraft(
   key: string,

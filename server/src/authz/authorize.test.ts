@@ -33,6 +33,8 @@ const RPC_MATRIX: Record<string, string> = {
   "agent_session.interrupt": "admin owner editor",
   "agent_session.list": "admin owner editor viewer guest guest-pane",
   "agent_session.resume": "admin owner editor",
+  "agent_session.rewind": "admin owner editor",
+  "agent_session.fork": "admin owner editor",
   "agent_session.send": "admin owner editor",
   "agent_session.set_mode": "admin owner editor",
   "agent_session.set_model": "admin owner editor",
@@ -398,6 +400,8 @@ describe("authorize", () => {
         "agent_session.unqueue",
         "agent_session.compact",
         "agent_session.resume",
+        "agent_session.rewind",
+        "agent_session.fork",
       ]) {
         const decision = await request(role, method, W1_PARAMS, claimed);
         expect(decision.allowed).toBe(false);

@@ -667,8 +667,8 @@ A prompt attaches at most `AGENT_PROMPT_IMAGE_LIMIT` images of at most `AGENT_PR
 **Host link.** Each host listens on a Unix socket (mode 0600) named `<key>-<pane>.sock`: `key` is the first 12 hex digits of the SHA-256 of the pane's Herdr control socket path (resolved through symlinks), and `pane` is the URI-encoded pane ID.
 The directory is `THYRA_AGENT_SOCKET_DIR`, else `$XDG_RUNTIME_DIR/thyra/agents`, else `${XDG_STATE_HOME:-~/.local/state}/thyra/agents`; it must be a real directory owned by the user with mode 0700, and the bridge reads no other.
 Traffic is newline-delimited JSON.
-The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "unqueue" | "interrupt" | "approve" | "set_mode" | "set_model" | "set_effort" | "compact" | "history" | "resume", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` answers with).
-The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`, `can_attach_images`, `can_set_model`, `can_queue`, `can_compact`), and the bridge refuses the rest for a host without the flag.
+The host greets every connection with `{type: "hello", protocol: 1, pane_id, herdr_socket, pid, snapshot}` and then sends `{type: "event", event}` for each later event; the bridge sends `{type: "action", id, action: "send" | "unqueue" | "interrupt" | "approve" | "set_mode" | "set_model" | "set_effort" | "compact" | "history" | "resume" | "rewind" | "fork", ...}`, each answered by `{type: "result", id, error?, value?}` (`value` is what `history` and `fork` answer with).
+The protocol number stays 1 across builds, because hosts keep running their binary through deploys and the bridge drops a host that reports another number; a host says what it serves beyond the first four actions in its info (`can_resume`, `can_attach_images`, `can_set_model`, `can_queue`, `can_compact`, `can_rewind`), and the bridge refuses the rest for a host without the flag.
 A `send` action may carry `images: [{path}]`: paths only, which the host reads itself.
 A host replaces a socket file nobody listens on; the bridge deletes one that refuses connections and is older than five seconds.
 
@@ -679,8 +679,9 @@ A session ends when its link closes; a restarted bridge rebuilds everything from
 
 **RPC.** `agent_session.list` returns `{sessions}` (empty on connections without sessions).
 `agent_session.subscribe {pane_id}` returns the snapshot and starts `agent_session.event` for that pane on the calling socket until `agent_session.unsubscribe {pane_id}`, the session's end, or the socket closing.
-`agent_session.send {pane_id, text, images?, delivery?}`, `agent_session.unqueue {pane_id, prompt_id}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}`, `agent_session.set_model {pane_id, model}`, `agent_session.set_effort {pane_id, effort}`, `agent_session.compact {pane_id}` and `agent_session.resume {pane_id, session_id}` return `{ok: true}` or the host's refusal as the error.
+`agent_session.send {pane_id, text, images?, delivery?}`, `agent_session.unqueue {pane_id, prompt_id}`, `agent_session.interrupt {pane_id}`, `agent_session.approve {pane_id, approval_id, option_id}`, `agent_session.set_mode {pane_id, mode}`, `agent_session.set_model {pane_id, model}`, `agent_session.set_effort {pane_id, effort}`, `agent_session.compact {pane_id}`, `agent_session.resume {pane_id, session_id}` and `agent_session.rewind {pane_id, item_id}` return `{ok: true}` or the host's refusal as the error.
 `agent_session.history {pane_id}` returns `{sessions: AgentStoredSession[]}`; see [stored conversations](#stored-conversations).
+`agent_session.fork {pane_id, item_id?}` returns the new pane as `launcher.launch` does (`{pane_id, command, start_error?, ...}`); see [rewinding and branching](#rewind-and-branch).
 Both notifications use the connection envelope: `{connection_id, connection_generation, event: "agent_session.event", data: AgentSessionEvent}` and `{..., event: "agent_session.changed", data: {sessions}}`.
 `agent_session.changed` goes to every page when a session appears, ends or changes status, at most once per 25 ms.
 The hello's `capabilities.agent_sessions` is `true` when the bridge serves these methods.
@@ -688,6 +689,7 @@ The hello's `capabilities.agent_sessions` is `true` when the bridge serves these
 **Authorization.** Listing and subscribing need read access to the pane; a list and `agent_session.changed` hold only the sessions of panes the caller may read, filtered like pane lists, and each event delivery rechecks the subscriber's access.
 Acting needs what `pane.send_input` needs: the editor role and the pane's input claim, which an unclaimed pane grants to the caller.
 `agent_session.history` needs the editor role and no claim: the titles of a directory's other conversations are not part of what the pane shows, so viewers and share-link guests do not get them.
+`agent_session.rewind` and `agent_session.fork` need what acting needs; the pane a fork opens is split off the session's pane, which that role may do anyway, and the calling page gets its input like a page that launched it.
 `agent_session.unsubscribe` only affects the calling socket.
 
 **Events.** `seq` rises by one per event; a snapshot's `seq` is the last event it reflects, and it never holds text a later `delta` would repeat.
@@ -695,7 +697,7 @@ Streamed text is announced at once and then at most every 40 ms per session, and
 `status` is `running` from a prompt until the agent has finished every prompt it was given, and `awaiting_approval` while a running turn has an open approval.
 `interrupt` does nothing in an idle session.
 Denying a tool call marks its item `denied` and stops the turn, as the agents' own interfaces do.
-A `reset` event replaces the whole transcript with the items it carries and closes every approval; a host sends it when the session starts continuing a stored conversation.
+A `reset` event replaces the whole transcript with the items it carries and closes every approval; a host sends it when the session starts continuing a stored conversation, and when it rewinds.
 
 <a id="prompt-queue"></a>
 **Prompt queue.** A prompt sent while a turn runs goes as its `delivery` says (`AgentPromptDelivery`): `queue` holds it in the host, `steer` writes it to the agent at once (what a send without `delivery` does, and all a host without `can_queue` does), and `interrupt` holds it ahead of the others and interrupts the turn.
@@ -719,6 +721,17 @@ It is refused while a turn is running or an approval is open.
 Starting a session with the agent's own resume arguments restores the transcript the same way before the session first becomes `idle`.
 A resumed conversation runs with the model and mode the session's arguments choose; a mode switched to earlier in the session does not carry over.
 `info.can_resume` is `true` on hosts that serve both calls, and the bridge refuses them for a host without it, since a host of an older build would never answer.
+
+<a id="rewind-and-branch"></a>
+**Rewinding and branching.** A `user` item the agent can go back to carries `ref`, the agent's own name for the prompt: Claude Code's message UUID, or the ID of the Codex turn the prompt started.
+A prompt sent while a turn runs is taken into that turn and has none, and neither has a Codex prompt that came from another client; restored transcripts carry refs the same way as live ones.
+`agent_session.rewind` takes the conversation back to just before such a prompt: the agent drops the prompt and everything after it from the conversation it stores, and one `reset` event carries the items before the prompt.
+`agent_session.fork` leaves the session as it is: the host answers with the arguments after `thyra agent <kind>` that start a session on a copy of the conversation, from just before `item_id` or, without one, from where it stands; the bridge splits the session's pane to the right, in the session's directory, and types `<this Thyra executable> agent <kind>` and those arguments into the new pane, each quoted for the shell.
+The arguments keep the session's own (model, permission flags) and replace the ones that choose a conversation; a fork from before the first prompt is a new conversation.
+The bridge accepts at most 64 arguments of at most 4096 characters without control characters.
+Both are refused while a turn is running, and the bridge refuses them for a host without `info.can_rewind`.
+Neither changes files: what the agent edited stays edited.
+The page puts the prompt the fork was taken before into the new pane's prompt box, and an edit (a rewind from the page's Edit button) puts it into the session's own box.
 
 <a id="prompt-images"></a>
 **Prompt images.** `agent_session.send` takes `images: AgentPromptImage[]`, each `{path}` naming a file the connection's `/upload-image` endpoint stored on the host; the agent gets them as image input, and the prompt's `user` item lists them in `images`.
@@ -759,8 +772,12 @@ The file is read in 1 MiB pieces, once for the links of every entry and once for
 `--resume <id>`, `--resume=<id>` and `-r <id>` restore that conversation at startup.
 `--continue` and `-c` become `--resume` with the directory's newest stored conversation, so what is shown is what continues; with none stored they are dropped and a notice says so.
 A `--resume` without an ID (the terminal UI's picker) is dropped, and a value that is not an ID is left to the CLI without restoring a transcript.
-`agent_session.resume` replaces the CLI process, since one process holds one conversation: the host stops the child, starts another with `--resume <id>` in place of any earlier `--resume`, `--continue`, `--fork-session` or `--session-id` and with every other argument kept, and the session is `starting` until the new child answers `initialize`.
+`agent_session.resume` replaces the CLI process, since one process holds one conversation: the host stops the child, starts another with `--resume <id>` in place of any earlier `--resume`, `--continue`, `--fork-session`, `--resume-session-at` or `--session-id` and with every other argument kept, and the session is `starting` until the new child answers `initialize`.
 The replaced child's exit is not the session's; a new child that cannot resume the conversation ends the session with its error.
+A rewind is the control request `rewind_conversation` with `target_message_uuid` (the prompt's UUID, which the host gives each prompt it writes) and `last_seen_user_message_uuid` (the newest prompt's), in the running CLI; the CLI answers `rewound: true` or a reason, and one answering `turn_running` (it closes a turn a moment after the turn's result) is asked again up to four times, 250 ms apart.
+The CLI stores the cut as a `last-prompt` entry with `rewound: true` and `leafUuid` naming the entry the conversation now ends at (none for a rewind to the start), and a transcript ends there until a later entry is written.
+A fork is `--resume <id> --fork-session`, and from before a prompt also `--resume-session-at <uuid>` naming the prompt's `parentUuid` in the stored file, the entry the conversation stood at just before it; a prompt without a parent forks into a new conversation.
+A session started with `--resume-session-at` restores the transcript that ends at that entry.
 
 **Codex.** The host runs `codex app-server` and speaks its JSON-RPC: `initialize`, `thread/start` in the pane's directory, `turn/start` per prompt, `turn/steer` for a prompt during a turn (falling back to `turn/start` when the turn has just ended), and `turn/interrupt`.
 A prompt's input is its `text` item (left out when the text is empty and images are attached) followed by one `localImage` item per image, which Codex reads from the file.
@@ -774,12 +791,14 @@ A session runs in full access unless its arguments choose an approval policy or 
 The models are `model/list` without its `hidden` ones, read once the thread is open, with each model's `supportedReasoningEfforts`; a chosen model and effort go as `model` and `effort` on the next `turn/start`, which Codex keeps for later turns, and a new model whose efforts lack the current one takes its `defaultReasoningEffort`.
 `thread/start`'s `reasoningEffort` and `thread/settings/updated`'s `effort` say the current effort.
 Compacting is `thread/compact/start {threadId}`: Codex runs it as a turn of its own (`turn/started`, a `contextCompaction` item, `turn/completed`), and a `/compact` prompt is sent as that request.
-`thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config`, `--yolo` and `resume [<id> | --last]`, and refuses any other argument.
+`thyra agent codex` accepts `-m`, `-s`, `-a`, `-C`, `-c`, `--enable`, `--disable`, `--strict-config`, `--yolo`, `resume [<id> | --last]` and `fork <id> [--last-turn <turn>]`, and refuses any other argument.
 
 History is `thread/list` for the session's directory, sorted by `updated_at` and answered from Codex's index (`useStateDbOnly`), because repairing the index from every rollout file takes many seconds on a long history; a thread's title is its name, else its first prompt.
 Resuming reads the thread's turns with `thread/turns/list` (newest first, 20 a page, until the transcript's item limit), maps their items like the live `item/*` notifications, and calls `thread/resume` with `excludeTurns` and the model, sandbox and approval policy of the session's arguments, on the same app-server.
 A call a stored turn left without an outcome takes the turn's: `done` in a completed turn, else `failed`.
 `resume <id>` starts the session in that thread, `resume --last` in the directory's newest (or a new one, with a notice, when none is stored), and a bare `resume` (the terminal UI's picker) in a new one.
+`fork <id> [--last-turn <turn>]` starts it in a copy that `thread/fork` (`lastTurnId`, inclusive) makes of the stored thread, shown like a resumed one; Codex copies a thread another process holds open.
+A rewind is `thread/revert` with `beforeTurnId` the prompt's turn, and a fork from before a prompt names the turn before it, read from `thread/turns/list` without items.
 Codex gives a thread one writer: a thread open in another Codex process, such as its terminal UI, is refused with Codex's error until that process has let go of it, which takes a few minutes after the terminal UI closes.
 
 **Herdr status.** The host reports the pane's agent to Herdr over the control socket with `pane.report_agent` (`source: "thyra:agent"`, the agent's name, `idle`, `working`, or `blocked` with the approval's title, and a rising `seq`) and `pane.release_agent` when the agent ends, so the workspace tree and [task notifications](#task-notifications) treat the pane like one running the agent's terminal UI.

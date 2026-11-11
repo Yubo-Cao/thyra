@@ -331,6 +331,9 @@ export function createAgentSessionRelay(args: {
         link.mirror && link.verified ? [link.mirror.info] : [],
       );
     },
+    info(paneId: string): AgentSessionInfo | null {
+      return session(paneId)?.mirror?.info ?? null;
+    },
     snapshot(paneId: string): AgentSessionSnapshot | null {
       return session(paneId)?.mirror?.snapshot() ?? null;
     },
@@ -354,18 +357,20 @@ export function createAgentSessionRelay(args: {
           ? needs(info?.can_resume, "resume conversations")
           : action.action === "set_model" || action.action === "set_effort"
             ? needs(info?.can_set_model, "change the model")
-            : action.action === "compact"
-              ? needs(info?.can_compact, "compact the conversation")
-              : action.action === "unqueue"
-                ? needs(info?.can_queue, "queue prompts")
-                : action.action === "send"
-                  ? ((action.images?.length
-                      ? needs(info?.can_attach_images, "take images")
-                      : null) ??
-                    (action.delivery && action.delivery !== "steer"
-                      ? needs(info?.can_queue, "queue prompts")
-                      : null))
-                  : null;
+            : action.action === "rewind" || action.action === "fork"
+              ? needs(info?.can_rewind, "go back or branch")
+              : action.action === "compact"
+                ? needs(info?.can_compact, "compact the conversation")
+                : action.action === "unqueue"
+                  ? needs(info?.can_queue, "queue prompts")
+                  : action.action === "send"
+                    ? ((action.images?.length
+                        ? needs(info?.can_attach_images, "take images")
+                        : null) ??
+                      (action.delivery && action.delivery !== "steer"
+                        ? needs(info?.can_queue, "queue prompts")
+                        : null))
+                    : null;
       if (missing)
         return Promise.reject(
           new Error(

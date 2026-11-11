@@ -339,7 +339,9 @@ test("history and resume are served over the link", async () => {
   // Pages ask for history only from hosts that say they serve it.
   expect(hello).toMatchObject({
     protocol: 1,
-    snapshot: { info: { can_resume: true, can_attach_images: true } },
+    snapshot: {
+      info: { can_resume: true, can_attach_images: true, can_rewind: true },
+    },
   });
   expect(await link.ask({ action: "history" })).toEqual({
     error: null,
@@ -353,6 +355,14 @@ test("history and resume are served over the link", async () => {
   });
   // Other actions answer without a value.
   expect(await link.ask({ action: "interrupt" })).toEqual({ error: null });
+  // A branch answers with the arguments of a session on a copy.
+  expect(await link.ask({ action: "fork" })).toEqual({
+    error: null,
+    value: { args: [] },
+  });
+  expect(await link.ask({ action: "rewind", item_id: "nope" })).toEqual({
+    error: "that prompt is not in the transcript",
+  });
 
   expect(await link.ask({ action: "resume", session_id: "abc-1" })).toEqual({
     error: null,
