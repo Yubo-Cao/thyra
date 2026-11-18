@@ -601,12 +601,16 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
   const presentation: TerminalEndpointPresentation =
     new TerminalEndpointPresentation(
       () => term.hasSelection() || history.active,
-      (text, parsed, linksChanged) =>
-        term.write(text, () => {
-          parsed();
-          if (!session.disposed && linksChanged && pointerHovers)
-            term.refresh();
-        }),
+      (text, parsed, linksChanged, startupSnapshot) =>
+        term.write(
+          text,
+          () => {
+            parsed();
+            if (!session.disposed && linksChanged && pointerHovers)
+              term.refresh();
+          },
+          startupSnapshot,
+        ),
       () => ({ cols: term.cols, rows: term.rows }),
       {
         accepts: (frame) => history.accepts(frame),
@@ -619,6 +623,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
           graphics.update();
         },
       },
+      (paint) => requestAnimationFrame(paint),
     );
   const history: TerminalHistorySelection = new TerminalHistorySelection(term, {
     frame: () => presentation.displayedFrame,

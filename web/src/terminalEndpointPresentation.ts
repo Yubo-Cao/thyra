@@ -100,6 +100,7 @@ export class TerminalEndpointPresentation {
   // written since. Only then do its rows match the screen for a row update.
   private displayedViewport: string | null = null;
   private writing = false;
+  private paintScheduled = false;
   private changingLinks = false;
   private disposed = false;
   private generation = 0;
@@ -111,6 +112,7 @@ export class TerminalEndpointPresentation {
       text: string,
       parsed: () => void,
       linksChanged: boolean,
+      startupSnapshot?: () => string,
     ) => void,
     private viewportSize?: () => { cols: number; rows: number },
     private selectionHistory?: {
@@ -118,6 +120,7 @@ export class TerminalEndpointPresentation {
       presented: (frame: TerminalPresentationFrame) => void;
       reset: () => void;
     },
+    private schedulePaint?: (paint: () => void) => void,
   ) {}
 
   get selectionPending(): boolean {
@@ -169,7 +172,19 @@ export class TerminalEndpointPresentation {
     else return null;
     this.mouseReporting = mouseReporting;
     this.pendingFrame = frame;
-    this.flush();
+    // Paint the first screen immediately. Collapse subsequent updates that
+    // arrive in one display interval before asking the renderer to parse them.
+    if (this.displayedFrame && this.schedulePaint) {
+      if (!this.paintScheduled) {
+        this.paintScheduled = true;
+        const generation = this.generation;
+        this.schedulePaint(() => {
+          if (generation !== this.generation) return;
+          this.paintScheduled = false;
+          this.flush();
+        });
+      }
+    } else this.flush();
     return frame;
   }
 
@@ -185,6 +200,7 @@ export class TerminalEndpointPresentation {
   flush(): void {
     if (
       this.disposed ||
+      this.paintScheduled ||
       this.writing ||
       ((this.selectionDrag || this.hasSelection()) &&
         !(
@@ -277,6 +293,12 @@ export class TerminalEndpointPresentation {
           this.flush();
         },
         linksChanged,
+        frame
+          ? () =>
+              (this.appliedMouseReporting
+                ? "\x1b[?1006h\x1b[?1002h"
+                : "\x1b[?1002l\x1b[?1006l") + frame.text
+          : undefined,
       );
     }
   }
@@ -289,6 +311,7 @@ export class TerminalEndpointPresentation {
   reset(): void {
     // Invalidate presentation/replay, not the outstanding parser operation.
     this.generation++;
+    this.paintScheduled = false;
     this.deferredSelection = null;
     this.mouseReporting = undefined;
     this.appliedMouseReporting = undefined;

@@ -46,7 +46,7 @@ test("a view-only join preserves the existing stream size and still receives a f
       rows: 15,
       preserve_size: true,
     });
-    expect((await waitForTerminalFrame(ownerMessages)).width).toBe(100);
+    expect(ownerMessages).toHaveLength(0);
     expect((await waitForTerminalFrame(viewerMessages)).width).toBe(100);
     ownerMessages.length = 0;
     await bridge.handleTerminalRpc(viewer, "control", "terminal.resize", {
@@ -1441,23 +1441,20 @@ describe("terminal frame fanout", () => {
 
   test("a frame is encoded once per distinct size, not once per viewer or form", async () => {
     const { harness } = await fanout();
-    // The encoder measures each cell it writes exactly once.
     const withRows = event(true);
     const withoutRows = event(false);
-    // The encoder measures each cell it writes exactly once: 17 for the whole
-    // 6x3 frame (one cell is the second half of a wide character), 7 for the
-    // 4x2 clip.
+    // Each size contains one wide glyph that needs measuring.
     const measured = spyOn(Bun, "stringWidth");
     try {
       harness.sessions[0].emit("terminal", withRows);
       // Four viewers, two output forms: only the clipped size is encoded
       // here; the full size reuses the session's rows. Before, this fanout
       // encoded 17 + 7 + 7 cells on top of the session's own 17.
-      expect(measured).toHaveBeenCalledTimes(7);
+      expect(measured).toHaveBeenCalledTimes(1);
       measured.mockClear();
       // A session that supplies no rows costs one more encode, still shared.
       harness.sessions[0].emit("terminal", withoutRows);
-      expect(measured).toHaveBeenCalledTimes(17 + 7);
+      expect(measured).toHaveBeenCalledTimes(2);
     } finally {
       measured.mockRestore();
       harness.restore();

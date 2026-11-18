@@ -704,6 +704,13 @@ export function preEngineTextInput(send: (text: string) => void) {
   };
 }
 
+// Reuse the last measured grid when switching panes with the same font and
+// pixel ratio. A provisional grid followed by a corrected resize makes TUIs
+// reflow their transcript twice on every mount.
+let lastMeasuredCell:
+  | { key: string; width: number; height: number }
+  | undefined;
+
 export class TerminalEngine {
   readonly element: HTMLDivElement;
   /** The canvas; `screenBounds()` is the part the cell grid covers. */
@@ -716,6 +723,7 @@ export class TerminalEngine {
   private host: ResttyHost | null = null;
   private opts: TerminalEngineOptions;
   private pending = "";
+  private startupSnapshot?: () => string;
   // DEC private modes set by the output (DECCKM, alternate screen).
   private privateModes = new Set<number>();
   private preview: HTMLPreElement | null;
@@ -956,7 +964,8 @@ export class TerminalEngine {
     this.checkMetrics();
     this.stylePreview();
     this.watchPixelRatio();
-    const pending = this.pending;
+    const pending = (this.startupSnapshot?.() ?? "") + this.pending;
+    this.startupSnapshot = undefined;
     this.pending = "";
     if (pending) this.transportCallbacks?.onData?.(pending);
     this.writeEmitter.fire();
@@ -1069,6 +1078,13 @@ export class TerminalEngine {
   /** Refits and reports a cell size that differs from the last one. */
   private checkMetrics() {
     const { width, height } = this.cellSize();
+    const grid = this.host?.grid();
+    if (grid?.cellW && grid.cellH)
+      lastMeasuredCell = {
+        key: this.cellMetricsKey(grid.dpr || window.devicePixelRatio || 1),
+        width,
+        height,
+      };
     const metrics = `${width}x${height}`;
     if (metrics === this.metrics) return;
     this.metrics = metrics;
@@ -1099,10 +1115,13 @@ export class TerminalEngine {
     });
   }
 
-  write(text: string, callback?: () => void) {
+  write(text: string, callback?: () => void, startupSnapshot?: () => string) {
     if (this.disposed) return;
     if (this.transportCallbacks) this.transportCallbacks.onData?.(text);
-    else this.pending += text;
+    else if (startupSnapshot) {
+      this.startupSnapshot = startupSnapshot;
+      this.pending = "";
+    } else this.pending += text;
     // The preview covers the canvas until the swap, so it stays live.
     if (this.preview) {
       this.textScreen.write(text);
@@ -1185,6 +1204,8 @@ export class TerminalEngine {
 
   /** Clears the screen and modes. */
   reset() {
+    this.startupSnapshot = undefined;
+    this.pending = "";
     this.clearSelection();
     this.textScreen = new TerminalTextScreen();
     this.write(`\x1bc${GRAPHEME_CLUSTERING}`);
@@ -1251,6 +1272,15 @@ export class TerminalEngine {
       );
   }
 
+  private cellMetricsKey(dpr: number) {
+    return JSON.stringify([
+      this.opts.fontPreset,
+      this.opts.fontSize,
+      this.opts.lineHeight,
+      dpr,
+    ]);
+  }
+
   /** Cell size in CSS layout pixels, before the engine loads an estimate. */
   cellSize(): { width: number; height: number } {
     const grid = this.host?.grid();
@@ -1260,6 +1290,8 @@ export class TerminalEngine {
     }
     // The bundled font advances 600/1000 em and spans 1320/1000 em.
     const dpr = window.devicePixelRatio || 1;
+    if (lastMeasuredCell?.key === this.cellMetricsKey(dpr))
+      return lastMeasuredCell;
     const px = Math.max(1, Math.round(Math.round(this.opts.fontSize) * dpr));
     return {
       width: Math.round(px * 0.6) / dpr,

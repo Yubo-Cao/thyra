@@ -1574,7 +1574,10 @@ test.each([
       buffered = 0;
       flushCoalescedMessages(browser, { cleanup });
       expect(terminalPayloads().sort()).toEqual(
-        [latest.get("beta:1")!, latest.get("alpha:2")!].sort(),
+        (action === "terminal.attach"
+          ? [...latest.values()]
+          : [latest.get("beta:1")!, latest.get("alpha:2")!]
+        ).sort(),
       );
       if (viewer !== browser) bridges[0].cleanupWs(viewer);
     } finally {
@@ -4994,9 +4997,8 @@ describe("frame encoding cost", () => {
       ).length;
       measured.mockRestore();
       stringified.mockRestore();
-      // "one 界" is 5 written cells, "2" one, "three" five: one encode. It was
-      // two encodes (22) and one JSON.stringify of every cell.
-      expect(cellsMeasured).toBe(11);
+      // Only the non-ASCII cell needs a grapheme width measurement.
+      expect(cellsMeasured).toBe(1);
       expect(wholeFrames).toBe(0);
       // The repaint bytes are exactly what encoding the frame alone yields.
       expect(frame.frame).toEqual(second);

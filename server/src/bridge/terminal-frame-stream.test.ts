@@ -120,6 +120,16 @@ describe("TerminalFrameStream", () => {
     expect(sent[3]).toMatchObject({ rows: ["a", "b"] });
   });
 
+  test("a reattached viewer receives its first frame with the old ack window full", () => {
+    const { frames, sent } = stream();
+    for (let i = 0; i < FRAME_STREAM_MAX_INFLIGHT; i++)
+      frames.offer(parts([String(i), "b", "c"]), meta);
+    frames.reset();
+    frames.offer(parts(["current", "b", "c"]), meta);
+    expect(sent.at(-1)).toMatchObject({ rows: ["current", "b", "c"] });
+    frames.dispose();
+  });
+
   test("releases the window when acknowledgements stop", () => {
     jest.useFakeTimers();
     const { frames, sent } = stream();

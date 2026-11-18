@@ -76,6 +76,8 @@ export class TerminalFrameStream {
 
   /** The viewer's screen is unknown (attach, resize): repaint it fully. */
   reset(): void {
+    this.inflight = [];
+    this.restartAckTimer();
     this.sent = null;
     if (this.latest) this.dirty = true;
   }
@@ -116,8 +118,6 @@ export class TerminalFrameStream {
 
   /** The viewer could not apply a delta; resend the newest frame in full. */
   resync(): void {
-    this.inflight = [];
-    this.restartAckTimer();
     this.reset();
     this.flush();
   }

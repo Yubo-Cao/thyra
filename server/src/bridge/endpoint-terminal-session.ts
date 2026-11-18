@@ -100,6 +100,10 @@ export class EndpointTerminalSession extends EventEmitter {
   private scrollDispatched: ScrollDispatch | null = null;
   private closed = false;
   private seq = 0;
+  private previousEncoding?: {
+    frame: FrameData;
+    parts: ReturnType<typeof frameToAnsiParts>;
+  };
   private readonly linkSessionId = crypto.randomUUID();
   // The newest displayed link frame, reused while its content is unchanged.
   private linkFrame: (LinkFrame & { content: string }) | null = null;
@@ -414,7 +418,8 @@ export class EndpointTerminalSession extends EventEmitter {
     )
       this.linkFrame = null;
     // Encoded once here; the bridge shares these rows with every viewer.
-    const parts = frameToAnsiParts(cropped);
+    const parts = frameToAnsiParts(cropped, undefined, this.previousEncoding);
+    this.previousEncoding = { frame: cropped, parts };
     const bytes = Buffer.from(terminalFrameText(parts), "utf8");
     const mouseReporting = pane.mouseReporting;
     const emitFrame = () => {

@@ -59,10 +59,6 @@ function sgrStyle(cell: CellData): string {
   return `\x1b[${codes.join(";")}m`;
 }
 
-function styleKey(cell: CellData): string {
-  return `${cell.fg},${cell.bg},${cell.modifier},${cell.hyperlink ?? ""}`;
-}
-
 function isDefaultBlank(cell: CellData): boolean {
   return (
     cell.symbol === " " &&
@@ -77,6 +73,7 @@ function isDefaultBlank(cell: CellData): boolean {
 export function frameToAnsiParts(
   frame: FrameData,
   viewport = { cols: frame.width, rows: frame.height },
+  previous?: { frame: FrameData; parts: TerminalFrameParts },
 ): TerminalFrameParts {
   // Cells are indexed by these, so only whole in-range counts are usable.
   const whole = (value: number) => Math.max(0, Math.trunc(value) || 0);
@@ -86,23 +83,53 @@ export function frameToAnsiParts(
   // exceed the viewer width during resize; the head disables autowrap so it
   // never wraps and scrolls.
   const rows: string[] = [];
+  // Endpoint patches retain cell objects outside the changed spans.
+  const prior = previous?.frame;
+  const reusable =
+    prior &&
+    prior.width === width &&
+    frame.width === width &&
+    previous.parts.rows.length === prior.height &&
+    prior.hyperlinks.length === frame.hyperlinks.length &&
+    prior.hyperlinks.every((url, i) => url === frame.hyperlinks[i]);
   for (let y = 0; y < height; y++) {
     let out = "";
     const rowStart = y * frame.width;
+    if (reusable && y < prior.height) {
+      let x = 0;
+      while (
+        x < width &&
+        frame.cells[rowStart + x] === prior.cells[rowStart + x]
+      )
+        x++;
+      if (x === width) {
+        rows.push(previous.parts.rows[y]!);
+        continue;
+      }
+    }
     let rowEnd = width;
     // Trim trailing default blanks; the terminal background fills them.
     while (rowEnd > 0 && isDefaultBlank(frame.cells[rowStart + rowEnd - 1])) {
       rowEnd--;
     }
-    let lastStyle: string | null = null;
+    let lastStyle: CellData | null = null;
     let linkOpen = false;
     for (let x = 0; x < rowEnd; x++) {
       const cell = frame.cells[rowStart + x];
       if (cell.skip) continue;
-      const cellWidth = Bun.stringWidth(cell.symbol);
+      const ascii = cell.symbol.charCodeAt(0);
+      const cellWidth =
+        cell.symbol.length === 1 && ascii >= 32 && ascii <= 126
+          ? 1
+          : Bun.stringWidth(cell.symbol);
       if (x + cellWidth > width) break;
-      const key = styleKey(cell);
-      if (key !== lastStyle) {
+      if (
+        !lastStyle ||
+        cell.fg !== lastStyle.fg ||
+        cell.bg !== lastStyle.bg ||
+        cell.modifier !== lastStyle.modifier ||
+        cell.hyperlink !== lastStyle.hyperlink
+      ) {
         if (linkOpen) {
           out += "\x1b]8;;\x1b\\";
           linkOpen = false;
@@ -117,7 +144,7 @@ export function frameToAnsiParts(
             linkOpen = true;
           }
         }
-        lastStyle = key;
+        lastStyle = cell;
       }
       out += cell.symbol;
       // Herdr's wide-character padding is often a normal blank (skip=false).

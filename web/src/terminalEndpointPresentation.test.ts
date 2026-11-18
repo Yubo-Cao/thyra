@@ -7,6 +7,34 @@ import {
 } from "./terminalEndpointPresentation";
 
 describe("endpoint selection presentation", () => {
+  test("a burst paints only the newest screen on the next display refresh", () => {
+    const writes: string[] = [];
+    const paints: (() => void)[] = [];
+    const view = new TerminalEndpointPresentation(
+      () => false,
+      (text, done) => {
+        writes.push(text);
+        done();
+      },
+      undefined,
+      undefined,
+      (paint) => paints.push(paint),
+    );
+    view.update("first", false);
+    view.update("intermediate", false);
+    view.update("current", false);
+    expect(writes).toHaveLength(1);
+    expect(paints).toHaveLength(1);
+    paints.shift()!();
+    expect(writes[writes.length - 1]).toBe("current");
+    view.update("previous pane", false);
+    view.reset();
+    view.update("new pane", false);
+    paints.shift()!();
+    expect(writes).toHaveLength(3);
+    expect(writes[writes.length - 1]).toEndWith("new pane");
+  });
+
   test.each([false, true])(
     "drops oversized frames after resize, including selection-held frames (%s)",
     (held) => {

@@ -49,6 +49,10 @@ type SharedTerminalSession = {
   viewers: Set<ServerWebSocket<unknown>>;
   frames: number;
   bytes: number;
+  replayFrame?: (
+    viewer: ServerWebSocket<unknown>,
+    viewport: TerminalViewport,
+  ) => void;
   firstFrameLogged: boolean;
   lastFrameLogAt: number;
   /** Last error Herdr reported on the stream, e.g. a takeover notice. */
@@ -909,13 +913,17 @@ export function createTerminalBridge(args: {
         }
         // Endpoint streams always repaint the full surface, so a held frame
         // may be replaced by a newer one.
-        args.safeSend(
-          viewer,
-          payload,
-          "terminal-frame",
-          t.full ? terminalCoalesceKey(terminalId) : undefined,
-        );
+        if (
+          !args.safeSend(
+            viewer,
+            payload,
+            "terminal-frame",
+            t.full ? terminalCoalesceKey(terminalId) : undefined,
+          )
+        )
+          detachTerminalViewer(viewer, terminalId, shared);
       };
+      shared.replayFrame = sendFrame;
       for (const viewer of Array.from(shared.viewers)) {
         const viewport = terminalViewers.get(viewer)?.get(terminalId);
         if (!viewport) {
@@ -1335,12 +1343,8 @@ export function createTerminalBridge(args: {
         const sharedMode =
           existingShared && !existingShared.thin.isClosed ? "reused" : "new";
         const viewed = terminalViewers.get(ws) ?? new Map();
-        const refreshReusedTerminal =
-          sharedMode === "reused" &&
-          !existingShared?.connecting &&
-          !viewed.has(terminalId) &&
-          (preserveSize ||
-            (existingShared?.cols === cols && existingShared.rows === rows));
+        const needsInitialFrame =
+          !viewed.has(terminalId) || params.frame_delta === true;
         terminals.set(ws, { terminalId, cols, rows });
         viewed.set(terminalId, {
           cols,
@@ -1359,9 +1363,10 @@ export function createTerminalBridge(args: {
                 const payload = serialize({
                   terminal: { terminal_id: terminalId, ...terminal },
                 });
-                return args.safeSend(ws, payload, "terminal-frame")
-                  ? payload.length
-                  : null;
+                if (args.safeSend(ws, payload, "terminal-frame"))
+                  return payload.length;
+                detachTerminalViewer(ws, terminalId, shared);
+                return null;
               }),
             );
           if (frameInterval !== undefined)
@@ -1426,12 +1431,8 @@ export function createTerminalBridge(args: {
               surface: surfaceSize,
             });
           }
-          if (
-            shared.cols !== cols ||
-            shared.rows !== rows ||
-            refreshReusedTerminal
-          ) {
-            // A reused idle stream still needs a complete frame for a new viewer.
+          if (shared.cols !== cols || shared.rows !== rows) {
+            shared.replayFrame = undefined;
             shared.thin.resize(cols, rows);
             shared.cols = cols;
             shared.rows = rows;
@@ -1440,15 +1441,14 @@ export function createTerminalBridge(args: {
             for (const viewer of shared.viewers)
               args.dropCoalesced?.(viewer, terminalCoalesceKey(terminalId));
             syncFollowers(shared, ws);
-            logger.debug(
-              refreshReusedTerminal ? "terminal refreshed" : "terminal resized",
-              {
-                connection: args.connectionId ?? "legacy-default",
-                client: args.clientLabel(ws),
-                terminal: terminalId,
-                size: `${cols}x${rows}`,
-              },
-            );
+            logger.debug("terminal resized", {
+              connection: args.connectionId ?? "legacy-default",
+              client: args.clientLabel(ws),
+              terminal: terminalId,
+              size: `${cols}x${rows}`,
+            });
+          } else if (sharedMode === "reused" && needsInitialFrame) {
+            shared.replayFrame?.(ws, { cols, rows });
           }
           validate();
           logger.debug("terminal attached", {
@@ -1707,6 +1707,7 @@ export function createTerminalBridge(args: {
           followShared(ws, shared);
           return reply({ ok: true, skipped: true, reason: "display_owner" });
         }
+        shared.replayFrame = undefined;
         thin.resize(cols, rows);
         terminalViewers.get(ws)!.set(requestedTerminalId, { cols, rows });
         frameStreams.get(ws)?.get(requestedTerminalId)?.reset();
