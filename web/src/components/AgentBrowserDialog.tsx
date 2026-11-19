@@ -1,5 +1,5 @@
 import RFB from "@novnc/novnc";
-import { Keyboard } from "lucide-react";
+import { Keyboard, Maximize } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   AGENT_BROWSER_POLL_MISSES,
@@ -15,6 +15,10 @@ import {
 } from "../agentBrowser";
 import { t } from "../i18n";
 import { useLayoutPreferences } from "../layoutPreferences";
+import {
+  enterExclusiveKeyboard,
+  exclusiveKeyboardSupported,
+} from "../terminalKeyPreferences";
 import { Dialog } from "./ui/Dialog";
 import { FloatingWindow } from "./ui/FloatingWindow";
 import { IconButton } from "./ui/IconButton";
@@ -166,6 +170,31 @@ export function AgentBrowserDialog() {
     };
   }, [vnc, scale, screen]);
 
+  // A browser tab never sees Ctrl/Cmd+W, T, N and friends: the outer browser
+  // acts on them. Ask before it closes this page while the remote browser is
+  // open, so a stray Ctrl+W meant for a remote tab doesn't take Thyra with it.
+  useEffect(() => {
+    if (!open) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [open]);
+
+  // Full screen plus Keyboard Lock is the only way a page receives those
+  // shortcuts, so the display itself goes full screen and they reach the
+  // remote Chromium. Holding Escape leaves.
+  const captureKeys = async () => {
+    if (!screen) return;
+    try {
+      await enterExclusiveKeyboard(screen);
+    } finally {
+      rfbRef.current?.focus();
+    }
+  };
+
   const press = (keysym: number) => rfbRef.current?.sendKey(keysym, null);
   useEffect(() => {
     if (!keys) return;
@@ -270,6 +299,16 @@ export function AgentBrowserDialog() {
             void activateAgentBrowserTab(paneId, id);
             rfbRef.current?.focus();
           }}
+        />
+      ) : null}
+      {!mobile && vnc && exclusiveKeyboardSupported() ? (
+        <IconButton
+          label={t("Full screen and capture browser shortcuts")}
+          tooltip={t(
+            "Ctrl+W, Ctrl+T and other browser shortcuts go to the remote browser; hold Escape to leave",
+          )}
+          icon={<Maximize size={15} />}
+          onClick={() => void captureKeys()}
         />
       ) : null}
       {mobile && vnc ? (
