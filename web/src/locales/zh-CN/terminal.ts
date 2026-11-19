@@ -81,6 +81,9 @@ export default {
   "Close pane": "关闭窗格",
   "Terminal input": "终端输入",
   "Open device keyboard": "打开设备键盘",
+  "Full screen and capture browser shortcuts": "全屏并接管浏览器快捷键",
+  "Ctrl+W, Ctrl+T and other browser shortcuts go to the remote browser; hold Escape to leave":
+    "Ctrl+W、Ctrl+T 等浏览器快捷键会发给远端浏览器；按住 Esc 退出",
   "Terminal side shortcuts": "终端侧边快捷键",
   "Run {key}": "执行 {key}",
   "Send {key}": "发送 {key}",

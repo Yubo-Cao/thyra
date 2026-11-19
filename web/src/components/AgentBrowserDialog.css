@@ -35,3 +35,9 @@
   resize: none;
   pointer-events: none;
 }
+
+/* Full screen for Keyboard Lock: the remote desktop follows the new size. */
+.agent-browser-screen:fullscreen {
+  width: 100vw;
+  height: 100vh;
+}

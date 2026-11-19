@@ -75,9 +75,13 @@ export function useExclusiveKeyboard(): boolean {
 
 /**
  * Enters fullscreen and locks the keyboard, so Cmd/Ctrl+W, T, N and the
- * like reach the pane. Holding Escape leaves, as the browser announces.
+ * like reach the page instead of closing or opening browser tabs. Holding
+ * Escape leaves, as the browser announces. `element` goes fullscreen; the
+ * whole page by default.
  */
-export async function enterExclusiveKeyboard() {
+export async function enterExclusiveKeyboard(
+  element: Element = document.documentElement,
+) {
   if (!exclusiveKeyboardSupported()) return;
   if (!fullscreenWatched) {
     fullscreenWatched = true;
@@ -87,8 +91,7 @@ export async function enterExclusiveKeyboard() {
       exclusiveStore.setState({ active: false });
     });
   }
-  if (!document.fullscreenElement)
-    await document.documentElement.requestFullscreen();
+  if (document.fullscreenElement !== element) await element.requestFullscreen();
   await keyboardLock()!.lock!();
   exclusiveStore.setState({ active: true });
 }
