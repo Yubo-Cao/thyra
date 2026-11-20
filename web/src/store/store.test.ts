@@ -5,6 +5,7 @@ import {
   activateConnectionState,
   mergeConnectionCatalog,
   reconcileConnectionCatalogSessions,
+  refreshOnReturn,
 } from "./connection";
 import {
   connectionEventIsActive,
@@ -293,6 +294,65 @@ describe("connection-partitioned store state", () => {
       expect(store.get().notice?.message).toBe("Resuming browser sync");
     } finally {
       bridge.connect = originalConnect;
+      __storeTesting.replaceState(previousState);
+      if (previousLocalStorage === undefined) {
+        delete (globalThis as { localStorage?: Storage }).localStorage;
+      } else {
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          value: previousLocalStorage,
+        });
+      }
+    }
+  });
+
+  test("a return to the page probes a dropped socket but stays out of a paused one", () => {
+    const previousState = store.get();
+    const previousLocalStorage = globalThis.localStorage;
+    const originalProbe = bridge.probeConnectionNow;
+    const originalCall = bridge.call;
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { setItem: () => undefined },
+    });
+    let probes = 0;
+    const methods: string[] = [];
+    bridge.probeConnectionNow = () => {
+      probes++;
+    };
+    bridge.call = ((method: string) => {
+      methods.push(method);
+      return new Promise(() => {});
+    }) as typeof bridge.call;
+    try {
+      __storeTesting.replaceState({
+        ...partitionState(),
+        status: "disconnected",
+        automaticUpdateChecksEnabled: false,
+      });
+      refreshOnReturn();
+      expect(probes).toBe(1);
+      expect(methods).toEqual([]);
+
+      __storeTesting.replaceState({
+        ...partitionState(),
+        status: "disconnected",
+        connectionPaused: true,
+        automaticUpdateChecksEnabled: false,
+      });
+      refreshOnReturn();
+      expect(probes).toBe(1);
+
+      __storeTesting.replaceState({
+        ...partitionState(),
+        automaticUpdateChecksEnabled: false,
+      });
+      refreshOnReturn();
+      expect(probes).toBe(2);
+      expect(methods).toContain("bridge.status");
+    } finally {
+      bridge.probeConnectionNow = originalProbe;
+      bridge.call = originalCall;
       __storeTesting.replaceState(previousState);
       if (previousLocalStorage === undefined) {
         delete (globalThis as { localStorage?: Storage }).localStorage;

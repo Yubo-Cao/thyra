@@ -604,11 +604,13 @@ export function handleStatus(s: ConnectionStatus) {
  * back online instead of waiting out the throttle.
  */
 export function refreshOnReturn() {
-  if (state.connectionPaused || state.status !== "connected") return;
+  if (state.connectionPaused) return;
   // Mobile OSes can silently kill the socket while the page is frozen;
   // probe now so reconnect and terminal re-attach start immediately
-  // instead of waiting for the next heartbeat tick.
+  // instead of waiting for the next heartbeat tick. A socket already down
+  // reconnects now instead of waiting out its backoff.
   bridge.probeConnectionNow();
+  if (state.status !== "connected") return;
   void refreshNow();
   void refreshBridgeStatus();
 }

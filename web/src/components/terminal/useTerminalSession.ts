@@ -3,6 +3,7 @@ import { normalizeTerminalFontFamily } from "../../appearance";
 import { t } from "../../i18n";
 import { keyboardKindNow } from "../../hardwareKeyboard";
 import { activePaneIdForSnapshot } from "../../paneJump";
+import { onProthyraResume } from "../../prothyra";
 import { noteTerminalAttached } from "../../startupGate";
 import { store } from "../../store";
 import { terminalConnectionKey } from "../../terminalConnection";
@@ -511,6 +512,9 @@ export function useTerminalAttach(
     });
     window.addEventListener("pageshow", onForegroundEvent, { signal });
     window.addEventListener("focus", onForegroundEvent, { signal });
+    // Prothyra's resume says nothing about how long the page was hidden, so
+    // only visibilitychange's measurement may arm the last-resort reload.
+    onProthyraResume(onForegroundEvent, signal);
     return () => listeners.abort();
   }, [refs, ui]);
 }

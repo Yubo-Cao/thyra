@@ -1356,6 +1356,33 @@ describe("bridge connection lifecycle", () => {
     expect(bridge.status).toBe("disconnected");
   });
 
+  test("probeConnectionNow reconnects at once instead of waiting out the backoff", async () => {
+    class ClosingWebSocket extends HangingWebSocket {
+      static instances: ClosingWebSocket[] = [];
+
+      constructor() {
+        super();
+        ClosingWebSocket.instances.push(this);
+        queueMicrotask(() => {
+          this.readyState = ClosingWebSocket.OPEN;
+          this.onopen?.();
+        });
+      }
+    }
+    installBrowserGlobals(ClosingWebSocket as unknown as typeof WebSocket);
+    const bridge = createTestBridge(50, 60_000);
+    bridge.connect();
+    await Bun.sleep(1);
+    sendHello(ClosingWebSocket.instances[0]);
+    ClosingWebSocket.instances[0].close();
+    expect(bridge.status).toBe("disconnected");
+    expect(ClosingWebSocket.instances.length).toBe(1);
+
+    bridge.probeConnectionNow();
+    expect(bridge.status).toBe("connecting");
+    expect(ClosingWebSocket.instances.length).toBe(2);
+  });
+
   test("probeConnectionNow drops a socket that closed without a close event", async () => {
     class FrozenWebSocket extends HangingWebSocket {
       static instances: FrozenWebSocket[] = [];

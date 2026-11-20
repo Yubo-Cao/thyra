@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+import { hasProthyraCapability } from "./prothyra";
 
 export type ShortcutPlatform = "mac" | "windows" | "linux";
 export const SHORTCUT_PLATFORMS: Record<ShortcutPlatform, string> = {
@@ -346,12 +347,21 @@ export function validateShortcutKeys(id: ShortcutId, keys: unknown): string[] {
   return result;
 }
 
-export function shortcutWarning(keys: string[]): string | null {
+/**
+ * A host that hands every key to the page (Prothyra's `keyboard.fullCapture`)
+ * frees the browser's chords; the operating system keeps its own.
+ */
+export function shortcutWarning(
+  keys: string[],
+  fullCapture = hasProthyraCapability("keyboard.fullCapture"),
+): string | null {
   if (
     keys.some(
       (key) =>
-        /^(Meta|Ctrl)\+(?:Shift\+)?(?:T|W|N|L|R|P|D|[1-9]|Tab)$/.test(key) ||
-        /^(?:Alt\+F4|Meta\+Q|F[15]|F11|F12)$/.test(key),
+        /^(?:Meta\+(?:Shift\+)?Tab|Alt\+F4|Meta\+Q)$/.test(key) ||
+        (!fullCapture &&
+          (/^(Meta|Ctrl)\+(?:Shift\+)?(?:T|W|N|L|R|P|D|[1-9]|Tab)$/.test(key) ||
+            /^(?:F[15]|F11|F12)$/.test(key))),
     )
   )
     return t(
