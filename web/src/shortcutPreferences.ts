@@ -44,6 +44,7 @@ const LATE_SHORTCUT_IDS: ShortcutId[] = [
   "voice.pushToTalk",
   "promptEditor.toggle",
   "promptEditor.focus",
+  "fullscreen.toggle",
 ];
 /** Removed actions that saved presets may still name; loading drops them. */
 const RETIRED_SHORTCUT_IDS = new Set([

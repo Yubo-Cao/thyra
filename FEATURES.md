@@ -414,6 +414,7 @@ Common defaults (Linux/Android exceptions follow):
 | Workspace Inspector | `Cmd+Shift+B` | `Ctrl+Alt+Shift+B` |
 | Expand / restore Inspector (desktop) | `Cmd+Option+Enter` | `Ctrl+Alt+Shift+Enter` |
 | Zen mode (desktop) | `Cmd+Shift+Z` | `Ctrl+Alt+Z` |
+| Full screen, capturing browser shortcuts | `Ctrl+Cmd+F` | `F11` |
 | Recent pane switcher | `Ctrl+Tab` | `Ctrl+Alt+J` |
 | Search panes | `Alt+K` | `Alt+K` |
 | Create / close tab or pane | `Cmd+T` / `Cmd+W` | `Ctrl+Alt+T` / `Ctrl+Alt+W` |
@@ -441,9 +442,10 @@ navigation and modified Enter are configurable. Every other key reaches the pane
 as a native terminal sends it, in the encoding the application asked for (Kitty
 keyboard protocol included). On macOS, unbound `Cmd` chords reach the pane as
 Super, and the left `Option` key acts as Alt (choose left, right, both or off in
-the shortcut editor). In Chromium, **Capture keyboard** in the shortcut editor
-goes full screen and hands browser chords such as `Ctrl/Cmd+W/T/N` to the
-terminal; hold Escape to leave. Native editing/IME/app keys
+the shortcut editor). In Chromium, `F11` (`Ctrl+Cmd+F` on macOS) or **Capture
+keyboard** in the shortcut editor goes full screen and hands browser chords such
+as `Ctrl/Cmd+W/T/N` to the terminal; press the shortcut again or hold Escape to
+leave. Other browsers just go full screen. Native editing/IME/app keys
 remain available; remapped paste requires the Clipboard API. Touch shortcuts
 have a separate editor. Esc dismisses transient UI; Tab/arrows navigate controls,
 except in the pane switcher's search, which keeps typing in its field.

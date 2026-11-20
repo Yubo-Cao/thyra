@@ -9,6 +9,7 @@ import { paneShortcutAction } from "../paneShortcuts";
 import { SHORTCUT_NUMBERS, type ShortcutId } from "../shortcutBindings";
 import { shortcutMatches } from "../shortcutPreferences";
 import { store } from "../store";
+import { toggleFullscreen } from "../terminalKeyPreferences";
 import {
   adjacentTabId,
   closeShortcutTarget,
@@ -65,6 +66,13 @@ export function useAppShortcuts({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      // Full screen works from anywhere, dialogs and text fields included.
+      if (shortcutMatches(e, "fullscreen.toggle")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) void toggleFullscreen().catch(() => {});
+        return;
+      }
       // While a dialog, menu, or picker is open, window shortcuts stand down.
       if (keyboardOverlayOpen() || document.getElementById(CONFIG_MENU_ID))
         return;

@@ -96,6 +96,18 @@ export async function enterExclusiveKeyboard(
   exclusiveStore.setState({ active: true });
 }
 
+/**
+ * Enters full screen, capturing every key where Keyboard Lock exists, or
+ * leaves it. Unlike the browser's own F11, the page then also receives
+ * Ctrl+W/T/N, and the same shortcut brings it back.
+ */
+export async function toggleFullscreen() {
+  if (document.fullscreenElement || exclusiveKeyboardActive())
+    return exitExclusiveKeyboard();
+  if (exclusiveKeyboardSupported()) return enterExclusiveKeyboard();
+  await document.documentElement.requestFullscreen?.();
+}
+
 export async function exitExclusiveKeyboard() {
   keyboardLock()?.unlock?.();
   exclusiveStore.setState({ active: false });

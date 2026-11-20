@@ -19,6 +19,11 @@ const descriptions: Description[] = [
     msg("Global"),
   ],
   ["zen.toggle", msg("Toggle Zen mode on desktop"), msg("Global")],
+  [
+    "fullscreen.toggle",
+    msg("Enter or leave full screen, capturing browser shortcuts"),
+    msg("Global"),
+  ],
   ["panes.recent", msg("Open the recent pane switcher"), msg("Global")],
   ["panes.search", msg("Search panes in the pane switcher"), msg("Global")],
   ["workspaces.open", msg("Open Workspaces"), msg("Global")],
