@@ -61,7 +61,7 @@ index 7b9354167553113934a4981fb4c5defef4841fd3..3fdc22953ebe62c4db5c2113b3a236b2
      memory = exports.memory ?? null;
      for (const name of requiredWasmExports) {
 diff --git a/dist/chunk-c0rcpsc5.js b/dist/chunk-c0rcpsc5.js
-index 76391a3751495ede23e6e346bb558e2ec400f9eb..770d6bc003c585044fe31c377900371e5f879abe 100644
+index 76391a3751495ede23e6e346bb558e2ec400f9eb..e1e8d20224bb36a69227f145d25b386d64b6f0545f879abe 100644
 --- a/dist/chunk-c0rcpsc5.js
 +++ b/dist/chunk-c0rcpsc5.js
 @@ -1428,7 +1428,7 @@ function createInputHandler2(options = {}) {
@@ -1159,7 +1159,14 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..770d6bc003c585044fe31c377900371e
    const touchSelectionMode = normalizeTouchSelectionMode(terminal.touchSelectionMode);
    const touchSelectionLongPressMs = clampFiniteNumber(terminal.touchSelectionLongPressMs, 450, 120, 2000, true);
    const touchSelectionMoveThresholdPx = clampFiniteNumber(terminal.touchSelectionMoveThresholdPx, 10, 1, 64);
-@@ -55153,7 +55505,8 @@ function createResttyRuntime2(options) {
+@@ -55147,13 +55499,14 @@ function createResttyRuntime2(options) {
+   const imeInput = imeInputInput ?? null;
+   const isMacPlatform = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+   const fontConfig = {
+-    sizePx: Number.isFinite(terminal.fontSize) ? Math.max(1, Math.round(terminal.fontSize)) : 18
++    sizePx: Number.isFinite(terminal.fontSize) ? Math.max(1, Math.min(64, terminal.fontSize)) : 18
+   };
+   function configureImeInputElement() {
      if (!imeInput)
        return;
      const style = imeInput.style;
@@ -1218,6 +1225,15 @@ index 76391a3751495ede23e6e346bb558e2ec400f9eb..770d6bc003c585044fe31c377900371e
    bindCanvasEvents();
    const fontState = {
      font: null,
+@@ -55347,7 +55701,7 @@ function createResttyRuntime2(options) {
+   function applyFontSize(value) {
+     if (!Number.isFinite(value))
+       return;
+-    const clamped = Math.max(10, Math.min(64, Math.round(value)));
++    const clamped = Math.max(1, Math.min(64, value));
+     if (fontConfig.sizePx === clamped)
+       return;
+     fontConfig.sizePx = clamped;
 @@ -55628,6 +55982,8 @@ function createResttyRuntime2(options) {
            const face = fontLease.faces[i];
            entries.push(createFontEntry2(face.font, face.label));
