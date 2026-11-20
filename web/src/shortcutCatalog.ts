@@ -19,6 +19,9 @@ const descriptions: Description[] = [
     msg("Global"),
   ],
   ["zen.toggle", msg("Toggle Zen mode on desktop"), msg("Global")],
+  ["ui.zoomIn", msg("Make all text and UI larger"), msg("Global")],
+  ["ui.zoomOut", msg("Make all text and UI smaller"), msg("Global")],
+  ["ui.zoomReset", msg("Reset text and UI size"), msg("Global")],
   [
     "fullscreen.toggle",
     msg("Enter or leave full screen, capturing browser shortcuts"),

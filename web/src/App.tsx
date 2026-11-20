@@ -26,6 +26,7 @@ import {
   useConnectionClient,
 } from "./useConnectionClient";
 import { useAppearance } from "./app/useAppearance";
+import { UI_SCALE_DEFAULT, UI_SCALE_STEP, clampUiScale } from "./appearance";
 import { useDocumentTitle } from "./app/useDocumentTitle";
 import { useAppShortcuts } from "./app/useAppShortcuts";
 import { useWorkspaceInspector } from "./app/useWorkspaceInspector";
@@ -156,7 +157,24 @@ export default function App() {
   );
   useTaskNotificationActivation(openNotificationTarget);
   useIdlePrefetch(startupReady, mobile);
+  const { uiScale, onUiScaleChange } = configuration;
+  const stepUiScale = useCallback(
+    (step: -1 | 0 | 1) => {
+      const next =
+        step === 0
+          ? UI_SCALE_DEFAULT
+          : clampUiScale(uiScale + step * UI_SCALE_STEP);
+      if (next !== uiScale) onUiScaleChange(next);
+      store.notify({
+        kind: "info",
+        message: t("Text size {scale}%", { scale: next }),
+        autoDismissMs: 1200,
+      });
+    },
+    [uiScale, onUiScaleChange],
+  );
   useAppShortcuts({
+    stepUiScale,
     mobile,
     paneJump,
     inspector,

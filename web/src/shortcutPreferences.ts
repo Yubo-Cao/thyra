@@ -45,6 +45,9 @@ const LATE_SHORTCUT_IDS: ShortcutId[] = [
   "promptEditor.toggle",
   "promptEditor.focus",
   "fullscreen.toggle",
+  "ui.zoomIn",
+  "ui.zoomOut",
+  "ui.zoomReset",
 ];
 /** Removed actions that saved presets may still name; loading drops them. */
 const RETIRED_SHORTCUT_IDS = new Set([

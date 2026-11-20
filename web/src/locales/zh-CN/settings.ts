@@ -231,6 +231,9 @@ export default {
   "Toggle the Workspace Inspector": "切换工作区检查器",
   "Expand or restore the Inspector on desktop": "在桌面端展开或还原检查器",
   "Toggle Zen mode on desktop": "在桌面端切换禅模式",
+  "Make all text and UI larger": "放大所有文字与界面",
+  "Make all text and UI smaller": "缩小所有文字与界面",
+  "Reset text and UI size": "重置文字与界面大小",
   "Enter or leave full screen, capturing browser shortcuts":
     "进入或退出全屏，同时捕获浏览器快捷键",
   "Open the recent pane switcher": "打开最近窗格切换器",

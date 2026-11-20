@@ -415,6 +415,7 @@ Common defaults (Linux/Android exceptions follow):
 | Expand / restore Inspector (desktop) | `Cmd+Option+Enter` | `Ctrl+Alt+Shift+Enter` |
 | Zen mode (desktop) | `Cmd+Shift+Z` | `Ctrl+Alt+Z` |
 | Full screen, capturing browser shortcuts | `Ctrl+Cmd+F` | `F11` |
+| Larger / smaller / default text and UI size | `Cmd+=` / `Cmd+-` / `Cmd+0` | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
 | Recent pane switcher | `Ctrl+Tab` | `Ctrl+Alt+J` |
 | Search panes | `Alt+K` | `Alt+K` |
 | Create / close tab or pane | `Cmd+T` / `Cmd+W` | `Ctrl+Alt+T` / `Ctrl+Alt+W` |

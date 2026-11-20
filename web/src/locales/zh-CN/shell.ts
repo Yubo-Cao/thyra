@@ -135,6 +135,7 @@ export default {
   "Close this terminal pane?": "关闭此终端窗格？",
   "Rename Tab": "重命名标签页",
   "Rename tab": "重命名标签页",
+  "Text size {scale}%": "文字大小 {scale}%",
   Name: "名称",
   Rename: "重命名",
   "{count} more agent": "另有 {count} 个 Agent",

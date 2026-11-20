@@ -37,6 +37,7 @@ function tabShortcutIndex(e: KeyboardEvent) {
 
 /** Window-level workspace, tab, pane, and pane-switcher shortcuts. */
 export function useAppShortcuts({
+  stepUiScale,
   mobile,
   paneJump,
   inspector,
@@ -44,6 +45,8 @@ export function useAppShortcuts({
   toggleZenMode,
   toggleSidebar,
 }: {
+  /** Larger (1), smaller (-1) or default (0) text size for the whole UI. */
+  stepUiScale: (step: -1 | 0 | 1) => void;
   mobile: boolean;
   paneJump: PaneJump;
   inspector: Pick<WorkspaceInspector, "stateRef" | "toggle" | "setExpanded">;
@@ -71,6 +74,34 @@ export function useAppShortcuts({
         e.preventDefault();
         e.stopPropagation();
         if (!e.repeat) void toggleFullscreen().catch(() => {});
+        return;
+      }
+      // Replaces browser zoom, which the terminal cancels and Keyboard Lock
+      // may swallow; works from the terminal and text fields alike.
+      const scaleStep = (
+        [
+          ["ui.zoomIn", 1],
+          ["ui.zoomOut", -1],
+          ["ui.zoomReset", 0],
+        ] as const
+      ).find(([id]) => shortcutMatches(e, id))?.[1];
+      if (scaleStep !== undefined) {
+        e.preventDefault();
+        e.stopPropagation();
+        // The terminal closes its input when its font is re-measured; give
+        // focus back so typing continues after zooming.
+        const focused = document.activeElement;
+        stepUiScale(scaleStep);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (
+              focused instanceof HTMLElement &&
+              focused.isConnected &&
+              document.activeElement !== focused
+            )
+              focused.focus({ preventScroll: true });
+          }),
+        );
         return;
       }
       // While a dialog, menu, or picker is open, window shortcuts stand down.
@@ -340,6 +371,7 @@ export function useAppShortcuts({
     paneJumpSearch,
     setExpanded,
     stateRef,
+    stepUiScale,
     toggle,
     toggleSidebar,
     toggleZenMode,
