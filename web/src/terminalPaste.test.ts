@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import {
   createTerminalPasteRunner,
+  pasteChordReadsClipboard,
   prepareTerminalPasteText,
   terminalPasteInputText,
   terminalPasteRequest,
@@ -261,6 +262,18 @@ describe("terminal paste", () => {
     expect(prepareTerminalPasteText("one\ntwo\r\nthree\rfour")).toBe(
       "one\rtwo\rthree\rfour",
     );
+  });
+
+  test("the paste chord reads the Clipboard API only where reads are silent", () => {
+    const clipboard = { read: async () => [], readText: async () => "" };
+    expect(pasteChordReadsClipboard(false, clipboard)).toBe(false);
+    expect(pasteChordReadsClipboard(true, clipboard)).toBe(true);
+    expect(
+      pasteChordReadsClipboard(true, { readText: clipboard.readText }),
+    ).toBe(true);
+    // Insecure origins have no Clipboard API; the paste event still works.
+    expect(pasteChordReadsClipboard(true, undefined)).toBe(false);
+    expect(pasteChordReadsClipboard(true, {})).toBe(false);
   });
 
   test("routes text through Herdr's mode-aware pane input API", () => {

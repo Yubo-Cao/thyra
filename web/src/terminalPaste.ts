@@ -54,6 +54,20 @@ export function createTerminalPasteRunner(
   };
 }
 
+/**
+ * Whether the platform's own paste chord reads through the Clipboard API.
+ * Browsers ask before such a read (Safari shows a Paste callout) while their
+ * paste event carries the payload unasked, even on insecure LAN URLs, so the
+ * chord normally keeps the event. A host that reads the clipboard without
+ * asking (Prothyra's `clipboard.read`) gets the API, images included.
+ */
+export function pasteChordReadsClipboard(
+  silentClipboardRead: boolean,
+  clipboard: Partial<Pick<Clipboard, "read" | "readText">> | undefined,
+): boolean {
+  return silentClipboardRead && !!(clipboard?.read || clipboard?.readText);
+}
+
 type TerminalPasteInputEvent = Pick<InputEvent, "inputType" | "isComposing">;
 
 export type TerminalPasteTextareaSnapshot = {

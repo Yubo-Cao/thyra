@@ -11,6 +11,7 @@ import { bridge, type ConnectionSummary } from "../api";
 import { prepareAppUpdate, servesOtherBuild } from "../appServiceWorker";
 import { hostCapable } from "../capabilities";
 import { t } from "../i18n";
+import { onProthyraResume } from "../prothyra";
 import { afterStartup } from "../startupGate";
 import {
   applyConnectionCatalog,
@@ -138,6 +139,7 @@ function init() {
   if (typeof window !== "undefined") {
     window.addEventListener("focus", refreshOnReturn);
     window.addEventListener("online", refreshOnReturn);
+    onProthyraResume(refreshOnReturn);
   }
   // Open the socket right away: on slow HTTP/1.1 links it would otherwise
   // queue behind the terminal chunks for one of six connections.

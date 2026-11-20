@@ -955,6 +955,21 @@ configuration owns credentials/options. Stderr is bounded/sanitized. Cleanup
 removes owned paths only after confirmed child exit; otherwise it preserves them
 and reports failure. Host operations share this boundary; see [connection setup](./DEPLOYMENT.md#multiple-and-remote-herdr-connections).
 
+## Prothyra host
+
+Prothyra, the owner's iPad browser (WKWebView), injects `window.prothyra = { version, capabilities }` at document start in every frame.
+`web/src/prothyra.ts` reads it once; without a `capabilities` array the page is in an ordinary browser, and the version is never read.
+Each capability enables one behaviour; without it Thyra behaves as in Safari.
+
+- `lifecycle.resume`: the app dispatches `prothyra:resume` on `window` when it returns to the foreground, and Thyra runs the recovery `visibilitychange`, `focus`, and `online` run.
+  A socket waiting out its reconnect backoff connects at once; a connected one gets a single heartbeat ping and reconnects only if neither the reply nor any other message arrives in time; the metadata refresh coalesces with any in flight; terminals repaint and re-attach only if their attach was lost.
+  The event does not arm the last-resort reload, which needs a measured hidden period.
+- `clipboard.read`: the app answers `navigator.clipboard` reads without a prompt, so the native paste chord (Cmd+V) reads through the Clipboard API, images included, instead of leaving the paste to WebKit's paste event; a paste event that arrives during that read is dropped.
+- `keyboard.fullCapture`: every key reaches the page, so the shortcut editor warns only about operating-system chords. The terminal still leaves the browser's Command chords (reload, find, select all and the like) to the page as in Safari; only exclusive keyboard mode sends them to the pane as Super. Default bindings are unchanged.
+
+Thyra does not consult `clipboard.write`.
+Prothyra reports a macOS user agent and `navigator.maxTouchPoints` 0 while `(pointer: coarse)` matches; Thyra keeps its touch UI there, and terminal density follows the layout (viewport width or the layout preference), not the pointer.
+
 ## Distribution model
 
 Production embeds frontend assets and Bun into one executable; targets need no

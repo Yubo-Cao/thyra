@@ -8,6 +8,7 @@ import {
   SHORTCUT_IDS,
   shortcutConflicts,
   shortcutFromEvent,
+  shortcutWarning,
   validateShortcutKeys,
   type ShortcutBindings,
   type ShortcutEvent,
@@ -388,6 +389,28 @@ test("presets saved with removed actions still load", () => {
     });
     expect(loaded.bindings).toEqual(defaults);
   }
+});
+
+describe("reserved shortcut warning", () => {
+  const browserChords = ["Meta+T", "Ctrl+Shift+W", "Meta+1", "Ctrl+Tab", "F5"];
+  const systemChords = ["Meta+Tab", "Meta+Shift+Tab", "Alt+F4", "Meta+Q"];
+
+  test("warns about browser and operating system chords", () => {
+    for (const key of [...browserChords, ...systemChords])
+      expect(shortcutWarning([key], false)).not.toBeNull();
+    expect(shortcutWarning(["Ctrl+Alt+K", "Meta+K"], false)).toBeNull();
+  });
+
+  test("a host that captures every key frees only the browser's chords", () => {
+    for (const key of browserChords)
+      expect(shortcutWarning([key], true)).toBeNull();
+    for (const key of systemChords)
+      expect(shortcutWarning([key], true)).not.toBeNull();
+  });
+
+  test("ordinary browsers keep the browser warning by default", () => {
+    expect(shortcutWarning(["Meta+T"])).not.toBeNull();
+  });
 });
 
 describe("terminal copy shortcuts", () => {

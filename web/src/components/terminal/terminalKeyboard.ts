@@ -18,10 +18,12 @@ import {
 } from "../../terminalInputBatcher";
 import {
   createTerminalPasteRunner,
+  pasteChordReadsClipboard,
   type TerminalPasteTextareaSnapshot,
   terminalPasteInputText,
   terminalPasteRequest,
 } from "../../terminalPaste";
+import { hasProthyraCapability } from "../../prothyra";
 import {
   cancelEvent,
   shouldAvoidVirtualKeyboard,
@@ -230,6 +232,10 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     }
   };
   const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
+  const chordReadsClipboard = pasteChordReadsClipboard(
+    hasProthyraCapability("clipboard.read"),
+    navigator.clipboard,
+  );
 
   // The platform's own copy/paste chord: Cmd on Apple, Ctrl elsewhere.
   const isNativeChord = (e: KeyboardEvent, key: "c" | "v") =>
@@ -272,7 +278,7 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
     if (e.type === "keydown" && shortcutMatches(e, "terminal.paste")) {
       // Native paste events carry clipboard payloads even on insecure LAN URLs.
       // Keep the platform's native gesture; custom combinations use the API.
-      if (isNativeChord(e, "v")) return true;
+      if (isNativeChord(e, "v") && !chordReadsClipboard) return true;
       cancelEvent(e);
       pasteFromBrowserClipboard().catch((err) => {
         ui.setUploadError(
@@ -396,6 +402,11 @@ export function installTerminalKeyboard(session: TerminalSession): () => void {
       container.contains(target as Node | null) ||
       (active ? container.contains(active) : false);
     if (!isTerminalPaste && isEditableElement(target)) return;
+    // The chord's own Clipboard API read already carries this paste.
+    if (chordReadsClipboard && clipboardPasteInFlight) {
+      cancelEvent(e);
+      return;
+    }
     const destinationPaneId = refs.paneId.current ?? null;
     if (!img && appleTouchPlatform && isTerminalPaste) {
       cancelNativePasteFallback();
