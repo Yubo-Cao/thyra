@@ -42,6 +42,11 @@ import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Token } from "../ui/Token";
+import { requestRenamePane } from "../TabBar";
+
+/** Double clicks on these keep their own meaning and do not rename. */
+const PANE_HEADER_CONTROL =
+  'button, a, input, textarea, select, [contenteditable], [role="button"]';
 
 const preventPaneActionFocus = (e: PointerEvent<HTMLElement>) => {
   e.preventDefault();
@@ -271,6 +276,15 @@ export function TerminalPaneHeader({
     <>
       <div
         className={`terminal-pane-head ui-bar ${isActivePane ? "is-active" : ""}`}
+        onDoubleClick={(event) => {
+          if (access.readOnly) return;
+          if (
+            event.target instanceof Element &&
+            event.target.closest(PANE_HEADER_CONTROL)
+          )
+            return;
+          requestRenamePane(pane.pane_id);
+        }}
       >
         <div className="terminal-pane-identity" title={pane.cwd ?? paneName}>
           {pane.agent ? (

@@ -8,6 +8,8 @@ A Web/PWA client for a running [Herdr](https://herdr.dev) server.
 
 - Create, rename, pin, switch, and close workspaces/tabs. Linked Git worktrees
   group under their repository; pins and collapsed groups stay in this browser.
+- Double-click a tab to rename it; double-click a pane's header to name the
+  pane (leave the name empty to clear it).
 - Split right/down, resize, focus neighbors, zoom, or close panes.
 - In a split tab, drag a pane by its header onto another pane: the centre
   swaps the two, an edge moves the pane to that side of the target. With a

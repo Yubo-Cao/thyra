@@ -157,6 +157,14 @@ export const workspaceActions = {
     );
   },
 
+  /** `null` clears the pane's name. Herdr sends no event, so refresh now. */
+  renamePane(paneId: string, label: string | null) {
+    return action(
+      (lease) => lease.client.call("pane.rename", { pane_id: paneId, label }),
+      { refresh: "immediate" },
+    );
+  },
+
   splitPane(paneId: string, direction: "right" | "down") {
     const navigation = state.browserNavigation;
     return action(async (lease) => {

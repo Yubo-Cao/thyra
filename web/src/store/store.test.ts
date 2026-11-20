@@ -944,6 +944,33 @@ describe("basic Herdr 0.9 compatibility", () => {
     }
   });
 
+  test("pane rename sends the name, and null clears it", async () => {
+    const previousState = store.get();
+    const originalConnection = bridge.connection;
+    const calls: unknown[] = [];
+    bridge.connection = (() => ({
+      connectionId: "alpha",
+      generation: 10,
+      isCurrent: () => true,
+      call: (async (method, params) => {
+        calls.push({ method, params });
+        throw new Error("stop before the refresh");
+      }) as ConnectionClient["call"],
+    })) as typeof bridge.connection;
+    try {
+      __storeTesting.replaceState(partitionState());
+      await store.renamePane("w1:p1", "build");
+      await store.renamePane("w1:p1", null);
+      expect(calls).toEqual([
+        { method: "pane.rename", params: { pane_id: "w1:p1", label: "build" } },
+        { method: "pane.rename", params: { pane_id: "w1:p1", label: null } },
+      ]);
+    } finally {
+      bridge.connection = originalConnection;
+      __storeTesting.replaceState(previousState);
+    }
+  });
+
   for (const event of ["layout_updated", "session.resync_required"]) {
     test(`${event} uses generic refresh and queues reconciliation during an in-flight snapshot`, async () => {
       const previousState = store.get();

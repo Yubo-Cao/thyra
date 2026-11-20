@@ -107,6 +107,7 @@ const RPC_MATRIX: Record<string, string> = {
   "pane.send_key": "admin owner editor",
   "pane.send_keys": "admin owner editor",
   "pane.send_text": "admin owner editor",
+  "pane.rename": "admin owner editor",
   "pane.split": "admin owner editor",
   "pane.swap": "-",
   "pane.zoom": "admin owner editor",

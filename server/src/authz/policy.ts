@@ -341,6 +341,7 @@ export const RPC_POLICY: Readonly<Record<string, RpcPolicyEntry>> = {
   "pane.layout": herdr(read(r.pane)),
   "pane.split": herdr(write(r.pane)),
   "pane.close": herdr(write(r.pane)),
+  "pane.rename": herdr(write(r.pane)),
   "pane.resize": herdr(write(r.pane)),
   "pane.zoom": herdr(write(r.pane)),
   // Rearranging a tab needs write on every pane it touches.

@@ -25,6 +25,7 @@ import { useShallow } from "zustand/react/shallow";
 
 const REQUEST_CLOSE_TAB_EVENT = "thyra:request-close-tab";
 const REQUEST_CLOSE_PANE_EVENT = "thyra:request-close-pane";
+const REQUEST_RENAME_PANE_EVENT = "thyra:request-rename-pane";
 
 interface TabMenuState {
   tab: Tab;
@@ -54,6 +55,18 @@ export function requestClosePane(paneId: string) {
   window.dispatchEvent(
     new CustomEvent(REQUEST_CLOSE_PANE_EVENT, { detail: { paneId } }),
   );
+}
+
+/** Opens the pane rename dialog; an empty name clears the pane's name. */
+export function requestRenamePane(paneId: string) {
+  window.dispatchEvent(
+    new CustomEvent(REQUEST_RENAME_PANE_EVENT, { detail: { paneId } }),
+  );
+}
+
+/** Double clicks on a tab's own controls do not rename it. */
+function isTabControl(target: EventTarget | null) {
+  return target instanceof Element && !!target.closest("button");
 }
 
 /**
@@ -87,6 +100,9 @@ export function TabBar({
     null,
   );
   const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
+  const [pendingRenamePaneId, setPendingRenamePaneId] = useState<string | null>(
+    null,
+  );
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const focusedWs = s.workspaces.find((w) => w.focused);
   const createReason = useEndpointCreationReason(
@@ -120,6 +136,9 @@ export function TabBar({
       pendingClosePane ? [pendingClosePane.pane_id] : [],
     ).length,
   );
+  const pendingRenamePane = s.panes.find(
+    (pane) => pane.pane_id === pendingRenamePaneId,
+  );
   const showTabStrip = !!focusedWs && (!mobile || tabs.length > 1);
   const gitStatus = focusedWs?.worktree?.git_status;
   const changedCount = gitStatus
@@ -139,11 +158,21 @@ export function TabBar({
         ?.paneId;
       if (typeof paneId === "string" && paneId) setPendingClosePaneId(paneId);
     };
+    const onRequestRenamePane = (event: Event) => {
+      const paneId = (event as CustomEvent<{ paneId?: unknown }>).detail
+        ?.paneId;
+      if (typeof paneId === "string" && paneId) setPendingRenamePaneId(paneId);
+    };
     window.addEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
     window.addEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
+    window.addEventListener(REQUEST_RENAME_PANE_EVENT, onRequestRenamePane);
     return () => {
       window.removeEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
       window.removeEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
+      window.removeEventListener(
+        REQUEST_RENAME_PANE_EVENT,
+        onRequestRenamePane,
+      );
     };
   }, []);
 
@@ -249,6 +278,21 @@ export function TabBar({
           setPendingRenameTab(null);
         }}
       />
+      <TextInputDialog
+        open={!!pendingRenamePane}
+        title={t("Rename Pane")}
+        label={t("Name")}
+        initialValue={pendingRenamePane?.label ?? ""}
+        placeholder={t("Leave empty to clear the name")}
+        submitLabel={t("Rename")}
+        onClose={() => setPendingRenamePaneId(null)}
+        onSubmit={(label) => {
+          if (pendingRenamePane) {
+            store.renamePane(pendingRenamePane.pane_id, label.trim() || null);
+          }
+          setPendingRenamePaneId(null);
+        }}
+      />
     </>
   );
 
@@ -265,6 +309,11 @@ export function TabBar({
                 className={`tabbar-tab ${tab.focused ? "is-active" : ""}`}
                 onClick={() => {
                   store.focusTab(tab.tab_id);
+                }}
+                onDoubleClick={(e) => {
+                  if (!workspaceCan(focusedWs, "edit")) return;
+                  if (isTabControl(e.target)) return;
+                  setPendingRenameTab(tab);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
