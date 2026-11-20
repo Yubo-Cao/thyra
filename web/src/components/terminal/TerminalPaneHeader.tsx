@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import type { TerminalPreviewMode } from "./TerminalPreview";
-import type { PointerEvent, ReactNode } from "react";
+import { type PointerEvent, type ReactNode, useState } from "react";
 import { agentStatusText } from "../../agentOrder";
 import { openAgentBrowser, useAgentBrowserAvailable } from "../../agentBrowser";
 import { type AgentPaneView, setAgentPaneView } from "../../agentSessions";
@@ -42,7 +42,7 @@ import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Token } from "../ui/Token";
-import { requestRenamePane } from "../TabBar";
+import { InlineTextInput } from "../ui/InlineTextInput";
 
 /** Double clicks on these keep their own meaning and do not rename. */
 const PANE_HEADER_CONTROL =
@@ -267,6 +267,7 @@ export function TerminalPaneHeader({
   readOnly?: boolean;
 }) {
   const access = control?.access ?? { readOnly, viewOnly: readOnly };
+  const [renaming, setRenaming] = useState(false);
   const connectionId = useStoreSelector((state) => state.activeConnectionId);
   const watched = usePaneWatched(connectionId, pane.pane_id);
   const browser = useAgentBrowserAvailable(connectionId) && !!pane.agent;
@@ -283,7 +284,7 @@ export function TerminalPaneHeader({
             event.target.closest(PANE_HEADER_CONTROL)
           )
             return;
-          requestRenamePane(pane.pane_id);
+          setRenaming(true);
         }}
       >
         <div className="terminal-pane-identity" title={pane.cwd ?? paneName}>
@@ -296,7 +297,24 @@ export function TerminalPaneHeader({
               aria-hidden="true"
             />
           )}
-          <span className="terminal-pane-name">{paneName}</span>
+          {renaming ? (
+            <InlineTextInput
+              className="terminal-pane-name"
+              initialValue={pane.label ?? ""}
+              placeholder={paneName}
+              ariaLabel={t("Rename pane")}
+              onCancel={() => setRenaming(false)}
+              onCommit={(value) => {
+                setRenaming(false);
+                const label = value.trim() || null;
+                if (label !== (pane.label?.trim() || null)) {
+                  void store.renamePane(pane.pane_id, label);
+                }
+              }}
+            />
+          ) : (
+            <span className="terminal-pane-name">{paneName}</span>
+          )}
           <Token
             code
             className="terminal-pane-id"

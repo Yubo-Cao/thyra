@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import { PanelRight, Plus, X } from "lucide-react";
 import type { Tab } from "../types";
 import { AgentStatusIcon } from "./AgentStatusIcon";
-import { ConfirmDialog, TextInputDialog } from "./ModalDialogs";
+import { ConfirmDialog } from "./ModalDialogs";
 import { PanePresence } from "./PanePresence";
 import {
   clearTerminalComposerDrafts,
@@ -19,13 +19,18 @@ import {
 import { summarizeTabAgents } from "./agentSession";
 import { Button } from "./ui/Button";
 import { ContextMenu } from "./ui/ContextMenu";
+import { InlineTextInput } from "./ui/InlineTextInput";
 import { IconButton } from "./ui/IconButton";
 import "./TabBar.css";
 import { useShallow } from "zustand/react/shallow";
 
 const REQUEST_CLOSE_TAB_EVENT = "thyra:request-close-tab";
 const REQUEST_CLOSE_PANE_EVENT = "thyra:request-close-pane";
-const REQUEST_RENAME_PANE_EVENT = "thyra:request-rename-pane";
+
+/** Double clicks on a tab's own controls do not rename it. */
+function isTabControl(target: EventTarget | null) {
+  return target instanceof Element && !!target.closest("button, input");
+}
 
 interface TabMenuState {
   tab: Tab;
@@ -55,18 +60,6 @@ export function requestClosePane(paneId: string) {
   window.dispatchEvent(
     new CustomEvent(REQUEST_CLOSE_PANE_EVENT, { detail: { paneId } }),
   );
-}
-
-/** Opens the pane rename dialog; an empty name clears the pane's name. */
-export function requestRenamePane(paneId: string) {
-  window.dispatchEvent(
-    new CustomEvent(REQUEST_RENAME_PANE_EVENT, { detail: { paneId } }),
-  );
-}
-
-/** Double clicks on a tab's own controls do not rename it. */
-function isTabControl(target: EventTarget | null) {
-  return target instanceof Element && !!target.closest("button");
 }
 
 /**
@@ -99,10 +92,7 @@ export function TabBar({
   const [pendingClosePaneId, setPendingClosePaneId] = useState<string | null>(
     null,
   );
-  const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
-  const [pendingRenamePaneId, setPendingRenamePaneId] = useState<string | null>(
-    null,
-  );
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const focusedWs = s.workspaces.find((w) => w.focused);
   const createReason = useEndpointCreationReason(
@@ -136,9 +126,6 @@ export function TabBar({
       pendingClosePane ? [pendingClosePane.pane_id] : [],
     ).length,
   );
-  const pendingRenamePane = s.panes.find(
-    (pane) => pane.pane_id === pendingRenamePaneId,
-  );
   const showTabStrip = !!focusedWs && (!mobile || tabs.length > 1);
   const gitStatus = focusedWs?.worktree?.git_status;
   const changedCount = gitStatus
@@ -158,21 +145,11 @@ export function TabBar({
         ?.paneId;
       if (typeof paneId === "string" && paneId) setPendingClosePaneId(paneId);
     };
-    const onRequestRenamePane = (event: Event) => {
-      const paneId = (event as CustomEvent<{ paneId?: unknown }>).detail
-        ?.paneId;
-      if (typeof paneId === "string" && paneId) setPendingRenamePaneId(paneId);
-    };
     window.addEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
     window.addEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
-    window.addEventListener(REQUEST_RENAME_PANE_EVENT, onRequestRenamePane);
     return () => {
       window.removeEventListener(REQUEST_CLOSE_TAB_EVENT, onRequestClose);
       window.removeEventListener(REQUEST_CLOSE_PANE_EVENT, onRequestClosePane);
-      window.removeEventListener(
-        REQUEST_RENAME_PANE_EVENT,
-        onRequestRenamePane,
-      );
     };
   }, []);
 
@@ -204,7 +181,7 @@ export function TabBar({
                       {
                         id: "rename",
                         label: t("Rename tab..."),
-                        onAction: () => setPendingRenameTab(menuTab),
+                        onAction: () => setEditingTabId(menuTab.tab_id),
                       },
                       {
                         id: "create",
@@ -263,36 +240,6 @@ export function TabBar({
           store.closePane(pendingClosePane.pane_id);
         }}
       />
-      <TextInputDialog
-        open={!!pendingRenameTab}
-        title={t("Rename Tab")}
-        label={t("Name")}
-        initialValue={tabName(pendingRenameTab ?? undefined)}
-        submitLabel={t("Rename")}
-        onClose={() => setPendingRenameTab(null)}
-        onSubmit={(label) => {
-          const value = label.trim();
-          if (pendingRenameTab && value) {
-            store.renameTab(pendingRenameTab.tab_id, value);
-          }
-          setPendingRenameTab(null);
-        }}
-      />
-      <TextInputDialog
-        open={!!pendingRenamePane}
-        title={t("Rename Pane")}
-        label={t("Name")}
-        initialValue={pendingRenamePane?.label ?? ""}
-        placeholder={t("Leave empty to clear the name")}
-        submitLabel={t("Rename")}
-        onClose={() => setPendingRenamePaneId(null)}
-        onSubmit={(label) => {
-          if (pendingRenamePane) {
-            store.renamePane(pendingRenamePane.pane_id, label.trim() || null);
-          }
-          setPendingRenamePaneId(null);
-        }}
-      />
     </>
   );
 
@@ -313,7 +260,7 @@ export function TabBar({
                 onDoubleClick={(e) => {
                   if (!workspaceCan(focusedWs, "edit")) return;
                   if (isTabControl(e.target)) return;
-                  setPendingRenameTab(tab);
+                  setEditingTabId(tab.tab_id);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -357,7 +304,23 @@ export function TabBar({
                   tab={tab}
                   onOpenMenu={(x, y) => setMenu({ tab, x, y })}
                 >
-                  <span className="tabbar-name">{name}</span>
+                  {editingTabId === tab.tab_id ? (
+                    <InlineTextInput
+                      className="tabbar-name"
+                      initialValue={name}
+                      ariaLabel={t("Rename tab")}
+                      onCancel={() => setEditingTabId(null)}
+                      onCommit={(value) => {
+                        setEditingTabId(null);
+                        const label = value.trim();
+                        if (label && label !== name) {
+                          store.renameTab(tab.tab_id, label);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span className="tabbar-name">{name}</span>
+                  )}
                 </TabLongPressTarget>
                 <PanePresence
                   paneIds={s.panes

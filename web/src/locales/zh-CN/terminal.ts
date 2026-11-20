@@ -48,6 +48,7 @@ export default {
   "Open link": "打开链接",
   "File actions": "文件操作",
   "Pane {paneId} - click to copy": "窗格 {paneId} - 点击复制",
+  "Rename pane": "重命名窗格",
   "Copy pane ID {paneId}": "复制窗格 ID {paneId}",
   "No history": "无历史记录",
   "Pane control": "窗格控制",

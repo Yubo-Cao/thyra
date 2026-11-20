@@ -1,0 +1,22 @@
+@layer thyra {
+  /* Sits where the label was: same font, a field only by its fill. */
+  .ui-inline-text-input {
+    min-width: 4ch;
+    max-width: 100%;
+    field-sizing: content;
+    height: calc(1lh + 4px);
+    margin: -2px 0;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 0;
+    outline: 1px solid var(--accent);
+    background: var(--panel-2);
+    color: inherit;
+    font: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .ui-inline-text-input::placeholder {
+    color: var(--muted);
+  }
+}
