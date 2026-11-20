@@ -1292,7 +1292,8 @@ export class TerminalEngine {
     const dpr = window.devicePixelRatio || 1;
     if (lastMeasuredCell?.key === this.cellMetricsKey(dpr))
       return lastMeasuredCell;
-    const px = Math.max(1, Math.round(Math.round(this.opts.fontSize) * dpr));
+    // Match restty: keep fractional CSS font sizes until rounding to device pixels.
+    const px = Math.max(1, Math.round(this.opts.fontSize * dpr));
     return {
       width: Math.round(px * 0.6) / dpr,
       height: Math.round(px * 1.32 * this.opts.lineHeight) / dpr,
