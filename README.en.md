@@ -10,8 +10,8 @@
 </p>
 
 A **browser client** for [Herdr](https://herdr.dev). Control terminals and
-watch agent status on desktop or mobile, with the host's
-[VS Code](./FEATURES.md#workspace-inspector) docked beside them for files and diffs.
+watch agent status on desktop or mobile. Open file previews and the host's
+VS Code beside the terminal in the [Workspace Inspector](./FEATURES.md#workspace-inspector).
 Watch an agent on a tablet and type from your phone without resizing it.
 Run Claude Code and Codex in an [agent view](./FEATURES.md#agent-view) instead of their terminal UI: a streamed Markdown transcript, tool calls and diffs that open in place, approval buttons, and a prompt box with live Markdown preview and image attachments.
 See and drive the headed browser your agents use, and get notified when one hands you a tab.

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { VSCODE_WORKBENCH_GLOBAL } from "../../../shared/vscodeWorkbench";
-import { editorUrl, editorWorkbench, openInEditor } from "./vscodeEditor";
+import {
+  editorHasTextFile,
+  editorUrl,
+  editorWorkbench,
+  openInEditor,
+} from "./vscodeEditor";
 
 const ORIGIN = "https://thyra.test:8443";
 
@@ -69,6 +74,28 @@ describe("a running editor", () => {
       },
     );
     expect(editorWorkbench(frame(foreign))).toBeNull();
+  });
+
+  test("waits for an exact opened text model before revealing the frame", () => {
+    const documentFor = (uris: string[]) =>
+      ({
+        querySelectorAll: () =>
+          uris.map((uri) => ({ getAttribute: () => uri })),
+      }) as unknown as Document;
+    const host = "thyra.test:8443";
+    const file = { path: "nested/a b.ts", nonce: 1 };
+    expect(editorHasTextFile(documentFor([]), host, "/repo", file)).toBe(false);
+    expect(
+      editorHasTextFile(
+        documentFor([
+          "vscode-remote://thyra.test:8443/repo/a%20b.ts",
+          "vscode-remote://thyra.test:8443/repo/nested/a%20b.ts",
+        ]),
+        host,
+        "/repo",
+        file,
+      ),
+    ).toBe(true);
   });
 
   test("opens a file as a pinned editor on the remote", async () => {

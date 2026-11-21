@@ -144,11 +144,18 @@ const PUBLIC_RESPONSE_HEADERS: Readonly<Record<string, string>> = {
 export function withPublicSecurityHeaders(
   response: Response,
   htmlPolicy: string,
+  workspacePreview = false,
 ): Response {
   // WebSocket upgrades and 101 responses cannot be rewrapped.
   if (response.status === 101) return response;
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(PUBLIC_RESPONSE_HEADERS)) {
+    if (
+      workspacePreview &&
+      (name === "x-frame-options" || name === "cross-origin-resource-policy") &&
+      response.headers.has(name)
+    )
+      continue;
     headers.set(name, value);
   }
   if (

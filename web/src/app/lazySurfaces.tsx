@@ -71,6 +71,7 @@ function idlePrefetchLoaders(mobile: boolean) {
       ? [agentViewPanel.preload]
       : []),
     ...(mobile ? [terminalComposerPanel.preload] : []),
+    workspaceInspectorPanel.preload,
     commandComboboxPanel.preload,
     configMenuPanel.preload,
     connectionSwitcherPanel.preload,
@@ -82,7 +83,6 @@ function idlePrefetchLoaders(mobile: boolean) {
     createWorkspaceDialog.preload,
     projectLauncherPanel.preload,
     ...(mobile ? [mobileTabSheet.preload] : [promptEditorPanel.preload]),
-    workspaceInspectorPanel.preload,
   ];
 }
 

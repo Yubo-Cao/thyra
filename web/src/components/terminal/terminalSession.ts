@@ -190,6 +190,7 @@ export type TerminalWorkspaceFileRequest = {
   workspaceId: string;
   paneId?: string;
   path: string;
+  line?: number;
 };
 
 function createTerminalRefs(initial: {
@@ -455,7 +456,11 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     },
     { capture: true, signal: abort.signal },
   );
-  const openFileInInspector = (path: string, event: MouseEvent) => {
+  const openFileInInspector = (
+    path: string,
+    event: MouseEvent,
+    line?: number,
+  ) => {
     // Mouse-reporting apps own their selection, so hasSelection alone cannot
     // distinguish a click from a drag ending inside the same link.
     if (
@@ -474,6 +479,7 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
         connectionGeneration: bindings.identity.generation,
         paneId: refs.paneId.current ?? undefined,
         path,
+        line,
         workspaceId,
       });
   };

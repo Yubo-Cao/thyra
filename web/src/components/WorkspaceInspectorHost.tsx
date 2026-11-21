@@ -7,6 +7,7 @@ import {
   Upload,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -24,12 +25,21 @@ import { selectPanesWithoutActivity } from "../agentOrder";
 import type { Pane, Workspace } from "../types";
 import {
   readInspectorPreferences,
+  relativePathWithinCheckout,
   type InspectorFileRequest,
   type InspectorDock,
   type WorkspaceInspectorState,
 } from "../workspaceResource";
-import { editorUrl, editorWorkbench, openInEditor } from "./vscodeEditor";
-import { uploadWorkspaceFile } from "./workspaceFiles";
+import {
+  editorHasTextFile,
+  editorUrl,
+  editorWorkbench,
+  openInEditor,
+} from "./vscodeEditor";
+import { previewKind, previewName } from "./inspectorPreviewModel";
+import { WorkspaceInspectorPreview } from "./WorkspaceInspectorPreview";
+import type { PreviewTarget } from "./useInspectorPreview";
+import { isFilesystemPath, uploadWorkspaceFile } from "./workspaceFiles";
 import { Button } from "./ui/Button";
 import { CloseButton } from "./ui/CloseButton";
 import { IconButton } from "./ui/IconButton";
@@ -100,56 +110,114 @@ function checkoutLabel(workspace?: Workspace) {
   );
 }
 
-/**
- * One live VS Code per folder, the most recent first. A file request opens
- * in the folder's running editor, and reloads that editor with the file only
- * when it cannot take the request.
- */
-function useEditorFrames(folder: string, file?: InspectorFileRequest) {
-  const [frames, setFrames] = useState<{ folder: string; src: string }[]>([]);
+type EditorFrame = { folder: string; src: string; file?: InspectorFileRequest };
+
+/** Keep the most recently used folders alive in a fixed DOM order. */
+function useEditorFrames(
+  folder: string,
+  file: InspectorFileRequest | undefined,
+  verifyText: boolean,
+) {
+  const [frames, setFrames] = useState<EditorFrame[]>([]);
   const elements = useRef(new Map<string, HTMLIFrameElement>());
-  const fileNonce = useRef(0);
+  const [opened, setOpened] = useState<{
+    folder: string;
+    file?: InspectorFileRequest;
+  }>();
+  const [failed, setFailed] = useState<InspectorFileRequest>();
+  const activeFrame = frames.find((frame) => frame.folder === folder);
   useLayoutEffect(() => {
     if (!folder) return;
-    const fresh = !!file && file.nonce !== fileNonce.current;
-    if (file) fileNonce.current = file.nonce;
-    const show = (load: boolean) =>
-      setFrames((current) => {
-        const existing = current.find((frame) => frame.folder === folder);
-        if (existing && !load && current[0] === existing) return current;
-        const next = {
+    setFrames((current) => {
+      if (current[0]?.folder === folder) return current;
+      const existing = current.find((frame) => frame.folder === folder);
+      return [
+        existing ?? {
           folder,
-          src:
-            existing && !load
-              ? existing.src
-              : editorUrl(window.location.origin, folder, file),
-        };
-        return [
-          next,
-          ...current.filter((frame) => frame.folder !== folder),
-        ].slice(0, MAX_EDITORS);
-      });
-    const workbench = fresh
-      ? editorWorkbench(elements.current.get(folder))
-      : null;
-    if (!file || !workbench) return show(fresh);
-    show(false);
+          file,
+          src: editorUrl(window.location.origin, folder, file),
+        },
+        ...current.filter((frame) => frame.folder !== folder),
+      ].slice(0, MAX_EDITORS);
+    });
+  }, [folder, file]);
+
+  useEffect(() => {
+    if (!activeFrame) return;
     let current = true;
-    void openInEditor(workbench, window.location.host, folder, file).then(
-      (opened) => {
-        if (!opened && current) show(true);
-      },
-    );
+    let timer: ReturnType<typeof setTimeout>;
+    let requested = activeFrame.file === file;
+    const until = Date.now() + 30_000;
+    const wait = async () => {
+      const element = elements.current.get(activeFrame.folder);
+      const workbench = editorWorkbench(element);
+      if (workbench && !requested && file) {
+        // The embedder API exists before the remote filesystem provider.
+        await workbench.env?.retrievePerformanceMarks().catch(() => undefined);
+        if (!current) return;
+        requested = await openInEditor(
+          workbench,
+          window.location.host,
+          folder,
+          file,
+        );
+        if (!current) return;
+        if (!requested) {
+          setFrames((frames) =>
+            frames.map((frame) =>
+              frame === activeFrame
+                ? {
+                    folder,
+                    file,
+                    src: editorUrl(window.location.origin, folder, file),
+                  }
+                : frame,
+            ),
+          );
+          return;
+        }
+      }
+      const document = workbench && element?.contentDocument;
+      const hasFile =
+        file &&
+        (verifyText
+          ? editorHasTextFile(document, window.location.host, folder, file)
+          : document &&
+            Array.from(
+              document.querySelectorAll(
+                ".tabs-container .tab.active[data-resource-name]",
+              ),
+            ).some(
+              (tab) =>
+                tab.getAttribute("data-resource-name") ===
+                previewName(file.path),
+            ));
+      if (
+        workbench &&
+        (!file ||
+          (hasFile &&
+            !document?.querySelector(
+              ".editor-instance .editor-placeholder-icon-container .codicon-error",
+            )))
+      ) {
+        setFailed(undefined);
+        setOpened({ folder, file });
+      } else if (Date.now() >= until) {
+        setFailed(file);
+      } else {
+        timer = setTimeout(wait, 50);
+      }
+    };
+    void wait();
     return () => {
       current = false;
+      clearTimeout(timer);
     };
-  }, [folder, file]);
+  }, [activeFrame, folder, file, verifyText]);
   const bind = (folder: string) => (element: HTMLIFrameElement | null) => {
     if (element) elements.current.set(folder, element);
     else elements.current.delete(folder);
   };
-  // Moving an iframe in the document reloads it, so the editors render in a
-  // fixed order whichever is the most recent.
   const ordered = useMemo(
     () =>
       [...frames].sort((a, b) =>
@@ -157,31 +225,12 @@ function useEditorFrames(folder: string, file?: InspectorFileRequest) {
       ),
     [frames],
   );
-  return { frames: ordered, bind };
-}
-
-function UploadPanel({
-  uploading,
-  root,
-  onChoose,
-}: {
-  uploading: boolean;
-  root: string;
-  onChoose: () => void;
-}) {
-  return (
-    <div className="workspace-inspector-upload">
-      <strong>{t("Upload files")}</strong>
-      <span>
-        {t("Drop files here or choose them to copy into the workspace.")}
-      </span>
-      {root ? <code>{root}</code> : null}
-      <Button variant="secondary" disabled={uploading} onClick={onChoose}>
-        {uploading ? <Spinner size="sm" /> : <Upload size={14} />}
-        {t("Choose files")}
-      </Button>
-    </div>
-  );
+  return {
+    frames: ordered,
+    bind,
+    ready: opened?.folder === folder && opened.file === file,
+    failed: !!failed && failed === file,
+  };
 }
 
 export function WorkspaceInspectorHost({
@@ -230,10 +279,84 @@ export function WorkspaceInspectorHost({
   useLayoutEffect(() => {
     if (editorAvailable) syncEditorLocale(locale);
   }, [editorAvailable, locale]);
-  const { frames, bind } = useEditorFrames(
-    editorAvailable ? root : "",
-    state.file,
+  const initialTarget = useMemo<PreviewTarget>(() => {
+    if (!state.file) return { path: "", directory: true, nonce: 0 };
+    const path = state.file.path.replace(/\\/g, "/");
+    const relative = relativePathWithinCheckout(root, path);
+    const normalized =
+      relative ?? path.replace(/^\.\//, "").replace(/(?!^)\/+$/, "");
+    return {
+      ...state.file,
+      path: normalized,
+      directory: !normalized || undefined,
+    };
+  }, [state.file, root]);
+  const [selection, setSelection] = useState<{
+    source: PreviewTarget;
+    workspace: string;
+    target: PreviewTarget;
+  }>();
+  const selected =
+    selection?.source === initialTarget && selection.workspace === workspaceKey;
+  const target = selected ? selection.target : initialTarget;
+  const nextNonce = useRef(0);
+  const [choice, setChoice] = useState<{
+    target: PreviewTarget;
+    editor: boolean;
+  }>();
+  const [prepared, setPrepared] = useState<{
+    target: PreviewTarget;
+    kind: "text" | "folder" | "other";
+  }>();
+  const onPreviewReady = useCallback(
+    (target: PreviewTarget, kind: "text" | "folder" | "other") => {
+      setPrepared((current) =>
+        current?.target === target && current.kind === kind
+          ? current
+          : { target, kind },
+      );
+    },
+    [],
   );
+  const previewType = prepared?.target === target ? prepared.kind : undefined;
+  const folderTarget = target.directory || previewType === "folder";
+  const explicit = choice?.target === target ? choice.editor : undefined;
+  const wantsEditor =
+    explicit ?? (!selected && !!state.file && previewType === "text");
+  const editorFolder =
+    folderTarget && target.path
+      ? isFilesystemPath(target.path)
+        ? target.path
+        : `${root.replace(/\/+$/, "")}/${target.path}`
+      : root;
+  const editorFile =
+    wantsEditor && !folderTarget && target.path ? target : undefined;
+  // Do not compete with the first text RPC or the native paint for a cold iframe.
+  const startingText =
+    state.open &&
+    state.file &&
+    !selected &&
+    !target.directory &&
+    previewKind(target.path) === "text" &&
+    !previewType &&
+    explicit !== true;
+  const { frames, bind, ready, failed } = useEditorFrames(
+    editorAvailable && !startingText ? editorFolder : "",
+    editorFile,
+    previewType === "text",
+  );
+  const showEditor = editorAvailable && wantsEditor && ready;
+  const selectPreview = (
+    path: string,
+    directory?: boolean,
+    fragment?: string,
+  ) => {
+    setSelection({
+      source: initialTarget,
+      workspace: workspaceKey,
+      target: { path, directory, fragment, nonce: --nextNonce.current },
+    });
+  };
 
   const upload = async (files: FileList | File[]) => {
     const list = [...files];
@@ -315,6 +438,23 @@ export function WorkspaceInspectorHost({
             onClick={() => fileInput.current?.click()}
           />
           {editorAvailable ? (
+            <Button
+              variant="secondary"
+              onClick={() => setChoice({ target, editor: !wantsEditor })}
+            >
+              {showEditor || failed ? (
+                t("Back to preview")
+              ) : wantsEditor && !failed ? (
+                <>
+                  <Spinner size="sm" />
+                  {t("Opening the editor")}
+                </>
+              ) : (
+                t("Open in VS Code")
+              )}
+            </Button>
+          ) : null}
+          {editorAvailable ? (
             <IconButton
               label={t("Open VS Code in a new tab")}
               icon={<ExternalLink size={15} />}
@@ -379,33 +519,30 @@ export function WorkspaceInspectorHost({
             {t("The workspace used to route this Inspector is no longer open.")}
           </span>
         </div>
-      ) : editorConnections === null ? (
-        <div className="workspace-inspector-unavailable">
-          <Spinner />
-        </div>
-      ) : editorAvailable ? (
+      ) : (
         <div className="workspace-inspector-body">
+          <WorkspaceInspectorPreview
+            key={workspaceKey}
+            client={connectionClient}
+            workspaceId={workspace.workspace_id}
+            target={target}
+            active={state.open}
+            hidden={showEditor}
+            onSelect={selectPreview}
+            onReady={onPreviewReady}
+          />
           {frames.map((frame) => (
             <iframe
               key={frame.folder}
               ref={bind(frame.folder)}
-              className={`workspace-inspector-editor ${
-                frame.folder === root ? "" : "is-hidden"
-              }`}
+              className={`workspace-inspector-editor ${frame.folder === editorFolder && showEditor ? "" : "is-hidden"}`}
               title={t("VS Code")}
               src={frame.src}
-              // A kept-alive editor takes no focus, keys or pointer.
-              inert={frame.folder !== root}
+              inert={frame.folder !== editorFolder || !showEditor}
               allow="clipboard-read; clipboard-write"
             />
           ))}
         </div>
-      ) : (
-        <UploadPanel
-          uploading={uploading}
-          root={root}
-          onChoose={() => fileInput.current?.click()}
-        />
       )}
     </aside>
   );

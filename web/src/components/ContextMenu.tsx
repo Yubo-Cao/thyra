@@ -150,7 +150,7 @@ export function ContextMenu({
         items: [
           {
             id: "open-editor",
-            label: t("Open in VS Code"),
+            label: t("Open Workspace Inspector"),
             onAction: () => onOpenEditor?.(w),
           },
         ],

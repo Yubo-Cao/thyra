@@ -1,7 +1,7 @@
 const FILE_PATH_CANDIDATE_RE =
   /(?:\/[A-Za-z0-9._~:@%+=,/-]+|\.\/[A-Za-z0-9._~:@%+=,-]+(?:\/[A-Za-z0-9._~:@%+=,-]+)*|[A-Za-z0-9._~@%+=,-]+(?:\/[A-Za-z0-9._~:@%+=,-]+)+)\/?/g;
 const TRAILING_PROSE_RE = /[.,;:!?]+$/;
-const TRAILING_LOCATION_RE = /:\d+(?::\d+)?$/;
+const TRAILING_LOCATION_RE = /:(\d+)(?::\d+)?$/;
 // Unicode punctuation delimits prose, but ASCII path/URI punctuation does not.
 const PATH_BOUNDARY_RE = /[\s"'`([{<]/;
 const UNICODE_PUNCTUATION_RE = /\p{P}/u;
@@ -16,6 +16,7 @@ export type TerminalFileLinkCandidate = {
   start: number;
   end: number;
   absolute: boolean;
+  line?: number;
 };
 
 export type ResolvedTerminalFile = {
@@ -58,13 +59,17 @@ export function findTerminalFileLinkCandidates(
       !(previous.charCodeAt(0) > 127 && UNICODE_PUNCTUATION_RE.test(previous))
     )
       continue;
-    const path = match[0]
-      .replace(TRAILING_PROSE_RE, "")
-      .replace(TRAILING_LOCATION_RE, "");
+    const { path, line } = fileLocation(match[0]);
     if (!isSafePath(path)) continue;
     const end = start + path.length;
     if (overlapsRange(start, end, excludedRanges)) continue;
-    candidates.push({ path, start, end, absolute: path.startsWith("/") });
+    candidates.push({
+      path,
+      start,
+      end,
+      absolute: path.startsWith("/"),
+      ...(line ? { line } : {}),
+    });
     if (candidates.length >= MAX_CANDIDATES_PER_LINE) break;
   }
   return candidates;
@@ -82,8 +87,14 @@ const DRIVE_RE = /^[A-Za-z]:[\\/]/;
 const URL_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const MAX_SPACED_WORDS = 6;
 
-function trimLocation(raw: string) {
-  return raw.replace(TRAILING_PROSE_RE, "").replace(TRAILING_LOCATION_RE, "");
+function fileLocation(raw: string) {
+  const token = raw.replace(TRAILING_PROSE_RE, "");
+  const match = TRAILING_LOCATION_RE.exec(token);
+  const number = Number(match?.[1]);
+  return {
+    path: match ? token.slice(0, match.index) : token,
+    line: Number.isSafeInteger(number) && number > 0 ? number : undefined,
+  };
 }
 
 /** Absolute paths, explicit relatives and any name: never parent escapes. */
@@ -120,7 +131,7 @@ export function findTerminalSpacedFileLinkCandidates(
 ): TerminalFileLinkCandidate[] {
   const candidates: TerminalFileLinkCandidate[] = [];
   const add = (start: number, raw: string) => {
-    const path = trimLocation(raw);
+    const { path, line } = fileLocation(raw);
     const end = start + path.length;
     if (
       candidates.length >= MAX_CANDIDATES_PER_LINE ||
@@ -129,7 +140,13 @@ export function findTerminalSpacedFileLinkCandidates(
       candidates.some((item) => item.start === start && item.end === end)
     )
       return;
-    candidates.push({ path, start, end, absolute: isAbsolutePath(path) });
+    candidates.push({
+      path,
+      start,
+      end,
+      absolute: isAbsolutePath(path),
+      ...(line ? { line } : {}),
+    });
   };
   for (const match of text.matchAll(QUOTED_RE)) {
     const start = (match.index ?? 0) + 1;
@@ -138,11 +155,11 @@ export function findTerminalSpacedFileLinkCandidates(
     // Apostrophes inside words are not quotes.
     if (/[\p{L}\p{N}]/u.test(before) || /[\p{L}\p{N}]/u.test(after)) continue;
     const inner = match[2]!;
-    if (PATH_LIKE_RE.test(trimLocation(inner))) add(start, inner);
+    if (PATH_LIKE_RE.test(fileLocation(inner).path)) add(start, inner);
   }
   for (const match of text.matchAll(BRACKETED_RE)) {
     const inner = match[1]!;
-    if (/\s/.test(inner) && PATH_LIKE_RE.test(trimLocation(inner)))
+    if (/\s/.test(inner) && PATH_LIKE_RE.test(fileLocation(inner).path))
       add((match.index ?? 0) + 1, inner);
   }
   for (const seed of text.matchAll(SPACED_SEED_RE)) {
@@ -164,7 +181,7 @@ export function findTerminalSpacedFileLinkCandidates(
       if (!word) break;
       end += 1 + word[0].length;
       const raw = text.slice(start, end);
-      const path = trimLocation(raw);
+      const { path } = fileLocation(raw);
       // The spaced part must look like more path: a directory or extension.
       if (PATH_LIKE_RE.test(path.slice(path.indexOf(" ")))) add(start, raw);
     }

@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
 import { posix } from "node:path";
+import type { RawFileRoute } from "../connections/http-routing";
+import { rawWorkspaceResponse } from "./raw-file";
 import type { HerdrClient } from "../bridge/herdr-client";
 import { sshCommandArgv } from "../bridge/ssh-command";
 import { checkoutPath as getCheckoutPath } from "./utils";
@@ -155,6 +157,37 @@ export function createFileHandlers({
     return (result as any)?.workspace ?? result;
   }
 
+  const previewRoots = new Map<
+    string,
+    {
+      expires: number;
+      result: Promise<Awaited<ReturnType<typeof workspaceDirectory>>>;
+    }
+  >();
+
+  async function workspaceDirectory(workspaceId: string) {
+    const workspace = await getWorkspace(workspaceId);
+    const checkoutPath = await explorerRoot(workspaceId, workspace);
+    if (!checkoutPath) throw new Error("workspace has no directory path");
+    return { workspace, checkoutPath };
+  }
+
+  // A page's assets re-use one workspace lookup, including when requests fan out.
+  function previewDirectory(workspaceId: string) {
+    const now = Date.now();
+    const cached = previewRoots.get(workspaceId);
+    if (cached && cached.expires > now) return cached.result;
+    if (previewRoots.size >= 32)
+      previewRoots.delete(previewRoots.keys().next().value!);
+    const result = workspaceDirectory(workspaceId);
+    previewRoots.set(workspaceId, { result, expires: now + 500 });
+    void result.catch(() => {
+      if (previewRoots.get(workspaceId)?.result === result)
+        previewRoots.delete(workspaceId);
+    });
+    return result;
+  }
+
   async function fileTarget(params: Record<string, unknown>, method: string) {
     const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error(`${method} requires workspace_id`);
@@ -163,13 +196,13 @@ export function createFileHandlers({
         ? await filesystemPath(params.path, sshHost())
         : sanitizePreviewPath(params.path);
     if (!path) throw new Error(`${method} requires path`);
-    const workspace = await getWorkspace(workspaceId);
-    const checkoutPath = await explorerRoot(workspaceId, workspace);
-    if (!checkoutPath) throw new Error("workspace has no directory path");
+    const { workspace, checkoutPath } = await (params.inspector === true
+      ? previewDirectory(workspaceId)
+      : workspaceDirectory(workspaceId));
     return { workspaceId, workspace, checkoutPath, path };
   }
 
-  async function downloadTarget(params: Record<string, unknown>) {
+  async function downloadTarget(params: Record<string, unknown>, raw = false) {
     const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error("file.download requires workspace_id");
     const path =
@@ -177,9 +210,9 @@ export function createFileHandlers({
         ? await filesystemPath(params.path, sshHost())
         : sanitizeExplorerPath(params.path);
     if (!path) throw new Error("file.download requires path");
-    const workspace = await getWorkspace(workspaceId);
-    const checkoutPath = await explorerRoot(workspaceId, workspace);
-    if (!checkoutPath) throw new Error("workspace has no directory path");
+    const { checkoutPath } = await (raw
+      ? previewDirectory(workspaceId)
+      : workspaceDirectory(workspaceId));
     return { checkoutPath, path };
   }
 
@@ -497,9 +530,9 @@ export function createFileHandlers({
   async function listFiles(params: Record<string, unknown>) {
     const workspaceId = optionalString(params, "workspace_id") ?? "";
     if (!workspaceId) throw new Error("file.list requires workspace_id");
-    const workspace = await getWorkspace(workspaceId);
-    const checkoutPath = await explorerRoot(workspaceId, workspace);
-    if (!checkoutPath) throw new Error("workspace has no directory path");
+    const { workspace, checkoutPath } = await (params.preview === true
+      ? previewDirectory(workspaceId)
+      : workspaceDirectory(workspaceId));
     const filesystem = params.scope === "filesystem";
     const host = sshHost();
     const rootPath = filesystem
@@ -513,11 +546,12 @@ export function createFileHandlers({
           rootPath,
           relativePath,
           showHidden,
+          preview: params.preview === true,
           runProcessWithCodeTimeout,
           shQuote,
         })
       : await listLocalFiles(rootPath, relativePath, showHidden, filesystem);
-    if (list.entries.length) {
+    if (list.entries.length && params.preview !== true) {
       const ignored = await collectIgnoredNames({
         host,
         directory: relativePath ? `${list.root}/${relativePath}` : list.root,
@@ -557,12 +591,22 @@ export function createFileHandlers({
           host,
           rootPath: checkoutPath,
           requestedPath: path,
+          preview: params.inspector === true,
           runProcessWithCodeTimeout,
           shQuote,
         })
       : await readLocalFile(checkoutPath, path);
     return {
       ...preview,
+      ...(params.inspector === true && preview.type === "directory"
+        ? {
+            listing: await listFiles({
+              ...params,
+              preview: true,
+              show_hidden: true,
+            }),
+          }
+        : {}),
       workspace_id: workspaceId,
       repo_name: workspace?.worktree?.repo_name ?? workspace?.label ?? "",
       checkout_path: checkoutPath,
@@ -623,6 +667,34 @@ export function createFileHandlers({
       checkout_path: checkoutPath,
       files: candidates.filter((entry) => existingPaths.has(entry.path)),
     };
+  }
+
+  async function rawFile(
+    route: RawFileRoute,
+    request: Request,
+    directory?: string,
+  ) {
+    const { checkoutPath, path } = await downloadTarget(
+      {
+        workspace_id: route.workspaceId,
+        path: route.path,
+        scope: route.scope,
+      },
+      true,
+    );
+    const root =
+      route.scope === "workspace"
+        ? checkoutPath
+        : directory || splitFilesystemPath(path).parent;
+    return rawWorkspaceResponse({
+      root,
+      path: route.scope === "workspace" ? path : posix.relative(root, path),
+      request,
+      grant: !!directory || route.grant !== "-",
+      host: sshHost(),
+      runProcessWithCodeTimeout,
+      shQuote,
+    });
   }
 
   async function downloadFile(params: Record<string, unknown>) {
@@ -951,6 +1023,7 @@ export function createFileHandlers({
     resolveWorkspaceFiles: resolveFiles,
     readWorkspaceFile: readFile,
     downloadWorkspaceFile: downloadFile,
+    rawWorkspaceFile: rawFile,
     thumbnailWorkspaceFile: thumbnailFile,
     /** File-manager RPC methods, dispatched by name from rpc/workspace-handlers.ts. */
     fileRpc: {

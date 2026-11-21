@@ -84,11 +84,20 @@ export function parseRemoteFileResolutions(stdout: string) {
   return paths;
 }
 
+/** GNU date preserves subsecond edits for the Inspector's polling. */
+function previewMtime(path: string, precise: boolean) {
+  const fractional = precise
+    ? `date -r ${path} +%s.%N 2>/dev/null | grep -E '^[0-9]+[.][0-9]+$' || `
+    : "";
+  return `$(${fractional}stat -c %Y ${path} 2>/dev/null || stat -f %m ${path} 2>/dev/null || printf 0)`;
+}
+
 export async function listRemoteFiles({
   host,
   rootPath,
   relativePath,
   showHidden,
+  preview = false,
   runProcessWithCodeTimeout,
   shQuote,
 }: {
@@ -96,6 +105,7 @@ export async function listRemoteFiles({
   rootPath: string;
   relativePath: string;
   showHidden: boolean;
+  preview?: boolean;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
 }) {
@@ -126,7 +136,7 @@ while IFS= read -r -d '' p; do
 done < <(find "$target_real" -mindepth 1 -maxdepth 1 -print0)
 visible_names=()
 processed=0
-if command -v git >/dev/null 2>&1 && [ "\${#names[@]}" -gt 0 ] && git -C "$target_real" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+if [ "${preview ? 1 : 0}" = 0 ] && command -v git >/dev/null 2>&1 && [ "\${#names[@]}" -gt 0 ] && git -C "$target_real" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   while IFS= read -r -d '' source && IFS= read -r -d '' line && IFS= read -r -d '' pattern && IFS= read -r -d '' name; do
     processed=$((processed + 1))
     if [ -z "$pattern" ] || [ "\${pattern#!}" != "$pattern" ]; then
@@ -171,7 +181,7 @@ for name in "\${visible_names[@]}"; do
     type=file
   fi
   size="$(stat -c %s "$metadata_path" 2>/dev/null || stat -f %z "$metadata_path" 2>/dev/null || printf 0)"
-  mtime="$(stat -c %Y "$metadata_path" 2>/dev/null || stat -f %m "$metadata_path" 2>/dev/null || printf 0)"
+  mtime="${previewMtime('"$metadata_path"', preview)}"
   name64="$(printf '%s' "$name" | base64 | tr -d '\\n')"
   printf 'ENTRY\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$type" "$size" "$mtime" "$name64" "$symlink_status" "$symlink_target_type"
 done
@@ -288,12 +298,14 @@ export async function readRemoteFile({
   host,
   rootPath,
   requestedPath,
+  preview = false,
   runProcessWithCodeTimeout,
   shQuote,
 }: {
   host: string;
   rootPath: string;
   requestedPath: string;
+  preview?: boolean;
   runProcessWithCodeTimeout: RunProcessWithCodeTimeout;
   shQuote: (value: string) => string;
 }) {
@@ -319,7 +331,7 @@ else
   rel="$request"
 fi
 if [ -d "$target_real" ]; then
-  mtime="$(stat -c %Y "$target_real" 2>/dev/null || stat -f %m "$target_real" 2>/dev/null || printf 0)"
+  mtime="${previewMtime('"$target_real"', preview)}"
   printf 'META\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$(printf '%s' "$root_real" | base64 | tr -d '\\n')" 0 "$mtime" "$(printf '%s' "$rel" | base64 | tr -d '\\n')" directory
   exit 0
 fi
@@ -328,7 +340,7 @@ if [ ! -f "$target_real" ]; then
   exit 14
 fi
 size="$(stat -c %s "$target_real" 2>/dev/null || stat -f %z "$target_real" 2>/dev/null || printf 0)"
-mtime="$(stat -c %Y "$target_real" 2>/dev/null || stat -f %m "$target_real" 2>/dev/null || printf 0)"
+mtime="${previewMtime('"$target_real"', preview)}"
 limit="$text_limit"
 case "$(printf '%s' "$rel" | tr '[:upper:]' '[:lower:]')" in
   ${Array.from(IMAGE_MIME_TYPES.keys(), (extension) => `*.${extension}`).join("|")})

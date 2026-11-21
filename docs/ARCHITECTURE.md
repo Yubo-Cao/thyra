@@ -455,10 +455,9 @@ load the sliced terminal font (`shared/terminalFontStylesheet.ts`) and to take
 
 `vscode` and `vscode.status` are `host`-scoped: the editor is a shell as the
 host user. `GET /api/vscode` lists the connections whose Herdr runs on this
-host; elsewhere, and for everyone else, the Inspector is only the upload panel
-(the connection's `file/upload` route). The page keeps up to three editors
-loaded, one per folder, in a fixed document order: moving an iframe reloads
-it.
+host. Workspace previews and uploads are routed through their connection.
+The page keeps up to three editor iframes in a fixed document order, one per
+folder. Moving an iframe reloads it.
 
 VS Code Web's bundled workbench script exports nothing a framing page can
 call. The workbench page therefore loads the script as `workbench.js?thyra=1`,
@@ -468,9 +467,18 @@ the workbench has started (`shared/vscodeWorkbench.ts` names both). To open a
 file in a folder whose editor is running, the page calls that API's
 `commands.executeCommand("_workbench.open", <vscode-remote URI>, ...)`
 (`web/src/components/vscodeEditor.ts`), which opens a pinned editor at the
-requested line without reloading. A new editor, one still loading, a VS Code
-build the proxy cannot hook, and a refused command instead load the folder's
-editor with a `payload=[["openFile", "vscode-remote://<host><path>"]]` query.
+requested line without reloading. A cold frame can name the file in its
+`payload` query. The Inspector shows the native text preview until the
+workbench API and the open text model are available.
+
+The Inspector lists the selected directory through `file.list` and reads
+text through `file.read`. Raw preview URLs carry the connection generation,
+workspace, scope, and file path. The path layout preserves relative
+references, and HTTP validators revalidate cached bytes on each use.
+HTML runs scripts in an opaque-origin iframe. Its short-lived read grant
+carries the browser's live workspace authority to relative asset requests
+that have no session cookie. Directory metadata polling refreshes edits and
+referenced assets while previews are visible.
 
 ## Filesystem browsing
 
@@ -584,7 +592,7 @@ thumbnail object URLs are revoked on unmount, and failed sends restore attachmen
 Images are inert elements; SVG is never inserted into the app DOM, and direct
 SVG responses carry a sandbox CSP blocking scripts and external resources.
 
-HTML previews use a separate empty-sandbox iframe and an enforcing response CSP,
+Inline HTML downloads use an enforcing scripts-disabled response CSP,
 including on direct navigation. The server embeds workspace CSS, images and fonts
 as data URLs; Bun's CSS bundler resolves imports and asset URLs. Relative paths
 resolve beside their document or stylesheet; root-relative paths resolve within

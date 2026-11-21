@@ -3,6 +3,7 @@ import {
   resolveWorkspaceMarkdownImagePath,
   resolveWorkspaceMarkdownImageUrl,
   workspaceFileUrl,
+  workspaceRawFileUrl,
   workspaceMarkdownDocumentPath,
 } from "./workspaceFileUrl";
 
@@ -22,6 +23,19 @@ describe("workspace file URLs", () => {
         revision: 3,
       }),
     ).toEndWith("&inline=1&resource_revision=3");
+  });
+
+  test("keeps relative raw assets in the same workspace and generation", () => {
+    const url = workspaceRawFileUrl(client, "w:1", "docs/a b#c.html");
+    expect(url).toBe(
+      "/api/connections/remote%20dev/file/raw/7/w%3A1/workspace/-/docs/a%20b%23c.html",
+    );
+    expect(
+      new URL("../image.png", new URL(url, "https://thyra.test")).pathname,
+    ).toEndWith("/file/raw/7/w%3A1/workspace/-/image.png");
+    expect(
+      workspaceRawFileUrl(client, "w:1", "/var/picture.png", 123),
+    ).toEndWith("/file/raw/7/w%3A1/filesystem/-/var/picture.png?v=123");
   });
 
   test("resolves Markdown images relative to the document", () => {

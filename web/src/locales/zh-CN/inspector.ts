@@ -4,6 +4,10 @@ export default {
   "Show the workspace editor": "显示工作区编辑器",
   "Open workspace in VS Code": "在 VS Code 中打开工作区",
   "Opening the editor": "正在打开编辑器",
+  "Back to preview": "返回预览",
+  "HTML preview": "HTML 预览",
+  "PDF preview": "PDF 预览",
+  "Preview unavailable": "无法预览",
   "Open in VS Code": "在 VS Code 中打开",
   "Drop files here or choose them to copy into the workspace.":
     "将文件拖到这里，或选择文件复制到工作区。",

@@ -38,7 +38,7 @@ function fragmentLine(fragment?: string): number | undefined {
 }
 
 /**
- * The Workspace Inspector: VS Code (or a simple upload panel) docked beside
+ * The Workspace Inspector docked beside
  * the terminal for one workspace, following workspace and connection changes.
  */
 export function useWorkspaceInspector({
@@ -233,9 +233,13 @@ export function useWorkspaceInspector({
       ) {
         return;
       }
-      openFile(request.workspaceId, { path: request.path }, request.paneId);
+      open(request.workspaceId, {
+        path: request.path,
+        line: request.line,
+        originPaneId: request.paneId,
+      });
     },
-    [connectionClient, openFile],
+    [connectionClient, open],
   );
   useEffect(() => {
     const handleRequest = (event: Event) => {

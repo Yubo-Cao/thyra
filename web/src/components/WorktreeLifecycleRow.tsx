@@ -93,16 +93,16 @@ export function WorktreeLifecycleRow({
         )}
         {!workspace && !row.worktree.is_prunable ? (
           <Button
-            title={t("Open workspace in VS Code")}
+            title={t("Open Workspace Inspector")}
             disabled={operationRunning}
             onClick={() =>
-              runOperation(rowKey, t("Opening the editor"), () =>
+              runOperation(rowKey, t("Loading Inspector"), () =>
                 onOpenResource(row),
               )
             }
           >
             <Code size={14} />
-            {t("VS Code")}
+            {t("Workspace Inspector")}
           </Button>
         ) : null}
         {workspace ? (

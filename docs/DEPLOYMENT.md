@@ -776,7 +776,7 @@ Thyra and browsers cache a build's static files; after rebuilding translations f
 The editor and its terminal default to Thyra's bundled terminal font (`Thyra Mono`: Maple Mono NF CN), downloaded in small pieces for the characters on screen, so no viewing device needs a programming or CJK font installed.
 An `editor.fontFamily` set in VS Code's settings wins; put `'Thyra Mono'` first there to keep the bundled font ahead of fonts the device may lack.
 The Inspector sets VS Code's language to Thyra's whenever Thyra's changes; a language picked inside VS Code stays until then.
-Thyra proxies it at `/vscode/` for instance admins only and on local connections only; without it the Inspector is an upload panel.
+Thyra proxies VS Code at `/vscode/` for instance admins on local connections. File previews and uploads work without this integration.
 The loopback port takes no token, so keep it off shared multi-user hosts.
 
 ## Voice input

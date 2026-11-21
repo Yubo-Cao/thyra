@@ -133,3 +133,42 @@ export function resolveWorkspaceMarkdownLink(
   }
   return { path, fragment };
 }
+
+/** Path segments keep workspace routing intact when the browser resolves siblings. */
+export function workspaceRawFileUrl(
+  client: FileUrlClient,
+  workspaceId: string,
+  path: string,
+  version?: number,
+) {
+  const scope = /^(?:\/|[a-z]:\/)/i.test(path) ? "filesystem" : "workspace";
+  const parts = path.split("/").filter((part) => part && part !== ".");
+  const prefix = connectionHttpPath(
+    client.connectionId,
+    [
+      "/file/raw",
+      client.serverRuntimeGeneration ?? "-",
+      encodeURIComponent(workspaceId),
+      scope,
+      "-",
+    ].join("/"),
+  );
+  return `${prefix}/${parts.map(encodeURIComponent).join("/")}${version === undefined ? "" : `?v=${version}`}`;
+}
+
+/** Routes from the active HTML frame carry a grant in place of the dash. */
+export function rawPreviewPath(source: string, base: string) {
+  try {
+    const url = new URL(source, location.origin);
+    const prefix = base.split("/").slice(0, 9).join("/") + "/";
+    if (url.origin !== location.origin || !url.pathname.startsWith(prefix))
+      return null;
+    const encoded = url.pathname.slice(prefix.length).split("/").slice(1);
+    const parts = encoded.map(decodeURIComponent);
+    if (!parts.length || parts.some((part) => !part || /[/\\\0]/.test(part)))
+      return null;
+    return `${prefix.endsWith("/filesystem/") && !/^[a-z]:$/i.test(parts[0]) ? "/" : ""}${parts.join("/")}`;
+  } catch {
+    return null;
+  }
+}

@@ -32,15 +32,15 @@ describe("terminal file links", () => {
     ]);
   });
 
-  test("supports explicit single-file paths and removes line locations", () => {
+  test("keeps the line separate from the resolved path", () => {
     expect(
       findTerminalFileLinkCandidates(
         "Open ./README.md, /NOTICE and src/app.tsx:42:7.",
-      ).map(({ path, absolute }) => ({ path, absolute })),
+      ).map(({ path, line }) => ({ path, line })),
     ).toEqual([
-      { path: "./README.md", absolute: false },
-      { path: "/NOTICE", absolute: true },
-      { path: "src/app.tsx", absolute: false },
+      { path: "./README.md", line: undefined },
+      { path: "/NOTICE", line: undefined },
+      { path: "src/app.tsx", line: 42 },
     ]);
   });
 

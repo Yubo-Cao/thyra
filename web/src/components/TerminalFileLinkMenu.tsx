@@ -13,6 +13,7 @@ export type TerminalFileLinkMenuState = {
   x: number;
   y: number;
   path: string;
+  line?: number;
   workspaceId: string;
 };
 
@@ -25,7 +26,7 @@ export function TerminalFileLinkMenu({
 }: {
   state: TerminalFileLinkMenuState;
   client: ConnectionClient;
-  onPreview: (path: string) => void;
+  onPreview: (path: string, line?: number) => void;
   onWorkspace: (path: string) => void;
   onClose: () => void;
 }) {
@@ -72,8 +73,8 @@ export function TerminalFileLinkMenu({
           items: [
             {
               id: "preview",
-              label: t("Open in VS Code"),
-              onAction: () => onPreview(state.path),
+              label: t("Preview"),
+              onAction: () => onPreview(state.path, state.line),
             },
             ...(directory && !alreadyOpen
               ? [

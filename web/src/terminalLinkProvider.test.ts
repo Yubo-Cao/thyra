@@ -172,8 +172,16 @@ describe("terminal link provider", () => {
       [2, 3],
     );
     f.existing.add("docs/very-long-folder/guide.md");
-    registerTerminalLinkProvider(f.term, () => {}, f.resolve);
-    expect((await f.links(2)).map((link) => link.text)).toEqual([
+    const lines: Array<number | undefined> = [];
+    registerTerminalLinkProvider(
+      f.term,
+      (_, _event, line) => lines.push(line),
+      f.resolve,
+    );
+    const links = await f.links(2);
+    links[0]?.activate({ preventDefault() {} } as MouseEvent, links[0].text);
+    expect(lines).toEqual([42]);
+    expect(links.map((link) => link.text)).toEqual([
       "docs/very-long-folder/guide.md",
     ]);
     expect(f.requests).toEqual([["docs/very-long-folder/guide.md"]]);

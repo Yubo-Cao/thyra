@@ -208,6 +208,7 @@ const HTTP_MATRIX: Record<string, string> = {
   "connection.file-delete": "admin owner editor",
   "connection.file-thumbnail": "admin owner editor viewer guest",
   "connection.file-download": "admin owner editor viewer guest",
+  "connection.file-raw": "admin owner editor viewer guest",
   "connection.file-upload": "admin owner editor",
   "connection.herdr-info": "admin owner editor viewer outsider",
   "connection.invalid": "admin owner editor viewer outsider guest guest-pane",

@@ -110,7 +110,7 @@ Where the bridge runs agent sessions, a switch under the agent buttons chooses h
   OSC 52 clipboard writes follow Herdr's foreground recipient, not proven source
   pane ownership; see [clipboard limits](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open a browser tab; click file/directory paths
-  to open them in the Inspector's VS Code, including paths with spaces when
+  to preview them in the Inspector, including paths with spaces when
   quoted, bracketed (`Edit(src/foo bar.ts)`) or followed by `:line:col`, once
   the file exists. Dragging selects without opening.
   Touch uses long-press, then **Open link** or
@@ -203,20 +203,23 @@ The view appears only where the bridge runs agent sessions, and its code loads w
 
 ## Workspace Inspector
 
-The Inspector docks VS Code beside the terminal, opened on the focused
-workspace's checkout. Open it from the Inspector button, `Cmd+Shift+B` /
-`Ctrl+Alt+Shift+B`, **Open in VS Code** in workspace and agent menus or the
-command menu, or a terminal file link, which opens that file.
+The Inspector previews files beside the terminal. Open it with the Inspector
+button, `Cmd+Shift+B` / `Ctrl+Alt+Shift+B`, the workspace or command menu, or a
+terminal file link.
 
-- Dock right/bottom, resize, or expand without unmounting terminals. The
-  editor follows the focused workspace; the last three folders stay loaded, so
-  switching back is instant. Closing returns to the originating tab.
-- **Upload** copies files into the checkout root; it is also the whole
-  Inspector where VS Code is unavailable: for non-admins, on SSH connections,
-  or when the host has no VS Code server ([deployment](docs/DEPLOYMENT.md#vs-code-inspector)).
-- **Open VS Code in a new tab** gives the same editor the full window.
+- Browse the containing folder and open text, Markdown, HTML, images, PDFs,
+  audio, and video. Use `Up` and `Down` in the file list, or `Left` and `Right`
+  to step through images.
+- Terminal code links show text at the requested line while VS Code starts.
+  The Inspector switches once that file is open. **Open in VS Code** and
+  **Back to preview** let you choose the view on supported connections.
+- Dock right or bottom, resize, or expand. Closing returns to the originating
+  tab. The last three editor folders stay loaded as you switch workspaces.
+- **Upload files** copies files into the checkout root. **Open VS Code in a
+  new tab** gives the editor the full window.
 
-The editor is a shell as the host user, so only instance admins reach it.
+The [VS Code integration](docs/DEPLOYMENT.md#vs-code-inspector) runs as the
+host user and is available to instance admins on local connections.
 
 ## Agent Awareness
 

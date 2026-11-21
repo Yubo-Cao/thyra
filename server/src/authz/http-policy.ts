@@ -196,6 +196,11 @@ export const HTTP_POLICY = {
     scope: "workspace",
     resolve: fromQuery(targetResolvers.files),
   },
+  "connection.file-raw": {
+    class: "read",
+    scope: "workspace",
+    resolve: fromQuery(targetResolvers.files),
+  },
   // Small WebP previews of image, video and PDF rows.
   "connection.file-thumbnail": {
     class: "read",

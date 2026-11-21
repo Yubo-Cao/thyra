@@ -1,4 +1,4 @@
-import { type ReactNode, Suspense, useRef } from "react";
+import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import type { ConnectionClient } from "../api";
 import { t } from "../i18n";
 import {
@@ -25,6 +25,16 @@ export function WorkspaceStage({
   children: ReactNode;
 }) {
   const { state, stateRef, stageRef, commit, commitAndSave } = inspector;
+  const [inspectorLoaded, setInspectorLoaded] = useState(
+    workspaceInspectorPanel.isLoaded,
+  );
+  const requested = !!state;
+  useEffect(() => {
+    if (requested && !inspectorLoaded)
+      void workspaceInspectorPanel
+        .preload()
+        .then(() => setInspectorLoaded(true));
+  }, [requested, inspectorLoaded]);
   const resizeFrameRef = useRef<number | null>(null);
   const resizeWithKeyboard = (e: React.KeyboardEvent) => {
     const current = stateRef.current;
@@ -143,12 +153,16 @@ export function WorkspaceStage({
               <TerminalLoadingFallback label={t("Loading Inspector")} />
             }
           >
-            <WorkspaceInspectorPanel
-              key={resourceUiKey}
-              inspector={inspector}
-              state={state}
-              connectionClient={connectionClient}
-            />
+            {inspectorLoaded || workspaceInspectorPanel.isLoaded() ? (
+              <WorkspaceInspectorPanel
+                key={resourceUiKey}
+                inspector={inspector}
+                state={state}
+                connectionClient={connectionClient}
+              />
+            ) : (
+              <TerminalLoadingFallback label={t("Loading Inspector")} />
+            )}
           </Suspense>
         </div>
       ) : null}

@@ -1,7 +1,7 @@
 import type { ConnectionClient } from "../api";
 import { connectionHttpPath } from "../connectionHttp";
 import { t } from "../i18n";
-import type { FilePreview } from "../types";
+import type { FileExplorerList, FilePreview } from "../types";
 
 /** Host paths (absolute or `~`) use filesystem scope; others are checkout-relative. */
 export function isFilesystemPath(path: string) {
@@ -13,16 +13,40 @@ export async function readWorkspaceFile(
   client: ConnectionClient,
   workspaceId: string,
   path: string,
+  inspector = false,
 ) {
   if (!client.isCurrent())
     throw new Error(t("connection changed during file preview"));
   const preview = (await client.call("file.read", {
     workspace_id: workspaceId,
     path,
-  })) as FilePreview;
+    ...(inspector
+      ? {
+          inspector: true,
+          scope: isFilesystemPath(path) ? "filesystem" : undefined,
+        }
+      : {}),
+  })) as FilePreview & { listing?: FileExplorerList };
   if (!client.isCurrent())
     throw new Error(t("connection changed during file preview"));
   return preview;
+}
+
+export async function listWorkspacePreview(
+  client: ConnectionClient,
+  workspaceId: string,
+  path: string,
+) {
+  const listing = (await client.call("file.list", {
+    workspace_id: workspaceId,
+    path,
+    scope: isFilesystemPath(path) ? "filesystem" : undefined,
+    preview: true,
+    show_hidden: true,
+  })) as FileExplorerList;
+  if (!client.isCurrent())
+    throw new Error(t("connection changed during file preview"));
+  return listing;
 }
 
 /** Copy one file into `directory` of the workspace (or a host path). */

@@ -12,6 +12,7 @@ export type ConnectionHttpEndpoint =
   | "herdr-info"
   | "upload-image"
   | "file-download"
+  | "file-raw"
   | "file-thumbnail"
   | "file-upload"
   | "file-delete";
@@ -85,11 +86,54 @@ export type ParsedConnectionHttpRoute =
       endpoint: ConnectionHttpEndpoint;
       requestedConnectionId: string | undefined;
       legacy: boolean;
+      rawFile?: RawFileRoute;
     }
   | {
       kind: "error";
       error: ConnectionRoutingError;
     };
+
+export type RawFileRoute = {
+  generation: string;
+  workspaceId: string;
+  scope: "workspace" | "filesystem";
+  path: string;
+  grant: string;
+};
+
+function parseRawFile(suffix: string): RawFileRoute | undefined {
+  const [, , , generation, workspace, scope, grant, ...encoded] =
+    suffix.split("/");
+  if (
+    !/^(?:-|0|[1-9]\d*)$/.test(generation ?? "") ||
+    !workspace ||
+    (scope !== "workspace" && scope !== "filesystem") ||
+    !/^(?:-|[a-f0-9]{32})$/.test(grant ?? "") ||
+    !encoded.length
+  )
+    return;
+  try {
+    const parts = encoded.map(decodeURIComponent);
+    if (
+      parts.some(
+        (part) =>
+          !part || part === "." || part === ".." || /[/\\\0]/.test(part),
+      )
+    )
+      return;
+    return {
+      generation,
+      workspaceId: decodeURIComponent(workspace),
+      scope,
+      grant,
+      path:
+        (scope === "filesystem" && !/^[a-z]:$/i.test(parts[0]) ? "/" : "") +
+        parts.join("/"),
+    };
+  } catch {
+    return;
+  }
+}
 
 export function parseConnectionHttpRoute(
   pathname: string,
@@ -139,6 +183,27 @@ export function parseConnectionHttpRoute(
         error instanceof ConnectionRoutingError
           ? error
           : new ConnectionRoutingError("invalid connection_id encoding", 400),
+    };
+  }
+
+  if (suffix.startsWith("/file/raw/")) {
+    const rawFile = parseRawFile(suffix);
+    if (rawFile && (method === "GET" || method === "HEAD")) {
+      return {
+        kind: "connection",
+        endpoint: "file-raw",
+        requestedConnectionId: connectionId,
+        legacy: false,
+        rawFile,
+      };
+    }
+    return {
+      kind: "error",
+      error: new ConnectionRoutingError(
+        "invalid raw file request",
+        rawFile ? 405 : 400,
+        connectionId,
+      ),
     };
   }
 

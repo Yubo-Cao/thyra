@@ -149,8 +149,8 @@ export function MobileViewNav({
       />
       <IconButton
         className={mobileView === "inspector" ? "active" : ""}
-        title={shortcutTitle(t("VS Code"), "inspector.toggle")}
-        label={t("Show the workspace editor")}
+        title={shortcutTitle(t("Workspace Inspector"), "inspector.toggle")}
+        label={t("Open Workspace Inspector")}
         icon={<Code size={16} aria-hidden="true" />}
         tabIndex={tabIndex}
         onClick={() => inspector.openEditor()}

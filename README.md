@@ -10,7 +10,7 @@
 </p>
 
 [Herdr](https://herdr.dev) 的**浏览器客户端**。
-在电脑或手机上操作终端、查看 Agent 状态，并在终端旁边打开主机上的 [VS Code](./FEATURES.md#workspace-inspector) 审阅文件和 diff。
+在电脑或手机上操作终端、查看 Agent 状态，并通过终端旁边的[工作区检查器](./FEATURES.md#workspace-inspector)预览文件或打开主机上的 VS Code。
 可以在平板上看着 Agent，用手机输入，而不改变终端尺寸。
 Claude Code 和 Codex 可以用 [Agent 视图](./FEATURES.md#agent-view)代替各自的终端界面：流式渲染的 Markdown 对话记录、可就地展开的工具调用和 diff、批准按钮，以及带 Markdown 实时预览、可附图片的输入框。
 还能实时查看并操作 Agent 使用的有界面浏览器，Agent 把标签页交给你审阅时会收到通知。

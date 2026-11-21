@@ -58,6 +58,7 @@
 }
 
 .workspace-inspector-body {
+  container: inspector / inline-size;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -74,10 +75,9 @@
   background: var(--viewer-panel-bg);
 }
 
-/* Kept alive for an instant switch back, but not laid out or painted. */
+/* Keep a measurable viewport while the hidden workbench starts. */
 .workspace-inspector-editor.is-hidden {
   visibility: hidden;
-  content-visibility: hidden;
 }
 
 /* Dragging a dock edge over the editor must not lose the pointer to it. */

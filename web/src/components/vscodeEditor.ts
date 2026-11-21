@@ -6,12 +6,13 @@ const OPEN_EDITOR_COMMAND = "_workbench.open";
 
 /** The part of VS Code Web's embedder API the Inspector uses. */
 export type EditorWorkbench = {
+  env?: { retrievePerformanceMarks(): Promise<unknown> };
   commands: {
     executeCommand(command: string, ...args: unknown[]): Promise<unknown>;
   };
 };
 
-function joinPath(root: string, path: string) {
+export function editorFilePath(root: string, path: string) {
   if (path.startsWith("/")) return path;
   return `${root.replace(/\/+$/, "")}/${path.replace(/^\.?\//, "")}`;
 }
@@ -25,7 +26,7 @@ export function editorUrl(
   const url = new URL("/vscode/", origin);
   url.searchParams.set("folder", folder);
   if (file) {
-    const target = `vscode-remote://${url.host}${joinPath(folder, file.path)}`;
+    const target = `vscode-remote://${url.host}${editorFilePath(folder, file.path)}`;
     url.searchParams.set(
       "payload",
       JSON.stringify([
@@ -71,7 +72,7 @@ export async function openInEditor(
       {
         scheme: "vscode-remote",
         authority: host,
-        path: joinPath(folder, file.path),
+        path: editorFilePath(folder, file.path),
       },
       [
         undefined,
@@ -87,4 +88,26 @@ export async function openInEditor(
   } catch {
     return false;
   }
+}
+
+/** VS Code exposes the active text model's resource on its editor element. */
+export function editorHasTextFile(
+  document: Document | null | false | undefined,
+  host: string,
+  folder: string,
+  file: InspectorFileRequest,
+) {
+  const expected = `vscode-remote://${host}${editorFilePath(folder, file.path)}`;
+  if (!document) return false;
+  return Array.from(
+    document.querySelectorAll(".editor-instance .monaco-editor[data-uri]"),
+  ).some((editor) => {
+    try {
+      return (
+        decodeURIComponent(editor.getAttribute("data-uri") ?? "") === expected
+      );
+    } catch {
+      return false;
+    }
+  });
 }

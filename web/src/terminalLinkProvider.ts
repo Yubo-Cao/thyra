@@ -128,7 +128,7 @@ function overlaps(a: TextRange, b: TextRange) {
 
 export type TerminalTouchLink =
   | { kind: "url"; value: string }
-  | { kind: "file"; value: string };
+  | { kind: "file"; value: string; line?: number };
 
 export type TerminalResolvedLink = {
   /** Untrusted OSC8 target from the displayed cell, never its visible label. */
@@ -139,7 +139,7 @@ export type TerminalResolvedLink = {
 
 export function registerTerminalLinkProvider(
   term: TerminalEngine,
-  onPreviewPath?: (path: string, event: MouseEvent) => void,
+  onPreviewPath?: (path: string, event: MouseEvent, line?: number) => void,
   resolvePaths?: (paths: string[]) => Promise<Map<string, string>>,
   inferContinuations: () => boolean = () => false,
   upstream?: {
@@ -385,11 +385,12 @@ export function registerTerminalLinkProvider(
         )
           continue;
         accepted.push(candidate);
+        const { line } = candidate;
         links.push({
           range,
           hover,
           text: candidate.path,
-          target: { kind: "file", value: path },
+          target: { kind: "file", value: path, ...(line ? { line } : {}) },
           activate(event) {
             event.preventDefault();
             if (
@@ -399,7 +400,7 @@ export function registerTerminalLinkProvider(
               !event.altKey
             ) {
               term.clearSelection?.();
-              onPreviewPath?.(path, event);
+              onPreviewPath?.(path, event, line);
             }
           },
         });

@@ -721,7 +721,7 @@ export function TerminalView({
       }
     : baseShortcuts;
   const openPathInInspector = useCallback(
-    (path: string) => {
+    (path: string, line?: number) => {
       if (!connectionClient.isCurrent()) return;
       const workspaceId = refs.workspaceId.current;
       if (!workspaceId) {
@@ -738,6 +738,7 @@ export function TerminalView({
         workspaceId,
         paneId: refs.paneId.current ?? undefined,
         path,
+        line,
       });
     },
     [connectionClient, refs, terminalIdentity],

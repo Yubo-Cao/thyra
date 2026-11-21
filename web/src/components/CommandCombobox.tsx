@@ -465,7 +465,7 @@ export function CommandCombobox({
       currentActions.push({
         key: "current-editor",
         icon: <Code size={15} />,
-        title: msg("Open in VS Code"),
+        title: msg("Open Workspace Inspector"),
         detail:
           focusedWorkspace.worktree?.checkout_path ??
           focusedWorkspace.cwd ??

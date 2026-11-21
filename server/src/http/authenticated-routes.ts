@@ -55,6 +55,7 @@ export type AuthenticatedRoute = {
   identityPeer: string | null | undefined;
   /** Public listener: no identity device cookie (it is not `__Host-`). */
   publicListener: boolean;
+  previewDirectory?: string;
 };
 
 /** The routes behind authentication: sockets, the API and the frontend. */
@@ -76,6 +77,7 @@ export function createAuthenticatedRouter(
       route: ParsedConnectionHttpRoute,
       url: URL,
       req: Request,
+      previewDirectory?: string,
     ) => Promise<Response>;
   } & ReturnType<typeof createUpdateHandlers> &
     ReturnType<typeof createHerdrSetupHandlers>,
@@ -298,7 +300,12 @@ export function createAuthenticatedRouter(
         // HTML preparation can require several bounded SSH resource reads.
         server.timeout(req, DOWNLOAD_TIMEOUT_MS / 1000);
       }
-      return handleConnectionHttpRequest(connectionRoute, url, req);
+      return handleConnectionHttpRequest(
+        connectionRoute,
+        url,
+        req,
+        route.previewDirectory,
+      );
     }
     // Everything else: serve the built frontend (embedded or on-disk).
     const staticPage = await serveStatic(req, config.publicDir);

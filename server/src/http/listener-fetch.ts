@@ -1,4 +1,6 @@
 import type { Server } from "bun";
+import { isHtmlPath } from "../../../shared/filePreview";
+import { createPreviewGrants } from "./preview-grants";
 import type { AccessControl } from "../auth/access";
 import {
   type Authenticator,
@@ -40,6 +42,7 @@ import {
   forbiddenResponse,
   hostNotAllowedResponse,
   originCheckMode,
+  type RequestAccess,
   type RequestAccessPolicy,
 } from "./request-access";
 import {
@@ -104,6 +107,7 @@ export function createListenerFetch(deps: {
   publicAuth: PublicAuthenticator;
   authzDeps: AuthzDeps;
   accessControl: AccessControl;
+  isPreviewSessionLive: (principal: Principal) => boolean;
   connectionManager: ConnectionManager<LegacyConnectionRuntime>;
   routeAuthenticated: (
     req: Request,
@@ -131,6 +135,7 @@ export function createListenerFetch(deps: {
     connectionManager,
     routeAuthenticated,
   } = deps;
+  const previewGrants = createPreviewGrants(deps.isPreviewSessionLive);
   let requestAccessPolicy: RequestAccessPolicy | null = null;
   /**
    * The primary listener's policy, created on first use: the listening port
@@ -164,21 +169,34 @@ export function createListenerFetch(deps: {
         ? (connectionRoute.requestedConnectionId ??
           connectionManager.defaultId())
         : null;
-    return { routeId, connectionId };
+    const raw =
+      connectionRoute?.kind === "connection"
+        ? connectionRoute.rawFile
+        : undefined;
+    return { routeId, connectionId, raw };
   }
 
   /** Apply HTTP_POLICY; the refusal to send, or null when allowed. */
   async function refuseUnauthorized(
     req: Request,
     url: URL,
-    route: { routeId: HttpRouteId; connectionId: string | null },
+    route: {
+      routeId: HttpRouteId;
+      connectionId: string | null;
+      raw?: ReturnType<typeof httpRoute>["raw"];
+    },
     principal: Principal | null,
   ): Promise<Response | null> {
     const decision = await authorizeHttp({
       route: route.routeId,
       principal,
       connectionId: route.connectionId,
-      query: url.searchParams,
+      query: route.raw
+        ? new URLSearchParams({
+            workspace_id: route.raw.workspaceId,
+            scope: route.raw.scope,
+          })
+        : url.searchParams,
       deps: authzDeps,
       editsConnection: accessControl.editsConnection,
     });
@@ -206,6 +224,57 @@ export function createListenerFetch(deps: {
       { error: decision.message },
       { status: 403, headers: { "cache-control": "no-store" } },
     );
+  }
+
+  function rawGrant(
+    route: ReturnType<typeof httpRoute>,
+    access: RequestAccess,
+  ) {
+    const { raw, connectionId } = route;
+    return raw && raw.grant !== "-"
+      ? previewGrants.authenticate(
+          raw,
+          connectionId,
+          access.clientAddress,
+          access.ownOrigin,
+        )
+      : null;
+  }
+
+  function previewRedirect(
+    route: ReturnType<typeof httpRoute>,
+    req: Request,
+    url: URL,
+    access: RequestAccess,
+    principal: Principal,
+  ) {
+    const { raw, connectionId } = route;
+    if (
+      !raw ||
+      !connectionId ||
+      raw.grant !== "-" ||
+      req.method !== "GET" ||
+      !isHtmlPath(raw.path) ||
+      req.headers.get("sec-fetch-dest") !== "iframe"
+    )
+      return;
+    const id = previewGrants.issue({
+      raw,
+      connectionId,
+      principal,
+      address: access.clientAddress,
+      origin: access.ownOrigin,
+    });
+    const parts = url.pathname.split("/");
+    parts[9] = id;
+    return new Response(null, {
+      status: 307,
+      headers: {
+        location: parts.join("/") + url.search,
+        "cache-control": "private, no-store",
+        "referrer-policy": "no-referrer",
+      },
+    });
   }
 
   /**
@@ -256,6 +325,12 @@ export function createListenerFetch(deps: {
     if (url.pathname === AGENT_BOARD_PATH)
       return handleAgentBoard(req, messageBoard);
     const route = httpRoute(req, url, requestPathname);
+    const grant = rawGrant(route, access);
+    if (route.raw && route.raw.grant !== "-" && !grant)
+      return new Response("Preview session expired", {
+        status: 401,
+        headers: { "cache-control": "no-store" },
+      });
     const originMode = originCheckMode(
       url.pathname,
       req.method,
@@ -263,7 +338,7 @@ export function createListenerFetch(deps: {
     );
     // The silent tailnet sign-in is a CORS request from the public origin; its
     // handler allows exactly that origin.
-    if (originMode !== "none" && route.routeId !== "sso.code") {
+    if (originMode !== "none" && route.routeId !== "sso.code" && !grant) {
       const decision = accessPolicy.checkOrigin(
         req,
         access,
@@ -286,13 +361,14 @@ export function createListenerFetch(deps: {
     // Direct local use, the session cookie, or tailnet login. Icons, the login
     // script, logout, share links and tailnet sign-in (which runs `whois`
     // itself) never start a session.
-    const auth: AuthResult =
-      routeId === "login.icon" ||
-      routeId === "login.script" ||
-      routeId === "logout" ||
-      routeId === "share.page" ||
-      routeId === "share.redeem" ||
-      routeId.startsWith("sso.")
+    const auth: AuthResult = grant
+      ? { principal: grant.principal }
+      : routeId === "login.icon" ||
+          routeId === "login.script" ||
+          routeId === "logout" ||
+          routeId === "share.page" ||
+          routeId === "share.redeem" ||
+          routeId.startsWith("sso.")
         ? { principal: null }
         : await authenticator.authenticate(req, access);
     const principal = auth.principal;
@@ -330,8 +406,11 @@ export function createListenerFetch(deps: {
         status: 401,
         headers: { "cache-control": "no-store" },
       });
+    const redirect = previewRedirect(route, req, url, access, principal);
+    if (redirect) return withSessionCookie(redirect, auth.setCookie);
     return withSessionCookie(
       await routeAuthenticated(req, server, {
+        previewDirectory: grant?.directory,
         url,
         requestPathname,
         access,
@@ -357,7 +436,13 @@ export function createListenerFetch(deps: {
   ): Promise<Response | undefined> {
     const response = await publicRoute(req, server);
     return (
-      response && withPublicSecurityHeaders(response, await publicPagePolicy())
+      response &&
+      withPublicSecurityHeaders(
+        response,
+        await publicPagePolicy(),
+        httpRoute(req, new URL(req.url), rawRequestPathname(req.url))
+          .routeId === "connection.file-raw",
+      )
     );
   }
 
@@ -403,12 +488,19 @@ export function createListenerFetch(deps: {
     }
     if (url.pathname === AGENT_BOARD_PATH)
       return handleAgentBoard(req, messageBoard);
+    const route = httpRoute(req, url, requestPathname);
+    const grant = rawGrant(route, access);
+    if (route.raw && route.raw.grant !== "-" && !grant)
+      return new Response("Preview session expired", {
+        status: 401,
+        headers: { "cache-control": "no-store" },
+      });
     const originMode = originCheckMode(
       url.pathname,
       req.method,
       req.headers.get("upgrade")?.toLowerCase() === "websocket",
     );
-    if (originMode !== "none") {
+    if (originMode !== "none" && !grant) {
       const decision = publicAccessPolicy.checkOrigin(
         req,
         access,
@@ -429,7 +521,9 @@ export function createListenerFetch(deps: {
     ) {
       return servePublicAsset(req);
     }
-    const auth = await publicAuth.authenticate(req, context);
+    const auth: AuthResult = grant
+      ? { principal: grant.principal }
+      : await publicAuth.authenticate(req, context);
     const principal = auth.principal;
     if (!principal) {
       const accept = req.headers.get("accept") ?? "";
@@ -445,7 +539,6 @@ export function createListenerFetch(deps: {
         headers: { "cache-control": "no-store" },
       });
     }
-    const route = httpRoute(req, url, requestPathname);
     if (!route.routeId) return unmatchedRoute(url);
     const routeId = route.routeId;
     const refused = await refuseUnauthorized(
@@ -464,8 +557,11 @@ export function createListenerFetch(deps: {
     );
     if (accountResponse)
       return withSessionCookie(accountResponse, auth.setCookie);
+    const redirect = previewRedirect(route, req, url, access, principal);
+    if (redirect) return withSessionCookie(redirect, auth.setCookie);
     return withSessionCookie(
       await routeAuthenticated(req, server, {
+        previewDirectory: grant?.directory,
         url,
         requestPathname,
         access,

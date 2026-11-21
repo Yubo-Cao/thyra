@@ -124,7 +124,8 @@ Browser requests are bound to Thyra's own origin, so another web page open in a 
 - **Origin allowlist.** WebSocket upgrades and every non-GET/HEAD request need an `Origin` equal to the request's own origin (as seen through a trusted proxy), a `THYRA_PUBLIC_BASE_URL` origin, or `http://localhost:<port>`/`127.0.0.1:<port>`.
   Without `Origin` they are accepted only as direct local use.
   API reads are also refused for a foreign `Origin` or a cross-site/same-site `Sec-Fetch-Site`.
-  The one cross-origin request the primary listener serves is tailnet sign-in's cookie-less code request, and only from exactly `THYRA_PUBLIC_ORIGIN`.
+  Tailnet sign-in accepts its cookie-less code request from exactly `THYRA_PUBLIC_ORIGIN`.
+  An Inspector HTML iframe gets an opaque origin and an expiring workspace read grant for relative assets. The raw-file route checks the original session and workspace authorization on each request.
 - **Deny by default.** Every WebSocket method and HTTP route is looked up in a policy table (`server/src/authz/policy.ts`, `server/src/authz/http-policy.ts`) that names its class, scope and target; anything unlisted is refused.
   Herdr methods the web client does not use, such as `server.stop`, `plugin.enable`, `integration.install` or `agent.prompt`, are rejected for everyone.
 - **Presence.** The bridge assigns each page's collaboration participant id and role; a page can claim, release, or leave only as itself.

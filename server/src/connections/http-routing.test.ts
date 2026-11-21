@@ -143,6 +143,38 @@ describe("connection HTTP routing", () => {
     }
   });
 
+  test("raw file URLs decode individual segments and accept only reads", () => {
+    const base = "/api/connections/remote-dev/file/raw/5/w%3A1/workspace/-/";
+    expect(
+      parseConnectionHttpRoute(base + "docs/a%20b%23c.html", "HEAD"),
+    ).toMatchObject({
+      kind: "connection",
+      endpoint: "file-raw",
+      rawFile: {
+        generation: "5",
+        workspaceId: "w:1",
+        scope: "workspace",
+        grant: "-",
+        path: "docs/a b#c.html",
+      },
+    });
+    expect(parseConnectionHttpRoute(base + "docs/data", "POST")).toMatchObject({
+      kind: "error",
+      error: { status: 405 },
+    });
+    for (const path of [
+      "docs/%2e%2e/secret",
+      "docs/a%2Fb",
+      "docs/a%5Cb",
+      "docs/%ZZ",
+    ]) {
+      expect(parseConnectionHttpRoute(base + path, "GET")).toMatchObject({
+        kind: "error",
+        error: { status: 400 },
+      });
+    }
+  });
+
   test("rejects unknown endpoint suffixes and wrong methods", () => {
     expect(
       parseConnectionHttpRoute(

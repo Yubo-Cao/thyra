@@ -318,7 +318,7 @@ export function AgentContextMenu({
             },
             {
               id: "open-editor",
-              label: t("Open in VS Code"),
+              label: t("Open Workspace Inspector"),
               onAction: () => onOpenEditor?.(pane),
             },
           ],

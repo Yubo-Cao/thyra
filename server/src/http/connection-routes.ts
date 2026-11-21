@@ -21,6 +21,7 @@ export function createConnectionHttpHandler(deps: {
     route: ParsedConnectionHttpRoute,
     url: URL,
     req: Request,
+    previewDirectory?: string,
   ): Promise<Response> {
     if (route.kind === "error") {
       return connectionRoutingErrorResponse(route.error);
@@ -29,7 +30,11 @@ export function createConnectionHttpHandler(deps: {
     let resolved: ReturnType<
       typeof resolveConnectionHttpRoute<LegacyConnectionRuntime>
     >;
-    const generationText = url.searchParams.get("connection_generation");
+    const generationText = route.rawFile
+      ? route.rawFile.generation === "-"
+        ? null
+        : route.rawFile.generation
+      : url.searchParams.get("connection_generation");
     const requestedGeneration =
       generationText === null
         ? undefined
@@ -60,6 +65,12 @@ export function createConnectionHttpHandler(deps: {
         response = await connection.handleHerdrInfo();
       } else if (endpoint === "upload-image") {
         response = await connection.handleImageUpload(req);
+      } else if (route.rawFile) {
+        response = await connection.files.rawWorkspaceFile(
+          route.rawFile,
+          req,
+          previewDirectory,
+        );
       } else if (endpoint === "file-download") {
         try {
           response = await connection.files.downloadWorkspaceFile({

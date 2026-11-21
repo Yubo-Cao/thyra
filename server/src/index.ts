@@ -161,6 +161,18 @@ const { primaryFetch, publicFetch } = createListenerFetch({
   messageBoard: accounts.messageBoard,
   authenticator: accounts.authenticator,
   authzDeps: accounts.authzDeps,
+  isPreviewSessionLive(principal) {
+    if (principal.kind === "local") return true;
+    if (principal.kind === "guest")
+      return !!accounts.shareLinks.guestByHash(principal.guest.idHash);
+    const user = accounts.accountStore.getUser(principal.user.id);
+    return (
+      !!user &&
+      !user.disabled &&
+      user.privilegeEpoch === principal.user.privilegeEpoch &&
+      !!accounts.accountStore.sessionByHash(principal.session.idHash)
+    );
+  },
   accessControl: accounts.accessControl,
   connectionManager,
   routeAuthenticated,

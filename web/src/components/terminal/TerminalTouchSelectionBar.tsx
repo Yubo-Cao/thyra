@@ -98,6 +98,7 @@ export function TerminalTouchSelectionBar({
                 if (workspaceId)
                   onFileLinkMenu({
                     path: touchLink.value,
+                    line: touchLink.line,
                     workspaceId,
                     x: event.clientX,
                     y: event.clientY,
