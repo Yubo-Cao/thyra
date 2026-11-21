@@ -17,6 +17,27 @@ export const EDITOR_FONT_FAMILY =
 const CONFIGURATION =
   /(<meta\s+id="vscode-workbench-web-configuration"\s+data-settings=")([^"]*)(")/;
 
+const STARTUP_BACKGROUND = `<style>
+html { background-color: var(--thyra-startup-background, #f8f8f8); }
+@media (prefers-color-scheme: dark) {
+  html { background-color: var(--thyra-startup-background, #1f1f1f); }
+}
+</style>`;
+
+function startupBackground(html: string) {
+  const nonce = html.match(/<script\s+nonce="([\w+/=-]+)"/)?.[1];
+  if (!nonce) return STARTUP_BACKGROUND;
+  // VS Code saves its last theme's splash color in this origin's storage.
+  return `${STARTUP_BACKGROUND}<script nonce="${nonce}">
+try {
+  const color = JSON.parse(localStorage.getItem("monaco-parts-splash"))?.colorInfo?.background;
+  if (typeof color === "string" && /^#[a-f0-9]{6}$/i.test(color)) {
+    document.documentElement.style.setProperty("--thyra-startup-background", color);
+  }
+} catch {}
+</script>`;
+}
+
 const ENTITIES: Record<string, string> = {
   quot: '"',
   amp: "&",
@@ -67,11 +88,13 @@ export function asciiFontChunks(coreStylesheet: string): string[] {
 }
 
 /**
- * Adds the font stylesheets and the default editor font to a workbench page.
- * A page that is not the workbench, or whose configuration cannot be read,
- * comes back unchanged.
+ * Adds the startup background, font stylesheets and default editor font to
+ * a workbench page with a readable configuration.
  */
-export function withThyraFonts(html: string, preloads: string[] = []): string {
+export function withWorkbenchAppearance(
+  html: string,
+  preloads: string[] = [],
+): string {
   const settings = html.match(CONFIGURATION)?.[2];
   const head = html.indexOf("</head>");
   if (settings === undefined || head < 0) return html;
@@ -97,9 +120,11 @@ export function withThyraFonts(html: string, preloads: string[] = []): string {
     `<link rel="stylesheet" href="${TERMINAL_FONT_CORE_STYLESHEET}" />`,
     `<link rel="stylesheet" href="${TERMINAL_FONT_STYLESHEET}" />`,
   ].join("");
-  return (html.slice(0, head) + links + html.slice(head)).replace(
-    CONFIGURATION,
-    (_match, open: string, _settings: string, close: string) =>
-      `${open}${encodeAttribute(JSON.stringify(configuration))}${close}`,
-  );
+  return (html.slice(0, head) + links + html.slice(head))
+    .replace(/<head\b[^>]*>/i, (tag) => tag + startupBackground(html))
+    .replace(
+      CONFIGURATION,
+      (_match, open: string, _settings: string, close: string) =>
+        `${open}${encodeAttribute(JSON.stringify(configuration))}${close}`,
+    );
 }

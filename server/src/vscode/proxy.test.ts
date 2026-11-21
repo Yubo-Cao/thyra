@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { brotliDecompressSync } from "node:zlib";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { createVscodeProxy } from "./proxy";
 import { createVscodeStaticCache } from "./static-cache";
 import {
   asciiFontChunks,
   EDITOR_FONT_FAMILY,
-  withThyraFonts,
+  withWorkbenchAppearance,
 } from "./workbench-html";
 
 const COMMIT = "2c33b50b16c472efe58357d1d2a8a5414bc23fbf";
@@ -104,6 +104,16 @@ describe("VS Code static files", () => {
     expect(hits).toHaveLength(1);
   });
 
+  test("keep gzip and Brotli distinct for the same URL", async () => {
+    const target = proxy();
+    const path = `${STATIC}/out/workbench.js`;
+    const brotli = await get(target, path);
+    const gzip = await get(target, path, { "accept-encoding": "gzip" });
+    expect(gzip.headers.get("content-encoding")).toBe("gzip");
+    expect(gzip.headers.get("etag")).not.toBe(brotli.headers.get("etag"));
+    expect(gunzipSync(await gzip.bytes()).toString()).toBe(SCRIPT);
+  });
+
   test("are fetched again by a reload that bypasses the cache", async () => {
     const target = proxy();
     await (await get(target, `${STATIC}/out/workbench.js`)).bytes();
@@ -177,14 +187,31 @@ describe("the workbench page", () => {
 
   test("keeps configuration it cannot read, and other pages, as they are", () => {
     const broken = page({}).replace("{}", "{");
-    expect(withThyraFonts(broken)).toBe(broken);
-    expect(withThyraFonts("<html><head></head></html>")).toBe(
+    expect(withWorkbenchAppearance(broken)).toBe(broken);
+    expect(withWorkbenchAppearance("<html><head></head></html>")).toBe(
       "<html><head></head></html>",
     );
   });
 
+  test("sets the startup background before the render-blocking stylesheets", () => {
+    const original = page({}).replace(
+      "<head>",
+      '<head><script nonce="upstream-nonce"></script><link rel="stylesheet" href="workbench.css">',
+    );
+    const html = withWorkbenchAppearance(original);
+    expect(html).toContain("<head><style>");
+    expect(html).toContain("prefers-color-scheme: dark");
+    expect(html).toContain(
+      '<script nonce="upstream-nonce">\ntry {\n  const color = JSON.parse(localStorage.getItem("monaco-parts-splash"))',
+    );
+    expect(html.indexOf("--thyra-startup-background")).toBeLessThan(
+      html.indexOf("workbench.css"),
+    );
+    expect(withWorkbenchAppearance(page({}))).not.toContain("<script");
+  });
+
   test("round-trips markup characters in settings", () => {
-    const html = withThyraFonts(
+    const html = withWorkbenchAppearance(
       page({ a: "<b>&\"'" }).replace("&quot;&lt;", "&quot;<"),
     );
     const raw = html.match(/data-settings="([^"]*)"/)![1]!;

@@ -5,7 +5,7 @@ import {
   isVscodeStaticPath,
   VSCODE_STATIC_CACHE_CONTROL,
 } from "./static-cache";
-import { asciiFontChunks, withThyraFonts } from "./workbench-html";
+import { asciiFontChunks, withWorkbenchAppearance } from "./workbench-html";
 import {
   isHookedWorkbenchScript,
   withHookedWorkbenchScript,
@@ -182,7 +182,7 @@ export function createVscodeProxy(options: {
       headers.delete("content-length");
       return new Response(
         withHookedWorkbenchScript(
-          withThyraFonts(html, await loadFontPreloads()),
+          withWorkbenchAppearance(html, await loadFontPreloads()),
         ),
         { status: 200, headers },
       );

@@ -20,9 +20,10 @@ export const VSCODE_STATIC_CACHE_CONTROL =
 /** Larger files are proxied as they are. */
 const MAX_RAW_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_CACHE_BYTES = 96 * 1024 * 1024;
-// Quality 9 takes under two seconds for the workbench script and lands within
-// 15% of maximum quality, which would take twenty.
-const BROTLI_QUALITY = 9;
+// This runs on the first request before any bytes can be sent. For the
+// workbench bundle, quality 6 saves over a second of compression compared to
+// quality 9 and adds about 6% to the transfer.
+const BROTLI_QUALITY = 6;
 
 const brotliAsync = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
