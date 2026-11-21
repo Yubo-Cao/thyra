@@ -185,6 +185,7 @@ try {
     publicFetch,
     websocketHandlers,
   });
+  void vscodeProxy.prewarm();
 } catch (e) {
   logger.error("fatal startup error", { error: e });
   void shutdown.shutdownController.request(1);

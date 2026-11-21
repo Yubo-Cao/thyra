@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { brotliDecompressSync } from "node:zlib";
 import {
   VSCODE_WORKBENCH_GLOBAL,
   VSCODE_WORKBENCH_HOOK_QUERY,
@@ -71,18 +79,25 @@ describe("the workbench script hook", () => {
 describe("the proxied workbench script", () => {
   /** Long enough for the static cache to compress. */
   const BUNDLE = `${CREATE}//${"x".repeat(4096)}`;
+  const CSS_PATH = SCRIPT_PATH.replace(/\.js$/, ".css");
   let upstream: ReturnType<typeof Bun.serve>;
+  let hits: string[];
   beforeAll(() => {
     upstream = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
       fetch(req) {
         const { pathname } = new URL(req.url);
+        hits.push(pathname);
         if (pathname === "/vscode/")
           return new Response(
-            `<html><head><meta id="vscode-workbench-web-configuration" data-settings="{}"></head><script type="module" src="${SCRIPT_PATH}"></script></html>`,
+            `<html><head><meta id="vscode-workbench-web-configuration" data-settings="{}"><link rel="stylesheet" href="${CSS_PATH}"></head><script type="module" src="${SCRIPT_PATH}"></script></html>`,
             { headers: { "content-type": "text/html" } },
           );
+        if (pathname === CSS_PATH)
+          return new Response("body {}", {
+            headers: { "content-type": "text/css" },
+          });
         if (pathname === SCRIPT_PATH)
           return new Response(BUNDLE, {
             headers: {
@@ -96,12 +111,21 @@ describe("the proxied workbench script", () => {
   });
   afterAll(() => upstream.stop(true));
 
-  const get = (pathname: string, headers: Record<string, string> = {}) => {
+  const proxy = () =>
+    createVscodeProxy({ upstream: `http://127.0.0.1:${upstream.port}` });
+
+  const get = (
+    pathname: string,
+    headers: Record<string, string> = {},
+    target = proxy(),
+  ) => {
     const url = new URL(pathname, "https://thyra.test");
-    return createVscodeProxy({
-      upstream: `http://127.0.0.1:${upstream.port}`,
-    }).fetchHttp(new Request(url, { headers }), url);
+    return target.fetchHttp(new Request(url, { headers }), url);
   };
+
+  beforeEach(() => {
+    hits = [];
+  });
 
   test("carries the hook under the URL the page loads", async () => {
     const html = await (await get("/vscode/?folder=/srv/app")).text();
@@ -125,5 +149,26 @@ describe("the proxied workbench script", () => {
   test("stays as VS Code has it under its own URL", async () => {
     const response = await get(SCRIPT_PATH, { "accept-encoding": "identity" });
     expect(await response.text()).toBe(BUNDLE);
+  });
+
+  test("prewarms the browser's hooked Brotli bundle and stylesheet", async () => {
+    const target = proxy();
+    await target.prewarm();
+    expect(hits.toSorted()).toEqual(
+      ["/vscode/", SCRIPT_PATH, CSS_PATH].toSorted(),
+    );
+
+    const headers = { "accept-encoding": "br" };
+    const bundle = await get(
+      `${SCRIPT_PATH}?${VSCODE_WORKBENCH_HOOK_QUERY}`,
+      headers,
+      target,
+    );
+    expect(bundle.headers.get("content-encoding")).toBe("br");
+    expect(brotliDecompressSync(await bundle.bytes()).toString()).toBe(
+      withWorkbenchHook(BUNDLE),
+    );
+    expect(await (await get(CSS_PATH, headers, target)).text()).toBe("body {}");
+    expect(hits).toHaveLength(3);
   });
 });

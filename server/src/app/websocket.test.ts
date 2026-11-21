@@ -54,6 +54,7 @@ function harness(
     } as never,
     connections: { connectionManager: { defaultId: () => "local" } } as never,
     vscodeProxy: {
+      prewarm: async () => {},
       openSocket: () => ({
         message: () => undefined,
         close: () => proxyClosed.push("vscode"),

@@ -165,6 +165,54 @@ describe("VS Code static files", () => {
   });
 });
 
+test("asks the browser socket to compress large binary messages", async () => {
+  const small = new Uint8Array([1, 2, 3]);
+  const large = new Uint8Array(16 * 1024).fill(42);
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(req, server) {
+      if (!server.upgrade(req)) return new Response(null, { status: 400 });
+    },
+    websocket: {
+      message(ws, message) {
+        expect(message).toBe("start");
+        ws.send("text");
+        ws.send(small);
+        ws.send(large);
+      },
+    },
+  });
+  const ready = Promise.withResolvers<void>();
+  const frames: [string | Uint8Array, boolean | undefined][] = [];
+  const url = new URL(`http://127.0.0.1:${backend.port}/vscode/`);
+  const socket = createVscodeProxy({ upstream: url.origin }).openSocket(
+    {
+      send(data, compress) {
+        frames.push([data, compress]);
+        if (frames.length === 3) ready.resolve();
+      },
+      close(code, reason) {
+        ready.reject(new Error(`Proxy closed: ${code} ${reason}`));
+      },
+    },
+    new Request(url),
+    url,
+  );
+  try {
+    socket.message("start");
+    await ready.promise;
+    expect(frames).toEqual([
+      ["text", undefined],
+      [small, false],
+      [large, true],
+    ]);
+  } finally {
+    socket.close();
+    await backend.stop(true);
+  }
+});
+
 describe("the workbench page", () => {
   test("loads Thyra's font and takes it as the default editor font", async () => {
     const response = await get(proxy(), "/vscode/?folder=/srv/app");

@@ -33,9 +33,16 @@ export function isVscodePath(pathname: string) {
 
 /** The few WebSocket methods the bridge uses. */
 export type VscodePeer = {
-  send(data: string | Uint8Array): unknown;
+  send(data: string | Uint8Array, compress?: boolean): unknown;
   close(code?: number, reason?: string): void;
 };
+
+// Extension scans and host initialization can carry megabytes of JSON.
+// Use the browser-facing socket's negotiated deflate for bulk binary frames.
+const VSCODE_COMPRESSION_MIN_BYTES = 1024;
+
+const WORKBENCH_ASSET =
+  /\b(?:href|src)="(\/vscode\/[^"?#]+\/(?:workbench\.css|workbench\.js|nls\.messages\.js)(?:\?[^"]*)?)"/g;
 
 const HOP_BY_HOP = [
   "connection",
@@ -111,6 +118,42 @@ export function createVscodeProxy(options: {
     return new Response(withWorkbenchHook(await response.text()), { headers });
   };
   const staticCache = createVscodeStaticCache({ load: loadStatic });
+
+  /** Prepare the same Brotli entries that a browser navigation uses. */
+  async function prewarm() {
+    if (!upstream) return;
+    try {
+      const page = new URL(`${upstream}${VSCODE_BASE_PATH}/`);
+      const response = await fetch(page, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+      });
+      if (
+        !response.ok ||
+        !/^text\/html\b/i.test(response.headers.get("content-type") ?? "")
+      ) {
+        await response.body?.cancel();
+        return;
+      }
+      const html = withHookedWorkbenchScript(await response.text());
+      const assets = new Set(
+        Array.from(html.matchAll(WORKBENCH_ASSET), ([, asset]) => asset!),
+      );
+      await Promise.allSettled(
+        [...assets].map(async (asset) => {
+          const url = new URL(asset, page);
+          if (!isVscodeStaticPath(url.pathname)) return;
+          const req = new Request(url, {
+            headers: { "accept-encoding": "br" },
+          });
+          const cached = await staticCache.respond(req, url);
+          await cached?.body?.cancel();
+        }),
+      );
+    } catch {
+      // The editor may start after Thyra. Requests still populate the cache.
+    }
+  }
 
   let fontPreloads: Promise<string[]> | null = null;
   const loadFontPreloads = () => {
@@ -211,11 +254,12 @@ export function createVscodeProxy(options: {
     };
     socket.onmessage = (event) => {
       if (closed) return;
-      peer.send(
-        typeof event.data === "string"
-          ? event.data
-          : new Uint8Array(event.data as ArrayBuffer),
-      );
+      if (typeof event.data === "string") {
+        peer.send(event.data);
+        return;
+      }
+      const data = new Uint8Array(event.data as ArrayBuffer);
+      peer.send(data, data.length >= VSCODE_COMPRESSION_MIN_BYTES);
     };
     const finish = (code = 1000, reason = "") => {
       if (closed) return;
@@ -241,7 +285,7 @@ export function createVscodeProxy(options: {
     };
   }
 
-  return { available: () => !!upstream, fetchHttp, openSocket };
+  return { available: () => !!upstream, fetchHttp, openSocket, prewarm };
 }
 
 export type VscodeProxy = ReturnType<typeof createVscodeProxy>;
