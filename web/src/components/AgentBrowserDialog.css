@@ -12,10 +12,6 @@
 }
 
 .agent-browser-screen {
-  /* noVNC maps the pointer and sizes the canvas from getBoundingClientRect
-     but sets the canvas size in the element's own pixels; under the UI
-     scale's root zoom those differ and the pointer lands off. Cancel it. */
-  zoom: calc(1 / var(--ui-scale, 1));
   flex: 1;
   min-height: 0;
   background: var(--terminal-bg);

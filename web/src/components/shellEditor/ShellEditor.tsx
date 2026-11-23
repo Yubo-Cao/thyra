@@ -569,12 +569,9 @@ export function ShellEditor({
   useLayoutEffect(() => {
     const element = term.element;
     const previous = element.style.translate;
-    const screen = term.screen;
-    const scale = screen.offsetHeight
-      ? screen.getBoundingClientRect().height / screen.offsetHeight
-      : 1;
     lifted.current = lift;
-    element.style.translate = `0 ${-lift / scale}px`;
+    // `translate` applies outside a follow transform's scale: pane px.
+    element.style.translate = `0 ${-lift}px`;
     return () => {
       element.style.translate = previous;
       lifted.current = 0;

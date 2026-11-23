@@ -3,8 +3,6 @@
 }
 
 .terminal-view {
-  /* The terminal sizes cells in CSS pixels without zoom; its font scales instead. */
-  zoom: calc(1 / var(--ui-scale, 1));
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
@@ -67,6 +65,8 @@
   overflow-wrap: anywhere;
 }
 
+/* .terminal-engine and .terminal-selection-handle lengths stay px under the
+   UI scale (vite.config.ts): script sizes the grid and handles in px. */
 .terminal-view .terminal-engine {
   position: relative;
   height: 100%;
@@ -405,7 +405,6 @@
 }
 
 .terminal-touch-selection-ui {
-  zoom: calc(1 / var(--ui-scale, 1));
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -430,7 +429,7 @@
 
 .terminal-touch-selection-actions .button {
   padding-inline: 10px;
-  font-size: calc(13px * var(--ui-scale, 1));
+  font-size: 13px;
   pointer-events: auto;
 }
 

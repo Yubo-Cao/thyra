@@ -194,32 +194,8 @@ export function useAppearance(
     thyraLocalStorage.setItem(THEME_KEY, theme);
     root.dataset.accent = accentColor;
     thyraLocalStorage.setItem(ACCENT_COLOR_KEY, accentColor);
-    root.style.zoom = uiScale === UI_SCALE_DEFAULT ? "" : String(uiScale / 100);
-    if (uiScale === UI_SCALE_DEFAULT) {
-      root.style.removeProperty("--ui-scale");
-    } else {
-      root.style.setProperty("--ui-scale", String(uiScale / 100));
-    }
-    // React Aria positions popovers using getBoundingClientRect. Some engines
-    // return pre-zoom layout px instead of visual viewport px under CSS
-    // zoom, which breaks the static 1/zoom portal compensation. Measure the
-    // actual ratio and compensate with it so anchoring works either way.
-    const zoomProbe = document.createElement("div");
-    zoomProbe.style.cssText =
-      "position:fixed;top:100px;left:0;width:1px;height:1px;pointer-events:none;visibility:hidden";
-    document.body.append(zoomProbe);
-    const zoomRectRatio = zoomProbe.getBoundingClientRect().top / 100;
-    zoomProbe.remove();
-    if (zoomRectRatio > 0) {
-      root.style.setProperty(
-        "--popover-portal-zoom",
-        String(1 / zoomRectRatio),
-      );
-      root.style.setProperty("--popover-content-zoom", String(zoomRectRatio));
-    } else {
-      root.style.removeProperty("--popover-portal-zoom");
-      root.style.removeProperty("--popover-content-zoom");
-    }
+    if (uiScale === UI_SCALE_DEFAULT) root.style.removeProperty("--ui-scale");
+    else root.style.setProperty("--ui-scale", String(uiScale / 100));
     thyraLocalStorage.setItem(UI_SCALE_KEY, String(uiScale));
   }, [accentColor, resolvedTheme, theme, uiScale]);
 

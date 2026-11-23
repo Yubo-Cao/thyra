@@ -40,12 +40,9 @@ export function ViewportDebugOverlay() {
   );
 }
 
-export function useVisualViewportCssVars(uiScale: number) {
+export function useVisualViewportCssVars() {
   useEffect(() => {
     const root = document.documentElement;
-    // CSS zoom scales every computed px length, so emit viewport geometry in
-    // pre-zoom units to keep the rendered shell matching the real viewport.
-    const geometryScale = uiScale / 100;
     let pollTimer: number | undefined;
     let settleTimers: number[] = [];
 
@@ -61,7 +58,7 @@ export function useVisualViewportCssVars(uiScale: number) {
       root.classList.toggle("keyboard-open", keyboardOpen);
       root.style.setProperty(
         "--app-viewport-height",
-        `${Math.round(height / geometryScale)}px`,
+        `${Math.round(height)}px`,
       );
       // Keep the app surface at the full layout height, even while the
       // keyboard is open. iOS can over-report the keyboard occlusion (the
@@ -71,29 +68,29 @@ export function useVisualViewportCssVars(uiScale: number) {
       // with padding-bottom in the mobile styles.
       root.style.setProperty(
         "--app-height",
-        `calc(${Math.round(window.innerHeight / geometryScale)}px + env(safe-area-inset-bottom, 0px))`,
+        `calc(${Math.round(window.innerHeight)}px + env(safe-area-inset-bottom, 0px))`,
       );
       root.style.setProperty(
         "--app-viewport-offset-top",
-        `${Math.round(offsetTop / geometryScale)}px`,
+        `${Math.round(offsetTop)}px`,
       );
       root.style.setProperty(
         "--keyboard-inset-bottom",
-        `${Math.round(keyboardInset / geometryScale)}px`,
+        `${Math.round(keyboardInset)}px`,
       );
       // Both platforms need the visual viewport lift here; without it some
       // Android browsers place the composer behind the software keyboard.
       const contentInset = Math.max(0, keyboardInset - keyboardInsetTrim);
       root.style.setProperty(
         "--keyboard-inset-content",
-        `${Math.round(contentInset / geometryScale)}px`,
+        `${Math.round(contentInset)}px`,
       );
       root.style.setProperty(
         "--keyboard-inset-composer-gap",
         `${Math.round(
-          (usesIosKeyboardViewportLift
+          usesIosKeyboardViewportLift
             ? Math.max(0, keyboardInset - contentInset)
-            : 0) / geometryScale,
+            : 0,
         )}px`,
       );
       return keyboardOpen;
@@ -158,5 +155,5 @@ export function useVisualViewportCssVars(uiScale: number) {
       root.style.removeProperty("--keyboard-inset-content");
       root.style.removeProperty("--keyboard-inset-composer-gap");
     };
-  }, [uiScale]);
+  }, []);
 }

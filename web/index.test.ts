@@ -9,10 +9,14 @@ const bootstrap = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].find(
 if (!bootstrap) throw new Error("First-paint appearance bootstrap is missing");
 
 function firstPaint(values: Record<string, string>, systemLight = false) {
-  const element = {
-    dataset: { theme: "" },
-    style: { colorScheme: "", zoom: "" },
+  const properties: Record<string, string> = {};
+  const style = {
+    colorScheme: "",
+    setProperty: (name: string, value: string) => {
+      properties[name] = value;
+    },
   };
+  const element = { dataset: { theme: "" }, style };
   const writeStorage = mock(() => undefined);
   runInNewContext(bootstrap as string, {
     document: { documentElement: element },
@@ -25,20 +29,26 @@ function firstPaint(values: Record<string, string>, systemLight = false) {
     },
   });
   expect(writeStorage).not.toHaveBeenCalled();
-  return element;
+  return {
+    theme: element.dataset.theme,
+    colorScheme: style.colorScheme,
+    properties,
+  };
 }
 
 test("index first paint uses defaults when no appearance preferences exist", () => {
   expect(firstPaint({})).toEqual({
-    dataset: { theme: "dark" },
-    style: { colorScheme: "dark", zoom: "" },
+    theme: "dark",
+    colorScheme: "dark",
+    properties: {},
   });
 });
 
 test("index first paint ignores unprefixed appearance preferences", () => {
   expect(firstPaint({ theme: "light", uiScale: "125" })).toEqual({
-    dataset: { theme: "dark" },
-    style: { colorScheme: "dark", zoom: "" },
+    theme: "dark",
+    colorScheme: "dark",
+    properties: {},
   });
 });
 
@@ -46,8 +56,9 @@ test("index first paint uses Thyra appearance preferences", () => {
   expect(
     firstPaint({ "thyra:theme": "light", "thyra:uiScale": "120" }),
   ).toEqual({
-    dataset: { theme: "light" },
-    style: { colorScheme: "light", zoom: "1.2" },
+    theme: "light",
+    colorScheme: "light",
+    properties: { "--ui-scale": "1.2" },
   });
 });
 
@@ -55,7 +66,8 @@ test("index first paint resolves the system theme and default scale", () => {
   expect(
     firstPaint({ "thyra:theme": "system", "thyra:uiScale": "100" }, true),
   ).toEqual({
-    dataset: { theme: "light" },
-    style: { colorScheme: "light", zoom: "" },
+    theme: "light",
+    colorScheme: "light",
+    properties: {},
   });
 });

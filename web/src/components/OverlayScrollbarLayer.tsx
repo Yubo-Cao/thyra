@@ -64,36 +64,14 @@ function findScrollableElement(target: EventTarget | null) {
   return null;
 }
 
-/** The fixed, viewport-sized layer's box; it moves only when resized. */
-type LayerBox = { rect: DOMRect; offsetWidth: number; offsetHeight: number };
-
-function measureLayer(layer: HTMLElement): LayerBox {
-  return {
-    rect: layer.getBoundingClientRect(),
-    offsetWidth: layer.offsetWidth,
-    offsetHeight: layer.offsetHeight,
-  };
-}
-
 function measureScrollbars(
   target: HTMLElement,
-  layer: LayerBox,
+  /** The fixed, viewport-sized layer's box; it moves only when resized. */
+  layerRect: DOMRect,
 ): ScrollbarLayout | null {
   if (!target.isConnected) return null;
   const rect = target.getBoundingClientRect();
-  const layerRect = layer.rect;
-  if (
-    !layer.offsetWidth ||
-    !layer.offsetHeight ||
-    !layerRect.width ||
-    !layerRect.height
-  )
-    return null;
-  // Rects and pointer events share viewport units; positioned CSS lengths
-  // use the layer's local units. Measure the ratio so root CSS zoom is not
-  // applied twice, including engines with different zoom/rect behavior.
-  const scaleX = layerRect.width / layer.offsetWidth;
-  const scaleY = layerRect.height / layer.offsetHeight;
+  if (!layerRect.width || !layerRect.height) return null;
   const top = Math.max(layerRect.top, rect.top);
   const right = Math.min(layerRect.right, rect.right);
   const bottom = Math.min(layerRect.bottom, rect.bottom);
@@ -121,19 +99,19 @@ function measureScrollbars(
   const vertical = verticalGeometry
     ? {
         ...verticalGeometry,
-        top: (verticalGeometry.start - layerRect.top) / scaleY,
-        left: (right - TRACK_INSET - THUMB_SIZE - layerRect.left) / scaleX,
-        width: THUMB_SIZE / scaleX,
-        height: verticalGeometry.size / scaleY,
+        top: verticalGeometry.start - layerRect.top,
+        left: right - TRACK_INSET - THUMB_SIZE - layerRect.left,
+        width: THUMB_SIZE,
+        height: verticalGeometry.size,
       }
     : null;
   const horizontal = horizontalGeometry
     ? {
         ...horizontalGeometry,
-        top: (bottom - TRACK_INSET - THUMB_SIZE - layerRect.top) / scaleY,
-        left: (horizontalGeometry.start - layerRect.left) / scaleX,
-        width: horizontalGeometry.size / scaleX,
-        height: THUMB_SIZE / scaleY,
+        top: bottom - TRACK_INSET - THUMB_SIZE - layerRect.top,
+        left: horizontalGeometry.start - layerRect.left,
+        width: horizontalGeometry.size,
+        height: THUMB_SIZE,
       }
     : null;
 
@@ -205,9 +183,9 @@ export function OverlayScrollbarLayer() {
     const wheelTargets = createWheelTargetCache<EventTarget, HTMLElement>(
       findScrollableElement,
     );
-    let layerBox: LayerBox | null = null;
+    let layerRect: DOMRect | null = null;
     const forgetMeasurements = () => {
-      layerBox = null;
+      layerRect = null;
       wheelTargets.clear();
     };
 
@@ -227,8 +205,8 @@ export function OverlayScrollbarLayer() {
         );
         const layer = layerRef.current;
         if (!nextTarget || !layer) return;
-        layerBox ??= measureLayer(layer);
-        const nextLayout = measureScrollbars(nextTarget, layerBox);
+        layerRect ??= layer.getBoundingClientRect();
+        const nextLayout = measureScrollbars(nextTarget, layerRect);
         targetRef.current = nextTarget;
         setLayout((current) =>
           sameLayout(current, nextLayout) ? current : nextLayout,

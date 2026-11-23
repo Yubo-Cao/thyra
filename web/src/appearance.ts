@@ -118,9 +118,19 @@ export function normalizeUiScale(value: string | null): number {
   return value === null ? UI_SCALE_DEFAULT : clampUiScale(Number(value));
 }
 
-// The terminal surface cancels page zoom so xterm's mouse coordinates, cell
-// measurements, and IME overlay share CSS pixels. Scale its font explicitly.
-// Every xterm surface shares this stack. The bundled Thyra Mono (Maple Mono
+/**
+ * Rendered px per px written in the stylesheets, which compile to rem: the
+ * UI scale as a factor, for script geometry that must match CSS sizes.
+ */
+export function uiScaleFactor() {
+  return (
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize) /
+      16 || 1
+  );
+}
+
+// The terminal sizes its grid in script, outside the stylesheets' rem, so
+// its font carries the UI scale explicitly. Every xterm surface shares this stack. The bundled Thyra Mono (Maple Mono
 // NF CN: ligatures, Nerd Font icons, CJK at exactly two cells) comes first so
 // phones and desktops share metrics. The
 // Nerd Font families carry the powerline and icon glyphs prompts draw with,

@@ -39,7 +39,6 @@ export function MobileSheetHandle({
     let start: {
       x: number;
       y: number;
-      scale: number;
       height: number;
       heights: { compact: number; expanded: number } | null;
       scrollUp: boolean;
@@ -57,14 +56,13 @@ export function MobileSheetHandle({
       clearStyles();
     };
     const settle = (action?: () => void) => {
-      const scale = sheet.getBoundingClientRect().width / sheet.offsetWidth;
-      const from = sheet.getBoundingClientRect().height / scale;
+      const from = sheet.getBoundingClientRect().height;
       const transform = getComputedStyle(sheet).transform;
       sizeAnimation?.cancel();
       reset();
       if (action) flushSync(action);
       if (!actions.current.onExpand) return;
-      const to = sheet.getBoundingClientRect().height / scale;
+      const to = sheet.getBoundingClientRect().height;
       sheet.classList.add("is-resizing");
       sheet.style.height = `${to}px`;
       sheet.style.maxHeight = "none";
@@ -87,11 +85,10 @@ export function MobileSheetHandle({
     };
     const close = () => {
       if (animation) return;
-      const scale = sheet.getBoundingClientRect().width / sheet.offsetWidth;
       animation = sheet.animate(
         [
           { transform: getComputedStyle(sheet).transform },
-          { transform: `translateY(${sheet.offsetHeight + 24 / scale}px)` },
+          { transform: `translateY(${sheet.offsetHeight + 24}px)` },
         ],
         {
           duration: duration(),
@@ -130,11 +127,9 @@ export function MobileSheetHandle({
             node.scrollTop + node.clientHeight < node.scrollHeight - 1;
         }
       }
-      const scale = sheet.getBoundingClientRect().width / sheet.offsetWidth;
       start = {
         x,
         y,
-        scale,
         scrollUp,
         scrollDown,
         claimed: false,
@@ -161,7 +156,7 @@ export function MobileSheetHandle({
           return false;
         }
         start.claimed = true;
-        start.height = sheet.getBoundingClientRect().height / start.scale;
+        start.height = sheet.getBoundingClientRect().height;
         const content = sheet.querySelector(".config-dropdown-content");
         const scrollTop = content?.scrollTop ?? 0;
         sizeAnimation?.cancel();
@@ -170,9 +165,9 @@ export function MobileSheetHandle({
         sheet.style.animation = "none";
         if (actions.current.onExpand) {
           sheet.classList.remove("is-expanded");
-          const compact = sheet.getBoundingClientRect().height / start.scale;
+          const compact = sheet.getBoundingClientRect().height;
           sheet.classList.add("is-expanded");
-          const expanded = sheet.getBoundingClientRect().height / start.scale;
+          const expanded = sheet.getBoundingClientRect().height;
           sheet.classList.toggle("is-expanded", !!actions.current.expanded);
           start.heights = { compact, expanded };
         }
@@ -188,11 +183,11 @@ export function MobileSheetHandle({
         ((dy < 0 && onExpand && !expanded) ||
           (dy > 0 && onCollapse && expanded))
       ) {
-        sheet.style.height = `${Math.max(start.heights.compact, Math.min(start.heights.expanded, start.height - dy / start.scale))}px`;
+        sheet.style.height = `${Math.max(start.heights.compact, Math.min(start.heights.expanded, start.height - dy))}px`;
         sheet.style.removeProperty("transform");
       } else {
         sheet.style.height = `${start.height}px`;
-        sheet.style.transform = `translateY(${(dy > 0 ? dy : dy * 0.15) / start.scale}px)`;
+        sheet.style.transform = `translateY(${dy > 0 ? dy : dy * 0.15}px)`;
       }
       return true;
     };

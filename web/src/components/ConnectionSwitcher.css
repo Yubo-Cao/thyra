@@ -1,10 +1,7 @@
 /* The connection menu keeps a fixed width: WebKit under-measures the
    max-content width of rows with a description and truncates them. */
 .ui-menu-popover:has([data-key^="connection:"]) {
-  width: calc(
-    min(380px, 100vw - 16px) *
-    var(--popover-content-zoom, var(--ui-scale, 1))
-  );
+  width: min(380px, 100vw - 16px);
 }
 
 /* Resume sync is the action to take while this browser is paused. */

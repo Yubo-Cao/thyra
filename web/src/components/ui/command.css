@@ -5,9 +5,8 @@
   overflow: hidden;
 }
 
-/* Sized inside the popover's zoom correction, like its content. */
 .command-popover .ui-popover-dialog {
-  width: min(560px, calc(100vw / var(--ui-scale, 1) - 24px));
+  width: min(560px, calc(100vw - 24px));
   padding: 0;
 }
 
@@ -29,7 +28,7 @@
 }
 
 .command-list {
-  max-height: min(540px, calc(100dvh / var(--ui-scale, 1) - 132px));
+  max-height: min(540px, calc(100dvh - 132px));
   overflow: auto;
   padding: 6px;
   outline: none;
@@ -130,7 +129,7 @@
 }
 
 .mobile-shortcut-key-command .command-list {
-  max-height: min(330px, calc(100dvh / var(--ui-scale, 1) - 108px));
+  max-height: min(330px, calc(100dvh - 108px));
   padding: 5px;
 }
 
@@ -150,10 +149,10 @@
   }
 
   .command-popover .ui-popover-dialog {
-    width: calc(100vw / var(--ui-scale, 1) - 16px);
+    width: calc(100vw - 16px);
   }
 
   .command-list {
-    max-height: min(calc(70dvh / var(--ui-scale, 1)), 520px);
+    max-height: min(70dvh, 520px);
   }
 }

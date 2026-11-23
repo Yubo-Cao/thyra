@@ -5,6 +5,10 @@
 }
 
 html {
+  /* UI scale (80-150%): CSS px compile to rem (vite.config.ts), so this
+     root size scales the UI. Write a length that must not scale, such as a
+     44px touch minimum, as calc(44px / var(--ui-scale, 1)). */
+  font-size: calc(16px * var(--ui-scale, 1));
   /* Disable double-tap zoom and the touch click delay. Pinch zoom is handled
      by the viewport meta and gesture event suppression. */
   touch-action: manipulation;

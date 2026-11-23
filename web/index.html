@@ -55,7 +55,10 @@
             150,
             Math.max(80, Math.round(uiScale / 5) * 5),
           );
-          document.documentElement.style.zoom = String(clampedUiScale / 100);
+          document.documentElement.style.setProperty(
+            "--ui-scale",
+            String(clampedUiScale / 100),
+          );
         }
       } catch {}
     </script>

@@ -95,7 +95,7 @@ export default function App() {
     connectionClient,
     s.status === "connected",
   );
-  useVisualViewportCssVars(configuration.uiScale);
+  useVisualViewportCssVars();
   const shell = useShellLayout(mobile);
   const { mobileView, setMobileView, setSidebarHidden, zenMode, applyZenMode } =
     shell;

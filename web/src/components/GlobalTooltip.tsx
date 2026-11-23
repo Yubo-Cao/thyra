@@ -42,14 +42,10 @@ function matchesFocusVisible(target: HTMLElement) {
 // to the viewport after layout (see clampToViewport).
 function tooltipPosition(element: HTMLElement) {
   const rect = element.getBoundingClientRect();
-  const scale =
-    Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"),
-    ) || 1;
   const placement: TooltipPlacement = rect.top > 52 ? "top" : "bottom";
   return {
-    left: (rect.left + rect.width / 2) / scale,
-    top: (placement === "top" ? rect.top - 9 : rect.bottom + 9) / scale,
+    left: rect.left + rect.width / 2,
+    top: placement === "top" ? rect.top - 9 : rect.bottom + 9,
     placement,
   };
 }
@@ -63,18 +59,15 @@ function clampToViewport(tooltip: HTMLElement, left: number) {
   tooltip.style.left = `${left}px`;
   tooltip.style.removeProperty("--tooltip-arrow-shift");
   const rect = tooltip.getBoundingClientRect();
-  // Client rects and style px differ under the root CSS zoom (UI scale).
-  const ratio = tooltip.offsetWidth > 0 ? rect.width / tooltip.offsetWidth : 1;
   let shift = 0;
   const maxRight = window.innerWidth - VIEWPORT_PADDING;
   if (rect.right > maxRight) shift = maxRight - rect.right;
   if (rect.left + shift < VIEWPORT_PADDING)
     shift = VIEWPORT_PADDING - rect.left;
   if (shift === 0) return;
-  const styleShift = shift / ratio;
   const arrowLimit = Math.max(0, tooltip.offsetWidth / 2 - ARROW_EDGE_INSET);
-  const arrowShift = Math.max(-arrowLimit, Math.min(arrowLimit, -styleShift));
-  tooltip.style.left = `${left + styleShift}px`;
+  const arrowShift = Math.max(-arrowLimit, Math.min(arrowLimit, -shift));
+  tooltip.style.left = `${left + shift}px`;
   tooltip.style.setProperty("--tooltip-arrow-shift", `${arrowShift}px`);
 }
 

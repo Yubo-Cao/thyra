@@ -1,4 +1,6 @@
 import { defineConfig } from "vite";
+// @ts-expect-error postcss-pxtorem ships no types.
+import pxtorem from "postcss-pxtorem";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { agentIconsPlugin } from "./vite.agentIcons";
@@ -24,6 +26,26 @@ export default defineConfig({
     assetManifestPlugin(),
     firstScreenPreloadPlugin(),
   ],
+  css: {
+    postcss: {
+      // UI scale: every CSS px length (HeroUI's too) compiles to rem, so the
+      // root font size set from --ui-scale in base.css scales the whole UI
+      // while client px stay CSS px. Hairlines and media queries stay px, as
+      // do the terminal grid and its selection handles, which script sizes
+      // in px (the terminal font carries the scale instead).
+      plugins: [
+        pxtorem({
+          propList: ["*"],
+          minPixelValue: 2,
+          selectorBlackList: [
+            /^html$/,
+            /\.terminal-engine/,
+            /\.terminal-selection-handle/,
+          ],
+        }),
+      ],
+    },
+  },
   worker: {
     format: "es",
   },

@@ -23,7 +23,7 @@
      hardware keyboard, or the on-screen keyboard), leaving the bottom of the
      page undimmed and live. Only the container, which places the dialog,
      follows the visible area, from the app's one visual viewport hook
-     (app/viewport.tsx, already in CSS px under the UI scale's zoom). */
+     (app/viewport.tsx). */
   .ui-dialog-backdrop {
     inset: 0;
     height: auto;
@@ -195,35 +195,6 @@
     width: 0;
     height: 0;
     pointer-events: none;
-  }
-
-  /* UI scale: <html> carries CSS zoom (80-150%), but React Aria positions
-     overlays from getBoundingClientRect (visual px) and pointer events
-     report visual px, which a zoomed element would multiply again. Cancel
-     the zoom on the positioned element and restore it on its content. App
-     measures both ratios (--popover-portal-zoom, --popover-content-zoom);
-     the fallbacks cover engines that behave like today's WebKit/Blink. */
-  .ui-menu-point,
-  .ui-menu-popover,
-  .ui-select-popover,
-  .ui-popover,
-  .ui-tooltip {
-    zoom: var(--popover-portal-zoom, calc(1 / var(--ui-scale, 1)));
-  }
-  .ui-menu-popover > *,
-  .ui-select-popover > *,
-  .ui-popover > *,
-  .ui-tooltip > * {
-    zoom: var(--popover-content-zoom, var(--ui-scale, 1));
-  }
-  .ui-menu-popover {
-    min-width: calc(220px * var(--popover-content-zoom, var(--ui-scale, 1)));
-  }
-  .ui-select-popover {
-    min-width: max(
-      var(--trigger-width, 0px),
-      calc(140px * var(--popover-content-zoom, var(--ui-scale, 1)))
-    );
   }
   .ui-menu-header {
     display: grid;

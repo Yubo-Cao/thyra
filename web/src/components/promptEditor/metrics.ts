@@ -10,7 +10,7 @@ export type TerminalMetrics = {
   fontSize: number;
 };
 
-/** The terminal grid in the editor's coordinates (CSS zoom and follow scale included). */
+/** The terminal grid in the editor's coordinates (follow scale included). */
 export function measureTerminal(
   term: TerminalEngine,
   host: HTMLElement | null,
@@ -19,21 +19,15 @@ export function measureTerminal(
   if (!host || !screen.height || !term.rows || !term.cols) return null;
   const bounds = term.screenBounds();
   const origin = host.getBoundingClientRect();
-  const hostScaleX = host.offsetWidth ? origin.width / host.offsetWidth : 1;
-  const hostScaleY = host.offsetHeight ? origin.height / host.offsetHeight : 1;
-  const left = (bounds.left - origin.left) / hostScaleX;
-  const scale = bounds.height / screen.height / hostScaleY;
+  const left = bounds.left - origin.left;
   return {
     left,
-    top: (bounds.top - origin.top) / hostScaleY,
-    width: Math.max(
-      0,
-      Math.min(bounds.width / hostScaleX, host.clientWidth - left),
-    ),
+    top: bounds.top - origin.top,
+    width: Math.max(0, Math.min(bounds.width, host.clientWidth - left)),
     rows: term.rows,
-    rowHeight: bounds.height / hostScaleY / term.rows,
-    cellWidth: bounds.width / hostScaleX / term.cols,
-    fontSize: (term.options.fontSize ?? 13) * scale,
+    rowHeight: bounds.height / term.rows,
+    cellWidth: bounds.width / term.cols,
+    fontSize: ((term.options.fontSize ?? 13) * bounds.height) / screen.height,
   };
 }
 
