@@ -278,6 +278,8 @@ export default {
     "在 Agent 窗格的输入框上覆盖本地编辑器，输入不必等待网络连接。自动模式在连接较慢时打开",
   "Voice typing: hold to talk, tap to start or insert":
     "语音输入：按住说话，轻按开始或插入",
+  "Speak to the agent through the host microphone: press to start, again to send":
+    "通过主机麦克风对 Agent 说话：按一次开始，再按一次发送",
 
   // Shared labels
   Unknown: "未知",

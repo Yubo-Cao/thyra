@@ -91,6 +91,11 @@ import {
   useTerminalVoiceTyping,
 } from "./TerminalVoiceTyping";
 import {
+  TerminalRemoteMicIndicator,
+  useTerminalRemoteMic,
+} from "./TerminalRemoteMic";
+import { REMOTE_MIC_VOICE_KEY } from "../voice/remoteMicProtocol";
+import {
   TerminalShortcutGrid,
   TerminalSideShortcuts,
   terminalShortcutActions,
@@ -794,6 +799,34 @@ export function TerminalView({
     }
     if (framesPaused) setInputEpoch((value) => value + 1);
   };
+  // Ctrl+M: speak into the agent's own voice input through the host's mic.
+  const remoteMic = useTerminalRemoteMic({
+    enabled:
+      isActivePane &&
+      !control.access.viewOnly &&
+      s.status === "connected" &&
+      !s.connectionPaused,
+    container,
+    connectionId: terminalIdentity.connectionId,
+    terminalId: () =>
+      refs.desiredTerminal.current ?? refs.paneTerminalId.current ?? null,
+    pressVoiceKey: async (terminalId) => {
+      assertInputAllowed();
+      takeOverOnInput();
+      await queueTerminalCall(connectionClient, terminalId, () =>
+        connectionClient.call("terminal.key", {
+          terminal_id: terminalId,
+          keys: [REMOTE_MIC_VOICE_KEY],
+        }),
+      );
+    },
+    onError: (message) =>
+      store.notify({
+        kind: "error",
+        message: t("Host microphone"),
+        detail: message,
+      }),
+  });
   const voiceTypingDisabledReason = control.access.viewOnly
     ? t("This pane is view only")
     : s.status !== "connected" || s.connectionPaused || terminalAttachError
@@ -1123,6 +1156,7 @@ export function TerminalView({
             </div>
           ) : null}
           <TerminalVoicePanel voice={voiceTyping} />
+          <TerminalRemoteMicIndicator mic={remoteMic} />
           {!selecting &&
           showMobileKeys &&
           !control.access.readOnly &&

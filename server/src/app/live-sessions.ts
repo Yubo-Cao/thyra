@@ -22,6 +22,7 @@ export function createLiveSessions(deps: {
   const {
     clients,
     vncSockets,
+    micSockets,
     vscodeSockets,
     socketPrincipals,
     webSocketCleanup,
@@ -60,6 +61,7 @@ export function createLiveSessions(deps: {
     for (const client of [
       ...clients,
       ...vncSockets.keys(),
+      ...micSockets.keys(),
       ...vscodeSockets.keys(),
     ]) {
       const principal = socketPrincipals.get(client);

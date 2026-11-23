@@ -138,6 +138,13 @@ const descriptions: Description[] = [
     msg("Voice typing: hold to talk, tap to start or insert"),
     msg("Terminal"),
   ],
+  [
+    "terminal.remoteMic",
+    msg(
+      "Speak to the agent through the host microphone: press to start, again to send",
+    ),
+    msg("Terminal"),
+  ],
 ];
 export const SHORTCUT_CATALOG: ShortcutDescription[] = descriptions.map(
   ([id, label, group, values]) => ({ id, label, group, values }),

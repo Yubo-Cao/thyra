@@ -154,6 +154,14 @@ export const HTTP_POLICY = {
   // Cloud recognition and cleanup spend the owner's provider credentials.
   "voice.transcribe": { class: "write", scope: "editor" },
   "voice.cleanup": { class: "write", scope: "editor" },
+  // The host microphone (voice/remote-mic.ts) speaks to an agent in a pane,
+  // so streaming needs what typing into that terminal needs.
+  "remoteMic.status": { class: "read", scope: "session" },
+  "remoteMic.stream": {
+    class: "write",
+    scope: "workspace",
+    resolve: fromQuery(targetResolvers.terminal),
+  },
   "update.check": { class: "admin", scope: "host" },
   "update.install": { class: "dangerous", scope: "host" },
   "herdr.status": { class: "admin", scope: "host" },
@@ -276,6 +284,7 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/share/redeem": { POST: "share.redeem" },
   "/ws": { GET: "ws" },
   "/ws/browser": { GET: "browser.vnc" },
+  "/ws/mic": { GET: "remoteMic.stream" },
   "/api/browser": { GET: "browser.status" },
   "/api/browser/activate": { POST: "browser.activate" },
   "/api/vscode": { GET: "vscode.status" },
@@ -284,6 +293,7 @@ const EXACT: Record<string, Partial<Record<string, HttpRouteId>>> = {
   "/api/voice/status": { GET: "voice.status" },
   "/api/voice/transcribe": { POST: "voice.transcribe" },
   "/api/voice/cleanup": { POST: "voice.cleanup" },
+  "/api/remote-mic": { GET: "remoteMic.status" },
   "/api/update/check": { GET: "update.check" },
   "/api/update/install": { POST: "update.install" },
   "/api/herdr/status": { GET: "herdr.status" },

@@ -1,6 +1,7 @@
 import type { RtcTransport } from "../bridge/rtc-transport";
 import type { SocketData } from "../bridge/socket-data";
 import type { AgentBrowser } from "../browser/agent-browser";
+import type { RemoteMic } from "../voice/remote-mic";
 import { sanitizeConnectionError } from "../connections/manager";
 import { createShutdownController } from "../connections/shutdown";
 import type { AgentSessionService } from "./agent-sessions";
@@ -15,12 +16,13 @@ export function installShutdown(deps: {
   bootstrap: ServerBootstrap;
   connections: ConnectionWiring;
   agentBrowser: AgentBrowser;
+  remoteMic: RemoteMic;
   agentSessions: AgentSessionService;
   rtcTransport: RtcTransport<SocketData>;
 }) {
   const { logger, webPush } = deps.bootstrap;
   const { connectionManager, connectionProfiles } = deps.connections;
-  const { agentBrowser, rtcTransport } = deps;
+  const { agentBrowser, remoteMic, rtcTransport } = deps;
   let managerStopTask: Promise<void> | null = null;
   function stopManagerOnce(): Promise<void> {
     rtcTransport.closeAll();
@@ -29,7 +31,11 @@ export function installShutdown(deps: {
     // Only the links close: the hosts keep their sessions for the next bridge.
     deps.agentSessions.stop();
     connectionProfiles.stopSupervision();
-    managerStopTask ??= connectionManager.stopAll();
+    managerStopTask ??= Promise.all([
+      connectionManager.stopAll(),
+      // Give the host its own default microphone back.
+      remoteMic.stop(),
+    ]).then(() => undefined);
     return managerStopTask;
   }
 
@@ -51,6 +57,7 @@ export function installShutdown(deps: {
   }
 
   process.on("exit", () => {
+    remoteMic.stopSync();
     void stopManagerOnce();
   });
   process.on("SIGINT", () => {

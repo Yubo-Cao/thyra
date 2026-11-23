@@ -20,6 +20,7 @@ import { readStaticText } from "./http/static-files";
 import { createUpdateHandlers } from "./http/update";
 import { createRpcDispatcher } from "./rpc/dispatch";
 import { runProcessWithCodeTimeout, shQuote } from "./utils/process-utils";
+import { createHostRemoteMic } from "./voice/remote-mic";
 import { createVscodeProxy, vscodeConfig } from "./vscode/proxy";
 
 // The composition root: each step below creates one part of the server, in
@@ -71,6 +72,7 @@ const { agentBrowser, agentBrowserConnection } = createAgentBrowserWiring({
   accounts,
   connections: () => connections,
 });
+const remoteMic = createHostRemoteMic(logger.child("remote-mic"));
 const rtcSetup = parseRtcConfig();
 for (const warning of rtcSetup.warnings) logger.warn(warning);
 
@@ -129,6 +131,7 @@ const { websocketHandlers, rtcTransport } = createSocketTransports({
   connections,
   vscodeProxy,
   agentBrowser,
+  remoteMic,
   rtcConfig: rtcSetup.config,
   handleRpc,
 });
@@ -137,6 +140,7 @@ const routeAuthenticated = createAuthenticatedRouter({
   APP_VERSION,
   config,
   voice: bootstrap.voice,
+  remoteMic,
   webPush: bootstrap.webPush,
   tailnetSsoOrigin: bootstrap.tailnetSsoOrigin,
   clientIdentity: accounts.clientIdentity,
@@ -182,6 +186,7 @@ const shutdown = installShutdown({
   bootstrap,
   connections,
   agentBrowser,
+  remoteMic,
   agentSessions,
   rtcTransport,
 });

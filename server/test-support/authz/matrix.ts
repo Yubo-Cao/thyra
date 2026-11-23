@@ -64,6 +64,7 @@ export async function httpMatrix(): Promise<Record<string, string>> {
           connection_id: "c1",
           workspace_id: "w1",
           pane_id: "w1:p1",
+          terminal_id: "t1",
         }),
         deps: testDeps(),
         editsConnection: (principal, connectionId) =>

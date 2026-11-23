@@ -20,6 +20,7 @@ import {
 import type { ConnectionManager } from "../connections/manager";
 import type { LegacyConnectionRuntime } from "../connections/runtime";
 import type { createWebPushService } from "../notifications/web-push";
+import type { RemoteMic } from "../voice/remote-mic";
 import type { createVoiceHandlers } from "../voice/transcription";
 import { isVscodePath, type VscodeProxy } from "../vscode/proxy";
 import { DOWNLOAD_TIMEOUT_MS } from "../workspace/file-constants";
@@ -64,6 +65,7 @@ export function createAuthenticatedRouter(
     APP_VERSION: string;
     config: ServerConfig;
     voice: ReturnType<typeof createVoiceHandlers>;
+    remoteMic: RemoteMic;
     webPush: ReturnType<typeof createWebPushService>;
     tailnetSsoOrigin: string | null;
     clientIdentity: ClientIdentity;
@@ -86,6 +88,7 @@ export function createAuthenticatedRouter(
     APP_VERSION,
     config,
     voice,
+    remoteMic,
     webPush,
     tailnetSsoOrigin,
     clientIdentity,
@@ -240,6 +243,43 @@ export function createAuthenticatedRouter(
         url.searchParams.get("target"),
       );
       return Response.json({ target_id: target }, { headers });
+    }
+    if (url.pathname === "/api/remote-mic") {
+      const status = await remoteMic.status();
+      return Response.json(
+        {
+          ...status,
+          connections: [...localConnections].filter((id) =>
+            connectionManager.has(id),
+          ),
+        },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
+    if (url.pathname === "/ws/mic") {
+      // The HTTP policy checked that the caller may type into the terminal;
+      // its pane must also run on this host to hear the host's microphone.
+      const connectionId = url.searchParams.get("connection_id") ?? "";
+      if (!localConnections.has(connectionId))
+        return new Response("this pane does not run on the Thyra host", {
+          status: 409,
+        });
+      const status = await remoteMic.status();
+      if (!status.available)
+        return new Response(status.reason ?? "host microphone unavailable", {
+          status: 503,
+        });
+      return server.upgrade(req, {
+        data: {
+          principal,
+          clientSession: null,
+          directOrigin: null,
+          rtc: false,
+          mic: true,
+        },
+      })
+        ? undefined
+        : new Response("websocket upgrade failed", { status: 400 });
     }
     if (url.pathname === "/api/notifications/push") {
       return webPush.handle(req, principal.key);

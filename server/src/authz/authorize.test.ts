@@ -255,6 +255,8 @@ const HTTP_MATRIX: Record<string, string> = {
     "admin owner editor viewer outsider guest guest-pane anonymous",
   "update.check": "admin",
   "update.install": "admin",
+  "remoteMic.status": "admin owner editor viewer outsider",
+  "remoteMic.stream": "admin owner editor",
   "voice.cleanup": "admin owner editor outsider",
   "voice.status": "admin owner editor viewer outsider",
   "voice.transcribe": "admin owner editor outsider",
