@@ -7,6 +7,7 @@ import {
   EyeOff,
   Globe,
   Keyboard,
+  LogOut,
   Maximize2,
   MessageSquareText,
   Minimize2,
@@ -240,6 +241,7 @@ export function TerminalPaneHeader({
   onPreviewModeChange,
   promptEditor,
   agentView,
+  onEndAgentSession,
   status,
   readOnly = false,
 }: {
@@ -261,6 +263,8 @@ export function TerminalPaneHeader({
   promptEditor?: { open: boolean; toggle: () => void };
   /** Which view a pane with an agent session shows; offers the switch. */
   agentView?: AgentPaneView;
+  /** Ends the pane's agent session; the pane goes back to its shell. */
+  onEndAgentSession?: () => void;
   /** Replaces the agent status label (the agent view shows its session's). */
   status?: ReactNode;
   /** Without `control`: the viewer may not change the pane. */
@@ -441,6 +445,16 @@ export function TerminalPaneHeader({
               className="terminal-pane-action"
               iconSize={14}
               disabledReason={voiceTypingDisabledReason ?? null}
+            />
+          ) : null}
+          {onEndAgentSession ? (
+            <IconButton
+              className="terminal-pane-action"
+              disabled={access.viewOnly}
+              label={t("End the agent session and go back to the shell")}
+              onPointerDown={preventPaneActionFocus}
+              onClick={onEndAgentSession}
+              icon={<LogOut size={14} />}
             />
           ) : null}
           {!paneZoomed ? (

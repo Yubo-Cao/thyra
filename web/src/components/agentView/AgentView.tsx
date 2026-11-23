@@ -216,6 +216,7 @@ export function AgentView({
   useControlsAboveDock(dock, useLayoutPreferences().mobile && s.active);
   const transcript = useRef<AgentTranscriptHandle | null>(null);
   const [closing, setClosing] = useState(false);
+  const [ending, setEnding] = useState(false);
   /** A rewind (or an edit, which rewinds first) waiting for confirmation. */
   const [goingBack, setGoingBack] = useState<{
     item: UserItem;
@@ -443,6 +444,22 @@ export function AgentView({
     );
   };
 
+  // The host ends its session on Ctrl+C, as when typed in the pane's
+  // terminal; every host build does, so no host action is needed.
+  const endSession = () =>
+    client
+      .call("pane.send_keys", { pane_id: paneId, keys: ["ctrl+c"] })
+      .catch((reason) => {
+        store.notify({
+          kind: "error",
+          message: t("Could not end the agent session"),
+          detail: reason instanceof Error ? reason.message : String(reason),
+        });
+        throw reason;
+      });
+  const busy =
+    info?.status === "running" || info?.status === "awaiting_approval";
+
   if (!pane) return null;
   return (
     <div ref={setRoot} className="terminal-shell agent-view">
@@ -462,6 +479,11 @@ export function AgentView({
         canClosePane={s.canClose}
         endpointAvailable={false}
         onClosePane={() => setClosing(true)}
+        onEndAgentSession={
+          canEdit && info && info.status !== "exited"
+            ? () => (busy ? setEnding(true) : void endSession().catch(() => {}))
+            : undefined
+        }
         agentView="agent"
         status={info ? <SessionStatus info={info} /> : null}
       />
@@ -584,6 +606,19 @@ export function AgentView({
             await actions.rewind(item.id);
             if (edit) await putPromptInDraft(draftKey, item, promptImageUrl);
           }}
+        />
+      </Latched>
+      <Latched open={ending}>
+        <ConfirmDialog
+          open={ending}
+          onOpenChange={setEnding}
+          title={t("End the agent session")}
+          message={t(
+            "A turn is still running. End the agent session and go back to the shell? The conversation stays stored and can be resumed.",
+          )}
+          confirmLabel={t("End")}
+          tone="danger"
+          onConfirm={() => endSession()}
         />
       </Latched>
       <Latched open={closing}>

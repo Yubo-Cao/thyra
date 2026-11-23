@@ -15,6 +15,13 @@ export default {
     "关闭此窗格并结束其中的 Agent 会话？",
   "Could not send the prompt": "无法发送提示",
   "Could not stop the agent": "无法停止 Agent",
+  "End the agent session and go back to the shell":
+    "结束 Agent 会话，回到命令行",
+  "End the agent session": "结束 Agent 会话",
+  "A turn is still running. End the agent session and go back to the shell? The conversation stays stored and can be resumed.":
+    "Agent 仍在工作。结束会话并回到命令行吗？对话会保留，之后可以恢复。",
+  End: "结束",
+  "Could not end the agent session": "无法结束 Agent 会话",
   "Could not answer the request": "无法答复请求",
   "Could not change the mode": "无法切换模式",
   "Could not change the model": "无法切换模型",
