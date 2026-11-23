@@ -832,6 +832,12 @@ If a rewrite loses too much text, English words, numbers, or a dictionary term, 
 
 Responses API requests set `store: false`.
 
+### Host microphone
+
+On a Linux host with PipeWire and WirePlumber, Ctrl+M in a pane streams the browser's microphone to a virtual default source on the host while the user speaks (see [FEATURES.md](../FEATURES.md) for the agent's key binding).
+It needs `pw-cat` and `pw-metadata` (Debian and Ubuntu: `pipewire-bin`) and a bridge running in the user session that owns the audio (the systemd user service does).
+`THYRA_REMOTE_MIC=off` turns it off.
+
 ## Logging
 
 Logs use one line per event: timestamp, severity, scope, bounded key/value context.

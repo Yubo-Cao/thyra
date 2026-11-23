@@ -839,6 +839,17 @@ On stop, the cleanup result replaces that range only if the draft still holds th
 Cleanup keeps the recognized text instead of the model's rewrite when the rewrite keeps under 45% of the word characters (for inputs of at least 25), under half of the English words (for at least five), changes the digits (ignoring added list markers), or drops a dictionary term that was spoken; the bridge logs which check fired.
 The capture code loads on first use; unmounting the pane or closing the composer releases the microphone.
 
+### Host microphone
+
+The `terminal.remoteMic` shortcut (Ctrl+M) lets a browser on another computer speak into an agent's own voice input in a pane on the Thyra host (`shared/remoteMic.ts`, `server/src/voice/remote-mic.ts`, `web/src/voice/remoteMic.ts`).
+`GET /api/remote-mic` (any session) reports whether the host can offer it and which connections are local; `GET /ws/mic?connection_id=…&terminal_id=…` (strict origin check, like `/ws`) needs what `terminal.key` on that terminal needs (editor or better), a local connection, and an available host.
+The page sends binary frames of 16 kHz mono s16le PCM (20 ms, at most one second per frame); the bridge answers JSON `{"type":"ready"}` once its source is the default, or `{"type":"error"}`, and closes with 4100 (another page took over: the newest stream wins), 4101 (failure), 4102 (no audio for 15 s) or 4103 (shutdown).
+While a stream runs, `pw-cat` plays it as an `Audio/Source` node named `thyra_remote_mic` (`node.always-process`, so input is consumed in real time even before a recorder links), paced by the bridge, which tops the input up with silence to 120 ms ahead of the clock and drops audio more than a second ahead.
+The bridge writes the node's name to `default.configured.audio.source` with `pw-metadata` and waits until WirePlumber reports it as `default.audio.source`; when the stream ends it writes back the previous configured value (or deletes the key) unless someone chose another default meanwhile, and closes `pw-cat`'s input, which removes the node.
+Shutdown restores the default too, synchronously at process exit; a crashed bridge leaves only the configured name, which WirePlumber skips while the node is absent.
+The page streams first and presses the voice key (F12, `REMOTE_MIC_VOICE_KEY`) through `terminal.key` only after `ready`, so the agent's recorder opens the new default; on the second press it keeps streaming 300 ms, presses the key again, and keeps the source 300 ms longer before closing.
+Leaving the pane, unmounting it, or losing the stream ends it the same way (the key is pressed again so the agent stops recording).
+
 ## Task notifications
 
 Each runtime tracks agent transitions through per-pane subscriptions and periodic

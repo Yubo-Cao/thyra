@@ -66,6 +66,12 @@ function harness(
         close: () => proxyClosed.push("vnc"),
       }),
     } as never,
+    remoteMic: {
+      open: () => ({
+        audio: () => undefined,
+        close: () => proxyClosed.push("mic"),
+      }),
+    } as never,
     rtcConfig: { enabled: false, iceServers: [], portRange: null },
     handleRpc: (ws, message: ParsedRpcMessage) =>
       handleRpc(ws, message?.value as never),
@@ -260,7 +266,7 @@ test("request outcomes are dropped once their request settles", async () => {
   expect(registry.trackedRpcCount(page.ws)).toBe(0);
 });
 
-test("closing a principal's sockets ends its VNC and VS Code sockets at once", () => {
+test("closing a principal's sockets ends its VNC, mic and VS Code sockets at once", () => {
   const { open, registry, proxyClosed } = harness(async () => undefined);
   const guest = (id: string) =>
     ({
@@ -271,6 +277,7 @@ test("closing a principal's sockets ends its VNC and VS Code sockets at once", (
     }) as Principal;
   const page = open("page", {}, guest("g1"));
   const vnc = open("vnc", { vnc: { scale: 1 } }, guest("g1"));
+  const mic = open("mic", { mic: true }, guest("g1"));
   const vscode = open(
     "vscode",
     {
@@ -288,10 +295,11 @@ test("closing a principal's sockets ends its VNC and VS Code sockets at once", (
     4001,
     "Shared view ended",
   );
-  for (const socket of [page, vnc, vscode])
+  for (const socket of [page, vnc, mic, vscode])
     expect(socket.closed).toEqual([[4001, "Shared view ended"]]);
-  expect(proxyClosed.sort()).toEqual(["vnc", "vscode"]);
+  expect(proxyClosed.sort()).toEqual(["mic", "vnc", "vscode"]);
   expect(registry.vncSockets.has(vnc.ws)).toBe(false);
+  expect(registry.micSockets.has(mic.ws)).toBe(false);
   expect(registry.vscodeSockets.has(vscode.ws)).toBe(false);
   expect(stranger.closed).toEqual([]);
   expect(registry.vncSockets.has(stranger.ws)).toBe(true);

@@ -338,6 +338,16 @@ that another fetch could change.
   Recognition falls back from cloud to local, a personal dictionary fixes
   names and terms, and the finished dictation is tidied by a language model
   (**Configuration > Behavior > Voice cleanup**).
+- **Host microphone**: press **Ctrl+M** (every platform) in an agent pane on
+  the Thyra host to speak into the agent's own voice input from another
+  computer. Thyra streams this browser's microphone to a virtual PipeWire
+  source that is the host's default mic only while you talk, and presses the
+  agent's voice key in the pane; press **Ctrl+M** again to stop and send.
+  It needs a Linux host with PipeWire (`pw-cat`, `pw-metadata`), a secure
+  origin, and the right to type into the pane. For Claude Code, bind the key
+  in `~/.claude/keybindings.json` and use tap mode in `~/.claude/settings.json`:
+  `{ "bindings": [{ "context": "Chat", "bindings": { "f12": "voice:pushToTalk" } }] }`
+  and `"voice": { "enabled": true, "mode": "tap" }`; start with an empty prompt.
 - The composer supports IME, dictation, voice input, multiline text, and images.
   Its microphone dictates into the draft instead of the terminal. **Insert**
   does not execute; **Send** adds one Enter. Drafts are in-memory per
@@ -427,6 +437,7 @@ Common defaults (Linux/Android exceptions follow):
 | Split right / down | `Cmd+D` / `Cmd+Shift+D` | `Ctrl+Alt+D` / `Ctrl+Alt+Shift+D` |
 | Zoom / restore pane | `Cmd+Shift+Enter` | `Ctrl+Alt+Enter` |
 | Voice typing (hold to talk, tap to toggle) | `Ctrl+Option+M` | `Ctrl+Alt+M` |
+| Host microphone: speak to the agent (press to start, again to send) | `Ctrl+M` | `Ctrl+M` |
 | Numbered tab | `Ctrl+1…9` | `Ctrl+Alt+1…9` |
 | Numbered command menu action | `Option+1…9` | `Alt+1…9` |
 | Workspaces | `Ctrl+Shift+W` | `Ctrl+Alt+O` |

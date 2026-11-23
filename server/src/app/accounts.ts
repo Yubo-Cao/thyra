@@ -126,11 +126,15 @@ export function createAccountServices(deps: {
   const accessControl = createAccessControl(accountStore);
   const authzDeps: AuthzDeps = {
     roleOn: accessControl.roleOn,
+    // HTTP routes name the connection in their query: an unknown one is a
+    // target that cannot be placed, not an error.
     locate: async (connectionId, target) =>
-      (await deps
-        .connectionManager()
-        .readyRuntime(connectionId)
-        ?.topology.locate(target)) ?? null,
+      deps.connectionManager().has(connectionId)
+        ? ((await deps
+            .connectionManager()
+            .readyRuntime(connectionId)
+            ?.topology.locate(target)) ?? null)
+        : null,
     claimOf: (connectionId, paneId) =>
       deps.connectionManager().readyRuntime(connectionId)?.claims.get(paneId) ??
       null,

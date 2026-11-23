@@ -198,6 +198,33 @@ export default {
   "Voice input is not configured on this Thyra server.":
     "此 Thyra 服务器未配置语音输入。",
   "The microphone was disconnected.": "麦克风已断开连接。",
+
+  // Host microphone
+  "Host microphone": "主机麦克风",
+  "Host microphone on": "主机麦克风已开启",
+  "Starting the host microphone…": "正在启动主机麦克风…",
+  "Sending to the agent…": "正在发送给 Agent…",
+  "Stop and send to the agent": "停止并发送给 Agent",
+  "Another page is now using the host microphone.":
+    "另一个页面正在使用主机麦克风。",
+  "The host microphone stopped: no audio arrived.":
+    "主机麦克风已停止：没有收到音频。",
+  "The host microphone stopped: Thyra is restarting.":
+    "主机麦克风已停止：Thyra 正在重启。",
+  "The connection to the host microphone was lost.":
+    "与主机麦克风的连接已断开。",
+  "Microphone access was denied. Allow it for this site in the browser, then try again.":
+    "麦克风权限被拒绝。请在浏览器中允许此网站使用麦克风，然后重试。",
+  "This computer has no microphone.": "这台电脑没有麦克风。",
+  "The host microphone did not start in time.": "主机麦克风未能及时启动。",
+  "The host microphone is not available for this pane. It works for panes on the Thyra host when you may type into them.":
+    "此窗格无法使用主机麦克风。它只适用于 Thyra 主机上你可以输入的窗格。",
+  "The host microphone needs a secure origin (HTTPS or localhost) with microphone access.":
+    "主机麦克风需要安全来源（HTTPS 或 localhost）并允许访问麦克风。",
+  "This Thyra server cannot offer its host microphone.":
+    "此 Thyra 服务器无法提供主机麦克风。",
+  "This pane runs on another computer; the host microphone reaches only panes on the Thyra host.":
+    "此窗格运行在另一台电脑上；主机麦克风只能用于 Thyra 主机上的窗格。",
   Off: "关闭",
   Tidy: "整理",
   Clean: "干净",

@@ -375,7 +375,12 @@ export function originCheckMode(
   method: string,
   upgrade = false,
 ): "strict" | "read" | "none" {
-  if (pathname === "/ws" || pathname === "/ws/browser" || !isSafeMethod(method))
+  if (
+    pathname === "/ws" ||
+    pathname === "/ws/browser" ||
+    pathname === "/ws/mic" ||
+    !isSafeMethod(method)
+  )
     return "strict";
   // VS Code's remote sockets; its pages and assets are plain reads.
   if (upgrade && pathname.startsWith("/vscode/")) return "strict";

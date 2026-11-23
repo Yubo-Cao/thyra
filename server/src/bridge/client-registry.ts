@@ -40,6 +40,11 @@ export function createClientRegistry(deps: {
     ServerWebSocket<unknown>,
     { message(data: Uint8Array): void; close(): void }
   >();
+  /** Host-microphone streams (voice/remote-mic.ts): outside `clients` too. */
+  const micSockets = new Map<
+    ServerWebSocket<unknown>,
+    { audio(data: Uint8Array): void; close(): void }
+  >();
   /** VS Code sockets (vscode/proxy.ts): outside `clients` like VNC. */
   const vscodeSockets = new Map<
     ServerWebSocket<unknown>,
@@ -202,11 +207,13 @@ export function createClientRegistry(deps: {
     code: number,
     reason: string,
   ) {
-    // VNC and VS Code sockets carry the same principal as the page that
-    // opened them and end with it; their close handlers release the proxies.
+    // VNC, microphone and VS Code sockets carry the same principal as the
+    // page that opened them and end with it; their close handlers release
+    // the proxies.
     for (const client of [
       ...clients,
       ...vncSockets.keys(),
+      ...micSockets.keys(),
       ...vscodeSockets.keys(),
     ]) {
       const principal = socketPrincipals.get(client);
@@ -219,6 +226,7 @@ export function createClientRegistry(deps: {
   return {
     clients,
     vncSockets,
+    micSockets,
     vscodeSockets,
     socketPrincipals,
     participantPrincipals,

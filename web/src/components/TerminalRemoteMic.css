@@ -1,0 +1,60 @@
+/* Over the pane's top-right corner while the host microphone is live. The
+   fill grows with this computer's input level. */
+.terminal-remote-mic {
+  position: absolute;
+  z-index: 80;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 2px 2px 8px;
+  background:
+    linear-gradient(
+      to right,
+      var(--danger-soft) calc(var(--remote-mic-level, 0) * 100%),
+      transparent 0
+    ),
+    color-mix(in srgb, var(--panel) 96%, transparent);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.terminal-remote-mic-icon {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.terminal-remote-mic.is-recording .terminal-remote-mic-icon {
+  color: var(--danger-text);
+  animation: terminal-remote-mic-pulse 1.2s ease-in-out infinite;
+}
+
+.terminal-remote-mic.is-stopping {
+  padding-right: 8px;
+}
+
+.terminal-remote-mic-spin {
+  animation: terminal-remote-mic-spin 900ms linear infinite;
+}
+
+@keyframes terminal-remote-mic-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes terminal-remote-mic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-remote-mic-icon,
+  .terminal-remote-mic-spin {
+    animation: none !important;
+  }
+}

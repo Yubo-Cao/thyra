@@ -29,6 +29,7 @@ import {
   BRIDGE_RPC_CAPABILITIES,
   TERMINAL_RPC_CAPABILITIES,
 } from "../rpc/methods";
+import type { RemoteMic } from "../voice/remote-mic";
 import type { VscodeProxy } from "../vscode/proxy";
 import type { AccountServices } from "./accounts";
 import type { ServerBootstrap } from "./bootstrap";
@@ -50,6 +51,7 @@ export function createSocketTransports(deps: {
   connections: ConnectionWiring;
   vscodeProxy: VscodeProxy;
   agentBrowser: AgentBrowser;
+  remoteMic: RemoteMic;
   rtcConfig: RtcConfig;
   handleRpc: (
     ws: ServerWebSocket<unknown>,
@@ -60,6 +62,7 @@ export function createSocketTransports(deps: {
   const {
     clients,
     vncSockets,
+    micSockets,
     vscodeSockets,
     socketPrincipals,
     participantPrincipals,
@@ -73,7 +76,7 @@ export function createSocketTransports(deps: {
   } = deps.registry;
   const { clientIdentity } = deps.accounts;
   const { connectionManager } = deps.connections;
-  const { vscodeProxy, agentBrowser, handleRpc } = deps;
+  const { vscodeProxy, agentBrowser, remoteMic, handleRpc } = deps;
   const logRpc = createRpcLogger({
     logger,
     clientLabel,
@@ -95,6 +98,17 @@ export function createSocketTransports(deps: {
         vncSockets.set(
           ws,
           agentBrowser.openVnc(ws as VncPeer, ws.data.vnc.scale),
+        );
+        return;
+      }
+      if (ws.data.mic) {
+        socketPrincipals.set(ws, ws.data.principal);
+        micSockets.set(
+          ws,
+          remoteMic.open({
+            send: (message) => ws.send(message),
+            close: (code, reason) => ws.close(code, reason),
+          }),
         );
         return;
       }
@@ -144,7 +158,7 @@ export function createSocketTransports(deps: {
       );
     },
     drain(ws) {
-      if (ws.data.vnc || vscodeSockets.has(ws)) return;
+      if (ws.data.vnc || ws.data.mic || vscodeSockets.has(ws)) return;
       // The viewer caught up: send the newest repaint we held back.
       flushCoalescedMessages(ws, {
         cleanup: () => {
@@ -162,6 +176,11 @@ export function createSocketTransports(deps: {
       const vnc = vncSockets.get(ws);
       if (vnc) {
         if (typeof message !== "string") vnc.message(message);
+        return;
+      }
+      const mic = micSockets.get(ws);
+      if (mic) {
+        if (typeof message !== "string") mic.audio(message);
         return;
       }
       if (!clients.has(ws)) return;
@@ -248,6 +267,11 @@ export function createSocketTransports(deps: {
       if (ws.data.vnc) {
         vncSockets.get(ws)?.close();
         vncSockets.delete(ws);
+        return;
+      }
+      if (ws.data.mic) {
+        void micSockets.get(ws)?.close();
+        micSockets.delete(ws);
         return;
       }
       rtcTransport.ownerClosed(ws);

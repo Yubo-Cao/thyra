@@ -63,6 +63,8 @@ const base = {
   "promptEditor.focus": ["Ctrl+Alt+I"],
   // Held for push-to-talk; free on macOS, Windows, and KDE/GNOME defaults.
   "voice.pushToTalk": ["Ctrl+Alt+M"],
+  // Ctrl+M on every platform: in a terminal it is only a second Enter.
+  "terminal.remoteMic": ["Ctrl+M"],
 };
 export type ShortcutNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type ShortcutId =
