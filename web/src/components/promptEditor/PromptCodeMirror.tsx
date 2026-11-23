@@ -70,7 +70,7 @@ const surfaceTheme = EditorView.theme({
     fontFamily: "var(--font-sans, inherit)",
   },
   ".cm-panels.cm-panels-top, .cm-panels.cm-panels-bottom": { border: "none" },
-  ".cm-search": { fontSize: "12px" },
+  ".cm-search": { fontSize: "0.75rem" },
   ".cm-textfield, .cm-button": {
     border: "none",
     borderRadius: "0",

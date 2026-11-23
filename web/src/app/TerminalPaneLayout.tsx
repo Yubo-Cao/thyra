@@ -73,6 +73,7 @@ function PaneContent({
       >
         <AgentView
           paneId={agentPaneId}
+          uiScale={props.uiScale}
           onOpenWorkspaceFile={props.onOpenWorkspaceFile}
         />
       </Suspense>
@@ -296,17 +297,22 @@ export function TerminalPaneLayout(props: TerminalPaneLayoutProps) {
     layoutRef.current = element;
     setLayoutElement(element);
   }, []);
+  const { uiScale } = props;
   useLayoutEffect(() => {
     if (!layoutElement || !layout) return setResponsivePaneSwitcher(false);
+    // The minimum pane width counts terminal columns, whose font scales.
     const update = () =>
       setResponsivePaneSwitcher(
-        paneLayoutNeedsSwitcher(layout, layoutElement.clientWidth),
+        paneLayoutNeedsSwitcher(
+          layout,
+          (layoutElement.clientWidth * 100) / uiScale,
+        ),
       );
     update();
     const observer = new ResizeObserver(update);
     observer.observe(layoutElement);
     return () => observer.disconnect();
-  }, [layout, layoutElement]);
+  }, [layout, layoutElement, uiScale]);
 
   if (!layout || layout.zoomed || visiblePanes.length <= 1) {
     return (

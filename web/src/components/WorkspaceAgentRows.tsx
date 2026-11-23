@@ -25,7 +25,7 @@ import {
 } from "./agentSession";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { PanePresence } from "./PanePresence";
-import { TREE_DEPTH_INDENT } from "./treeIndent";
+import { TREE_DEPTH_INDENT, treeInset } from "./treeIndent";
 import { ContextMenu } from "./ui/ContextMenu";
 import { Token, type TokenTone } from "./ui/Token";
 import "./WorkspaceAgentRows.css";
@@ -117,7 +117,9 @@ export const AgentRow = memo(function AgentRow({
         isDragging ? "is-dragging" : ""
       } ${dropPosition ? `drop-${dropPosition}` : ""}`}
       style={
-        nested ? { paddingLeft: 18 + depth * TREE_DEPTH_INDENT } : undefined
+        nested
+          ? { paddingLeft: treeInset(18 + depth * TREE_DEPTH_INDENT) }
+          : undefined
       }
       role={nested ? "treeitem" : "button"}
       data-pane-id={pane.pane_id}

@@ -38,6 +38,55 @@
   min-width: 0;
 }
 
+/* lucide sizes icons with width/height attributes, which the UI scale's rem
+   does not reach; restate the sizes in use in CSS. Unlayered at zero
+   specificity: over HeroUI's and .button's layered svg sizing, under any
+   unlayered rule that sizes its icon. */
+:where(svg.lucide[width="10"]) {
+  width: 10px;
+  height: 10px;
+}
+:where(svg.lucide[width="11"]) {
+  width: 11px;
+  height: 11px;
+}
+:where(svg.lucide[width="12"]) {
+  width: 12px;
+  height: 12px;
+}
+:where(svg.lucide[width="13"]) {
+  width: 13px;
+  height: 13px;
+}
+:where(svg.lucide[width="14"]) {
+  width: 14px;
+  height: 14px;
+}
+:where(svg.lucide[width="15"]) {
+  width: 15px;
+  height: 15px;
+}
+:where(svg.lucide[width="16"]) {
+  width: 16px;
+  height: 16px;
+}
+:where(svg.lucide[width="17"]) {
+  width: 17px;
+  height: 17px;
+}
+:where(svg.lucide[width="18"]) {
+  width: 18px;
+  height: 18px;
+}
+:where(svg.lucide[width="20"]) {
+  width: 20px;
+  height: 20px;
+}
+:where(svg.lucide[width="24"]) {
+  width: 24px;
+  height: 24px;
+}
+
 @layer thyra {
   /* Focus: one inset 2px accent outline for every HeroUI control, so it is
      never clipped by an overflow-hidden bar and never reads as a border. */
@@ -76,7 +125,7 @@
   .toggle-button[data-pressed="true"] {
     transform: none;
   }
-  /* Icons keep the size the caller passes (lucide size prop). */
+  /* Icons keep the size the caller passes (lucide size prop, see above). */
   .button svg:not([data-slot="spinner"] svg),
   .toggle-button svg {
     width: auto;

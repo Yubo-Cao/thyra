@@ -1,3 +1,4 @@
+import { uiScaleFactor } from "../../appearance";
 import type { TerminalEngine } from "../../terminalEngine";
 import { ChevronRight, SquareTerminal } from "lucide-react";
 import { flushSync } from "react-dom";
@@ -172,7 +173,11 @@ async function fetchLines(
   return {
     text,
     kind: "lines",
-    font: live?.font ?? { fontFamily: "", fontSize: 13, lineHeight: 1.2 },
+    font: live?.font ?? {
+      fontFamily: "",
+      fontSize: 13 * uiScaleFactor(),
+      lineHeight: 1.2,
+    },
     at: performance.now(),
   };
 }

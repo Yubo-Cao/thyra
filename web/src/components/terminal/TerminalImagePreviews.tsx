@@ -90,41 +90,15 @@ export function TerminalImagePreviews({
   }, [term, client, workspaceId, cwd]);
   if (!images.length) return null;
   return (
-    <div
-      className="terminal-image-previews"
-      style={{
-        position: "absolute",
-        top: 8,
-        right: 8,
-        zIndex: 2,
-        display: "flex",
-        gap: 6,
-        maxWidth: "50%",
-        overflow: "auto",
-      }}
-    >
+    <div className="terminal-image-previews">
       {images.map((image) => (
         <button
           key={image.path}
           type="button"
           title={image.path}
-          style={{
-            padding: 3,
-            background: "var(--bg)",
-            cursor: "pointer",
-          }}
           onClick={() => onOpen(image.path)}
         >
-          <img
-            src={image.src}
-            alt={image.path.split("/").pop()}
-            style={{
-              display: "block",
-              width: 100,
-              height: 76,
-              objectFit: "contain",
-            }}
-          />
+          <img src={image.src} alt={image.path.split("/").pop()} />
         </button>
       ))}
     </div>

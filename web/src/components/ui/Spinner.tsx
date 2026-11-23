@@ -24,7 +24,10 @@ export function Spinner({
       aria-label={label}
       aria-hidden={label ? undefined : true}
       className={cn("spinner ui-spinner", `spinner--${tone}`, className)}
-      style={{ width: PIXELS[size], height: PIXELS[size] }}
+      style={{
+        width: `${PIXELS[size] / 16}rem`,
+        height: `${PIXELS[size] / 16}rem`,
+      }}
     >
       <LoaderCircle size={PIXELS[size]} strokeWidth={2.2} />
     </span>

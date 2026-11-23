@@ -60,7 +60,7 @@ function TextPreview({ text, line }: { text: string; line?: number }) {
         <span
           aria-hidden="true"
           data-line={selected}
-          style={{ top: `calc(8px + ${selected - 1} * 1lh)` }}
+          style={{ top: `calc(0.5rem + ${selected - 1} * 1lh)` }}
         />
       ) : null}
       <pre aria-hidden="true">{numbers}</pre>

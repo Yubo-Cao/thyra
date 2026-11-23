@@ -1,3 +1,4 @@
+import { uiScaleFactor } from "../../appearance";
 import { keepFocus } from "../ui/keepFocus";
 import {
   type EditorSpan,
@@ -393,7 +394,9 @@ export function PromptEditor({
       // The textarea's scrollHeight rounds to whole pixels: 17 for one
       // 16.8px row (at 125%) is still one line, not two.
       Math.max(1, Math.ceil((contentHeight - 1) / metrics.rowHeight)),
-      strip.length ? Math.ceil(IMAGE_STRIP_HEIGHT / metrics.rowHeight) : 0,
+      strip.length
+        ? Math.ceil((IMAGE_STRIP_HEIGHT * uiScaleFactor()) / metrics.rowHeight)
+        : 0,
     );
   const font: PromptEditorFont = {
     family: term.cssFontFamily,

@@ -174,6 +174,7 @@ const notifyError = (message: string, detail: string) =>
 export function AgentComposer({
   draftKey,
   info,
+  uiScale,
   active,
   epoch,
   imageUrl,
@@ -186,6 +187,7 @@ export function AgentComposer({
   /** The pane's draft in the composer store (agentComposerDraftKey). */
   draftKey: string;
   info: AgentSessionInfo;
+  uiScale: number;
   /** The pane is the active one: the box may take focus. */
   active: boolean;
   /** The session's transcript epoch: a resumed conversation refocuses the box. */
@@ -335,11 +337,12 @@ export function AgentComposer({
     return true;
   };
 
-  // The transcript's type, not the terminal grid's; 16px keeps iOS Safari
-  // from zooming in on focus.
-  const font = mobile
-    ? { family: "inherit", size: 16, lineHeight: 24 }
-    : { family: "inherit", size: 14, lineHeight: 21 };
+  // The transcript's type, not the terminal grid's, at the UI scale; at
+  // least 16px on phones keeps iOS Safari from zooming in on focus.
+  const size = mobile
+    ? Math.max(16, (16 * uiScale) / 100)
+    : (14 * uiScale) / 100;
+  const font = { family: "inherit", size, lineHeight: size * 1.5 };
   const surfaceProps: PromptEditorSurfaceProps = {
     ...draft.surface,
     placeholder: exited

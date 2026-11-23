@@ -130,6 +130,29 @@
   pointer-events: none;
 }
 
+/* Images the terminal output names, as thumbnails over its corner. */
+.terminal-image-previews {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  max-width: 50%;
+  overflow: auto;
+}
+.terminal-image-previews button {
+  padding: 3px;
+  background: var(--bg);
+  cursor: pointer;
+}
+.terminal-image-previews img {
+  display: block;
+  width: 100px;
+  height: 76px;
+  object-fit: contain;
+}
+
 /* Pane actions live in the pane header; they never float over output. */
 .terminal-pane-toolbar {
   display: flex;

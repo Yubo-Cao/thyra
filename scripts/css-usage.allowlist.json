@@ -1,1 +1,6 @@
-[]
+[
+  {
+    "prefix": "lucide",
+    "reason": "lucide-react puts the lucide class on every icon it renders"
+  }
+]

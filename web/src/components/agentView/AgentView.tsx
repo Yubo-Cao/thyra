@@ -1,4 +1,5 @@
 import { GitBranchPlus } from "lucide-react";
+import { uiScaleFactor } from "../../appearance";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
@@ -72,8 +73,9 @@ function useControlsAboveDock(dock: HTMLElement | null, enabled: boolean) {
     const app = dock?.closest<HTMLElement>(".app");
     if (!dock || !app || !enabled) return;
     const update = () => {
-      const lift = dock.offsetHeight + 12 - CONTROLS_BOTTOM;
-      if (lift > CONTROLS_LIFT_DEFAULT)
+      const scale = uiScaleFactor();
+      const lift = dock.offsetHeight + (12 - CONTROLS_BOTTOM) * scale;
+      if (lift > CONTROLS_LIFT_DEFAULT * scale)
         app.style.setProperty(CONTROLS_LIFT, `${lift}px`);
       else app.style.removeProperty(CONTROLS_LIFT);
     };
@@ -167,9 +169,12 @@ function useAgentSession(paneId: string): AgentSessionStore {
  */
 export function AgentView({
   paneId,
+  uiScale,
   onOpenWorkspaceFile,
 }: {
   paneId: string;
+  /** The UI scale in percent; the prompt box's type follows it. */
+  uiScale: number;
   onOpenWorkspaceFile?: (request: TerminalWorkspaceFileRequest) => void;
 }) {
   const s = useStoreSelector(
@@ -516,6 +521,7 @@ export function AgentView({
                   key={draftKey}
                   draftKey={draftKey}
                   info={info}
+                  uiScale={uiScale}
                   active={s.active}
                   epoch={epoch}
                   imageUrl={(source) =>

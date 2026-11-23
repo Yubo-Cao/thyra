@@ -212,7 +212,7 @@
   position: absolute;
   top: 0;
   bottom: 6px;
-  left: var(--tab-rail-left, 36px);
+  left: var(--tab-rail-left, 2.25rem);
   width: 1px;
   background: var(--border);
   pointer-events: none;

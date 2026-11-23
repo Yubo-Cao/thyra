@@ -89,7 +89,7 @@ import {
   treeKeyboardAction,
   workspaceTreeItemIsTabStop,
 } from "./treeKeyboard";
-import { TREE_DEPTH_INDENT } from "./treeIndent";
+import { TREE_DEPTH_INDENT, treeInset } from "./treeIndent";
 import { groupPanesByTab, shouldShowTabGroups } from "../paneIdentity";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
@@ -1062,7 +1062,7 @@ const WorkspaceRow = memo(function WorkspaceRowView({
         } ${isDragging ? "is-dragging" : ""} ${
           dropPosition ? `drop-${dropPosition}` : ""
         }`}
-        style={{ paddingLeft: 8 + depth * TREE_DEPTH_INDENT }}
+        style={{ paddingLeft: treeInset(8 + depth * TREE_DEPTH_INDENT) }}
         role="treeitem"
         draggable={!!workspaceDrag}
         onDragStart={
@@ -1235,7 +1235,9 @@ const WorkspaceRow = memo(function WorkspaceRowView({
                 <div
                   className="tab-group-head"
                   style={{
-                    paddingLeft: 18 + (depth + 1) * TREE_DEPTH_INDENT,
+                    paddingLeft: treeInset(
+                      18 + (depth + 1) * TREE_DEPTH_INDENT,
+                    ),
                   }}
                   title={`${group.label} · ${group.tabId}`}
                   onClick={() => void store.focusTab(group.tabId)}
@@ -1258,9 +1260,9 @@ const WorkspaceRow = memo(function WorkspaceRowView({
                   className="tab-group-panes"
                   style={
                     {
-                      "--tab-rail-left": `${
-                        18 + (depth + 1) * TREE_DEPTH_INDENT + 6
-                      }px`,
+                      "--tab-rail-left": treeInset(
+                        18 + (depth + 1) * TREE_DEPTH_INDENT + 6,
+                      ),
                     } as React.CSSProperties
                   }
                 >
