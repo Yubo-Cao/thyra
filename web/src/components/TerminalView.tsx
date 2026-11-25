@@ -363,53 +363,55 @@ export function TerminalView({
   refs.fontFamily.current = fontFamily;
   refs.composerOpen.current = composerOpen;
   // Voice typing goes straight into the pane; the composer keeps its own mic.
-  const voiceTyping = useTerminalVoiceTyping({
-    onInsert: async (text, submit) => {
-      // Dictation lands in the prompt editor's draft while it covers the
-      // agent's box, so it is seen (and edited) before it is sent.
-      const editorKey = refs.paneId.current
-        ? terminalComposerDraftKey(
-            s.activeConnectionId,
-            s.connectionGeneration,
-            refs.paneId.current,
-          )
-        : null;
-      if (editorKey && refs.promptEditor.current?.visible()) {
-        if (refs.promptEditor.current.insertText) {
-          await refs.promptEditor.current.insertText(text, submit);
-          return;
-        }
-        insertIntoTerminalComposerDraft(editorKey, text);
-        if (submit)
-          await submitTerminalComposerDraft(
-            editorKey,
-            readTerminalComposerDraft(editorKey),
-            (draft) => submitTerminalComposer(draft, true),
-          );
+  /** Dictated text into the pane (or the prompt editor covering it). */
+  const insertDictation = async (text: string, submit: boolean) => {
+    // Dictation lands in the prompt editor's draft while it covers the
+    // agent's box, so it is seen (and edited) before it is sent.
+    const editorKey = refs.paneId.current
+      ? terminalComposerDraftKey(
+          s.activeConnectionId,
+          s.connectionGeneration,
+          refs.paneId.current,
+        )
+      : null;
+    if (editorKey && refs.promptEditor.current?.visible()) {
+      if (refs.promptEditor.current.insertText) {
+        await refs.promptEditor.current.insertText(text, submit);
         return;
       }
-      try {
-        assertInputAllowed();
-        await submitTerminalComposer(text, submit);
-      } catch (error) {
-        const paneId = refs.paneId.current;
-        if (!paneId) throw error;
-        insertIntoTerminalComposerDraft(
-          terminalComposerDraftKey(
-            s.activeConnectionId,
-            s.connectionGeneration,
-            paneId,
-          ),
-          text,
+      insertIntoTerminalComposerDraft(editorKey, text);
+      if (submit)
+        await submitTerminalComposerDraft(
+          editorKey,
+          readTerminalComposerDraft(editorKey),
+          (draft) => submitTerminalComposer(draft, true),
         );
-        throw new Error(
-          t("{error}. The dictation was kept in the composer draft.", {
-            error: error instanceof Error ? error.message : String(error),
-          }),
-          { cause: error },
-        );
-      }
-    },
+      return;
+    }
+    try {
+      assertInputAllowed();
+      await submitTerminalComposer(text, submit);
+    } catch (error) {
+      const paneId = refs.paneId.current;
+      if (!paneId) throw error;
+      insertIntoTerminalComposerDraft(
+        terminalComposerDraftKey(
+          s.activeConnectionId,
+          s.connectionGeneration,
+          paneId,
+        ),
+        text,
+      );
+      throw new Error(
+        t("{error}. The dictation was kept in the composer draft.", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+        { cause: error },
+      );
+    }
+  };
+  const voiceTyping = useTerminalVoiceTyping({
+    onInsert: insertDictation,
     onError: (message) =>
       store.notify({
         kind: "error",
@@ -799,7 +801,8 @@ export function TerminalView({
     }
     if (framesPaused) setInputEpoch((value) => value + 1);
   };
-  // Ctrl+M: speak into the agent's own voice input through the host's mic.
+  // Ctrl+M: speak through the host's mic into the agent's own voice input,
+  // or, for agents without one, into Claude Code's transcript pasted here.
   const remoteMic = useTerminalRemoteMic({
     enabled:
       isActivePane &&
@@ -820,6 +823,10 @@ export function TerminalView({
         }),
       );
     },
+    // Claude Code listens itself; other panes get Claude Code's transcript.
+    dictate: () => agentKind(pane?.agent) !== "claude",
+    insertText: (text) => insertDictation(text, false),
+    fallback: () => voiceTyping.toggle(),
     onError: (message) =>
       store.notify({
         kind: "error",

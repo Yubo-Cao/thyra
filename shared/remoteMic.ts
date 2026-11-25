@@ -9,7 +9,13 @@
  *
  * Bridge to browser: JSON text frames (`RemoteMicServerMessage`). Audio is
  * dropped until `ready`, which the bridge sends once the virtual source is
- * the host's default; the browser presses the agent's voice key only then.
+ * the host's default; the browser holds the agent's voice key only then.
+ *
+ * Dictation (`mode=dictate` in the query) is for panes whose agent has no
+ * voice input: a hidden Claude Code on the host records the source, and
+ * `ready` waits until it does. The browser sends `{"type":"stop"}` as a text
+ * frame, keeps streaming, and gets `transcript` before the bridge closes;
+ * it then pastes the text into the pane.
  */
 
 export const REMOTE_MIC_PATH = "/ws/mic";
@@ -34,7 +40,21 @@ export const REMOTE_MIC_CLOSE = {
 
 export type RemoteMicServerMessage =
   | { type: "ready"; source: string }
+  | { type: "transcript"; text: string }
   | { type: "error"; message: string };
+
+export type RemoteMicClientMessage = { type: "stop" };
+
+export function parseRemoteMicClientMessage(
+  text: string,
+): RemoteMicClientMessage | null {
+  try {
+    const value = JSON.parse(text) as { type?: unknown } | null;
+    return value?.type === "stop" ? { type: "stop" } : null;
+  } catch {
+    return null;
+  }
+}
 
 export type RemoteMicStatus = {
   available: boolean;
@@ -42,6 +62,8 @@ export type RemoteMicStatus = {
   reason?: string;
   /** Connections whose panes run on this host; others cannot hear it. */
   connections: string[];
+  /** Panes without their own voice input can dictate through Claude Code. */
+  dictation?: boolean;
 };
 
 export function parseRemoteMicServerMessage(
@@ -57,6 +79,8 @@ export function parseRemoteMicServerMessage(
   const message = value as Record<string, unknown>;
   if (message.type === "ready" && typeof message.source === "string")
     return { type: "ready", source: message.source };
+  if (message.type === "transcript" && typeof message.text === "string")
+    return { type: "transcript", text: message.text };
   if (message.type === "error" && typeof message.message === "string")
     return { type: "error", message: message.message };
   return null;

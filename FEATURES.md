@@ -352,6 +352,14 @@ that another fetch could change.
   and `"voice": { "enabled": true, "mode": "hold", "autoSubmit": true }`
   (tap mode only starts with an empty prompt; drop `autoSubmit` to insert
   without sending).
+  Panes whose agent has no voice input of its own (Codex, Cursor, Gemini,
+  a shell) dictate with Claude Code instead: a hidden Claude Code on the host
+  transcribes, and **Ctrl+M** again pastes the text into the pane without
+  sending it. It needs `claude` on the host (`THYRA_TRANSCRIBER=off` turns
+  it off; `THYRA_TRANSCRIBER_CLAUDE` names another binary); the first use
+  starts it (a few seconds), and it exits after 30 idle minutes. Where the
+  host microphone cannot reach the pane, **Ctrl+M** starts Thyra's own voice
+  typing instead.
 - The composer supports IME, dictation, voice input, multiline text, and images.
   Its microphone dictates into the draft instead of the terminal. **Insert**
   does not execute; **Send** adds one Enter. Drafts are in-memory per

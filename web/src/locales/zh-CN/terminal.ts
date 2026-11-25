@@ -205,6 +205,9 @@ export default {
   "Starting the host microphone…": "正在启动主机麦克风…",
   "Sending to the agent…": "正在发送给 Agent…",
   "Stop and send to the agent": "停止并发送给 Agent",
+  "Transcribing with Claude Code…": "正在用 Claude Code 转写…",
+  "Stop and paste into the pane": "停止并粘贴到窗格",
+  "The host did not finish transcribing in time.": "主机没有及时完成转写。",
   "Another page is now using the host microphone.":
     "另一个页面正在使用主机麦克风。",
   "The host microphone stopped: no audio arrived.":

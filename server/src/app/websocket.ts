@@ -105,10 +105,13 @@ export function createSocketTransports(deps: {
         socketPrincipals.set(ws, ws.data.principal);
         micSockets.set(
           ws,
-          remoteMic.open({
-            send: (message) => ws.send(message),
-            close: (code, reason) => ws.close(code, reason),
-          }),
+          remoteMic.open(
+            {
+              send: (message) => ws.send(message),
+              close: (code, reason) => ws.close(code, reason),
+            },
+            { dictate: ws.data.mic.dictate },
+          ),
         );
         return;
       }
@@ -180,7 +183,8 @@ export function createSocketTransports(deps: {
       }
       const mic = micSockets.get(ws);
       if (mic) {
-        if (typeof message !== "string") mic.audio(message);
+        if (typeof message === "string") mic.control(message);
+        else mic.audio(message);
         return;
       }
       if (!clients.has(ws)) return;

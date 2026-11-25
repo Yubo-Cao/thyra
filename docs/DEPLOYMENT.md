@@ -836,7 +836,7 @@ Responses API requests set `store: false`.
 
 On a Linux host with PipeWire and WirePlumber, Ctrl+M in a pane streams the browser's microphone to a virtual default source on the host while the user speaks (see [FEATURES.md](../FEATURES.md) for the agent's key binding).
 It needs `pw-cat` and `pw-metadata` (Debian and Ubuntu: `pipewire-bin`) and a bridge running in the user session that owns the audio (the systemd user service does).
-`THYRA_REMOTE_MIC=off` turns it off.
+`THYRA_REMOTE_MIC=off` turns it off. Panes whose agent is not Claude Code dictate through a hidden Claude Code the bridge starts on first use (`claude` on `PATH`, or `THYRA_TRANSCRIBER_CLAUDE`); `THYRA_TRANSCRIBER=off` turns that off.
 
 ## Logging
 

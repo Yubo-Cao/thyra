@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { RemoteMicStatus } from "../../../shared/remoteMic";
 import { t } from "../i18n";
 import { shortcutMatches, shortcutTitle } from "../shortcutPreferences";
 import {
@@ -34,6 +35,12 @@ const delay = (ms: number) =>
  * last words reach the host, lets go of the key (the agent stops and
  * inserts or sends), then releases the mic.
  *
+ * Panes whose agent has no voice input (Codex, Cursor, a shell) dictate
+ * instead: a hidden Claude Code on the host transcribes the stream, and the
+ * text is pasted into the pane. Where the host microphone cannot reach the
+ * pane, or the host cannot dictate, the shortcut runs `fallback` (Thyra's own
+ * voice typing) instead.
+ *
  * Starting needs this pane to hold the keyboard focus; once recording, the
  * shortcut stops it from anywhere. Leaving the pane, unmounting or losing
  * the stream stops it too.
@@ -44,6 +51,9 @@ export function useTerminalRemoteMic({
   connectionId,
   terminalId,
   pressVoiceKey,
+  dictate,
+  insertText,
+  fallback,
   onError,
 }: {
   /** The active pane, and the caller may type into it. */
@@ -52,6 +62,11 @@ export function useTerminalRemoteMic({
   connectionId: string;
   terminalId: () => string | null;
   pressVoiceKey: (terminalId: string) => Promise<void>;
+  /** The pane's agent has no voice input of its own: dictate and paste. */
+  dictate: () => boolean;
+  insertText: (text: string) => Promise<void>;
+  /** Used where the host microphone cannot serve the pane. */
+  fallback: () => void;
   onError: (message: string) => void;
 }) {
   const [phase, setPhase] = useState<RemoteMicPhase>("idle");
@@ -61,8 +76,42 @@ export function useTerminalRemoteMic({
   /** Stops repeating the voice key, which lets go of it. */
   const releaseRef = useRef<(() => void) | null>(null);
   const runRef = useRef(0);
-  const latest = useRef({ connectionId, terminalId, pressVoiceKey, onError });
-  latest.current = { connectionId, terminalId, pressVoiceKey, onError };
+  /** The running stream dictates (pastes) instead of holding a key. */
+  const dictatingRef = useRef(false);
+  /** The host's last answer, read synchronously inside the key press. */
+  const statusRef = useRef<RemoteMicStatus | null>(null);
+  const latest = useRef({
+    connectionId,
+    terminalId,
+    pressVoiceKey,
+    dictate,
+    insertText,
+    fallback,
+    onError,
+  });
+  latest.current = {
+    connectionId,
+    terminalId,
+    pressVoiceKey,
+    dictate,
+    insertText,
+    fallback,
+    onError,
+  };
+
+  const refreshStatus = useCallback(() => {
+    void import("../voice/remoteMic")
+      .then(({ remoteMicStatus }) => remoteMicStatus())
+      .then(
+        (status) => {
+          statusRef.current = status;
+        },
+        () => undefined,
+      );
+  }, []);
+  useEffect(() => {
+    if (enabled) refreshStatus();
+  }, [enabled, refreshStatus]);
 
   const set = (next: RemoteMicPhase) => {
     phaseRef.current = next;
@@ -117,6 +166,20 @@ export function useTerminalRemoteMic({
     set("stopping");
     // The last syllables are still on their way to the host.
     await delay(REMOTE_MIC_TAIL_MS);
+    if (dictatingRef.current) {
+      const session = sessionRef.current;
+      sessionRef.current = null;
+      try {
+        const text = (await session?.transcribe())?.trim();
+        if (text) await latest.current.insertText(text);
+      } catch (error) {
+        latest.current.onError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      if (runRef.current === run) set("idle");
+      return;
+    }
     // The agent stops once the repeats stop; keep the source up meanwhile.
     releaseKey();
     await delay(REMOTE_MIC_HOLD_MS);
@@ -140,6 +203,20 @@ export function useTerminalRemoteMic({
       latest.current.onError(t("No active pane"));
       return;
     }
+    const dictating = latest.current.dictate();
+    const status = statusRef.current;
+    // Refreshed for the next press; this one goes by what is known.
+    refreshStatus();
+    if (
+      status &&
+      (!status.available ||
+        !status.connections.includes(latest.current.connectionId) ||
+        (dictating && !status.dictation))
+    ) {
+      latest.current.fallback();
+      return;
+    }
+    dictatingRef.current = dictating;
     // Created inside the key press, so the browser lets it play.
     let context: AudioContext;
     try {
@@ -159,6 +236,7 @@ export function useTerminalRemoteMic({
           connectionId: latest.current.connectionId,
           terminalId: terminal,
           context,
+          dictate: dictating,
           onLevel: (value) => {
             if (runRef.current === run) setLevel(value);
           },
@@ -179,6 +257,10 @@ export function useTerminalRemoteMic({
             return;
           }
           sessionRef.current = session;
+          if (dictating) {
+            set("recording");
+            return;
+          }
           releaseRef.current = holdKey(terminal, () => {
             if (runRef.current !== run) return;
             if (phaseRef.current === "recording") void finish();
@@ -195,7 +277,7 @@ export function useTerminalRemoteMic({
           );
         },
       );
-  }, [cancelStart, finish]);
+  }, [cancelStart, finish, refreshStatus]);
 
   const toggle = useCallback(() => {
     const current = phaseRef.current;
@@ -238,7 +320,7 @@ export function useTerminalRemoteMic({
     [cancelStart, finish],
   );
 
-  return { phase, level, toggle };
+  return { phase, level, toggle, dictating: dictatingRef.current };
 }
 
 /** A small badge over the pane while the host microphone is live. */
@@ -252,7 +334,9 @@ export function TerminalRemoteMicIndicator({
     mic.phase === "starting"
       ? t("Starting the host microphone…")
       : mic.phase === "stopping"
-        ? t("Sending to the agent…")
+        ? mic.dictating
+          ? t("Transcribing with Claude Code…")
+          : t("Sending to the agent…")
         : t("Host microphone on");
   return (
     <div
@@ -275,7 +359,9 @@ export function TerminalRemoteMicIndicator({
           label={shortcutTitle(
             mic.phase === "starting"
               ? t("Cancel")
-              : t("Stop and send to the agent"),
+              : mic.dictating
+                ? t("Stop and paste into the pane")
+                : t("Stop and send to the agent"),
             "terminal.remoteMic",
           )}
           icon={<Square size={12} />}

@@ -275,7 +275,7 @@ export function createAuthenticatedRouter(
           clientSession: null,
           directOrigin: null,
           rtc: false,
-          mic: true,
+          mic: { dictate: url.searchParams.get("mode") === "dictate" },
         },
       })
         ? undefined

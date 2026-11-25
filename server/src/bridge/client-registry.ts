@@ -43,7 +43,11 @@ export function createClientRegistry(deps: {
   /** Host-microphone streams (voice/remote-mic.ts): outside `clients` too. */
   const micSockets = new Map<
     ServerWebSocket<unknown>,
-    { audio(data: Uint8Array): void; close(): void }
+    {
+      audio(data: Uint8Array): void;
+      control(text: string): void;
+      close(): void;
+    }
   >();
   /** VS Code sockets (vscode/proxy.ts): outside `clients` like VNC. */
   const vscodeSockets = new Map<

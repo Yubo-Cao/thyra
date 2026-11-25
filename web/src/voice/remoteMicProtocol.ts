@@ -23,6 +23,11 @@ export const REMOTE_MIC_HOLD_MS = 500;
 export type RemoteMicSession = {
   /** Flush the last frames, close the stream and release the mic. */
   stop: () => Promise<void>;
+  /**
+   * A dictation stream: ask the host for what was said, keep streaming until
+   * it answers, then release everything. Resolves to the transcript.
+   */
+  transcribe: () => Promise<string>;
   /** Release everything at once. */
   cancel: () => void;
 };
@@ -37,11 +42,13 @@ export function remoteMicUrl(
   location: Pick<Location, "protocol" | "host">,
   connectionId: string,
   terminalId: string,
+  dictate = false,
 ): string {
   const protocol = location.protocol === "https:" ? "wss" : "ws";
   const query = new URLSearchParams({
     connection_id: connectionId,
     terminal_id: terminalId,
+    ...(dictate ? { mode: "dictate" } : {}),
   });
   return `${protocol}://${location.host}${REMOTE_MIC_PATH}?${query}`;
 }

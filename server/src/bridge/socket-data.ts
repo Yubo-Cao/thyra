@@ -21,7 +21,7 @@ export type SocketData = {
   /** An agent-browser VNC socket and the device scale its viewer wants. */
   vnc?: { scale: number };
   /** A host-microphone stream (voice/remote-mic.ts). */
-  mic?: true;
+  mic?: { dictate: boolean };
   /** A VS Code remote socket and the request it opens upstream. */
   vscode?: { req: Request; url: URL };
 };

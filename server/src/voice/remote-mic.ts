@@ -2,10 +2,12 @@ import {
   isRemoteMicFrame,
   REMOTE_MIC_CLOSE,
   REMOTE_MIC_SAMPLE_RATE,
+  parseRemoteMicClientMessage,
   type RemoteMicServerMessage,
 } from "../../../shared/remoteMic";
 import { thyraEnv } from "../config/environment";
 import type { Logger } from "../utils/logger";
+import type { ClaudeTranscriber, TranscriberTake } from "./claude-transcriber";
 
 /**
  * The host microphone a remote browser speaks into (see shared/remoteMic.ts).
@@ -67,6 +69,8 @@ export type RemoteMicDeps = {
   env: Record<string, string | undefined>;
   logger: Pick<Logger, "info" | "warn" | "debug">;
   now?: () => number;
+  /** Dictation for panes whose agent has no voice input of its own. */
+  transcriber?: Pick<ClaudeTranscriber, "available" | "begin" | "stop">;
 };
 
 /**
@@ -186,11 +190,19 @@ const deleteMetadataArgv = (key: string) => [
 ];
 const sourceValue = (name: string) => JSON.stringify({ name });
 
-export type RemoteMicAvailability = { available: boolean; reason?: string };
+export type RemoteMicAvailability = {
+  available: boolean;
+  reason?: string;
+  /** Whether panes without their own voice input can dictate. */
+  dictation?: boolean;
+};
 
 type Session = {
   peer: RemoteMicPeer;
-  state: "starting" | "streaming" | "closed";
+  state: "starting" | "streaming" | "finishing" | "closed";
+  /** Set for a dictation stream: the hidden Claude Code's take. */
+  dictate: boolean;
+  take: TranscriberTake | null;
   player: RemoteMicPlayer | null;
   pacer: PcmPacer;
   timer: ReturnType<typeof setInterval> | null;
@@ -261,6 +273,11 @@ export function createRemoteMic(deps: RemoteMicDeps) {
         }`,
       };
     }
+    if (value.available)
+      value = {
+        ...value,
+        dictation: deps.transcriber?.available().available ?? false,
+      };
     cachedStatus = { at: now(), value };
     return value;
   }
@@ -302,6 +319,9 @@ export function createRemoteMic(deps: RemoteMicDeps) {
 
   function teardown(session: Session): Promise<void> {
     session.state = "closed";
+    const take = session.take;
+    session.take = null;
+    void take?.cancel();
     if (active === session) active = null;
     if (session.timer) clearInterval(session.timer);
     session.timer = null;
@@ -402,16 +422,43 @@ export function createRemoteMic(deps: RemoteMicDeps) {
         );
       await new Promise((resolve) => setTimeout(resolve, DEFAULT_POLL_MS));
     }
+    if (session.dictate) {
+      if (!deps.transcriber) throw new Error("dictation is not available");
+      const take = await deps.transcriber.begin();
+      if (closed()) {
+        void take.cancel();
+        return;
+      }
+      session.take = take;
+    }
+  }
+
+  /** The page asked to stop a dictation: transcribe and hand back the text. */
+  async function finishDictation(session: Session) {
+    const take = session.take;
+    if (session.state !== "streaming" || !take) return;
+    session.state = "finishing";
+    session.take = null;
+    try {
+      const text = await take.finish();
+      send(session, { type: "transcript", text });
+      logger.info("dictation transcribed", { chars: text.length });
+      void end(session, 1000, "done");
+    } catch (error) {
+      fail(session, error);
+    }
   }
 
   return {
     status: availability,
 
     /** Start a stream for a page; the previous page's stream ends. */
-    open(peer: RemoteMicPeer) {
+    open(peer: RemoteMicPeer, options: { dictate?: boolean } = {}) {
       const previous = active;
       const session: Session = {
         peer,
+        dictate: !!options.dictate,
+        take: null,
         state: "starting",
         player: null,
         pacer: new PcmPacer(),
@@ -441,13 +488,20 @@ export function createRemoteMic(deps: RemoteMicDeps) {
       return {
         /** A binary frame from the page. */
         audio(bytes: Uint8Array) {
-          if (session.state !== "streaming") return;
+          // A dictation keeps listening until the transcript is taken.
+          if (session.state !== "streaming" && session.state !== "finishing")
+            return;
           if (!isRemoteMicFrame(bytes.byteLength)) {
             fail(session, new Error("invalid audio frame"));
             return;
           }
           session.lastAudioAt = now();
           write(session, session.pacer.push(bytes, now()));
+        },
+        /** A text frame from the page. */
+        control(text: string) {
+          if (parseRemoteMicClientMessage(text)?.type === "stop")
+            void finishDictation(session);
         },
         /** The page's socket closed. */
         close: () => teardown(session),
@@ -456,6 +510,7 @@ export function createRemoteMic(deps: RemoteMicDeps) {
 
     /** End the stream on shutdown, restoring the default source. */
     stop(): Promise<void> {
+      deps.transcriber?.stop();
       return active
         ? end(active, REMOTE_MIC_CLOSE.shutdown, "Thyra is stopping")
         : chain;
@@ -463,6 +518,7 @@ export function createRemoteMic(deps: RemoteMicDeps) {
 
     /** Best-effort restore at process exit, where nothing can be awaited. */
     stopSync() {
+      deps.transcriber?.stop();
       const session = active;
       if (!session) return;
       session.state = "closed";
@@ -488,9 +544,13 @@ export function createRemoteMic(deps: RemoteMicDeps) {
 export type RemoteMic = ReturnType<typeof createRemoteMic>;
 
 /** The service with real processes. */
-export function createHostRemoteMic(logger: RemoteMicDeps["logger"]) {
+export function createHostRemoteMic(
+  logger: RemoteMicDeps["logger"],
+  transcriber?: RemoteMicDeps["transcriber"],
+) {
   return createRemoteMic({
     logger,
+    transcriber,
     platform: process.platform,
     env: process.env,
     which: (command) => Bun.which(command),

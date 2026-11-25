@@ -13,6 +13,9 @@ import {
 import workletUrl from "./remoteMicCapture.worklet.ts?worker&url";
 
 const READY_TIMEOUT_MS = 8_000;
+/** Dictation may first start the host's hidden Claude Code. */
+const DICTATE_READY_TIMEOUT_MS = 45_000;
+const TRANSCRIPT_TIMEOUT_MS = 30_000;
 
 export async function remoteMicStatus(): Promise<RemoteMicStatus> {
   const response = await fetch(REMOTE_MIC_STATUS_PATH, {
@@ -37,14 +40,14 @@ function microphoneError(error: unknown): Error {
 }
 
 /** Open the stream and wait until the host made its source the default. */
-function connect(url: string): Promise<WebSocket> {
+function connect(url: string, timeoutMs: number): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";
     const timer = window.setTimeout(() => {
       socket.close();
       reject(new Error(t("The host microphone did not start in time.")));
-    }, READY_TIMEOUT_MS);
+    }, timeoutMs);
     let failure = "";
     socket.onmessage = (event) => {
       if (typeof event.data !== "string") return;
@@ -81,6 +84,8 @@ export async function startRemoteMic(
     connectionId: string;
     terminalId: string;
     context: AudioContext;
+    /** Transcribe on the host instead of the pane's agent listening. */
+    dictate?: boolean;
   } & RemoteMicCallbacks,
 ): Promise<RemoteMicSession> {
   const { context } = options;
@@ -119,7 +124,13 @@ export async function startRemoteMic(
       });
     // Ask for the mic while the host prepares its source.
     opened = connect(
-      remoteMicUrl(location, options.connectionId, options.terminalId),
+      remoteMicUrl(
+        location,
+        options.connectionId,
+        options.terminalId,
+        options.dictate,
+      ),
+      options.dictate ? DICTATE_READY_TIMEOUT_MS : READY_TIMEOUT_MS,
     );
     const [stream, socket] = await Promise.all([media, opened]);
     await context.audioWorklet.addModule(workletUrl);
@@ -162,6 +173,22 @@ function capture(
 
   let released = false;
   let flushed: (() => void) | null = null;
+  /** Waiting for the host's transcript. */
+  let answer: {
+    resolve: (text: string) => void;
+    reject: (error: Error) => void;
+  } | null = null;
+  let failure = "";
+  socket.onmessage = (event) => {
+    if (typeof event.data !== "string") return;
+    const message = parseRemoteMicServerMessage(event.data);
+    if (message?.type === "error") failure = message.message;
+    if (message?.type !== "transcript" || !answer) return;
+    const done = answer;
+    answer = null;
+    release();
+    done.resolve(message.text);
+  };
   const resume = () => {
     if (!released && context.state !== "running" && !document.hidden)
       void context.resume().catch(() => undefined);
@@ -176,6 +203,7 @@ function capture(
     document.removeEventListener("visibilitychange", resume);
     node.port.onmessage = null;
     socket.onclose = null;
+    socket.onmessage = null;
     source.disconnect();
     node.disconnect();
     for (const track of stream.getTracks()) track.stop();
@@ -201,7 +229,14 @@ function capture(
   socket.onclose = (event) => {
     if (released) return;
     release();
-    callbacks.onEnd(remoteMicCloseMessage(event.code, event.reason));
+    const message = failure || remoteMicCloseMessage(event.code, event.reason);
+    if (answer) {
+      const done = answer;
+      answer = null;
+      done.reject(new Error(message));
+      return;
+    }
+    callbacks.onEnd(message);
   };
   // It may have closed while the worklet loaded.
   if (socket.readyState !== WebSocket.OPEN) {
@@ -219,6 +254,30 @@ function capture(
       });
       flushed = null;
       release();
+    },
+    transcribe() {
+      if (released)
+        return Promise.reject(
+          new Error(t("The connection to the host microphone was lost.")),
+        );
+      return new Promise<string>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          answer = null;
+          release();
+          reject(new Error(t("The host did not finish transcribing in time.")));
+        }, TRANSCRIPT_TIMEOUT_MS);
+        answer = {
+          resolve: (text) => {
+            window.clearTimeout(timer);
+            resolve(text);
+          },
+          reject: (error) => {
+            window.clearTimeout(timer);
+            reject(error);
+          },
+        };
+        socket.send(JSON.stringify({ type: "stop" }));
+      });
     },
     cancel: release,
   };

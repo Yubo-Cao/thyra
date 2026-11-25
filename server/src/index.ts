@@ -20,6 +20,8 @@ import { readStaticText } from "./http/static-files";
 import { createUpdateHandlers } from "./http/update";
 import { createRpcDispatcher } from "./rpc/dispatch";
 import { runProcessWithCodeTimeout, shQuote } from "./utils/process-utils";
+import { shellPaths } from "./shell/paths";
+import { createHostClaudeTranscriber } from "./voice/claude-transcriber";
 import { createHostRemoteMic } from "./voice/remote-mic";
 import { createVscodeProxy, vscodeConfig } from "./vscode/proxy";
 
@@ -72,7 +74,10 @@ const { agentBrowser, agentBrowserConnection } = createAgentBrowserWiring({
   accounts,
   connections: () => connections,
 });
-const remoteMic = createHostRemoteMic(logger.child("remote-mic"));
+const remoteMic = createHostRemoteMic(
+  logger.child("remote-mic"),
+  createHostClaudeTranscriber(logger.child("transcriber"), shellPaths().state),
+);
 const rtcSetup = parseRtcConfig();
 for (const warning of rtcSetup.warnings) logger.warn(warning);
 

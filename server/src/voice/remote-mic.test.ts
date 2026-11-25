@@ -329,9 +329,83 @@ test("reports why the host cannot offer it", async () => {
       run: async () => ({ code: 1, stdout: "", stderr: "no pipewire" }),
     }).status(),
   ).toMatchObject({ available: false });
-  expect(await createRemoteMic(base).status()).toEqual({ available: true });
+  expect(await createRemoteMic(base).status()).toEqual({
+    available: true,
+    dictation: false,
+  });
   const page = harness().peer();
   createRemoteMic({ ...base, platform: "darwin" }).open(page);
   await settle();
   expect(page.closed[0]?.[0]).toBe(REMOTE_MIC_CLOSE.failed);
+});
+
+function fakeTranscriber(text = "hello there") {
+  const log: string[] = [];
+  return {
+    log,
+    available: () => ({ available: true }),
+    stop: () => log.push("stop"),
+    async begin() {
+      log.push("begin");
+      return {
+        async finish() {
+          log.push("finish");
+          return text;
+        },
+        async cancel() {
+          log.push("cancel");
+        },
+      };
+    },
+  };
+}
+
+test("a dictation is ready once the transcriber records, and answers stop with the transcript", async () => {
+  const transcriber = fakeTranscriber();
+  const h = harness();
+  const mic = createRemoteMic({ ...h.deps, transcriber });
+  expect(await mic.status()).toMatchObject({ dictation: true });
+  const page = h.peer();
+  const stream = mic.open(page, { dictate: true });
+  await settle();
+  expect(transcriber.log).toEqual(["begin"]);
+  expect(page.sent).toEqual([{ type: "ready", source: REMOTE_MIC_SOURCE }]);
+  stream.control('{"type":"stop"}');
+  // Audio still reaches the host while the transcript is taken.
+  const player = h.players[0]!;
+  const before = player.written;
+  stream.audio(new Uint8Array(640));
+  expect(player.written).toBe(before + 640);
+  await settle();
+  expect(transcriber.log).toEqual(["begin", "finish"]);
+  expect(page.sent.at(-1)).toEqual({ type: "transcript", text: "hello there" });
+  expect(page.closed).toEqual([[1000, "done"]]);
+  await settle();
+  expect(h.metadata.get("default.configured.audio.source")).toBe(
+    '{ "name": "desk_mic" }',
+  );
+});
+
+test("closing a dictation early throws the take away", async () => {
+  const transcriber = fakeTranscriber();
+  const h = harness();
+  const mic = createRemoteMic({ ...h.deps, transcriber });
+  const stream = mic.open(h.peer(), { dictate: true });
+  await settle();
+  await stream.close();
+  expect(transcriber.log).toEqual(["begin", "cancel"]);
+});
+
+test("a plain stream ignores stop and never starts the transcriber", async () => {
+  const transcriber = fakeTranscriber();
+  const h = harness();
+  const mic = createRemoteMic({ ...h.deps, transcriber });
+  const page = h.peer();
+  const stream = mic.open(page);
+  await settle();
+  stream.control('{"type":"stop"}');
+  await settle();
+  expect(transcriber.log).toEqual([]);
+  expect(page.closed).toEqual([]);
+  await stream.close();
 });

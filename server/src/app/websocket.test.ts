@@ -277,7 +277,7 @@ test("closing a principal's sockets ends its VNC, mic and VS Code sockets at onc
     }) as Principal;
   const page = open("page", {}, guest("g1"));
   const vnc = open("vnc", { vnc: { scale: 1 } }, guest("g1"));
-  const mic = open("mic", { mic: true }, guest("g1"));
+  const mic = open("mic", { mic: { dictate: false } }, guest("g1"));
   const vscode = open(
     "vscode",
     {
