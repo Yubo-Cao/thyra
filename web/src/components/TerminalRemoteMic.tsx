@@ -10,6 +10,7 @@ import { t } from "../i18n";
 import { shortcutMatches, shortcutTitle } from "../shortcutPreferences";
 import {
   REMOTE_MIC_HOLD_MS,
+  REMOTE_MIC_REPEAT_MS,
   REMOTE_MIC_TAIL_MS,
   type RemoteMicSession,
 } from "../voice/remoteMicProtocol";
@@ -26,10 +27,12 @@ const delay = (ms: number) =>
 /**
  * The host microphone for one terminal pane: the `terminal.remoteMic`
  * shortcut (Ctrl+M) streams this computer's microphone to the Thyra host's
- * virtual default source and presses the agent's voice key in the pane
- * (Claude Code's tap-mode `voice:pushToTalk`). The second press keeps
- * streaming briefly so the last words reach the host, presses the key again
- * (the agent stops and sends), then releases the mic.
+ * virtual default source and holds the agent's voice key in the pane
+ * (Claude Code's hold-mode `voice:pushToTalk`) by repeating it the way a
+ * held key auto-repeats. Hold mode, unlike tap mode, starts with text
+ * already in the prompt. The second press keeps streaming briefly so the
+ * last words reach the host, lets go of the key (the agent stops and
+ * inserts or sends), then releases the mic.
  *
  * Starting needs this pane to hold the keyboard focus; once recording, the
  * shortcut stops it from anywhere. Leaving the pane, unmounting or losing
@@ -55,8 +58,8 @@ export function useTerminalRemoteMic({
   const [level, setLevel] = useState(0);
   const phaseRef = useRef<RemoteMicPhase>("idle");
   const sessionRef = useRef<RemoteMicSession | null>(null);
-  /** The terminal whose agent was started, to stop the same one. */
-  const keyTerminalRef = useRef<string | null>(null);
+  /** Stops repeating the voice key, which lets go of it. */
+  const releaseRef = useRef<(() => void) | null>(null);
   const runRef = useRef(0);
   const latest = useRef({ connectionId, terminalId, pressVoiceKey, onError });
   latest.current = { connectionId, terminalId, pressVoiceKey, onError };
@@ -79,15 +82,43 @@ export function useTerminalRemoteMic({
     }
   };
 
+  /**
+   * Press the voice key now and again every REMOTE_MIC_REPEAT_MS until the
+   * returned function runs, like a held key. A failed press stops the
+   * repeat and reports through `onFail`.
+   */
+  const holdKey = (terminal: string, onFail: () => void) => {
+    let held = true;
+    let timer = 0;
+    const press = async () => {
+      if (!held) return;
+      if (await pressKey(terminal)) {
+        if (held) timer = window.setTimeout(press, REMOTE_MIC_REPEAT_MS);
+      } else if (held) {
+        held = false;
+        onFail();
+      }
+    };
+    void press();
+    return () => {
+      held = false;
+      window.clearTimeout(timer);
+    };
+  };
+
+  const releaseKey = () => {
+    releaseRef.current?.();
+    releaseRef.current = null;
+  };
+
   const finish = useCallback(async () => {
     if (phaseRef.current !== "recording") return;
     const run = runRef.current;
     set("stopping");
     // The last syllables are still on their way to the host.
     await delay(REMOTE_MIC_TAIL_MS);
-    const terminal = keyTerminalRef.current;
-    keyTerminalRef.current = null;
-    if (terminal) await pressKey(terminal);
+    // The agent stops once the repeats stop; keep the source up meanwhile.
+    releaseKey();
     await delay(REMOTE_MIC_HOLD_MS);
     const session = sessionRef.current;
     sessionRef.current = null;
@@ -97,6 +128,7 @@ export function useTerminalRemoteMic({
 
   const cancelStart = useCallback(() => {
     runRef.current++;
+    releaseKey();
     sessionRef.current?.cancel();
     sessionRef.current = null;
     set("idle");
@@ -133,12 +165,10 @@ export function useTerminalRemoteMic({
           onEnd: (message) => {
             if (runRef.current !== run) return;
             latest.current.onError(message);
-            // Stop the agent's recording too, as the second press would.
-            const pressed = keyTerminalRef.current;
-            keyTerminalRef.current = null;
+            // Let go of the key too, so the agent stops recording.
+            releaseKey();
             sessionRef.current = null;
             set("idle");
-            if (pressed) void pressKey(pressed);
           },
         }),
       )
@@ -149,17 +179,11 @@ export function useTerminalRemoteMic({
             return;
           }
           sessionRef.current = session;
-          const pressed = await pressKey(terminal);
-          if (runRef.current !== run) {
-            // Cancelled while the key was on its way: stop the agent again.
-            if (pressed) void pressKey(terminal);
-            return;
-          }
-          if (!pressed) {
-            cancelStart();
-            return;
-          }
-          keyTerminalRef.current = terminal;
+          releaseRef.current = holdKey(terminal, () => {
+            if (runRef.current !== run) return;
+            if (phaseRef.current === "recording") void finish();
+            else cancelStart();
+          });
           set("recording");
         },
         (error: unknown) => {
@@ -171,7 +195,7 @@ export function useTerminalRemoteMic({
           );
         },
       );
-  }, [cancelStart]);
+  }, [cancelStart, finish]);
 
   const toggle = useCallback(() => {
     const current = phaseRef.current;

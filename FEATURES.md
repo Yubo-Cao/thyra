@@ -341,13 +341,17 @@ that another fetch could change.
 - **Host microphone**: press **Ctrl+M** (every platform) in an agent pane on
   the Thyra host to speak into the agent's own voice input from another
   computer. Thyra streams this browser's microphone to a virtual PipeWire
-  source that is the host's default mic only while you talk, and presses the
-  agent's voice key in the pane; press **Ctrl+M** again to stop and send.
+  source that is the host's default mic only while you talk, and holds the
+  agent's voice key in the pane (repeating it like a held key); press
+  **Ctrl+M** again to let go and send. It works with text already in the
+  prompt; the words go in at the cursor.
   It needs a Linux host with PipeWire (`pw-cat`, `pw-metadata`), a secure
   origin, and the right to type into the pane. For Claude Code, bind the key
-  in `~/.claude/keybindings.json` and use tap mode in `~/.claude/settings.json`:
+  in `~/.claude/keybindings.json` and use hold mode in `~/.claude/settings.json`:
   `{ "bindings": [{ "context": "Chat", "bindings": { "f12": "voice:pushToTalk" } }] }`
-  and `"voice": { "enabled": true, "mode": "tap" }`; start with an empty prompt.
+  and `"voice": { "enabled": true, "mode": "hold", "autoSubmit": true }`
+  (tap mode only starts with an empty prompt; drop `autoSubmit` to insert
+  without sending).
 - The composer supports IME, dictation, voice input, multiline text, and images.
   Its microphone dictates into the draft instead of the terminal. **Insert**
   does not execute; **Send** adds one Enter. Drafts are in-memory per
