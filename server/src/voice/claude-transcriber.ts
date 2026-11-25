@@ -199,7 +199,12 @@ export function createClaudeTranscriber(deps: ClaudeTranscriberDeps) {
     for (const [key, value] of Object.entries(deps.env)) {
       if (value === undefined) continue;
       // Not a Herdr pane: keep its hooks and Thyra's own settings out.
-      if (/^(HERDR_|THYRA_|TMUX|ZELLIJ|CLAUDECODE|CLAUDE_CODE_)/.test(key))
+      // Nor a child of whichever Claude Code started Thyra.
+      if (
+        /^(HERDR_|THYRA_|TMUX|ZELLIJ|CLAUDECODE$|CLAUDE_CODE_(ENTRYPOINT|CHILD_SESSION|SSE_PORT)$)/.test(
+          key,
+        )
+      )
         continue;
       env[key] = value;
     }
