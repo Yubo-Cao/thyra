@@ -403,6 +403,7 @@ export function createLegacyConnectionRuntime(args: {
     markRpcError: args.markRpcError,
     displayOwnership,
     socketIdentity: args.socketIdentity,
+    claimHolder: (paneId) => claims.get(paneId)?.participantId ?? null,
     readPaneHistory: async (paneId, lines) => {
       // ANSI keeps Herdr on its passive snapshot path (see readPaneText).
       const result = await herdr.call(

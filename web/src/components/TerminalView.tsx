@@ -107,6 +107,7 @@ import { setTerminalZoom } from "../touchGestures";
 import {
   focusTerminalEndpoint,
   setTerminalStdinDisabled,
+  terminalFollows,
   type TerminalTouchLinkState,
   type TerminalViewSetters,
   type TerminalWorkspaceFileRequest,
@@ -482,14 +483,16 @@ export function TerminalView({
     }
   }, [closeTerminalInput, control.access.viewOnly, refs, termInstance]);
   // A device that may not size the pane mirrors the displaying device's size,
-  // scaled to fit. Gaining the right to size it (taking control, pinning the
+  // scaled to fit; so does one that joined a pane another viewer sizes.
+  // Gaining the right to size it (taking control, typing, pinning the
   // display here) sizes the pane for this viewport at once.
-  const { canResize, inputOnly } = control.access;
-  const couldResize = useRef(canResize);
+  const { canResize, inputOnly, ownsLayout } = control.access;
   useLayoutEffect(() => {
-    refs.followShared.current = !canResize;
-    const gained = canResize && !couldResize.current;
-    couldResize.current = canResize;
+    const wasFollowing = refs.followShared.current;
+    refs.mayResize.current = canResize;
+    refs.ownsLayout.current = ownsLayout;
+    refs.followShared.current = terminalFollows(refs);
+    const gained = wasFollowing && !refs.followShared.current;
     if (!termInstance) return;
     const size = sessionBindings.fitVisibleTerminal();
     if (!gained || !size || !pane?.terminal_id) return;
@@ -502,6 +505,7 @@ export function TerminalView({
       .catch(() => {});
   }, [
     canResize,
+    ownsLayout,
     connectionClient,
     termInstance,
     pane?.terminal_id,

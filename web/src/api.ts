@@ -230,6 +230,8 @@ export interface TerminalPush {
   full: boolean;
   /** Whether the pane application reports mouse input; set on every frame. */
   mouse_reporting?: boolean;
+  /** Another viewer sizes this stream: mirror this frame's size. */
+  follow?: boolean;
   /** Opaque identity from this terminal socket's advertised read-only resolver. */
   link_frame?: string;
   graphics?: import("../../shared/terminalGraphics").TerminalGraphics;

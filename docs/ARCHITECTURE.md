@@ -896,7 +896,11 @@ render stream for a terminal among all watching browsers. One writer at a time:
 `Take control` claims the pane with a 15-second takeover protection, typing into
 an unclaimed pane claims it, and the bridge refuses input, resizing and focus
 from anyone else ([single writer](#trust-boundary)). Non-owners preserve an existing shared terminal's
-dimensions on attachment. Pane viewing mode blocks local keyboard, IME, paste,
+dimensions on attachment.
+The bridge enforces the size side itself, whatever the page asks: without a display owner (below), only the claim holder's page sizes a stream; on an unclaimed pane, its **sizer** does, the page that opened the stream or last sized it.
+Any other page's `terminal.attach` joins at the stream's size and its `terminal.resize` is skipped (`reason: "follow"`), so opening a pane someone else watches never resizes it, even before the page has the presence snapshot.
+Frames to such a page carry `follow: true`, and the page mirrors their size scaled to fit; taking the claim (typing, **Take control**) ends following and sizes the pane for that viewport.
+When the sizer detaches, the most recent remaining viewer that may size the stream becomes the sizer; its frames stop saying `follow`, and its page refits and resizes. Pane viewing mode blocks local keyboard, IME, paste,
 composer, focus, and resize commands while allowing explicit history scrolling;
 it is a browser-local preference, and it is on whenever another person holds the
 pane or the caller is a viewer of the workspace.

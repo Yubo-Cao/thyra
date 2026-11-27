@@ -240,6 +240,12 @@ function createTerminalRefs(initial: {
     // pan a pinch-zoomed view by this offset.
     followShared: box(false),
     followPan: box({ x: 0, y: 0 }),
+    // What decides `followShared`: whether pane control lets this page size
+    // the pane, whether it holds the pane's claim, and whether the bridge
+    // says another viewer sizes the stream (the latest frame's `follow`).
+    mayResize: box(true),
+    ownsLayout: box(false),
+    bridgeFollow: box(false),
     // This viewer's frame stream: minimum interval, and paused for a text
     // preview. Sent with each attach and on change.
     frameInterval: box(0),
@@ -393,6 +399,23 @@ export type TerminalViewInputs = {
 export type TerminalSession = ReturnType<typeof openTerminalSession>;
 
 /** Creates the terminal and streams the pane's frames into it. */
+/**
+ * Whether a page mirrors the stream's size instead of sending its own:
+ * pane control forbids sizing (another person holds it, another device
+ * displays it), or the bridge says another viewer sizes it and this page
+ * has not taken the pane's claim (typing here takes it).
+ */
+export function terminalFollows(refs: {
+  mayResize: { current: boolean };
+  ownsLayout: { current: boolean };
+  bridgeFollow: { current: boolean };
+}): boolean {
+  return (
+    !refs.mayResize.current ||
+    (refs.bridgeFollow.current && !refs.ownsLayout.current)
+  );
+}
+
 export function openTerminalSession(bindings: TerminalSessionBindings) {
   // The session and its installers destructure in one shared order.
   const { client, refs, ui } = bindings;
@@ -811,6 +834,25 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
       attachTimeouts.current = 0;
       ui.setTerminalLoading(false);
       ui.setTerminalAttachError("");
+    }
+    // The bridge hands this page the size when the viewer sizing the
+    // stream leaves; it takes it at once.
+    const bridgeFollow = frame.follow === true;
+    if (bridgeFollow !== refs.bridgeFollow.current) {
+      refs.bridgeFollow.current = bridgeFollow;
+      const follow = terminalFollows(refs);
+      if (follow !== refs.followShared.current) {
+        refs.followShared.current = follow;
+        const size = follow ? null : fitVisibleTerminal();
+        if (size)
+          void client
+            .call("terminal.resize", {
+              terminal_id: frame.terminal_id,
+              cols: size.cols,
+              rows: size.rows,
+            })
+            .catch(() => {});
+      }
     }
     // Mirror the displaying device's size; the bridge sends the whole surface.
     if (

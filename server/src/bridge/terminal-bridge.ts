@@ -62,6 +62,12 @@ type SharedTerminalSession = {
   /** The viewer whose terminal colors this stream reports to Herdr. */
   themeViewer: ServerWebSocket<unknown> | null;
   hostTheme: EndpointHostTheme | null;
+  /**
+   * The viewer whose viewport sets the stream's size while the pane has
+   * neither a display owner nor a claim: the first to open it, or the last
+   * to size it. Others joining follow it instead of resizing the pane.
+   */
+  sizer?: ServerWebSocket<unknown> | null;
 };
 
 /** A pane's terminal as Herdr lists it now. */
@@ -214,6 +220,8 @@ export function createTerminalBridge(args: {
   displayOwnership?: DisplayOwnership;
   /** The bridge-assigned participant and device of a browser socket. */
   socketIdentity?: (ws: ServerWebSocket<unknown>) => SocketIdentity | null;
+  /** The participant holding a pane's input claim, if any. */
+  claimHolder?: (paneId: string) => string | null;
   /** A pane's scrollback as ANSI text, read without sending it input. */
   readPaneHistory?: (
     paneId: string,
@@ -621,11 +629,62 @@ export function createTerminalBridge(args: {
       if (!viewport) continue;
       if (
         viewport.follow ||
+        !mayLead(viewer, shared) ||
         (display?.active() &&
           !display.permits(paneId, args.socketIdentity?.(viewer) ?? null))
       )
         followShared(viewer, shared);
     }
+  }
+
+  /**
+   * Whether `ws` may set the stream's size, beyond what `maySize` allows:
+   * a display owner decides alone; otherwise the pane's claim holder does;
+   * on an unclaimed pane, the stream's current sizer, or anyone once that
+   * sizer stopped watching. Merely opening a pane someone else watches
+   * never resizes it.
+   */
+  function mayLead(
+    ws: ServerWebSocket<unknown>,
+    shared: SharedTerminalSession,
+  ): boolean {
+    const paneId =
+      shared.thin.currentPaneId || knownPanes.get(shared.terminalId);
+    if (paneId && args.displayOwnership?.owner(paneId)) return true;
+    const holder = paneId ? args.claimHolder?.(paneId) : null;
+    if (holder) return holder === args.socketIdentity?.(ws)?.participantId;
+    const sizer = shared.sizer;
+    return !sizer || sizer === ws || !shared.viewers.has(sizer);
+  }
+
+  /**
+   * The sizer stopped watching: the most recent remaining viewer that may
+   * size the stream takes over at its own viewport. Its next frame no
+   * longer says `follow`, so its page refits and resizes.
+   */
+  function handOffSize(shared: SharedTerminalSession) {
+    shared.sizer = null;
+    const viewers = Array.from(shared.viewers).reverse();
+    const paneId =
+      shared.thin.currentPaneId || knownPanes.get(shared.terminalId) || null;
+    const next = viewers.find(
+      (viewer) =>
+        mayLead(viewer, shared) &&
+        (args.displayOwnership?.permits(
+          paneId,
+          args.socketIdentity?.(viewer) ?? null,
+        ) ??
+          true),
+    );
+    if (!next) return;
+    const viewport = terminalViewers.get(next)?.get(shared.terminalId);
+    if (!viewport?.follow) return;
+    shared.sizer = next;
+    terminalViewers
+      .get(next)
+      ?.set(shared.terminalId, { cols: shared.cols, rows: shared.rows });
+    frameStreams.get(next)?.get(shared.terminalId)?.reset();
+    shared.replayFrame?.(next, { cols: shared.cols, rows: shared.rows });
   }
 
   function formatBytes(bytes: number): string {
@@ -731,12 +790,15 @@ export function createTerminalBridge(args: {
         if (shared.viewers.size === 0) {
           shared.thin.close();
           if (sharedTerminals.get(id) === shared) sharedTerminals.delete(id);
-        } else if (shared.themeViewer === ws) {
-          const next = Array.from(shared.viewers).find((viewer) =>
-            hostThemes.has(viewer),
-          );
-          if (next) reportViewerTheme(shared, next);
-          else shared.themeViewer = null;
+        } else {
+          if (shared.sizer === ws) handOffSize(shared);
+          if (shared.themeViewer === ws) {
+            const next = Array.from(shared.viewers).find((viewer) =>
+              hostThemes.has(viewer),
+            );
+            if (next) reportViewerTheme(shared, next);
+            else shared.themeViewer = null;
+          }
         }
       }
       viewed?.delete(id);
@@ -884,7 +946,8 @@ export function createTerminalBridge(args: {
           });
           return;
         }
-        let payload = payloads.get(key);
+        const payloadKey = viewport.follow ? `${key}:follow` : key;
+        let payload = payloads.get(payloadKey);
         if (!payload) {
           const bytes =
             t.frame && (width !== t.width || height !== t.height)
@@ -907,9 +970,10 @@ export function createTerminalBridge(args: {
                 ? { history: t.history }
                 : {}),
               bytes: Buffer.from(bytes).toString("base64"),
+              ...(viewport.follow ? { follow: true } : {}),
             },
           });
-          payloads.set(key, payload);
+          payloads.set(payloadKey, payload);
         }
         // Endpoint streams always repaint the full surface, so a held frame
         // may be replaced by a newer one.
@@ -1360,8 +1424,16 @@ export function createTerminalBridge(args: {
             streams.set(
               terminalId,
               new TerminalFrameStream((terminal) => {
+                // `follow`: another viewer sizes this stream, so the page
+                // mirrors the frame's size instead of sending its own.
+                const follow =
+                  terminalViewers.get(ws)?.get(terminalId)?.follow === true;
                 const payload = serialize({
-                  terminal: { terminal_id: terminalId, ...terminal },
+                  terminal: {
+                    terminal_id: terminalId,
+                    ...terminal,
+                    ...(follow ? { follow: true } : {}),
+                  },
                 });
                 if (args.safeSend(ws, payload, "terminal-frame"))
                   return payload.length;
@@ -1418,13 +1490,14 @@ export function createTerminalBridge(args: {
           // or resized this stream while our attach awaited protocol discovery.
           if (shared.thin.currentPaneId)
             rememberFact(knownPanes, terminalId, shared.thin.currentPaneId);
-          if (preserveSize) {
+          if (preserveSize || !mayLead(ws, shared)) {
             cols = shared.cols;
             rows = shared.rows;
             terminalViewers
               .get(ws)
               ?.set(terminalId, { cols, rows, follow: true });
           } else {
+            shared.sizer = ws;
             rememberFact(displaySizes, terminalId, {
               cols,
               rows,
@@ -1448,7 +1521,10 @@ export function createTerminalBridge(args: {
               size: `${cols}x${rows}`,
             });
           } else if (sharedMode === "reused" && needsInitialFrame) {
-            shared.replayFrame?.(ws, { cols, rows });
+            shared.replayFrame?.(
+              ws,
+              terminalViewers.get(ws)?.get(terminalId) ?? { cols, rows },
+            );
           }
           validate();
           logger.debug("terminal attached", {
@@ -1707,6 +1783,13 @@ export function createTerminalBridge(args: {
           followShared(ws, shared);
           return reply({ ok: true, skipped: true, reason: "display_owner" });
         }
+        if (!mayLead(ws, shared)) {
+          // Another viewer sizes this unclaimed pane, or another
+          // participant holds it: follow that size.
+          followShared(ws, shared);
+          return reply({ ok: true, skipped: true, reason: "follow" });
+        }
+        shared.sizer = ws;
         shared.replayFrame = undefined;
         thin.resize(cols, rows);
         terminalViewers.get(ws)!.set(requestedTerminalId, { cols, rows });

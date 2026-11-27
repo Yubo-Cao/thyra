@@ -22,9 +22,15 @@ test("a view-only join preserves the existing stream size and still receives a f
   const viewer = {} as ServerWebSocket<unknown>;
   const ownerMessages: string[] = [];
   const viewerMessages: string[] = [];
+  let holder: string | null = null;
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
     lookupPaneId: async () => "p1",
+    socketIdentity: (ws) =>
+      ws === owner
+        ? { participantId: "web-owner", deviceKey: "device:owner" }
+        : { participantId: "web-viewer", deviceKey: "device:viewer" },
+    claimHolder: () => holder,
     safeSend: (ws, payload) => {
       (ws === owner ? ownerMessages : viewerMessages).push(payload);
       return true;
@@ -47,14 +53,98 @@ test("a view-only join preserves the existing stream size and still receives a f
       preserve_size: true,
     });
     expect(ownerMessages).toHaveLength(0);
-    expect((await waitForTerminalFrame(viewerMessages)).width).toBe(100);
-    ownerMessages.length = 0;
+    const joined = await waitForTerminalFrame(viewerMessages);
+    expect(joined.width).toBe(100);
+    expect(joined.follow).toBe(true);
+    // The owner opened the unclaimed pane, so it sizes it; the viewer's
+    // window does not, until the viewer holds the pane's claim.
+    viewerMessages.length = 0;
     await bridge.handleTerminalRpc(viewer, "control", "terminal.resize", {
       terminal_id: "t1",
       cols: 80,
       rows: 24,
     });
-    expect((await waitForTerminalFrame(ownerMessages)).width).toBe(80);
+    expect(
+      viewerMessages
+        .map((line) => JSON.parse(line))
+        .find((m) => m.id === "control")?.result,
+    ).toEqual({ ok: true, skipped: true, reason: "follow" });
+    expect(ownerMessages).toHaveLength(0);
+    holder = "web-viewer";
+    await bridge.handleTerminalRpc(viewer, "control", "terminal.resize", {
+      terminal_id: "t1",
+      cols: 80,
+      rows: 24,
+    });
+    const resized = await waitForTerminalFrame(ownerMessages);
+    expect(resized.width).toBe(80);
+    expect(resized.follow).toBe(true);
+  } finally {
+    bridge.dispose();
+  }
+});
+test("joining an unclaimed pane follows its sizer until the sizer leaves", async () => {
+  const socketPath = await startEndpointServer();
+  const owner = {} as ServerWebSocket<unknown>;
+  const joiner = {} as ServerWebSocket<unknown>;
+  const inbox = new Map<ServerWebSocket<unknown>, string[]>([
+    [owner, []],
+    [joiner, []],
+  ]);
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    lookupPaneId: async () => "p1",
+    socketIdentity: (ws) =>
+      ws === owner
+        ? { participantId: "web-owner", deviceKey: "device:owner" }
+        : { participantId: "web-joiner", deviceKey: "device:joiner" },
+    claimHolder: () => null,
+    safeSend: (ws, payload) => {
+      inbox.get(ws)!.push(payload);
+      return true;
+    },
+    clientLabel: () => "test",
+    markRpcError: () => {},
+  });
+  try {
+    await bridge.handleTerminalRpc(owner, "a1", "terminal.attach", {
+      terminal_id: "t1",
+      cols: 100,
+      rows: 30,
+    });
+    await waitForTerminalFrame(inbox.get(owner)!);
+    inbox.get(owner)!.length = 0;
+    // A page that does not know the pane's claims yet asks for its size.
+    await bridge.handleTerminalRpc(joiner, "a2", "terminal.attach", {
+      terminal_id: "t1",
+      cols: 40,
+      rows: 15,
+    });
+    const joined = await waitForTerminalFrame(inbox.get(joiner)!);
+    expect(joined).toMatchObject({ width: 100, follow: true });
+    await Bun.sleep(20);
+    expect(inbox.get(owner)!).toHaveLength(0);
+
+    // The owner closes its window: the joiner takes the size.
+    inbox.get(joiner)!.length = 0;
+    await bridge.handleTerminalRpc(owner, "d1", "terminal.detach", {
+      terminal_id: "t1",
+    });
+    const handed = await waitForTerminalFrame(inbox.get(joiner)!);
+    expect(handed.follow).toBeUndefined();
+    inbox.get(joiner)!.length = 0;
+    await bridge.handleTerminalRpc(joiner, "r1", "terminal.resize", {
+      terminal_id: "t1",
+      cols: 40,
+      rows: 15,
+    });
+    expect(
+      inbox
+        .get(joiner)!
+        .map((line) => JSON.parse(line))
+        .find((m) => m.id === "r1")?.result,
+    ).toEqual({ ok: true });
+    expect((await waitForTerminalFrame(inbox.get(joiner)!)).width).toBe(40);
   } finally {
     bridge.dispose();
   }
@@ -176,6 +266,16 @@ describe("display owner enforcement", () => {
         pane_id: "p1",
         action: "release",
       });
+      // Without a display owner or a claim, the iPad that sized the pane
+      // last keeps sizing it; the phone follows until the iPad leaves.
+      expect(
+        await call(phone, "terminal.resize", {
+          terminal_id: "t1",
+          cols: 45,
+          rows: 30,
+        }),
+      ).toEqual({ ok: true, skipped: true, reason: "follow" });
+      await call(ipad, "terminal.detach", { terminal_id: "t1" });
       expect(
         await call(phone, "terminal.resize", {
           terminal_id: "t1",
@@ -1198,6 +1298,12 @@ test("drops held frames for every viewer when an attach resizes the shared termi
       return true;
     },
     dropCoalesced: (ws, coalesceKey) => drops.push({ ws, coalesceKey }),
+    // The second viewer holds the pane's claim, so its attach sizes it.
+    socketIdentity: (ws) =>
+      ws === second
+        ? { participantId: "web-second", deviceKey: "device:second" }
+        : { participantId: "web-first", deviceKey: "device:first" },
+    claimHolder: () => "web-second",
     clientLabel: () => "test",
     markRpcError: () => undefined,
   });
@@ -1356,7 +1462,12 @@ describe("terminal frame fanout", () => {
   });
 
   async function fanout() {
-    const harness = offlineBridge();
+    // One participant holding the claim in every window, so each attach
+    // sizes the stream and the small viewports are clipped, not followed.
+    const harness = offlineBridge({
+      socketIdentity: () => ({ participantId: "web-a", deviceKey: "d" }),
+      claimHolder: () => "web-a",
+    });
     const full = {} as ServerWebSocket<unknown>;
     const fullDelta = {} as ServerWebSocket<unknown>;
     const clipped = {} as ServerWebSocket<unknown>;
@@ -1368,13 +1479,18 @@ describe("terminal frame fanout", () => {
       [clippedDelta, 4, 2, true],
       [full, 6, 3, false],
       [fullDelta, 6, 3, true],
-    ] as const)
+    ] as const) {
       await harness.call(ws, "terminal.attach", {
         terminal_id: "t1",
         cols,
         rows,
         ...(delta ? { frame_delta: true } : {}),
       });
+      // The mocked connect never looks the pane up.
+      Object.defineProperty(harness.sessions[0], "currentPaneId", {
+        value: "p1",
+      });
+    }
     harness.clear();
     return { harness, full, fullDelta, clipped, clippedDelta };
   }

@@ -1359,6 +1359,12 @@ test("endpoint frames are clipped per viewer and per terminal after resize", asy
   const bridge = createTerminalBridge({
     clientSocketPath: socketPath,
     lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
+    // The large viewer holds the left pane, so its attach sizes the stream.
+    socketIdentity: (viewer) =>
+      viewer === large
+        ? { participantId: "web-large", deviceKey: "device:large" }
+        : { participantId: "web-small", deviceKey: "device:small" },
+    claimHolder: (paneId) => (paneId === "w1:p1" ? "web-large" : null),
     safeSend: (viewer, payload) => {
       const message = JSON.parse(payload);
       if (message.terminal) frames.push({ viewer, terminal: message.terminal });
@@ -1382,8 +1388,10 @@ test("endpoint frames are clipped per viewer and per terminal after resize", asy
       });
     }
     await Bun.sleep(600);
+    // The large viewer holds the left pane: the small one follows its size
+    // there, and keeps sizing the right pane it opened.
     for (const [viewer, terminalId, width, height] of [
-      [small, "left", 6, 2],
+      [small, "left", 10, 4],
       [small, "right", 8, 3],
       [large, "left", 10, 4],
     ] as const) {
@@ -1500,7 +1508,8 @@ test.each([
             coalesceKey,
           });
           if (JSON.parse(payload).terminal_closed) received.emit("closed");
-          if (JSON.parse(payload).terminal) {
+          // A second viewer joining follows the stream, so its frames say so.
+          if (JSON.parse(payload).terminal && ws === browser) {
             latest.set(
               `${identity.connectionId}:${identity.connectionGeneration}`,
               payload,
