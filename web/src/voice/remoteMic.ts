@@ -104,7 +104,7 @@ export async function startRemoteMic(
         status.reason ??
           t("This Thyra server cannot offer its host microphone."),
       );
-    if (!status.connections.includes(options.connectionId))
+    if (!options.dictate && !status.connections.includes(options.connectionId))
       throw new Error(
         t(
           "This pane runs on another computer; the host microphone reaches only panes on the Thyra host.",

@@ -343,23 +343,24 @@ that another fetch could change.
   computer. Thyra streams this browser's microphone to a virtual PipeWire
   source that is the host's default mic only while you talk, and holds the
   agent's voice key in the pane (repeating it like a held key); press
-  **Ctrl+M** again to let go and send. It works with text already in the
+  **Ctrl+M** again to let go. It works with text already in the
   prompt; the words go in at the cursor.
   It needs a Linux host with PipeWire (`pw-cat`, `pw-metadata`), a secure
   origin, and the right to type into the pane. For Claude Code, bind the key
   in `~/.claude/keybindings.json` and use hold mode in `~/.claude/settings.json`:
   `{ "bindings": [{ "context": "Chat", "bindings": { "f12": "voice:pushToTalk" } }] }`
-  and `"voice": { "enabled": true, "mode": "hold", "autoSubmit": true }`
-  (tap mode only starts with an empty prompt; drop `autoSubmit` to insert
-  without sending).
+  and `"voice": { "enabled": true, "mode": "hold", "autoSubmit": false }`
+  (tap mode only starts with an empty prompt; `autoSubmit: true` sends the
+  words instead of leaving them in the prompt to edit).
   Panes whose agent has no voice input of its own (Codex, Cursor, Gemini,
   a shell) dictate with Claude Code instead: a hidden Claude Code on the host
   transcribes, and **Ctrl+M** again pastes the text into the pane without
   sending it. It needs `claude` on the host (`THYRA_TRANSCRIBER=off` turns
   it off; `THYRA_TRANSCRIBER_CLAUDE` names another binary); the first use
-  starts it (a few seconds), and it exits after 30 idle minutes. Where the
-  host microphone cannot reach the pane, **Ctrl+M** starts Thyra's own voice
-  typing instead.
+  starts it (a few seconds), and it exits after 30 idle minutes. Panes on
+  another computer dictate the same way, since their agent cannot hear the
+  host microphone. Where the host cannot dictate, **Ctrl+M** starts Thyra's
+  own voice typing instead.
 - The composer supports IME, dictation, voice input, multiline text, and images.
   Its microphone dictates into the draft instead of the terminal. **Insert**
   does not execute; **Send** adds one Enter. Drafts are in-memory per

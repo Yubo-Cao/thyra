@@ -257,10 +257,12 @@ export function createAuthenticatedRouter(
       );
     }
     if (url.pathname === "/ws/mic") {
-      // The HTTP policy checked that the caller may type into the terminal;
-      // its pane must also run on this host to hear the host's microphone.
+      // The HTTP policy checked that the caller may type into the terminal.
+      // A pane's agent hears the host's microphone only on this host; panes
+      // elsewhere get the host's transcript pasted instead.
       const connectionId = url.searchParams.get("connection_id") ?? "";
-      if (!localConnections.has(connectionId))
+      const dictate = url.searchParams.get("mode") === "dictate";
+      if (!dictate && !localConnections.has(connectionId))
         return new Response("this pane does not run on the Thyra host", {
           status: 409,
         });
@@ -275,7 +277,7 @@ export function createAuthenticatedRouter(
           clientSession: null,
           directOrigin: null,
           rtc: false,
-          mic: { dictate: url.searchParams.get("mode") === "dictate" },
+          mic: { dictate },
         },
       })
         ? undefined

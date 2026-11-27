@@ -37,9 +37,9 @@ const delay = (ms: number) =>
  *
  * Panes whose agent has no voice input (Codex, Cursor, a shell) dictate
  * instead: a hidden Claude Code on the host transcribes the stream, and the
- * text is pasted into the pane. Where the host microphone cannot reach the
- * pane, or the host cannot dictate, the shortcut runs `fallback` (Thyra's own
- * voice typing) instead.
+ * text is pasted into the pane. So do panes on another computer, whose agent
+ * cannot hear the host microphone. Where the host cannot dictate, the
+ * shortcut runs `fallback` (Thyra's own voice typing) instead.
  *
  * Starting needs this pane to hold the keyboard focus; once recording, the
  * shortcut stops it from anywhere. Leaving the pane, unmounting or losing
@@ -203,16 +203,17 @@ export function useTerminalRemoteMic({
       latest.current.onError(t("No active pane"));
       return;
     }
-    const dictating = latest.current.dictate();
     const status = statusRef.current;
+    const { connectionId } = latest.current;
+    // An agent on another computer cannot hear the host microphone, so the
+    // host transcribes and pastes, whatever the agent is.
+    const local = status
+      ? status.connections.includes(connectionId)
+      : connectionId === "local";
+    const dictating = !local || latest.current.dictate();
     // Refreshed for the next press; this one goes by what is known.
     refreshStatus();
-    if (
-      status &&
-      (!status.available ||
-        !status.connections.includes(latest.current.connectionId) ||
-        (dictating && !status.dictation))
-    ) {
+    if (status && (!status.available || (dictating && !status.dictation))) {
       latest.current.fallback();
       return;
     }
