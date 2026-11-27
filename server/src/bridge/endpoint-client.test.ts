@@ -4,7 +4,11 @@ import * as net from "node:net";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
-import { EndpointClient, type EndpointSurface } from "./endpoint-client";
+import {
+  EndpointClient,
+  type EndpointSurface,
+  SCOPED_TAB_GEOMETRY_CAPABILITY,
+} from "./endpoint-client";
 import type { CellData, FrameData } from "./frame-codec";
 import {
   SurfaceReader,
@@ -1686,4 +1690,49 @@ test("a frame arriving in many chunks is assembled with one copy", () => {
     concat.mockRestore();
     client.close();
   }
+});
+
+describe("scoped tab geometry (Herdr fork capability)", () => {
+  test("sends tab_scoped_geometry and initial pane hints in hello and exposes capability", async () => {
+    let receivedHello: Record<string, unknown> | null = null;
+    const socketPath = await startEndpointServer(
+      (hello) => {
+        receivedHello = hello;
+      },
+      undefined,
+      true,
+      {
+        ...WELCOME,
+        capabilities: [SCOPED_TAB_GEOMETRY_CAPABILITY],
+      },
+    );
+    const client = new EndpointClient(socketPath);
+    try {
+      await client.connect(129, 55, {
+        tabScopedGeometry: true,
+        initialPaneId: "w1:p2",
+        initialPaneSize: { cols: 128, rows: 55 },
+      });
+      expect(client.supportsScopedTabGeometry).toBe(true);
+      expect(receivedHello).toMatchObject({
+        surface_size: { cols: 129, rows: 55 },
+        tab_scoped_geometry: true,
+        initial_pane_id: "w1:p2",
+        initial_pane_size: { cols: 128, rows: 55 },
+      });
+    } finally {
+      client.close();
+    }
+  });
+
+  test("reports supportsScopedTabGeometry false when unadvertised", async () => {
+    const socketPath = await startEndpointServer(() => {});
+    const client = new EndpointClient(socketPath);
+    try {
+      await client.connect(80, 24, { tabScopedGeometry: true });
+      expect(client.supportsScopedTabGeometry).toBe(false);
+    } finally {
+      client.close();
+    }
+  });
 });

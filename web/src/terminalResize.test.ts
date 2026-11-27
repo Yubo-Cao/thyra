@@ -273,6 +273,24 @@ describe("endpoint initial viewport", () => {
     ).toEqual({ cols: 146, rows: 69 });
   });
 
+  test("synthetic 1x1 provisional layout projects instead of clamping to 1x1", () => {
+    const provisional = {
+      zoomed: false,
+      area: { x: 0, y: 0, width: 1, height: 1 },
+      panes: [{ pane_id: "only", rect: { width: 1, height: 1 } }],
+    };
+    expect(
+      terminalEndpointViewportSize({ cols: 1, rows: 1 }, provisional, "only"),
+    ).toEqual({ cols: 2, rows: 1 });
+    expect(
+      terminalEndpointViewportSize(
+        { cols: 128, rows: 55 },
+        provisional,
+        "only",
+      ),
+    ).toEqual({ cols: 129, rows: 55 });
+  });
+
   test("missing or unusable layout leaves sizing to endpoint feedback", () => {
     expect(
       terminalEndpointViewportSize({ cols: 134, rows: 69 }, null, "left"),

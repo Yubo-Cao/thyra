@@ -55,10 +55,12 @@ export function terminalEndpointViewportSize(
   const paneChromeRows = splitLayout ? 2 : 0;
   // A pane already matching the current layout (±1 cell for xterm fit's
   // fractional-pixel flooring) means the layout is settled: return the area
-  // verbatim. Recomputing a rounded estimate per pane lets routine focus
-  // switches re-base the shared geometry on ±1-2 cell differences, visibly
-  // reflowing every pane in the tab.
+  // verbatim. Ignore synthetic 1x1 provisional layouts, which carry only ratio.
+  // Recomputing a rounded estimate per pane lets routine focus switches
+  // re-base the shared geometry on ±1-2 cell differences, visibly reflowing
+  // every pane in the tab.
   if (
+    (area.width > 1 || area.height > 1) &&
     Math.abs(size.cols - (pane.rect.width - paneChromeCols)) <= 1 &&
     Math.abs(size.rows - (pane.rect.height - paneChromeRows)) <= 1
   ) {

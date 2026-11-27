@@ -1344,6 +1344,201 @@ test("split tab reattach uses the full surface in every endpoint hello", async (
   }
 });
 
+test("scoped_tab_geometry accepts server-solved initial surface without extra resize", async () => {
+  const hellos: Array<Record<string, unknown>> = [];
+  const resizes: Array<[number, number]> = [];
+  // Server solves 128x55 (alternate screen, 0 scrollbar col) even though
+  // the browser guessed 129x55 as its fallback surface size.
+  const solvedFrame: FrameData = {
+    width: 128,
+    height: 55,
+    cells: Array.from({ length: 128 * 55 }, () => cell(" ")),
+    cursor: null,
+    hyperlinks: [],
+  };
+  const solvedPanes: TestPane[] = [
+    {
+      paneId: "w1:p1",
+      x: 0,
+      mouseReporting: false,
+      rect: { x: 0, y: 0, width: 128, height: 55 },
+      innerRect: { x: 0, y: 0, width: 128, height: 55 },
+    },
+  ];
+  const socketPath = await startSessionServer({
+    capabilities: () => ["health_check", "scoped_tab_geometry"],
+    onHello: (hello) => hellos.push(hello),
+    surfaceForHello: () => ({ frame: solvedFrame, panes: solvedPanes }),
+    onResize: (cols, rows, send) => {
+      resizes.push([cols, rows]);
+      send(solvedFrame, solvedPanes);
+    },
+  });
+  const session = new EndpointTerminalSession(
+    socketPath,
+    "term_alt",
+    async () => "w1:p1",
+  );
+  const frames: Array<{ width: number; height: number }> = [];
+  session.on("terminal", (frame) => frames.push(frame));
+  try {
+    await session.connect(128, 55, { cols: 129, rows: 55 }, "w1:p1");
+    await Bun.sleep(30);
+    expect(hellos).toHaveLength(1);
+    expect(hellos[0]).toMatchObject({
+      tab_scoped_geometry: true,
+      initial_pane_id: "w1:p1",
+      initial_pane_size: { cols: 128, rows: 55 },
+      surface_size: { cols: 129, rows: 55 },
+    });
+    expect(frames.at(-1)).toMatchObject({ width: 128, height: 55 });
+    // Focusing afterwards must not bounce back to the 129x55 fallback.
+    await session.focus(() => true);
+    expect(resizes).toEqual([]);
+  } finally {
+    session.close();
+  }
+});
+
+test("focus syncs an adopted sibling split surface so pane focus does not bounce the tab", async () => {
+  let sendSurface!: (panes: TestPane[], frame?: FrameData) => void;
+  const events: string[] = [];
+  const makeSurface = (cols: number, rows: number, innerCols: number) => ({
+    frame: {
+      width: cols,
+      height: rows,
+      cells: Array.from({ length: cols * rows }, () => cell(" ")),
+      cursor: null,
+      hyperlinks: [],
+    } satisfies FrameData,
+    panes: [
+      {
+        paneId: "w1:p1",
+        x: 0,
+        mouseReporting: false,
+        rect: { x: 0, y: 0, width: Math.floor(cols / 2), height: rows },
+        innerRect: { x: 1, y: 1, width: innerCols, height: rows - 2 },
+      },
+    ],
+  });
+  const initial = makeSurface(262, 57, 128);
+  const siblingSettled = makeSurface(260, 57, 127);
+  const socketPath = await startSessionServer({
+    initialSurface: initial,
+    onConnection: (send) => {
+      sendSurface = send;
+    },
+    onResize: (cols, rows, send) => {
+      events.push(`resize:${cols}x${rows}`);
+      send(siblingSettled.frame, siblingSettled.panes);
+    },
+    onRequest: (method) => {
+      events.push(`rpc:${method}`);
+      return {};
+    },
+  });
+  const session = new EndpointTerminalSession(
+    socketPath,
+    "term_split",
+    async () => "w1:p1",
+  );
+  try {
+    await session.connect(128, 55, { cols: 262, rows: 57 });
+    // Sibling pane settles the tab to 260x57 (1-col harmless undershoot for p1).
+    sendSurface(siblingSettled.panes, siblingSettled.frame);
+    await Bun.sleep(30);
+    events.length = 0;
+    await session.focus(() => true);
+    // Socket size must sync to 260x57 BEFORE pane.focus so Herdr keeps 260x57.
+    expect(events).toEqual(["resize:260x57", "rpc:pane.focus"]);
+  } finally {
+    session.close();
+  }
+});
+
+test("terminal bridge forwards pane_id and reuses observed exact surface size on revisit", async () => {
+  const hellos: Array<Record<string, unknown>> = [];
+  const resizes: Array<[number, number]> = [];
+  const altSurface = (cols: number, rows: number) => ({
+    frame: {
+      width: cols,
+      height: rows,
+      cells: Array.from({ length: cols * rows }, () => cell(" ")),
+      cursor: null,
+      hyperlinks: [],
+    } satisfies FrameData,
+    panes: [
+      {
+        paneId: "w1:p2",
+        x: 0,
+        mouseReporting: false,
+        rect: { x: 0, y: 0, width: cols, height: rows },
+        innerRect: { x: 0, y: 0, width: cols, height: rows },
+      },
+    ],
+  });
+  // Older Herdr without scoped_tab_geometry: obeys hello surface_size verbatim.
+  const socketPath = await startSessionServer({
+    onHello: (hello) => hellos.push(hello),
+    surfaceForHello: (cols, rows) => altSurface(cols, rows),
+    onResize: (cols, rows, send) => {
+      resizes.push([cols, rows]);
+      const next = altSurface(cols, rows);
+      send(next.frame, next.panes);
+    },
+  });
+  const ws = {} as ServerWebSocket<unknown>;
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    lookupPaneId: async () => "w1:p2",
+    safeSend: () => true,
+    clientLabel: () => "test",
+    markRpcError: () => {},
+  });
+  try {
+    // Visit 1: browser overestimates alt-screen chrome as 129x55; session fits down to 128x55.
+    await bridge.handleTerminalRpc(ws, "attach-1", "terminal.attach", {
+      terminal_id: "alt-term",
+      pane_id: "w1:p2",
+      cols: 128,
+      rows: 55,
+      surface_cols: 129,
+      surface_rows: 55,
+    });
+    await Bun.sleep(40);
+    expect(resizes).toEqual([[128, 55]]);
+    expect(hellos[0]).toMatchObject({
+      tab_scoped_geometry: true,
+      initial_pane_id: "w1:p2",
+      initial_pane_size: { cols: 128, rows: 55 },
+      surface_size: { cols: 129, rows: 55 },
+    });
+
+    await bridge.handleTerminalRpc(ws, "detach-1", "terminal.detach", {
+      terminal_id: "alt-term",
+    });
+    resizes.length = 0;
+
+    // Visit 2: bridge reuses observed 128x55 surface even though browser again guesses 129x55.
+    await bridge.handleTerminalRpc(ws, "attach-2", "terminal.attach", {
+      terminal_id: "alt-term",
+      pane_id: "w1:p2",
+      cols: 128,
+      rows: 55,
+      surface_cols: 129,
+      surface_rows: 55,
+    });
+    await Bun.sleep(40);
+    expect(hellos[1]).toMatchObject({
+      surface_size: { cols: 128, rows: 55 },
+      initial_pane_id: "w1:p2",
+    });
+    expect(resizes).toEqual([]);
+  } finally {
+    bridge.dispose();
+  }
+});
+
 test("endpoint frames are clipped per viewer and per terminal after resize", async () => {
   const initial = splitSurface(26, 6);
   const socketPath = await startSessionServer({

@@ -1002,6 +1002,14 @@ export function openTerminalSession(bindings: TerminalSessionBindings) {
     selectionBounds = bounds;
     const size = fitVisibleTerminal();
     if (!size) return;
+    if (
+      desiredTerminal.current &&
+      !attachedTerminal.current &&
+      !attachingTerminal.current
+    ) {
+      ui.retryAttach();
+      return;
+    }
     resizeSync.schedule(size);
   });
   ro.observe(container);

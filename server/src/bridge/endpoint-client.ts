@@ -89,6 +89,22 @@ const INPUT_GEOMETRY_KIND = "endpoint.input-geometry.v1";
  * sends at most one key per wheel, so the bridge scrolls history there.
  */
 export const ALTERNATE_SCROLL_CAPABILITY = "alternate_scroll";
+/**
+ * Herdr fork capability: `endpoint.hello.v1` accepts `tab_scoped_geometry`,
+ * `initial_pane_id`, and `initial_pane_size` so a single-pane client scopes
+ * its PTY geometry strictly to its own tab and lands on the exact solved
+ * surface size on initial connect.
+ */
+export const SCOPED_TAB_GEOMETRY_CAPABILITY = "scoped_tab_geometry";
+
+export interface EndpointConnectOptions {
+  /** Scope PTY geometry strictly to the tab this shell views. */
+  tabScopedGeometry?: boolean;
+  /** Seed this shell's initial location on this pane's tab before first resize. */
+  initialPaneId?: string;
+  /** Desired inner content size for `initialPaneId`. */
+  initialPaneSize?: { cols: number; rows: number };
+}
 
 export interface EndpointWelcome {
   generation: number;
@@ -215,17 +231,25 @@ export class EndpointClient extends EventEmitter {
       throw new Error(`Herdr endpoint does not advertise ${method}`);
   }
 
-  async connect(cols: number, rows: number): Promise<void> {
+  async connect(
+    cols: number,
+    rows: number,
+    options?: EndpointConnectOptions,
+  ): Promise<void> {
     if (this.sock) throw new Error("endpoint client is already connected");
     if (this.closed) throw new Error("endpoint client is closed");
-    if (!this.ownShellClients) return this.open(cols, rows);
+    if (!this.ownShellClients) return this.open(cols, rows, options);
     await this.ownShellClients.track(async () => {
-      await this.open(cols, rows);
+      await this.open(cols, rows, options);
       return this.bootId || undefined;
     });
   }
 
-  private async open(cols: number, rows: number): Promise<void> {
+  private async open(
+    cols: number,
+    rows: number,
+    options?: EndpointConnectOptions,
+  ): Promise<void> {
     if (this.sock) throw new Error("endpoint client is already connected");
     if (this.closed) throw new Error("endpoint client is closed");
     await new Promise<void>((resolve, reject) => {
@@ -240,7 +264,7 @@ export class EndpointClient extends EventEmitter {
         this.close();
       }, HANDSHAKE_TIMEOUT_MS);
       this.pendingWelcome = { resolve, reject, timer };
-      sock.once("connect", () => this.sendHello(cols, rows));
+      sock.once("connect", () => this.sendHello(cols, rows, options));
       sock.on("data", (c) =>
         this.onData(Buffer.isBuffer(c) ? c : Buffer.from(c)),
       );
@@ -255,8 +279,12 @@ export class EndpointClient extends EventEmitter {
     });
   }
 
-  private sendHello(cols: number, rows: number) {
-    const hello = {
+  private sendHello(
+    cols: number,
+    rows: number,
+    options?: EndpointConnectOptions,
+  ) {
+    const hello: Record<string, unknown> = {
       generation: ENDPOINT_GENERATION,
       cell_width_px: this.cellSize.width,
       cell_height_px: this.cellSize.height,
@@ -275,6 +303,15 @@ export class EndpointClient extends EventEmitter {
       input_codecs: ["shell.input.semantic.v1"],
       blob_codecs: ["shell.blob.v1"],
     };
+    // Ignored by servers without the scoped_tab_geometry capability.
+    if (options?.tabScopedGeometry) hello.tab_scoped_geometry = true;
+    if (options?.initialPaneId) hello.initial_pane_id = options.initialPaneId;
+    if (options?.initialPaneSize) {
+      hello.initial_pane_size = {
+        cols: options.initialPaneSize.cols,
+        rows: options.initialPaneSize.rows,
+      };
+    }
     this.sendControl(HELLO_KIND, JSON.stringify(hello));
   }
 
@@ -380,6 +417,15 @@ export class EndpointClient extends EventEmitter {
     return (
       !this.closed &&
       this.welcome?.capabilities.includes(ALTERNATE_SCROLL_CAPABILITY) === true
+    );
+  }
+
+  /** Whether Herdr scopes this shell's geometry to its tab and solves initial surface size. */
+  get supportsScopedTabGeometry(): boolean {
+    return (
+      !this.closed &&
+      this.welcome?.capabilities.includes(SCOPED_TAB_GEOMETRY_CAPABILITY) ===
+        true
     );
   }
 

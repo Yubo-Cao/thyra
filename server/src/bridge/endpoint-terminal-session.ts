@@ -60,6 +60,17 @@ type ScrollDispatch = {
   observed: boolean;
 };
 
+/** Last observed server-side geometry for a pane, for exact reattach hints. */
+export type ObservedPaneGeometry = {
+  surfaceCols: number;
+  surfaceRows: number;
+  outerCols: number;
+  outerRows: number;
+  innerCols: number;
+  innerRows: number;
+  alternateScreen: boolean;
+};
+
 /**
  * Terminal stream over the stable endpoint protocol (Herdr >= 0.9.0).
  *
@@ -118,6 +129,12 @@ export class EndpointTerminalSession extends EventEmitter {
   private fitAttempts = 0;
   private fitResizeInFlight = false;
   private lastRequest = { cols: 0, rows: 0 };
+  // Surface size currently held for this socket on Herdr, tracked separately
+  // from `lastRequest` so adopted sibling split sizes can be synced before
+  // `pane.focus` claims tab geometry.
+  private clientSurfaceSize = { cols: 0, rows: 0 };
+  private awaitingInitialSurface = false;
+  private observedGeometry: ObservedPaneGeometry | null = null;
   private commandChain: Promise<unknown> = Promise.resolve();
   connecting: Promise<void> | null = null;
 
@@ -170,24 +187,43 @@ export class EndpointTerminalSession extends EventEmitter {
     return this.client.supportsInputGeometry;
   }
 
+  /** Last pane surface geometry observed from Herdr, if any. */
+  get lastObservedGeometry(): ObservedPaneGeometry | null {
+    return this.observedGeometry ? { ...this.observedGeometry } : null;
+  }
+
   connect(
     cols: number,
     rows: number,
     surfaceSize = { cols, rows },
+    initialPaneIdHint?: string,
   ): Promise<void> {
     this.paneSize = { cols, rows };
     // Browser layout supplies the initial full-tab viewport. Surface
     // feedback still corrects stale hints and clients without layout data.
     this.fitAttempts = SURFACE_FIT_MAX_ATTEMPTS;
-    this.lastRequest = surfaceSize;
+    this.lastRequest = { ...surfaceSize };
+    this.clientSurfaceSize = { ...surfaceSize };
+    this.awaitingInitialSurface = Boolean(initialPaneIdHint);
     const ready = (async () => {
-      await this.client.connect(surfaceSize.cols, surfaceSize.rows);
+      await this.client.connect(surfaceSize.cols, surfaceSize.rows, {
+        tabScopedGeometry: true,
+        ...(initialPaneIdHint
+          ? {
+              initialPaneId: initialPaneIdHint,
+              initialPaneSize: { cols, rows },
+            }
+          : {}),
+      });
       this.client.assertMethod("pane.focus");
       const paneId = await this.lookupPaneId(this.terminalId);
       if (!paneId) {
         throw new Error(
           `no pane found for terminal ${this.terminalId} (endpoint path)`,
         );
+      }
+      if (initialPaneIdHint && initialPaneIdHint !== paneId) {
+        this.awaitingInitialSurface = false;
       }
       this.paneId = paneId;
       // Focus scopes this shell's surface to the pane's tab; per-client
@@ -251,6 +287,15 @@ export class EndpointTerminalSession extends EventEmitter {
     return this.enqueueCommand(async () => {
       if (!isCurrent()) return;
       if (!this.paneId) throw new Error("Endpoint terminal is not ready");
+      if (
+        this.lastRequest.cols > 0 &&
+        this.lastRequest.rows > 0 &&
+        (this.clientSurfaceSize.cols !== this.lastRequest.cols ||
+          this.clientSurfaceSize.rows !== this.lastRequest.rows)
+      ) {
+        this.clientSurfaceSize = { ...this.lastRequest };
+        this.client.resize(this.lastRequest.cols, this.lastRequest.rows);
+      }
       await this.client.callEndpoint("pane.focus", { pane_id: this.paneId });
     });
   }
@@ -496,12 +541,14 @@ export class EndpointTerminalSession extends EventEmitter {
   resize(cols: number, rows: number) {
     this.forgetLinkFrames();
     this.clearDeferredFrame();
+    this.awaitingInitialSurface = false;
     this.paneSize = { cols, rows };
     this.fitAttempts = SURFACE_FIT_MAX_ATTEMPTS;
     const next = this.requestFor(this.latestSurface());
     // Explicit viewer requests include same-size repaints for new viewers.
     this.fitResizeInFlight = true;
     this.lastRequest = next;
+    this.clientSurfaceSize = next;
     this.client.resize(next.cols, next.rows);
   }
 
@@ -558,6 +605,24 @@ export class EndpointTerminalSession extends EventEmitter {
     };
   }
 
+  // Small undershoots leave harmless space. Overshoots hide content and
+  // must converge even when the difference is only one cell.
+  private isAxisOff(wanted: number, actual: number): boolean {
+    return (
+      actual > wanted ||
+      (wanted - actual >= 2 && (wanted - actual) / wanted >= 0.02)
+    );
+  }
+
+  private paneSizeFits(
+    pane: NonNullable<EndpointSurface["panes"][number]>,
+  ): boolean {
+    return (
+      !this.isAxisOff(this.paneSize.cols, pane.innerRect.width) &&
+      !this.isAxisOff(this.paneSize.rows, pane.innerRect.height)
+    );
+  }
+
   // Convergence is content-shaped, not frame-shaped: once the cropped pane
   // content matches the xterm size the viewer sees the right geometry and
   // no further resize may fire, even if the frame is still settling.
@@ -565,12 +630,49 @@ export class EndpointTerminalSession extends EventEmitter {
     surface: EndpointSurface,
     pane: NonNullable<EndpointSurface["panes"][number]>,
   ) {
+    this.observedGeometry = {
+      surfaceCols: surface.frame.width,
+      surfaceRows: surface.frame.height,
+      outerCols: pane.rect.width,
+      outerRows: pane.rect.height,
+      innerCols: pane.innerRect.width,
+      innerRows: pane.innerRect.height,
+      alternateScreen: pane.alternateScreen,
+    };
+    if (this.awaitingInitialSurface) {
+      this.awaitingInitialSurface = false;
+      // When Herdr solved the initial surface size from `initial_pane_id` +
+      // `initial_pane_size`, its frame dimensions are already this socket's
+      // live size on the server.
+      if (this.client.supportsScopedTabGeometry && !this.fitResizeInFlight) {
+        this.lastRequest = {
+          cols: surface.frame.width,
+          rows: surface.frame.height,
+        };
+        this.clientSurfaceSize = { ...this.lastRequest };
+        if (this.paneSizeFits(pane)) {
+          this.fitAttempts = 0;
+          return;
+        }
+      }
+    }
     // Only the response to the latest request can settle or correct it.
     if (
       surface.frame.width !== this.lastRequest.cols ||
       surface.frame.height !== this.lastRequest.rows
-    )
+    ) {
+      // Another pane in the same split tab may have settled the tab surface at
+      // an equilibrium that still fits our viewport without overshoot. Adopt it
+      // so later `focus()` syncs our socket size instead of bouncing the tab.
+      if (!this.fitResizeInFlight && this.paneSizeFits(pane)) {
+        this.lastRequest = {
+          cols: surface.frame.width,
+          rows: surface.frame.height,
+        };
+        this.fitAttempts = 0;
+      }
       return;
+    }
     this.fitResizeInFlight = false;
     if (this.fitAttempts === 0) return;
     if (
@@ -581,15 +683,7 @@ export class EndpointTerminalSession extends EventEmitter {
       this.fitResizeInFlight = false;
       return;
     }
-    // Small undershoots leave harmless space. Overshoots hide content and
-    // must converge even when the difference is only one cell.
-    const off = (wanted: number, actual: number) =>
-      actual > wanted ||
-      (wanted - actual >= 2 && (wanted - actual) / wanted >= 0.02);
-    if (
-      !off(this.paneSize.cols, pane.innerRect.width) &&
-      !off(this.paneSize.rows, pane.innerRect.height)
-    ) {
+    if (this.paneSizeFits(pane)) {
       this.fitAttempts = 0;
       return;
     }
@@ -617,6 +711,7 @@ export class EndpointTerminalSession extends EventEmitter {
     if (this.fitAttempts > 0) this.fitAttempts -= 1;
     this.fitResizeInFlight = true;
     this.lastRequest = next;
+    this.clientSurfaceSize = next;
     this.client.resize(next.cols, next.rows);
   }
 

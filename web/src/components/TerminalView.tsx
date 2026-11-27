@@ -494,6 +494,14 @@ export function TerminalView({
     refs.followShared.current = terminalFollows(refs);
     const gained = wasFollowing && !refs.followShared.current;
     if (!termInstance) return;
+    if (
+      !canResize &&
+      refs.desiredTerminal.current &&
+      !refs.attachedTerminal.current &&
+      !refs.attachingTerminal.current
+    ) {
+      ui.retryAttach();
+    }
     const size = sessionBindings.fitVisibleTerminal();
     if (!gained || !size || !pane?.terminal_id) return;
     void connectionClient
@@ -511,6 +519,7 @@ export function TerminalView({
     pane?.terminal_id,
     refs,
     sessionBindings,
+    ui,
   ]);
   // Typing here while this person's other window controls the pane moves
   // control here. Only the person's own keys, IME and paste count: the

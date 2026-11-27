@@ -10,7 +10,10 @@ import {
 } from "../connections/protocol";
 import { type Logger, silentLogger } from "../utils/logger";
 import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
-import { EndpointTerminalSession } from "./endpoint-terminal-session";
+import {
+  EndpointTerminalSession,
+  type ObservedPaneGeometry,
+} from "./endpoint-terminal-session";
 import type { OwnShellClients } from "./own-shell-clients";
 import type { EndpointHostTheme, HostRgb } from "./endpoint-client";
 import { frameToAnsiParts } from "./frame-to-ansi";
@@ -249,6 +252,9 @@ export function createTerminalBridge(args: {
     string,
     { cols: number; rows: number; surface?: { cols: number; rows: number } }
   >();
+  // The last observed surface geometry per terminal, so reattaching against
+  // servers without `scoped_tab_geometry` still starts on the exact tab size.
+  const observedGeometries = new Map<string, ObservedPaneGeometry>();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
   /** Record a terminal fact as the newest, forgetting the oldest idle ones. */
   function rememberFact<T>(facts: Map<string, T>, terminalId: string, fact: T) {
@@ -262,7 +268,7 @@ export function createTerminalBridge(args: {
   }
   /** Forget facts about terminals Herdr no longer lists and nobody streams. */
   function pruneFacts(live: ReadonlySet<string>) {
-    for (const facts of [knownPanes, displaySizes])
+    for (const facts of [knownPanes, displaySizes, observedGeometries])
       for (const id of facts.keys())
         if (!live.has(id) && !sharedTerminals.has(id)) facts.delete(id);
   }
@@ -826,6 +832,7 @@ export function createTerminalBridge(args: {
     rows: number,
     isAttachCurrent: () => boolean,
     surfaceSize?: { cols: number; rows: number },
+    initialPaneIdHint?: string,
   ): Promise<SharedTerminalSession> {
     if (disposed) throw new Error("terminal bridge disposed");
     const creationRevision = lifecycleRevision;
@@ -843,6 +850,7 @@ export function createTerminalBridge(args: {
         rows,
         isAttachCurrent,
         surfaceSize,
+        initialPaneIdHint,
       );
     const existing = sharedTerminals.get(terminalId);
     if (existing && !existing.thin.isClosed) return existing;
@@ -890,6 +898,8 @@ export function createTerminalBridge(args: {
       const paneId = knownPanes.get(terminalId);
       if (paneId)
         args.onPaneAlternateScreen?.(paneId, thin.alternateScreenActive);
+      const observed = thin.lastObservedGeometry;
+      if (observed) rememberFact(observedGeometries, terminalId, observed);
       if (!isCurrent(creationRevision)) return;
       shared.frames += 1;
       shared.bytes += t.bytes.length;
@@ -1079,12 +1089,14 @@ export function createTerminalBridge(args: {
         else notifyStreamClosed(shared, viewers);
       }
     });
-    const terminalReady = thin.connect(cols, rows, surfaceSize).then(() => {
-      if (!isCurrent(creationRevision)) {
-        thin.close();
-        throw new Error("terminal bridge disposed");
-      }
-    });
+    const terminalReady = thin
+      .connect(cols, rows, surfaceSize, initialPaneIdHint)
+      .then(() => {
+        if (!isCurrent(creationRevision)) {
+          thin.close();
+          throw new Error("terminal bridge disposed");
+        }
+      });
     shared.connecting = terminalReady
       .then(() => undefined)
       .catch((e) => {
@@ -1402,6 +1414,26 @@ export function createTerminalBridge(args: {
           surfaceSize = { cols: surfaceCols, rows: surfaceRows };
         }
         if (remembered) surfaceSize = remembered.surface;
+        const observed = observedGeometries.get(terminalId);
+        if (
+          !remembered &&
+          surfaceSize &&
+          observed &&
+          observed.innerCols === cols &&
+          observed.innerRows === rows &&
+          Math.abs(observed.surfaceCols - surfaceSize.cols) <= 4 &&
+          Math.abs(observed.surfaceRows - surfaceSize.rows) <= 4
+        ) {
+          surfaceSize = {
+            cols: observed.surfaceCols,
+            rows: observed.surfaceRows,
+          };
+        }
+        const rawPaneId = optionalString(params, "pane_id");
+        const initialPaneIdHint =
+          (rawPaneId && validDisplayPaneId(rawPaneId) ? rawPaneId : null) ??
+          knownPanes.get(terminalId) ??
+          undefined;
 
         const existingShared = sharedTerminals.get(terminalId);
         const sharedMode =
@@ -1466,6 +1498,7 @@ export function createTerminalBridge(args: {
             rows,
             attemptIsCurrent,
             surfaceSize,
+            initialPaneIdHint,
           );
           if (attemptIsCurrent()) {
             shared.viewers.add(ws);

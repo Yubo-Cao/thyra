@@ -319,11 +319,17 @@ export function useTerminalAttach(
       attachTimeoutTerminal.current = terminalId;
       attachTimeouts.current = 0;
     }
+    const fitSize = fitVisibleTerminal();
+    // Wait until a sizing container has been laid out (non-zero bounds) before
+    // attaching, rather than pushing a provisional 80x24 size that shrinks and
+    // reflows the pane as soon as ResizeObserver reports its real dimensions.
+    if (!fitSize && !refs.followShared.current) {
+      return;
+    }
     attachingTerminal.current = terminalId;
     ui.setTerminalLoading(true);
     ui.setTerminalAttachError("");
     const attachAttempt = attachWatchdog.begin();
-    const fitSize = fitVisibleTerminal();
     const cols = fitSize?.cols ?? term.cols;
     const rows = fitSize?.rows ?? term.rows;
     const paneLayout = refs.paneLayout.current;
@@ -348,6 +354,7 @@ export function useTerminalAttach(
     client
       .call("terminal.attach", {
         terminal_id: terminalId,
+        ...(refs.paneId.current ? { pane_id: refs.paneId.current } : {}),
         cols,
         rows,
         // Receive endpoint frames as acknowledged row updates.
